@@ -264,4 +264,28 @@ setInterval(() => {}, 1000);
     },
     60_000,
   );
+
+  // Not misuse: the documented way to read the page's own HTML. Once a page
+  // has a server script, the component manifest runs every component's build
+  // script with no page; a script that needs one must not fail the build.
+  it("builds a site whose component build script opens BASCIK_PAGE_FILE when a page also has a server script", async () => {
+    const root = await project("page-file-component", {
+      "src/components/page-title/page-title.html": `<h1 data-testid="page-title"><script data-bascik-build>
+  import { readFileSync } from "node:fs";
+  export default () =>
+    /<title>([^<]+)<\\/title>/.exec(readFileSync(process.env.BASCIK_PAGE_FILE, "utf8"))[1];
+</script></h1>`,
+      "src/pages/index.html": page(
+        `<page-title></page-title><script data-bascik-server>export default () => "<p>now</p>";</script>`,
+        "Home title",
+      ),
+    });
+    const { code, output } = await run(root, ["--build"]);
+    expect(output).not.toContain("build script error");
+    expect(code, output).toBe(0);
+    const { readFile } = await import("node:fs/promises");
+    expect(await readFile(join(root, "dist/index.html"), "utf8")).toContain(
+      "Home title</h1>",
+    );
+  });
 });

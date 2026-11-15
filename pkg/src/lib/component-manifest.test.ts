@@ -1242,6 +1242,59 @@ describe("component build scripts", () => {
     expect(entryOf(manifest, "built-card").unsupported).toBeUndefined();
   });
 
+  // A script that opens BASCIK_PAGE_FILE (the documented way to read the
+  // page's own HTML) throws when the manifest runs it with no page. That is
+  // a page-dependent component, not a broken build.
+  it("a build script that reads its page context and then fails without a page is unsupported, not a build error", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      runDirectiveHandlerMock.mockImplementation(
+        async (_target, _kind, options) => {
+          if (
+            !String(options?.extraEnv?.BASCIK_SOURCE_FILE).includes("ctx-card")
+          )
+            return defaultHandler();
+          throw Object.assign(
+            new Error("Error: ENOENT: no such file or directory, open ''"),
+            { stdout: "", stderr: "", readsPageContext: true },
+          );
+        },
+      );
+      const manifest = await build(buildScriptCards());
+      expect(entryOf(manifest, "ctx-card").unsupported).toEqual({
+        reason: "build-script-reads-page-context",
+        detail:
+          "its build script read BASCIK_PAGE_PATH, BASCIK_PAGE_FILE or BASCIK_ROUTE, so its output differs per page",
+      });
+      expect(entryOf(manifest, "ctx-card").template).toBeNull();
+      expect(entryOf(manifest, "built-card").unsupported).toBeUndefined();
+      // The script ran once: the verify run is not a second failure.
+      expect(
+        runDirectiveHandlerMock.mock.calls.filter(([, , options]) =>
+          String(options?.extraEnv?.BASCIK_SOURCE_FILE).includes("ctx-card"),
+        ),
+      ).toHaveLength(1);
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("a build script that fails without having read its page context still fails the build", async () => {
+    runDirectiveHandlerMock.mockImplementation(
+      async (_target, _kind, options) => {
+        if (!String(options?.extraEnv?.BASCIK_SOURCE_FILE).includes("ctx-card"))
+          return defaultHandler();
+        throw Object.assign(new Error("Error: boom"), {
+          stdout: "",
+          stderr: "",
+          readsPageContext: false,
+        });
+      },
+    );
+    await expect(build(buildScriptCards())).rejects.toThrow(/boom/);
+  });
+
   it("the on-disk cache record keeps readsPageContext: a build after clearBuildScriptCaches() is answered from disk and still unsupported", async () => {
     // The in-memory memo answers the second run inside one build; only the
     // disk record answers a later build (a fresh `bascik --build` process),

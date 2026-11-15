@@ -457,6 +457,52 @@ describe("runDirectiveHandler real child processes (handler and result transport
     },
   );
 
+  // A failed run writes no result, so the rejection carries the answer: the
+  // component manifest runs scripts with no page, and one that fails after
+  // reading its page context is page-dependent, not broken.
+  it.each([
+    [
+      "throws after reading the page file",
+      `import { readFileSync } from "node:fs"; export default () => readFileSync(process.env.BASCIK_PAGE_FILE, "utf8");`,
+      true,
+    ],
+    [
+      "throws at import time after reading the page path",
+      `const page = process.env.BASCIK_PAGE_PATH; if (!page) throw new Error("no page"); export default () => page;`,
+      true,
+    ],
+    [
+      "exits nonzero after reading the page path",
+      `export default () => { if (!process.env.BASCIK_PAGE_PATH) process.exit(3); return ""; };`,
+      true,
+    ],
+    [
+      "throws without reading the page",
+      `export default () => { throw new Error("boom"); };`,
+      false,
+    ],
+    ["has a syntax error", `export default () => { return "x" +; };`, false],
+  ])(
+    "reports on the rejection whether a build script that %s read page context",
+    async (_name, source, expected) => {
+      const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
+      try {
+        const modulePath = join(dir, "script.mjs");
+        await writeFile(modulePath, source, "utf8");
+        const failure = await runDirectiveHandler<string>(modulePath, "build", {
+          extraEnv: { BASCIK_PAGE_PATH: "", BASCIK_PAGE_FILE: "" },
+        }).then(
+          () => undefined,
+          (err: unknown) => err as { readsPageContext?: boolean },
+        );
+        expect(failure).toBeDefined();
+        expect(failure?.readsPageContext).toBe(expected);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("handles parallel child processes correctly using single-slot semaphore", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
     const sem = new Semaphore(1);

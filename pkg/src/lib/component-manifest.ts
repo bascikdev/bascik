@@ -579,13 +579,18 @@ const buildEntry = async (
           pageFile: "",
           pagePath: "",
           sourceFile: raw.fileName,
+          emptyPageContext: true,
           onReadsPageContext: () => {
             readsPageContext = true;
           },
         })
       : Promise.resolve(html);
   let textA = await runBuildScripts(recorded.component.fileContent);
-  let textB = await runBuildScripts(verify.fileContent);
+  // A page-context reader is refused below, so its second run is skipped: it
+  // would only repeat a script that may have failed for want of a page.
+  let textB = readsPageContext
+    ? verify.fileContent
+    : await runBuildScripts(verify.fileContent);
   if (readsPageContext)
     return unsupported(
       "build-script-reads-page-context",
