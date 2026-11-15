@@ -296,4 +296,24 @@ describe("Crash Net - Bug 3 & 5 & 7: Process-level crash handlers", () => {
     }
     expect(process.stderr.listenerCount("error")).toBe(before);
   });
+
+  it("a failed write to stdout is neither a crash nor reported, and uninstalling removes the listener", () => {
+    const before = process.stdout.listenerCount("error");
+    const uninstall = installProcessCrashHandlers();
+    try {
+      expect(process.stdout.listenerCount("error")).toBe(before + 1);
+      // Without a listener this emit would throw (in a real process: an
+      // uncaught exception that stops the build or the server).
+      const epipe = Object.assign(new Error("write EPIPE"), {
+        code: "EPIPE",
+        syscall: "write",
+      });
+      expect(() => process.stdout.emit("error", epipe)).not.toThrow();
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      uninstall();
+    }
+    expect(process.stdout.listenerCount("error")).toBe(before);
+  });
 });
