@@ -20,8 +20,12 @@ import { E2E_DIST_DIR } from "./site.ts";
 
 const dist = E2E_DIST_DIR;
 
-/** Most raw HTML bytes one page may have. components.html was 555 KB when every code block carried a highlighter. */
-const MAX_PAGE_BYTES = 300_000;
+/**
+ * Most raw HTML bytes one page may have. components.html was 555 KB when every code block carried a highlighter.
+ * The largest page is compatibility.html, which grows by a table row with each scoping or minifier capability: it
+ * was 300 KB with the 1.0.1 rows, so the limit leaves room for more rows and still fails long before a highlighter.
+ */
+const MAX_PAGE_BYTES = 320_000;
 /** Most inline script hashes in one page's Content-Security-Policy. It was 44 on components.html. */
 const MAX_CSP_HASHES = 15;
 
