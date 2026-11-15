@@ -24,7 +24,9 @@ import {
 
 const execFileAsync = promisify(execFile);
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), "index.ts");
-const DEV_PORT = 44934;
+// Below the range the operating system hands out for port 0, so no other
+// test file running at the same time holds it.
+const DEV_PORT = 24934;
 const roots: string[] = [];
 const locked: string[] = [];
 
