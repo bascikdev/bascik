@@ -137,20 +137,31 @@ const rejectRemovedKeys = (cfg: UserConfig, exportName: string): void => {
 /** The exports Bascik reads from a config module. */
 const CONFIG_EXPORTS = ["default", "dev", "build", "server"] as const;
 
+/** A promise, or anything else `await` would unwrap. */
+const isThenable = (value: unknown): boolean =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as { then?: unknown }).then === "function";
+
 const describeValue = (value: unknown): string =>
   value === null
     ? "null"
     : Array.isArray(value)
       ? "an array"
-      : typeof value === "function"
-        ? "a function (Bascik reads the object, it does not call it)"
-        : `${typeof value} ${typeof value === "string" ? JSON.stringify(value) : String(value)}`;
+      : isThenable(value)
+        ? "a promise (Bascik reads the object, it does not wait for it; " +
+          "write `export default await ...` to export what it resolves to)"
+        : typeof value === "function"
+          ? "a function (Bascik reads the object, it does not call it)"
+          : `${typeof value} ${typeof value === "string" ? JSON.stringify(value) : String(value)}`;
 
 /**
  * A config file whose settings Bascik would never see is an error, not a
  * zero config: every setting in it would be ignored and never validated.
  * That is a read export that is not a plain object (a function, a string,
- * null), or a module whose only exports are names Bascik does not read
+ * null, or a promise, whose settings are on the value it resolves to, as
+ * with `export default loadSettings()` for an async `loadSettings`), or a
+ * module whose only exports are names Bascik does not read
  * (`export const config = ...`). A module that exports nothing at all gets a
  * warning: the defaults apply, as with no file.
  */
@@ -163,7 +174,12 @@ const assertReadableExports = (
   for (const name of CONFIG_EXPORTS) {
     const value = exports?.[name];
     if (value === undefined) continue;
-    if (typeof value === "object" && value !== null && !Array.isArray(value))
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      !Array.isArray(value) &&
+      !isThenable(value)
+    )
       continue;
     const declaration =
       name === "default" ? "export default" : `export const ${name} =`;
