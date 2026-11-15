@@ -1,5 +1,5 @@
 import { describe, it } from "vitest";
-import { scanHtml } from "./html-scanner.ts";
+import { scanHtml, scanHtmlComments } from "./html-scanner.ts";
 import {
   expectLinearTime,
   LINEAR_TIME_TIMEOUT_MS,
@@ -30,6 +30,35 @@ describe("scanHtml", () => {
       for (const input of cases)
         expectLinearTime(input, 20_000, scanHtml, {
           label: input(2).slice(0, 24),
+        });
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
+
+describe("scanHtmlComments", () => {
+  it(
+    "stays linear, including past the point where the scan stops",
+    () => {
+      // An end tag in a select in foreign content stops the scan at once, so
+      // the comments after it are found by the fallback walk.
+      const stopped = "<svg><foreignObject><select></p>";
+      const cases = [
+        (n: number) => "<!--a-->".repeat(n),
+        (n: number) =>
+          `<style>${"<!--".repeat(n)}</style>${"<!--a-->".repeat(n)}`,
+        (n: number) => `<noscript>${"<!--a-->".repeat(n)}</noscript>`,
+        (n: number) =>
+          "<noscript><!--a--><iframe><!--b--></iframe></noscript>".repeat(n),
+        (n: number) => `<noscript>${"<!--".repeat(n)}</noscript>`,
+        (n: number) => `${"<noscript".repeat(n)}<!--a-->`,
+        (n: number) => `${stopped}${"<!--a-->".repeat(n)}`,
+        (n: number) => `${stopped}${"<!--".repeat(n * 2)}`,
+        (n: number) => `${stopped}${"<!--a--".repeat(n)}`,
+      ];
+      for (const input of cases)
+        expectLinearTime(input, 20_000, scanHtmlComments, {
+          label: input(2).slice(0, 40),
         });
     },
     LINEAR_TIME_TIMEOUT_MS,

@@ -157,6 +157,34 @@ describe("rewriteHtmlBasePaths", () => {
     );
   });
 
+  // `<!--` in a script or style is that element's text. Read as a comment, it
+  // ran to the next `-->` (or the end of the page) and every link in between
+  // kept its unprefixed URL.
+  it.each([
+    ['<script>const open = "<!--";</script>', "a script string"],
+    ['<script type="application/json">{"a":"<!--"}</script>', "JSON"],
+    ['<style>.a::before { content: "<!--"; }</style>', "a CSS string"],
+    ["<title>a <!-- b</title>", "a title"],
+  ])("rewrites the links after %s (%s)", (rawText) => {
+    expect(
+      rewriteHtmlBasePaths(
+        `${rawText}<a href="/one">1</a><!-- <a href="/off">x</a> --><img src="/two.png">`,
+        "/sub/",
+      ),
+    ).toBe(
+      `${rawText}<a href="/sub/one">1</a><!-- <a href="/off">x</a> --><img src="/sub/two.png">`,
+    );
+  });
+
+  it("rewrites url() in a stylesheet wrapped in <!-- -->", () => {
+    expect(
+      rewriteHtmlBasePaths(
+        "<style><!--\n.a { background: url(/a.png); }\n--></style>",
+        "/sub/",
+      ),
+    ).toBe("<style><!--\n.a { background: url(/sub/a.png); }\n--></style>");
+  });
+
   it("Does not corrupt quoted attribute strings containing URL-like attribute text with spaces", () => {
     const html = [
       `<div data-example="click href = '/keep-literal'"><a href = /real/>Real</a></div>`,

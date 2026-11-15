@@ -7,6 +7,7 @@ import {
   readStartTagAttributes,
   removeHtmlRanges,
   scanHtml,
+  scanHtmlComments,
   type HtmlRange,
   type ScannedComment,
   type ScannedScript,
@@ -682,5 +683,67 @@ describe("removeHtmlRanges", () => {
         { start: 8, end: 14 },
       ]).html,
     ).toBe("<a></a>");
+  });
+});
+
+describe("scanHtmlComments", () => {
+  const texts = (html: string): string[] =>
+    scanHtmlComments(html).map(({ start, end }) => html.slice(start, end));
+
+  it("reports comments in order, ended the way the browser ends them", () => {
+    expect(texts("<!--a--><p>x</p><!--b--!><!----><!-->")).toEqual([
+      "<!--a-->",
+      "<!--b--!>",
+      "<!---->",
+      "<!-->",
+    ]);
+    expect(texts("<p>no comment</p>")).toEqual([]);
+  });
+
+  it("reports none inside raw text elements", () => {
+    expect(
+      texts(
+        '<style>.a::before { content: "<!--"; }</style>' +
+          '<script>const s = "<!-- x -->";</script>' +
+          "<textarea><!-- t --></textarea><title><!-- n --></title>" +
+          "<!-- real -->",
+      ),
+    ).toEqual(["<!-- real -->"]);
+  });
+
+  // The compiler reads these bodies as markup (a <noscript> is the page for a
+  // browser without scripts), so markup commented out in one stays hidden.
+  it.each(["noscript", "iframe", "noembed", "noframes", "xmp"])(
+    "reports the comments inside <%s>, read as markup",
+    (name) => {
+      expect(
+        texts(
+          `<!--a--><${name}><!-- <style>.a{}</style> --><p>x</p>` +
+            `<style>.b::before { content: "<!--"; }</style><!--b--></${name}>` +
+            `<p>y</p><!--c-->`,
+        ),
+      ).toEqual([
+        "<!--a-->",
+        "<!-- <style>.a{}</style> -->",
+        "<!--b-->",
+        "<!--c-->",
+      ]);
+    },
+  );
+
+  it("ends a comment the <noscript> body ends inside at the end tag", () => {
+    expect(
+      texts("<NoScript ><!-- open</noscript><p>x</p> --><!--c-->"),
+    ).toEqual(["<!-- open", "<!--c-->"]);
+  });
+
+  it("runs a comment the input ends inside to the end", () => {
+    expect(texts("<p>a</p><!-- open <p>")).toEqual(["<!-- open <p>"]);
+  });
+
+  it("counts every <!-- after the point where the scan stops", () => {
+    const html = "<svg><foreignObject><select></p><!--a--><p><!--b";
+    expect(scanHtml(html).stoppedAt).toBeLessThan(html.length);
+    expect(texts(html)).toEqual(["<!--a-->", "<!--b"]);
   });
 });

@@ -2618,6 +2618,57 @@ describe("extractInlineStyles", () => {
     expect(html).not.toContain("<style>.demo-box");
     expect(css).toBe(".demo-box { border: 1px solid; }");
   });
+
+  // `<style>` is a raw text element: `<!--` inside it is CSS, not a comment.
+  // Its text was hidden behind a shield token as a comment and never restored,
+  // so the token (or nothing) reached the page's stylesheet.
+  it.each([
+    [
+      "a comment-like CSS string",
+      '<style>.note::before { content: "<!-- a -->"; }</style><p class="note">n</p>',
+      '.note::before { content: "<!-- a -->"; }',
+      '<p class="note">n</p>',
+    ],
+    [
+      "a stylesheet wrapped in CDO and CDC",
+      '<style>\n<!--\n.two { color: red; }\n-->\n</style><p class="two">t</p>',
+      "<!--\n.two { color: red; }\n-->",
+      '<p class="two">t</p>',
+    ],
+    [
+      "an unclosed `<!--` in a string, with a real comment after the block",
+      '<style>.a::after { content: "<!--"; }</style><p class="a">a</p><!-- real -->',
+      '.a::after { content: "<!--"; }',
+      '<p class="a">a</p><!-- real -->',
+    ],
+    [
+      "a real comment before the block and comment-like CSS inside it",
+      '<!-- note --><style>.b { content: "-->"; } .c { content: "<!--"; }</style><p class="b">b</p>',
+      '.b { content: "-->"; } .c { content: "<!--"; }',
+      '<!-- note --><p class="b">b</p>',
+    ],
+  ])(
+    "keeps %s inside a <style> block as CSS",
+    (_name, input, expectedCss, expectedHtml) => {
+      const { html, css } = extractInlineStyles(input);
+      expect(css).toBe(expectedCss);
+      expect(html).toBe(expectedHtml);
+      expect(css + html).not.toContain("BASCIK_SHIELD");
+    },
+  );
+
+  it("leaves an unclosed comment that mentions <style> as written", () => {
+    const input = '<p class="a">a</p><!-- <style>.a { color: red; }</style>';
+    expect(extractInlineStyles(input)).toEqual({ html: input, css: "" });
+  });
+
+  // A <noscript> body is markup for a browser without scripts, so a
+  // stylesheet commented out inside one must not reach the page.
+  it("leaves a <style> commented out inside <noscript> as written", () => {
+    const input =
+      '<noscript><!-- <style>.a { color: blue; }</style> --><p class="a">a</p></noscript>';
+    expect(extractInlineStyles(input)).toEqual({ html: input, css: "" });
+  });
 });
 
 describe("Resilience to regex replacement patterns (TDD)", () => {
