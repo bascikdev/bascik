@@ -147,7 +147,7 @@ let stopExitingOnSignals: (() => void) | undefined;
  *
  * A build, and a dev boot before its server is up, have no server and so no
  * graceful shutdown. A signal sent to this process alone (`kill`, a
- * supervisor, a CI runner cancelling a step) would otherwise end it at once
+ * supervisor, a CI runner canceling a step) would otherwise end it at once
  * and leave its `pipeline.exec` children running with no parent. Only those
  * are stopped (`stop` is the exec stopper), not the page worker pools: a
  * process that dies of a signal never runs the exit teardown the pools must

@@ -4,7 +4,11 @@ import { matchesGlob, resolve } from "node:path";
 import { isSameOrInside } from "./path-containment.ts";
 import { BascikConfig } from "./config.ts";
 import { eventEmitter } from "./events.ts";
-import { registerExitStopper, type ExitStopper } from "./exit-stoppers.ts";
+import {
+  isExitInProgress,
+  registerExitStopper,
+  type ExitStopper,
+} from "./exit-stoppers.ts";
 import { formatDuration } from "./format.ts";
 import { logInfo } from "./log.ts";
 import { stdout as colorOut } from "./colors.ts";
@@ -498,6 +502,17 @@ const spawnScript = (
   const clock = options?.clock ?? nativeClock;
   const scriptPath = entry.script;
   const entryObj = entry;
+
+  // The exec children have already been stopped for this exit (a signal, a
+  // failed build): a script started now would do its work after the stop and
+  // outlive the process. The phases still running (a build's page compile,
+  // then `post`) reach here until the process ends.
+  if (isExitInProgress())
+    return Promise.reject(
+      new Error(
+        `[bascik] exec "${scriptPath}" was not started: Bascik is exiting`,
+      ),
+    );
 
   const start = performance.now();
   logInfo(`${colorOut.dim("(started)")} exec: ${scriptPath}`);

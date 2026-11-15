@@ -5,7 +5,7 @@
  * Only a running server had SIGINT / SIGTERM / SIGHUP handling. A build has
  * no server, and a dev boot has none until its `pre` scripts have finished,
  * so a signal that reached only the `bascik` process there (`kill`, a
- * supervisor, a CI runner cancelling a step; a terminal's Ctrl-C signals the
+ * supervisor, a CI runner canceling a step; a terminal's Ctrl-C signals the
  * whole process group and hid this) ended it at once and orphaned the exec
  * script, which kept running with no parent.
  *
@@ -74,7 +74,15 @@ const waitFor = async (
 type Phase = "pre" | "parallel" | "post";
 type Signal = "SIGTERM" | "SIGINT" | "SIGHUP";
 
-const project = async (name: string, phase: Phase): Promise<string> => {
+const project = async (
+  name: string,
+  phase: Phase,
+  // A second script in a later phase, and what lets the run reach it after
+  // the signal: the policy that continues past a failed script, or (`gated`)
+  // a first script that takes the full 200 ms to stop because it ignores
+  // SIGTERM, beside a page whose compile ends once a `go` file exists.
+  next?: { phase?: Phase; onExecError?: "warn"; gated?: boolean },
+): Promise<string> => {
   const root = fixtureRoot(`exec-signal-${name}`);
   roots.push(root);
   await mkdir(root, { recursive: true });
@@ -82,17 +90,43 @@ const project = async (name: string, phase: Phase): Promise<string> => {
   await writeFixtureFile(
     root,
     "bascik.config.js",
-    `export default { pipeline: { exec: [{ script: "scripts/wait.js", phase: "${phase}" }] }, generate: { sitemap: false, robots: false } };`,
+    `export default { pipeline: { exec: [{ script: "scripts/wait.js", phase: "${phase}" }${
+      next
+        ? `, { script: "scripts/next.js", phase: "${next.phase ?? "parallel"}" }`
+        : ""
+    }]${
+      next?.onExecError ? `, onExecError: "${next.onExecError}"` : ""
+    } }, generate: { sitemap: false, robots: false } };`,
+  );
+  await writeFixtureFile(
+    root,
+    "scripts/next.js",
+    `import { writeFileSync } from "node:fs";
+writeFileSync(${JSON.stringify(join(root, "next.pid"))}, String(process.pid));
+await new Promise((done) => setTimeout(done, 120_000));
+`,
   );
   await writeFixtureFile(
     root,
     "src/pages/index.html",
-    '<!doctype html><html lang="en"><head><title>P</title></head><body><h1>Hi</h1></body></html>',
+    `<!doctype html><html lang="en"><head><title>P</title></head><body>${
+      next?.gated
+        ? `<script data-bascik-build>
+import { existsSync } from "node:fs";
+export default async () => {
+  while (!existsSync(${JSON.stringify(join(root, "go"))}))
+    await new Promise((done) => setTimeout(done, 5));
+  return "";
+};
+</script>`
+        : ""
+    }<h1>Hi</h1></body></html>`,
   );
   await writeFixtureFile(
     root,
     "scripts/wait.js",
     `import { writeFileSync } from "node:fs";
+${next?.gated ? 'process.on("SIGTERM", () => {});' : ""}
 writeFileSync(${JSON.stringify(join(root, "exec.pid"))}, String(process.pid));
 await new Promise((done) => setTimeout(done, 120_000));
 `,
@@ -105,6 +139,7 @@ const signalWhileExecRuns = async (
   root: string,
   args: string[],
   signal: Signal,
+  afterSignal?: () => Promise<void>,
 ): Promise<{
   exit: { code: number | null; signal: NodeJS.Signals | null } | "timeout";
   execPid: number;
@@ -135,6 +170,7 @@ const signalWhileExecRuns = async (
   execPids.add(execPid);
 
   process.kill(child.pid!, signal);
+  await afterSignal?.();
   const exit = await Promise.race([
     exited,
     new Promise<"timeout">((done) => setTimeout(() => done("timeout"), 10_000)),
@@ -165,6 +201,76 @@ describe.skipIf(process.platform === "win32")(
         expect(result.output).not.toMatch(/Build complete/);
       });
     }
+
+    // Stopping the `pre` script fails it. Where a failure is only a warning
+    // (dev by default, a build under `onExecError: "warn"`) the run used to
+    // carry on into the `parallel` phase and start that script right before
+    // the process died, leaving it running instead.
+    /** Whether `scripts/next.js` ran; it is cleaned up if it did. */
+    const nextScriptStarted = async (root: string): Promise<boolean> => {
+      // A script spawned before the CLI died has had time to write its pid.
+      const nextPidFile = join(root, "next.pid");
+      await waitFor(() => existsSync(nextPidFile), 1_500);
+      if (!existsSync(nextPidFile)) return false;
+      const nextPid = Number(readFileSync(nextPidFile, "utf8"));
+      if (nextPid) execPids.add(nextPid);
+      return true;
+    };
+
+    const continuingCases: [
+      string,
+      string,
+      string[],
+      { onExecError?: "warn" },
+    ][] = [
+      ["bascik (dev)", "dev", ["--port", "44936", "--no-pin"], {}],
+      [
+        "bascik --build, onExecError warn",
+        "build",
+        ["--build"],
+        { onExecError: "warn" },
+      ],
+    ];
+    for (const [label, slug, args, next] of continuingCases) {
+      it(`${label}: a signal during pre does not start the parallel script`, async () => {
+        const root = await project(`next-${slug}`, "pre", next);
+        const result = await signalWhileExecRuns(root, args, "SIGTERM");
+        expect(result.execGone, "the pre script is still running").toBe(true);
+        expect(result.exit).toEqual({ code: null, signal: "SIGTERM" });
+        expect(
+          await nextScriptStarted(root),
+          "the parallel script was started after the signal",
+        ).toBe(false);
+        expect(result.output).not.toMatch(/Continuing because/);
+      });
+    }
+
+    // The page compile runs beside the `parallel` script and is not stopped
+    // by the signal. When it ends while that script is still being stopped,
+    // the build's next step is the `post` phase.
+    it("bascik --build: a signal during parallel does not start the post script when the pages finish", async () => {
+      const root = await project("next-post", "parallel", {
+        phase: "post",
+        gated: true,
+      });
+      const result = await signalWhileExecRuns(
+        root,
+        ["--build"],
+        "SIGTERM",
+        async () => {
+          await new Promise((done) => setTimeout(done, 40));
+          await writeFixtureFile(root, "go", "1");
+        },
+      );
+      expect(result.execGone, "the parallel script is still running").toBe(
+        true,
+      );
+      expect(result.exit).toEqual({ code: null, signal: "SIGTERM" });
+      expect(
+        await nextScriptStarted(root),
+        "the post script was started after the signal",
+      ).toBe(false);
+    });
 
     it("bascik (dev), pre script running before the server is up, SIGTERM", async () => {
       const root = await project("dev-pre", "pre");

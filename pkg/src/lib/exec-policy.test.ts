@@ -1,14 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { config, emitted } = vi.hoisted(() => ({
+const { config, emitted, exit } = vi.hoisted(() => ({
   config: {
     isBuild: false,
     pipeline: {} as { onExecError?: "error" | "warn" },
   },
   emitted: [] as [string, unknown][],
+  exit: { inProgress: false },
 }));
 
 vi.mock("./config.ts", () => ({ BascikConfig: config }));
+vi.mock("./exit-stoppers.ts", () => ({
+  isExitInProgress: () => exit.inProgress,
+}));
 vi.mock("./events.ts", () => ({
   eventEmitter: {
     emit: (name: string, payload: unknown) => emitted.push([name, payload]),
@@ -27,6 +31,7 @@ beforeEach(() => {
   config.isBuild = false;
   config.pipeline = {};
   emitted.length = 0;
+  exit.inProgress = false;
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -47,6 +52,24 @@ describe("getExecErrorAction", () => {
 });
 
 describe("toleratingExecFailure", () => {
+  // A signal stopped the script: carrying on would start the next phase's
+  // scripts after the stop, and the process would end without them.
+  it("rethrows under the warn action while the process is exiting, without a report", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    exit.inProgress = true;
+    for (const isBuild of [false, true]) {
+      config.isBuild = isBuild;
+      config.pipeline = { onExecError: "warn" };
+      await expect(
+        toleratingExecFailure(async () => {
+          throw new Error("exited with code null");
+        }),
+      ).rejects.toThrow("exited with code null");
+    }
+    expect(error).not.toHaveBeenCalled();
+    expect(emitted).toEqual([]);
+  });
+
   it("resolves true when the work succeeds", async () => {
     await expect(toleratingExecFailure(async () => undefined)).resolves.toBe(
       true,
