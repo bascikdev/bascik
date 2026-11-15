@@ -49,9 +49,24 @@ async function request<T>(
   });
   if (!response.ok)
     throw new Error(
-      `Preview provider request failed: ${new URL(url).hostname}${new URL(url).pathname} HTTP ${response.status}`,
+      `Preview provider request failed: ${new URL(url).hostname}${new URL(url).pathname} HTTP ${response.status}${await providerReason(response)}`,
     );
   return response.json() as Promise<T>;
+}
+/** Stripe's own one-line reason for a refused request, so a failed run says why. */
+async function providerReason(response: Response): Promise<string> {
+  if (new URL(response.url).hostname !== "api.stripe.com") return "";
+  try {
+    const body = (await response.json()) as {
+      error?: { code?: string; message?: string };
+    };
+    const reason = [body.error?.code, body.error?.message]
+      .filter(Boolean)
+      .join(": ");
+    return reason ? ` (${reason.slice(0, 300)})` : "";
+  } catch {
+    return "";
+  }
 }
 const pulls = await request<
   { number: number; head: { sha: string; repo: { full_name: string } } }[]
@@ -250,6 +265,55 @@ wrangler(
   "--file",
   ".output/preview-mappings.sql",
 );
+interface PreviewWebhook {
+  id: string;
+  metadata: Record<string, string>;
+  url: string;
+}
+async function previewWebhooks(): Promise<PreviewWebhook[]> {
+  const found: PreviewWebhook[] = [];
+  for (let starting_after = ""; ;) {
+    const page = await request<{ data: PreviewWebhook[]; has_more: boolean }>(
+      `https://api.stripe.com/v1/webhook_endpoints?limit=100${starting_after ? `&starting_after=${starting_after}` : ""}`,
+      stripeKey,
+    );
+    for (const entry of page.data)
+      if (entry.metadata.app === "bascik-shop-preview") found.push(entry);
+    if (!page.has_more) break;
+    if (!page.data.length)
+      throw new Error("Incomplete Stripe webhook pagination.");
+    starting_after = page.data.at(-1)!.id;
+  }
+  return found;
+}
+const deleteWebhook = (id: string) =>
+  request(
+    `https://api.stripe.com/v1/webhook_endpoints/${id}`,
+    stripeKey,
+    undefined,
+    "DELETE",
+  );
+// Stripe allows 16 webhook endpoints per sandbox, and a preview's endpoint
+// outlives its pull request: nothing runs when one closes. Endpoints of
+// pull requests that are no longer open are removed here, before this
+// preview asks for its own, or the seventeenth preview is refused.
+const openPulls = new Set<string>();
+for (let page = 1; ; ++page) {
+  const batch = await request<{ number: number }[]>(
+    `https://api.github.com/repos/bascikdev/bascik/pulls?state=open&per_page=100&page=${page}`,
+    required("GITHUB_TOKEN"),
+  );
+  for (const pull of batch) openPulls.add(String(pull.number));
+  if (batch.length < 100) break;
+}
+if (!openPulls.has(String(pr)))
+  throw new Error("The open pull request list does not include this one.");
+for (const entry of await previewWebhooks())
+  if (
+    /^\d+$/.test(entry.metadata.pr ?? "") &&
+    !openPulls.has(entry.metadata.pr)
+  )
+    await deleteWebhook(entry.id);
 const webhook = await request<{
   id: string;
   secret: string;
@@ -295,35 +359,13 @@ try {
 } finally {
   await rm(secretFile, { force: true });
 }
-const retired: string[] = [];
-for (let starting_after = ""; ;) {
-  const page = await request<{
-    data: { id: string; metadata: Record<string, string>; url: string }[];
-    has_more: boolean;
-  }>(
-    `https://api.stripe.com/v1/webhook_endpoints?limit=100${starting_after ? `&starting_after=${starting_after}` : ""}`,
-    stripeKey,
-  );
-  for (const entry of page.data)
-    if (
-      entry.id !== webhook.id &&
-      entry.metadata.app === "bascik-shop-preview" &&
-      entry.metadata.pr === String(pr) &&
-      entry.url === `${origin}/api/webhooks/stripe`
-    )
-      retired.push(entry.id);
-  if (!page.has_more) break;
-  if (!page.data.length)
-    throw new Error("Incomplete Stripe webhook pagination.");
-  starting_after = page.data.at(-1)!.id;
-}
-for (const id of retired)
-  await request(
-    `https://api.stripe.com/v1/webhook_endpoints/${id}`,
-    stripeKey,
-    undefined,
-    "DELETE",
-  );
+for (const entry of await previewWebhooks())
+  if (
+    entry.id !== webhook.id &&
+    entry.metadata.pr === String(pr) &&
+    entry.url === `${origin}/api/webhooks/stripe`
+  )
+    await deleteWebhook(entry.id);
 let status = 0;
 for (let attempt = 0; attempt < 6; ++attempt) {
   const response = await fetch(origin, { signal: AbortSignal.timeout(30_000) });
