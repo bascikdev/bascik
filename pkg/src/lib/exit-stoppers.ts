@@ -175,7 +175,13 @@ export const installExitSignalHandlers = (
         kill(signal);
       });
     signalHandlers.set(signal, handler);
-    process.once(signal, handler);
+    // Not `once`: that removes the listener before the handler runs, and
+    // the stoppers' first step blocks (a `ps` snapshot, tens of
+    // milliseconds) before any script is signaled. The same signal sent
+    // again in that time would end the process with every script still
+    // running. `exitAfterStopping` releases the listeners once the stoppers
+    // have started.
+    process.on(signal, handler);
   }
 };
 

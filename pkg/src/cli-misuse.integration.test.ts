@@ -286,6 +286,7 @@ setInterval(() => {}, 1000);
     args: string[],
     exec: string,
     signal: NodeJS.Signals,
+    repeatAfterMs?: number,
   ) => {
     const root = await project(name, {
       "src/pages/index.html": page("<h1>Hi</h1>"),
@@ -326,6 +327,10 @@ setInterval(() => {}, 1000);
     for (const pid of pids) startedPids.add(pid);
 
     child.kill(signal);
+    if (repeatAfterMs !== undefined) {
+      await new Promise((r) => setTimeout(r, repeatAfterMs));
+      child.kill(signal);
+    }
     const result = await exited;
     return { result, pids, output: () => output };
   };
@@ -349,6 +354,28 @@ setInterval(() => {}, 1000);
       // Not an exit code: the parent sees what it saw before, a build its
       // signal ended.
       expect(result, output()).toEqual({ code: null, signal });
+      await expect
+        .poll(() => pids.filter(alive), { timeout: 5000 })
+        .toEqual([]);
+    },
+    60_000,
+  );
+
+  it.skipIf(process.platform === "win32").each([[5], [20]] as const)(
+    "a SIGTERM sent again %i ms later still leaves no pipeline.exec process behind",
+    async (repeatAfterMs) => {
+      // Stopping a script starts with a `ps` snapshot that blocks for tens of
+      // milliseconds. A second SIGTERM in that time must not end the build
+      // before the script has been signaled.
+      const { result, pids, output } = await signalWhileScriptRuns(
+        `build-sigterm-twice-${repeatAfterMs}`,
+        ["--build"],
+        `exec: [{ script: "scripts/long.ts", phase: "parallel", timeout: 0 }]`,
+        "SIGTERM",
+        repeatAfterMs,
+      );
+
+      expect(result, output()).toEqual({ code: null, signal: "SIGTERM" });
       await expect
         .poll(() => pids.filter(alive), { timeout: 5000 })
         .toEqual([]);

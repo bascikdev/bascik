@@ -319,6 +319,26 @@ describe("installExitSignalHandlers", () => {
     expect(lateListener).not.toHaveBeenCalled();
   });
 
+  it("keeps its listener while the stoppers do their synchronous work, so a repeated signal cannot end the process before a script is signaled", async () => {
+    const { installExitSignalHandlers, registerExitStopper } = await load();
+    const stop = deferred();
+    const listenersWhileStopping: number[] = [];
+    registerExitStopper(() => {
+      listenersWhileStopping.push(process.listenerCount("SIGTERM"));
+      return stop.promise;
+    });
+    process.exitCode = undefined;
+    const kill = vi.fn();
+    installExitSignalHandlers(kill);
+    process.emit("SIGTERM");
+    expect(listenersWhileStopping).toEqual([1]);
+    // Released once the stoppers have started.
+    expect(process.listenerCount("SIGTERM")).toBe(0);
+    stop.resolve();
+    await flush();
+    expect(kill).toHaveBeenCalledTimes(1);
+  });
+
   it("installing twice adds one listener per signal", async () => {
     const { installExitSignalHandlers } = await load();
     installExitSignalHandlers(vi.fn());
