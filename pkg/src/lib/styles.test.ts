@@ -2872,6 +2872,40 @@ describe("CSS @import resolution and hoisting", () => {
     });
   });
 
+  describe("hoistCssImports – @import text inside a string", () => {
+    // The statement search ran over strings too, so the text of a `content`
+    // string became a real `@import` at the top of the page stylesheet (a
+    // request to that URL) and the string was left empty.
+    it.each([
+      '.a::before { content: "@import url(https://example.com/a.css);"; }\n.b { top: 0 }',
+      ".a::before { content: '@import \"./a.css\";'; }\n.b { top: 0 }",
+      '.a::before { content: "@layer a, b; @import url(a.css);"; }',
+      '.a[title="@import url(a.css);"] { top: 0 }',
+    ])("leaves %s as written", (css) => {
+      expect(hoistCssImports(css)).toBe(css);
+    });
+
+    it("still hoists a real @import that follows such a string", () => {
+      expect(
+        hoistCssImports(
+          '.a::before { content: "@import url(a.css);"; }\n@import url(https://example.com/b.css);\n.b { top: 0 }',
+        ),
+      ).toBe(
+        '@import url(https://example.com/b.css);\n.a::before { content: "@import url(a.css);"; }\n\n.b { top: 0 }',
+      );
+    });
+
+    it("still moves a top-level @layer statement that precedes a real @import", () => {
+      expect(
+        hoistCssImports(
+          '.a::before { content: "@layer x, y;"; }\n@layer base, theme;\n@import url(b.css) layer(theme);',
+        ),
+      ).toBe(
+        '@layer base, theme;\n@import url(b.css) layer(theme);\n.a::before { content: "@layer x, y;"; }',
+      );
+    });
+  });
+
   describe("hoistCssImports – unterminated statements (R2-03)", () => {
     it("leaves an @import with no semicolon in place instead of moving half the next rule", () => {
       // The browser reads `@import "a.css" .x { ... }` as one invalid
