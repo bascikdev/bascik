@@ -1,5 +1,6 @@
 import { BascikConfig } from "./config.ts";
 import { eventEmitter, runShutdownHandlers } from "./events.ts";
+import { isExitInProgress } from "./exit-stoppers.ts";
 
 /**
  * What happens when a `pipeline.exec` script fails.
@@ -47,6 +48,11 @@ export const reportToleratedExecFailure = (error: unknown): void => {
  * succeeded and false when it failed and the failure was tolerated. Rethrows
  * under `'error'` so the caller's existing failure path (a build exit or the
  * dev boot rejecting) is unchanged.
+ *
+ * Nothing is tolerated while the process is exiting: the "failure" is then
+ * the script Bascik stopped itself (a signal, a failed build), and carrying
+ * on would start the next phase's scripts after the stop, with no one left
+ * to stop them.
  */
 export const toleratingExecFailure = async (
   work: () => Promise<unknown>,
@@ -55,7 +61,7 @@ export const toleratingExecFailure = async (
     await work();
     return true;
   } catch (error) {
-    if (getExecErrorAction() === "error") throw error;
+    if (isExitInProgress() || getExecErrorAction() === "error") throw error;
     reportToleratedExecFailure(error);
     return false;
   }

@@ -135,3 +135,71 @@ export const releaseSignals = (): void => {
   process.removeAllListeners("SIGTERM");
   process.removeAllListeners("SIGHUP");
 };
+
+const SIGNAL_EXIT_CODES = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 } as const;
+
+let stopExitingOnSignals: (() => void) | undefined;
+
+/**
+ * Until a server takes the signals over (`handOverSignals`), the first
+ * SIGINT, SIGTERM or SIGHUP runs `stop` and then ends the process with that
+ * same signal, as it would have ended without a listener.
+ *
+ * A build, and a dev boot before its server is up, have no server and so no
+ * graceful shutdown. A signal sent to this process alone (`kill`, a
+ * supervisor, a CI runner canceling a step) would otherwise end it at once
+ * and leave its `pipeline.exec` children running with no parent. Only those
+ * are stopped (`stop` is the exec stopper), not the page worker pools: a
+ * process that dies of a signal never runs the exit teardown the pools must
+ * be stopped for, and waiting for workers to load would delay every Ctrl-C.
+ *
+ * While `stop` is pending the process counts as exiting (`isExitInProgress`),
+ * stdout is quiet, and a second signal ends the process at once.
+ */
+export const exitOnSignalsAfterStopping = (stop: ExitStopper): void => {
+  if (stopExitingOnSignals) return;
+  const listeners = (
+    Object.keys(SIGNAL_EXIT_CODES) as (keyof typeof SIGNAL_EXIT_CODES)[]
+  ).map((signal) => {
+    const listener = () => {
+      // No listener is left by the time this runs, so the signal takes its
+      // default action.
+      const die = () => {
+        releaseSignals();
+        process.kill(process.pid, signal);
+      };
+      let pending: Promise<void> | null = null;
+      try {
+        pending = stop();
+      } catch {
+        // Nothing can be stopped; end as the signal asked.
+      }
+      if (!pending) {
+        die();
+        return;
+      }
+      // The code the process holds if it ends some other way first.
+      process.exitCode = SIGNAL_EXIT_CODES[signal];
+      exiting = true;
+      releaseSignals();
+      quietStdout();
+      void pending.catch(() => {}).then(die);
+    };
+    process.once(signal, listener);
+    return [signal, listener] as const;
+  });
+  stopExitingOnSignals = () => {
+    for (const [signal, listener] of listeners)
+      process.removeListener(signal, listener);
+  };
+};
+
+/**
+ * Remove the listeners `exitOnSignalsAfterStopping` installed. A server
+ * calls this right before it installs its own graceful shutdown, so one
+ * signal never runs both.
+ */
+export const handOverSignals = (): void => {
+  stopExitingOnSignals?.();
+  stopExitingOnSignals = undefined;
+};

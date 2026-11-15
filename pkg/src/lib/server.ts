@@ -20,6 +20,7 @@ import {
   registerShutdownHandler,
   runShutdownHandlers,
 } from "./events.ts";
+import { handOverSignals } from "./exit-stoppers.ts";
 import { getHttpPath } from "./paths.ts";
 import { cspHeadersForPage } from "./csp-header-node.ts";
 import { MIME_MAP } from "./mime.ts";
@@ -1614,6 +1615,8 @@ export const startServerInstance = async (
     onFirstSignal();
     void gracefulShutdown("SIGHUP");
   };
+  // The CLI's own listeners covered the time before this server existed.
+  handOverSignals();
   process.once("SIGTERM", sigtermHandler);
   process.once("SIGINT", sigintHandler);
   process.once("SIGHUP", sighupHandler);
