@@ -149,8 +149,7 @@ const describeValue = (value: unknown): string =>
     : Array.isArray(value)
       ? "an array"
       : isThenable(value)
-        ? "a promise (Bascik reads the object, it does not wait for it; " +
-          "write `export default await ...` to export what it resolves to)"
+        ? "a promise (Bascik reads the object, it does not wait for it)"
         : typeof value === "function"
           ? "a function (Bascik reads the object, it does not call it)"
           : `${typeof value} ${typeof value === "string" ? JSON.stringify(value) : String(value)}`;
@@ -183,9 +182,14 @@ const assertReadableExports = (
       continue;
     const declaration =
       name === "default" ? "export default" : `export const ${name} =`;
+    // A promise already holds the settings: the fix is to await it, under
+    // the same export name.
+    const fix = isThenable(value)
+      ? `\`${declaration} await ...\` to export what it resolves to`
+      : `\`${declaration} defineConfig({ ... })\``;
     problems.push(
       `  the ${name} export must be an object, not ${describeValue(value)}. ` +
-        `Write \`${declaration} defineConfig({ ... })\`.`,
+        `Write ${fix}.`,
     );
   }
   if (problems.length > 0)

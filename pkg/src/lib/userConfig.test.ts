@@ -97,9 +97,11 @@ describe("loadUserConfig", () => {
     expect(error?.message).toMatch(
       /the default export must be an object, not a promise[^\n]*export default await/,
     );
+    // Each line names the fix for its own export, not `export default`.
     expect(error?.message).toMatch(
-      /the build export must be an object, not a promise/,
+      /the build export must be an object, not a promise[^\n]*export const build = await/,
     );
+    expect(error?.message).not.toMatch(/defineConfig/);
   });
 
   it("loads a config that awaits its settings before exporting them", async () => {
