@@ -2,15 +2,16 @@
 
 Contributor tooling for measuring Bascik itself. Nothing in this directory ships in the npm package. The public overview lives on the [Testing Internals](https://bascik.dev/internals/testing) page; this file holds the operational detail for running and interpreting captures.
 
-| Command (from the repository root)                  | Entry point             | Purpose                                                                |
-| --------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------- |
-| `yarn pkg:bench`                                    | `*.bench.ts`            | Vitest throughput benchmarks on fixed inputs                           |
-| `yarn workspace @bascik/bascik profile:workload`    | `profile-workload.ts`   | Bounded runtime captures (servers, dev, builds) on a synthetic fixture |
-| `yarn workspace @bascik/bascik profile:compiler`    | `compiler-timeline.ts`  | Dev and build timelines on a copy of a real project                    |
-| `yarn workspace @bascik/bascik profile:compare`     | `compiler-compare.ts`   | Paired baseline versus candidate compiler runs on one fixture          |
-| `yarn workspace @bascik/bascik profile:fuzz`        | `compiler-fuzz.ts`      | Seeded differential checks against a built baseline compiler           |
-| `yarn workspace @bascik/bascik profile:summary`     | `profile-summary.ts`    | Read-only CPU sample and hot-line summaries                            |
-| `node pkg/bench/profile-boundaries.ts <report-dir>` | `profile-boundaries.ts` | Resource-boundary capture with optional allocation sampling            |
+| Command (from the repository root)                  | Entry point              | Purpose                                                                |
+| --------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------- |
+| `yarn pkg:bench`                                    | `*.bench.ts`             | Vitest throughput benchmarks on fixed inputs                           |
+| `yarn workspace @bascik/bascik profile:workload`    | `profile-workload.ts`    | Bounded runtime captures (servers, dev, builds) on a synthetic fixture |
+| `yarn workspace @bascik/bascik profile:compiler`    | `compiler-timeline.ts`   | Dev and build timelines on a copy of a real project                    |
+| `yarn workspace @bascik/bascik profile:compare`     | `compiler-compare.ts`    | Paired baseline versus candidate compiler runs on one fixture          |
+| `yarn workspace @bascik/bascik profile:fuzz`        | `compiler-fuzz.ts`       | Seeded differential checks against a built baseline compiler           |
+| `yarn workspace @bascik/bascik profile:minify`      | `minify-differential.ts` | The built-in JavaScript minifier's output compared with its own input  |
+| `yarn workspace @bascik/bascik profile:summary`     | `profile-summary.ts`     | Read-only CPU sample and hot-line summaries                            |
+| `node pkg/bench/profile-boundaries.ts <report-dir>` | `profile-boundaries.ts`  | Resource-boundary capture with optional allocation sampling            |
 
 Supporting modules: `profile-runner.ts` (bounded, process-group-owned command execution), `profile-fixture.ts` and `profile-tls.ts` (synthetic project and private TLS trust), `profile-subject.ts` and `compiler-timeline-subject.ts` (the processes being measured), `profile-load.ts` (load generator), `profile-observers.ts`, `profile-isolate.ts`, and `profile-diagnostics.ts` (worker/child observation, inspector profiling, and event journals).
 
@@ -64,6 +65,30 @@ yarn workspace @bascik/bascik profile:fuzz \
 ```
 
 Use the actual path from the failure report. This opt-in check complements unit tests and same-path `profile:compare` builds; it does not execute build scripts, watch files, spawn page workers, or prove browser behavior. The normal unit suite verifies runner comparison, warm-call detection, shrinking/replay, and argument validation without requiring a baseline checkout.
+
+## Minifier Source Comparison (`profile:minify`)
+
+`profile:fuzz` compares two compilers, so it cannot see a bug both have. `profile:minify` compares the built-in JavaScript minifier's output with the source it was given, on real files:
+
+```sh
+yarn workspace @bascik/bascik profile:minify "$PWD/node_modules" --sample 3000
+```
+
+Each `.js`, `.mjs`, and `.cjs` file under the given paths (absolute, or relative to `pkg/`) is minified by `src/lib/js-minifier.ts`. The source and the result are each parsed and printed by esbuild in one canonical form (whitespace, comments, optional semicolons, and empty statements removed), and the two texts must be equal. A file counts as `syntax` when the minified text no longer parses, `differs` when it parses to another program, and `threw` when the minifier threw. A source esbuild cannot parse is skipped and counted.
+
+The first failures are shrunk to a small input with the same verdict (whole lines first, then pieces of lines) and printed with their minified text; paste one into `src/lib/js-minifier-semantics.test.ts` as the failing test. The command exits 1 when any file fails and 2 on a usage error.
+
+| Option              | Default                  | Meaning                                                                     |
+| ------------------- | ------------------------ | --------------------------------------------------------------------------- |
+| `--sample <n>`      | every file               | Check about `n` files, chosen by path hash so two runs check the same files |
+| `--max-bytes <n>`   | `300000`                 | Skip larger files                                                           |
+| `--shrink <n>`      | `20`                     | Shrink the first `n` failures; `0` only lists the files                     |
+| `--minifier <path>` | `src/lib/js-minifier.ts` | Module exporting `minifyJs`, for example a saved copy from another revision |
+| `--json`            | off                      | Print one JSON object instead of text                                       |
+
+`node_modules` is a good corpus because its packages are written in many styles: without semicolons, with braces on their own lines, bundled, and already minified. The whole of this repository's `node_modules` (about 35,000 files) takes several minutes with `--shrink 0`; a 3,000-file sample takes about 35 seconds. The check is opt-in and is not part of any test suite; `src/lib/minify-differential.test.ts` tests the comparison and the shrinking with stand-in minifiers.
+
+Limits: equal canonical text proves the same program only as far as esbuild's parser and printer are right, and TypeScript, JSX, and non-JavaScript files are not read. esbuild reads every file the same way, so it does not treat `<!--` as the comment a classic script would. Read the shrunk input before treating a report as a bug.
 
 ## CPU Profile Summaries
 
