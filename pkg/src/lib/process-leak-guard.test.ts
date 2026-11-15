@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ancestorsOf,
   createProcessLeakGuard,
   descendantsOf,
   formatAbandonedReport,
@@ -170,6 +171,20 @@ describe("descendantsOf", () => {
   it("ends on a parent cycle in a table read while processes changed", () => {
     const rows = [row(ROOT, 201, "root"), row(201, ROOT, "child")];
     expect([...descendantsOf(rows, ROOT)]).toEqual([201]);
+  });
+});
+
+describe("ancestorsOf", () => {
+  it("returns the process and every parent above it", () => {
+    expect([...ancestorsOf(BASE, ROOT)].sort((a, b) => a - b)).toEqual(
+      [0, 1, 50, ROOT].sort((a, b) => a - b),
+    );
+  });
+
+  it("ends on a parent cycle and on a process that is not in the table", () => {
+    const rows = [row(10, 11, "a"), row(11, 10, "b")];
+    expect([...ancestorsOf(rows, 10)].sort((a, b) => a - b)).toEqual([10, 11]);
+    expect([...ancestorsOf(rows, 99)]).toEqual([99]);
   });
 });
 
@@ -375,6 +390,28 @@ describe("createProcessLeakGuard", () => {
       expect(swept).toEqual([
         { pid: 300, ageSeconds: 262_800, command: "node server.js" },
       ]);
+      expect(fake.killed).toEqual([300]);
+    });
+
+    it("never ends this run, what started it, or what it started, even when they carry a dead run's ID", async () => {
+      // Vitest started from inside a run whose own Vitest process (PID 700)
+      // has since been killed: the shell, this run's Vitest process and its
+      // worker all inherited that run's ID.
+      const stale = `${LEAK_GUARD_ENV}=700-0123456789abcdef`;
+      const table = [
+        row(1, 0, "/sbin/launchd"),
+        row(50, 1, `zsh ${stale}`),
+        row(ROOT, 50, `node vitest.mjs run ${stale}`),
+        row(101, ROOT, `node worker.js ${stale}`),
+        // Left by the dead run, and not part of this one.
+        row(300, 1, `node server.js ${stale}`),
+      ];
+      const fake = fakeSystem([table]);
+      const swept = await createProcessLeakGuard({
+        ...options,
+        system: fake.system,
+      }).sweepAbandoned();
+      expect(swept.map((entry) => entry.pid)).toEqual([300]);
       expect(fake.killed).toEqual([300]);
     });
 

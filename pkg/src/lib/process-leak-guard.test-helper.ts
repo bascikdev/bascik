@@ -177,6 +177,22 @@ export function descendantsOf(
   return found;
 }
 
+/** `pid` and every process above it in the parent chain. */
+export function ancestorsOf(
+  rows: readonly ProcessRow[],
+  pid: number,
+): Set<number> {
+  const parents = new Map(rows.map((row) => [row.pid, row.ppid]));
+  const found = new Set<number>();
+  let current: number | undefined = pid;
+  // A table read while processes changed can hold a cycle.
+  while (current !== undefined && !found.has(current)) {
+    found.add(current);
+    current = parents.get(current);
+  }
+  return found;
+}
+
 /** Whether a command line with its environment carries this run's marker. */
 function carriesMarker(command: string, marker: string): boolean {
   const assignment = `${LEAK_GUARD_ENV}=${marker}`;
@@ -393,7 +409,16 @@ export function createProcessLeakGuard(
     sample,
     async sweepAbandoned() {
       const rows = await system.listProcesses(true);
-      const abandoned = rows ? selectAbandonedProcesses(rows, marker) : [];
+      if (!rows) return [];
+      // Never this run itself. A Vitest process started from inside a run
+      // that has since been killed (a test that runs Vitest, a shell a test
+      // opened) inherited that run's ID, and so did everything above and
+      // below it; ending those would end this run or the shell it runs in.
+      const own = ancestorsOf(rows, options.rootPid);
+      for (const pid of descendantsOf(rows, options.rootPid)) own.add(pid);
+      const abandoned = selectAbandonedProcesses(rows, marker).filter(
+        (row) => !own.has(row.pid),
+      );
       return abandoned.length > 0 ? reportAndKill(abandoned) : [];
     },
     start() {
