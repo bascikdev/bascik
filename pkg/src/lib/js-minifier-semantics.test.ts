@@ -1013,3 +1013,48 @@ describe("minifyJs – a call that only looks like a control header", () => {
     },
   );
 });
+
+describe("minifyJs – `extends` on the line after a class name", () => {
+  // `class D\nextends B {}` is one class header: the line break is not a statement end.
+  it.each([
+    [
+      "a class declaration",
+      "class B {}\nclass D\nextends B {}\nlog.push(new D() instanceof B)",
+    ],
+    [
+      "a named class expression",
+      "class B {}\nconst X = class D\n  extends B {}\nlog.push(new X() instanceof B)",
+    ],
+    [
+      "a class declared in a method",
+      "class B {}\nclass A { m() { class D\nextends B {}\n return D } }\nlog.push(new (new A().m())() instanceof B)",
+    ],
+    [
+      "a class expression in a field",
+      "class B {}\nclass A { x = class D\n extends B {} }\nlog.push(new (new A().x)() instanceof B)",
+    ],
+    [
+      "a heritage call and the body on lines of their own",
+      "const mix = (C) => C\nclass B {}\nclass D\n  extends mix(B)\n{\n  m() { return 1 }\n}\nlog.push(new D().m(), new D() instanceof B)",
+    ],
+    [
+      "a comment between the name and extends",
+      "class B {}\nclass D // child\nextends B {}\nlog.push(new D() instanceof B)",
+    ],
+  ])("keeps %s together", (_name, source) => {
+    expect(expectSameProgram(source)).not.toMatch(/;extends/);
+  });
+
+  it.each([
+    [
+      "a method named extends after a field",
+      "class A {\n  foo\n  extends() { return 2 }\n}\nlog.push(new A().extends(), 'foo' in new A())",
+    ],
+    [
+      "a property named extends",
+      "const o = { extends: 3 }\nconst v = o\n  .extends\nlog.push(v)",
+    ],
+  ])("still reads %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
