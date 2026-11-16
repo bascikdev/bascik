@@ -180,9 +180,11 @@ const CSS_UNIT_KEYWORDS = new Set([
  * single scan.
  *
  * With `outsideParens`, a match is also refused when it starts inside
- * parentheses (`h2` in `:is(p, h2)`, `0` in `rgb(0, 0, 0)`) or at an escaped
+ * parentheses (`h2` in `:is(p, h2)`, `0` in `rgb(0, 0, 0)`), inside an
+ * attribute selector (`xlink|href` in `a[ xlink|href ]`) or at an escaped
  * character (the comma of `.cols-\[1fr\,auto\]`). A second forward cursor
- * counts the parentheses open since the last `{`, `}` or `;`, so a `(...)`
+ * counts the parentheses and brackets open since the last `{`, `}` or `;`,
+ * so a `(...)`
  * later in the list (`h1, h2:not(.lead), h3`) does not hide the elements
  * before it.
  *
@@ -209,8 +211,9 @@ const replaceInSelectorPosition = (
         for (; depthAt < offset; depthAt++) {
           const code = css.charCodeAt(depthAt);
           if (code === 92 /* \ */) depthAt++;
-          else if (code === 40 /* ( */) depth++;
-          else if (code === 41 /* ) */) depth = Math.max(0, depth - 1);
+          else if (code === 40 /* ( */ || code === 91 /* [ */) depth++;
+          else if (code === 41 /* ) */ || code === 93 /* ] */)
+            depth = Math.max(0, depth - 1);
           else if (
             code === 123 /* { */ ||
             code === 125 /* } */ ||
@@ -294,7 +297,7 @@ export const convertCssElementSelectorsToClasses = (
     `${prefix}${toClass(elementName)}`;
   let result = replaceInSelectorPosition(
     shielded,
-    /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?![\w-])/gim,
+    /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?![\w|-])/gim,
     false,
     prefixed,
   );
@@ -310,7 +313,7 @@ export const convertCssElementSelectorsToClasses = (
   //     every element of `h1, h2:not(.lead), li:nth-child(2)` is converted.
   result = replaceInSelectorPosition(
     result,
-    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/gi,
+    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w|-])/gi,
     true,
     prefixed,
   );
@@ -325,15 +328,35 @@ export const convertCssElementSelectorsToClasses = (
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = replaceInSelectorPosition(
     result,
-    /(&(?:(?:::?[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])+(?:\s*[>+~]\s*|\s+)|\s*(?:[>+~]\s*)?))([a-z][a-z1-6]*)(?![\w-])/gi,
+    /(&(?:(?:::?[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])+(?:\s*[>+~]\s*|\s+)|\s*(?:[>+~]\s*)?))([a-z][a-z1-6]*)(?![\w|-])/gi,
     false,
     prefixed,
   );
   result = replaceInSelectorPosition(
     result,
-    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w-])/gi,
+    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w|-])/gi,
     false,
     prefixed,
+  );
+
+  // Pass 3b: namespaced type selectors (Selectors Level 4 `ns|E`, `*|E`,
+  // `|E`). The prefix names a namespace declared with `@namespace`, not an
+  // element, so the passes above refuse a name followed by `|`. The type
+  // keeps its namespace and gains the element class (`svg|rect` becomes
+  // `svg|rect.b_el_card_rect`): a class cannot follow `ns|` on its own, and
+  // keeping the type keeps the namespace check. `ns|*` is a universal
+  // selector and, like `*`, stays as written. Brackets and parentheses are
+  // skipped, so `[xlink|href]` and `:is(svg|rect)` are untouched.
+  result = replaceInSelectorPosition(
+    result,
+    /((?:^|[\s;{},>+~&])(?:[a-z_][\w-]*|\*)?\|)([a-z][a-z1-6]*)(?![\w|-])/gim,
+    true,
+    (prefix, elementName) => {
+      const elementClass = toClass(elementName);
+      return elementClass.startsWith(".")
+        ? `${prefix}${elementName}${elementClass}`
+        : `${prefix}${elementName}`;
+    },
   );
 
   // Pass 4: element selectors that are descendants of an already-scoped class.
@@ -373,7 +396,7 @@ export const convertCssElementSelectorsToClasses = (
     // a descendant combinator.
     result = replaceInSelectorPosition(
       result,
-      /((?:\.(?:(?:bascik__|b_(?:el|id)_)(?:[\w-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:[ \t\n\r\f]|(?![ \t\n\r\f]))|\\[^\n0-9a-fA-F])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\((?=[^){};]*?\.(?:bascik__[\w-]|b_(?:el|id)_[\w-]|b[0-9a-zA-Z]{11}))[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])/gi,
+      /((?:\.(?:(?:bascik__|b_(?:el|id)_)(?:[\w-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:[ \t\n\r\f]|(?![ \t\n\r\f]))|\\[^\n0-9a-fA-F])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\((?=[^){};]*?\.(?:bascik__[\w-]|b_(?:el|id)_[\w-]|b[0-9a-zA-Z]{11}))[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w|-])/gi,
       false,
       prefixed,
     );

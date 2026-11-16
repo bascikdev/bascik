@@ -471,7 +471,7 @@ h1, h2:not(.lead), li:nth-child(2) { } →  commas outside ( ) → MATCHES ✓
 transition: color 0.2s, opacity 0.3s; →  ; before { → skipped ✓
 ```
 
-Pass 2 regex: `/(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/gi`, checked by `replaceInSelectorPosition` in `pkg/src/lib/styles.ts`. Like every element pass it ignores case, because HTML element names are case-insensitive: `H1, H2 {}` scopes both names, and the generated class uses the lowercase name (`b_el_<component>_h2`), which `<H2>` and `<h2>` in the markup both get.
+Pass 2 regex: `/(,[ \t]*)([a-z][a-z1-6]*)(?![\w|-])/gi`, checked by `replaceInSelectorPosition` in `pkg/src/lib/styles.ts`. Like every element pass it ignores case, because HTML element names are case-insensitive: `H1, H2 {}` scopes both names, and the generated class uses the lowercase name (`b_el_<component>_h2`), which `<H2>` and `<h2>` in the markup both get.
 
 ### Compound and descendant element selectors
 
@@ -496,6 +496,8 @@ Pass 2 regex: `/(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/gi`, checked by `replaceInSel
 ```
 
 This works because `bascik__`, `b_el_`, and `b_id_` never appear in CSS property value position. Bare element-to-element combinators with no class anchor (`div p {}`, `p + p {}`, `ul li * {}`) are converted too: each element name becomes its own scoped class, so `div p {}` compiles to `.b_el_card_div .b_el_card_p {}` and matches only elements in the component's template.
+
+A namespace prefix (`svg|rect`, `*|rect`, `|rect`) names a namespace declared with `@namespace`, not an element, so no pass reads it as one: the element passes refuse a name followed by `|`, and a separate pass keeps the namespaced type and appends the element class (`svg|rect.b_el_card_rect`). `ns|*` stays as written, like `*`, and a `|` inside `[...]` or `(...)` (`[xlink|href]`, `:is(svg|rect)`) is left alone.
 
 ### CSS nesting element selectors
 
