@@ -1,3 +1,4 @@
+import { isReservedCustomElementName } from "./reserved-element-names.ts";
 import { compilePreservedTags } from "./shielding.ts";
 
 /**
@@ -10,6 +11,9 @@ import { compilePreservedTags } from "./shielding.ts";
  * This only suppresses the "no matching component file" diagnostics. It never
  * changes component resolution: a real component with the same name still
  * expands, and scoping is unaffected (use `scoping.preserve` for that).
+ *
+ * The SVG and MathML element names that HTML reserves (`font-face`,
+ * `annotation-xml`, ...) always match: they are never missing components.
  */
 export const createExternalTagMatcher = (
   entries: readonly string[] | undefined,
@@ -17,11 +21,12 @@ export const createExternalTagMatcher = (
   const valid = (entries ?? []).filter(
     (entry): entry is string => typeof entry === "string" && entry !== "",
   );
-  if (valid.length === 0) return () => false;
+  if (valid.length === 0) return isReservedCustomElementName;
   const compiled = compilePreservedTags(valid);
   return (tagName) => {
     const tag = tagName.toLowerCase();
     return (
+      isReservedCustomElementName(tag) ||
       compiled.exact.has(tag) ||
       compiled.patterns.some((pattern) => pattern.test(tag))
     );

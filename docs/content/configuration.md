@@ -334,7 +334,7 @@ export default defineConfig({
 });
 ```
 
-By default, any hyphenated tag with no component file prints `Unresolved component tag` during every transpile and appears under "Components with no matching file" in `bascik --check`. Declaring a tag here removes it from both. Typos such as `<my-crd>` are still reported, so keep the list to tags you own on purpose.
+By default, any hyphenated tag with no component file prints `Unresolved component tag` during every transpile and appears under "Components with no matching file" in `bascik --check`. Declaring a tag here removes it from both. Typos such as `<my-crd>` are still reported, so keep the list to tags you own on purpose. The hyphenated SVG and MathML element names that HTML reserves for itself (`annotation-xml`, `color-profile`, `font-face`, `font-face-src`, `font-face-uri`, `font-face-format`, `font-face-name`, `missing-glyph`) are never reported and need no entry.
 
 This option changes diagnostics only. A declared tag is passed to the browser unchanged. If a real component file has the same name, the component still expands. It does not stop `id`, `name`, or `class` scoping inside the element; use [`scoping.preserve`](#scopingpreserve) for that. The two options are independent, and most external elements need only `components.external`.
 
