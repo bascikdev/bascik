@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { isInlineStylesheet } from "./asset-filter.ts";
 import { BascikConfig } from "./config.ts";
 import { readStartTagAttributes, scanHtml } from "./html-scanner.ts";
+import { isSameOrInside } from "./path-containment.ts";
 
 /**
  * A `<link rel="stylesheet">` whose target is a stylesheet that
@@ -54,7 +55,9 @@ const resolveStylesheetHref = (
     if (!fromFile) return undefined;
     target = resolve(dirname(resolve(process.cwd(), fromFile)), path);
   }
-  return target.startsWith(pagesRoot + sep) ? target : undefined;
+  return target !== pagesRoot && isSameOrInside(target, pagesRoot)
+    ? target
+    : undefined;
 };
 
 const isStylesheetLink = (rel: string | undefined): boolean =>
