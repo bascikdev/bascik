@@ -733,6 +733,35 @@ describe("watchFiles – html page watcher (watcher 1)", () => {
     expect(pageProcessing).toHaveBeenCalledWith("/path/to/page.html");
   });
 
+  // A component build script that reads BASCIK_PAGE_FILE folds the page's
+  // content into its cache key through the build-script content memo. A page
+  // edit that does not drop that memo keys the script with the old content,
+  // so the component kept its output from before the edit.
+  it("drops the page's build-script memo on 'change', before recompiling it", () => {
+    const handler = getHandler(1, "change");
+    handler?.("/project/src/pages/release-1.0.html");
+    expect(clearBuildScriptCaches).toHaveBeenCalledWith(
+      "/project/src/pages/release-1.0.html",
+    );
+    expect(mockClearBuildScriptCaches.mock.invocationCallOrder[0]).toBeLessThan(
+      mockPageProcessing.mock.invocationCallOrder[0],
+    );
+  });
+
+  // An editor or `git checkout` can replace a page by deleting and creating
+  // it, which arrives as 'unlink' then 'add', not as 'change'.
+  it("drops the page's build-script memo when the page is removed and added again", () => {
+    getHandler(1, "unlink")?.("/project/src/pages/release-1.0.html");
+    expect(clearBuildScriptCaches).toHaveBeenCalledWith(
+      "/project/src/pages/release-1.0.html",
+    );
+    mockClearBuildScriptCaches.mockClear();
+    getHandler(1, "add")?.("/project/src/pages/release-1.0.html");
+    expect(clearBuildScriptCaches).toHaveBeenCalledWith(
+      "/project/src/pages/release-1.0.html",
+    );
+  });
+
   it("calls removePage on 'unlink'", () => {
     const handler = getHandler(1, "unlink");
     handler?.("/path/to/deleted.html");
