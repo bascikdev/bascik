@@ -130,6 +130,16 @@ const RESTRICTED_PRODUCTION_END =
   /(?:^|[^.\w$])(?:return|throw|yield|debugger|(?:break|continue)(?:\s+[A-Za-z_$][\w$]*)?)$/;
 
 /**
+ * A line ending in a declaration whose last binding has no initializer (`var p`,
+ * `let a, b`). A binding name cannot be called or indexed, so ECMAScript ends the
+ * declaration at the line break before a `(` or `[` line: `var p\n[a, b].forEach(f)` is
+ * `var p;[a,b].forEach(f)`. Only bare names are recognized; after an initializer
+ * (`var a = 1, b`) the line is read as any other.
+ */
+const BARE_DECLARATION_END =
+  /(?:^|[^.\w$#])(?:var|let|const)\s+[A-Za-z_$][\w$]*(?:\s*,\s*[A-Za-z_$][\w$]*)*$/;
+
+/**
  * Keywords whose parenthesized header is followed by a statement (or, for `switch`, its
  * `{`), not an operator.
  */
@@ -1096,13 +1106,22 @@ export const minifyJs = (js: string): string => {
             line,
           ) ||
           ((firstChar === "(" || firstChar === "[") &&
-            !RESTRICTED_PRODUCTION_END.test(prevLine));
+            !RESTRICTED_PRODUCTION_END.test(prevLine) &&
+            !BARE_DECLARATION_END.test(prevLine));
 
         if (
           !endsWithOpenControl &&
           !startsWithContinuation &&
           !/[;{}:,]\s*$/.test(ptTail)
         ) {
+          needsSemicolon = true;
+        } else if (
+          RESTRICTED_PRODUCTION_END.test(prevLine) &&
+          !/^[;}]/.test(line)
+        ) {
+          // `return\n-z` returns undefined: the line break after a restricted production
+          // ends the statement whatever the next line starts with, so a sign, an operator
+          // or a regex there starts a new statement (`return;-z`).
           needsSemicolon = true;
         }
       } else if (lastChar === "}") {
