@@ -1222,6 +1222,55 @@ describe("minifyJs – a call that only looks like a control header", () => {
   );
 });
 
+describe("minifyJs – a slash after the closing brace of a value", () => {
+  // After an object literal, function or class expression, `/` divides: no regex starts there.
+  it.each([
+    [
+      "an object literal, then a comment",
+      "let x = {}\n/ 2 /* d */\nlog.push(x)",
+    ],
+    [
+      "an object literal on one line",
+      "const g = 2\nconst x = {} / 2 / g\nlog.push(x)",
+    ],
+    [
+      "a function expression",
+      "const g = 2\nconst x = function () {}\n/ 2 / g\nlog.push(x)",
+    ],
+    [
+      "a class expression",
+      "const g = 2\nconst x = class {}\n/ 2 / g\nlog.push(x)",
+    ],
+    [
+      "an object in a call",
+      "const g = 2\nconst f = (v) => v\nconst x = f({} / 2 / g)\nlog.push(x)",
+    ],
+    [
+      "a division that holds quotes",
+      'const g = 2\nconst x = { valueOf: () => 8 }\n/ 2 /"4"\nlog.push(x)',
+    ],
+  ])("divides after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a block",
+      "if (true) { log.push(1) }\n/ x /.test(' x ') && log.push('re')",
+    ],
+    [
+      "a function declaration",
+      "function f() {}\n/ x /.test(' x ') && log.push('re', typeof f)",
+    ],
+    [
+      "an arrow function body",
+      "const f = () => {}\n/ x /.test(' x ') && log.push('re', typeof f)",
+    ],
+  ])("still starts a regex after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
 describe("minifyJs – a line after an arrow function body", () => {
   // An arrow function cannot be an operand, so a line break after its body ends the statement.
   it.each([

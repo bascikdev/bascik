@@ -132,7 +132,7 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
 ]);
 ```
 
-When `/` follows an operator or one of these keywords, it is parsed as a regular expression literal and preserved intact. A `/` after a value, `]`, a quote, a `)` that does not close an `if`/`while`/`for`/`with` header, or a postfix `++`/`--` (`count++ / 2`) is division. After `}` the scanner tries a regex, because a block can end there, and keeps it only when it closes on the same line. `js-literal-spans.ts`, which finds the string literals that attribute scoping reads, imports this keyword set but reads a `/` after `}` or any `)` as division.
+When `/` follows an operator or one of these keywords, it is parsed as a regular expression literal and preserved intact. A `/` after a value, `]`, a quote, a `)` that does not close an `if`/`while`/`for`/`with` header, or a postfix `++`/`--` (`count++ / 2`) is division. After the `}` of a value (`valueBraceCloses`, other than an arrow body) a `/` is division. After any other `}` the scanner tries a regex, because a block can end there, and keeps it only when it closes on the same line. `js-literal-spans.ts`, which finds the string literals that attribute scoping reads, imports this keyword set but reads a `/` after `}` or any `)` as division.
 
 ### Line Breaks (ASI)
 

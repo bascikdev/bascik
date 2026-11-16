@@ -473,6 +473,8 @@ const scanSegments = (js: string): Segment[] => {
   // One entry per open `{`: true when it opens an arrow function body (`=> {`).
   const braceIsArrowBody: boolean[] = [];
   let lastBraceClosedArrowBody = false;
+  // The last `}` ended a value (see `braceEndsValue`), so a `/` after it divides.
+  let lastBraceEndedValue = false;
   let controlHeaderCloses: Set<number> | undefined;
   let postfixUpdateEnds: Set<number> | undefined;
   let arrowBodyCloses: Set<number> | undefined;
@@ -988,7 +990,8 @@ const scanSegments = (js: string): Segment[] => {
         if (lastBraceClosedArrowBody) {
           (arrowBodyCloses ??= new Set()).add(codeAccum.length);
         }
-        if (braceEndsValue.pop()) {
+        lastBraceEndedValue = braceEndsValue.pop() ?? false;
+        if (lastBraceEndedValue) {
           (valueBraceCloses ??= new Set()).add(codeAccum.length);
         }
         break;
@@ -1149,6 +1152,11 @@ const scanSegments = (js: string): Segment[] => {
         } else if (lastSigIsPostfixUpdate) {
           // `count++ / 2` is division: a postfix update ends the expression.
           couldBeRegex = false;
+        } else if (lastSig === "}") {
+          // `x = {}\n/ 2 /* d */` divides an object literal (or a function or class
+          // expression). After a block, and after an arrow body, which cannot be an operand,
+          // a statement can start: a regex is kept when it closes on the same line.
+          couldBeRegex = !lastBraceEndedValue || lastBraceClosedArrowBody;
         } else if (!REGEX_CANNOT_PRECEDE.has(lastSig)) {
           // Preceded by operators/punctuation like '=', '(', '[', ':', ',', '!', '?', '&', '|', '+', '-', '*', ';'
           couldBeRegex = true;
