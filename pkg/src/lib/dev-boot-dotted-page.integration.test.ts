@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -18,7 +19,27 @@ const PKG_ENTRY = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../index.ts",
 );
-const PORT = 24661;
+/**
+ * The first port in 24661-24699 nothing listens on. The requests start before
+ * the server prints its address (that line comes after the first compile,
+ * which is what this test watches), so they go to the port the server was
+ * asked to use. If that port were taken, the dev server would move to the
+ * next one and this test would ask the other server.
+ */
+const freePort = async (): Promise<number> => {
+  for (let port = 24661; port < 24700; port++) {
+    const probe = createServer();
+    const free = await new Promise<boolean>((done) => {
+      probe.once("error", () => done(false));
+      probe.listen(port, () => done(true));
+    });
+    if (free) {
+      await new Promise<void>((done) => probe.close(() => done()));
+      return port;
+    }
+  }
+  throw new Error("no free port in 24661-24699");
+};
 const BOOT_MARKER = "/bascik-live-reload?boot=1";
 
 /** A page whose build script holds the first compile for `delayMs`. */
@@ -43,7 +64,8 @@ const slowPage = (title: string, delayMs: number): string =>
 let root = "";
 let child: ChildProcess | undefined;
 let output = "";
-const base = `http://localhost:${PORT}`;
+let port = 0;
+let base = "";
 
 const fetchPage = async (path: string) => {
   const response = await fetch(`${base}${path}`, {
@@ -69,11 +91,13 @@ beforeAll(async () => {
     join(root, "src/pages/v1.2/index.html"),
     slowPage("Version", 6000),
   );
+  port = await freePort();
+  base = `http://localhost:${port}`;
   child = spawn(process.execPath, [PKG_ENTRY], {
     cwd: root,
     env: {
       ...process.env,
-      BASCIK_SERVER_PORT: String(PORT),
+      BASCIK_SERVER_PORT: String(port),
       BASCIK_ENABLE_TLS: "false",
       BASCIK_BUILD: "0",
       BASCIK_SERVER: "0",
@@ -139,5 +163,9 @@ describe("dev boot page for a page whose URL has a dot", () => {
     expect((await fetchPage("/v1.2")).body).toContain("Version ready");
     // Once the compile is done, a dotted URL no page has is a 404.
     expect((await fetchPage("/release-9.9")).status).toBe(404);
+    // The server kept the port it was given, so every request above went to it.
+    expect(output).toMatch(
+      new RegExp(`Server running at\\s+http://[^\\s/]+:${port}\\b`),
+    );
   }, 90000);
 });
