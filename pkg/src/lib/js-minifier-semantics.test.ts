@@ -2264,6 +2264,50 @@ describe("minifyJs – of at the end of a line in a for header", () => {
   });
 });
 
+describe("minifyJs – of at the start of a line", () => {
+  // Outside a `for` header `of` is a name (RxJS exports a function named `of`), so a line
+  // starting with it is a new statement after a value, as with any other name.
+  it.each([
+    [
+      "a call after a value",
+      "const of = (v) => log.push(v), f = 1\nconst y = f\nof(2)",
+    ],
+    ["a call after a call", "const of = (v) => log.push(v)\nof(1)\nof(2)"],
+    [
+      "a call after a bare binding",
+      "const of = (v) => log.push(v)\nvar y\nof(3)",
+    ],
+    [
+      "a call after a string",
+      "const of = (v) => log.push(v)\nlog.push('a')\n'b'\nof(4)",
+    ],
+    [
+      "a call after a block",
+      "const of = (v) => log.push(v)\nif (of) { log.push(5) }\nof(6)",
+    ],
+    [
+      "a call after an arrow function in a for header",
+      "const of = (v) => log.push(v)\nfor (const g of [() => { var y = 1\nof(y) }]) g()",
+    ],
+  ])("starts a new statement with %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // In a `for` header it is the keyword, whatever comes before it.
+  it.each([
+    ["a binding", "for (const x\n  of [1, 2]) log.push(x)"],
+    ["an assignment target", "var x\nfor (x\n  of [3]) log.push(x)"],
+    ["a pattern", "for (const [a, b]\n  of [[4, 5]]) log.push(a, b)"],
+    ["an object pattern", "for (const { a }\n  of [{ a: 6 }]) log.push(a)"],
+    [
+      "a binding and a variable named of",
+      "const of = [7]\nfor (const x\n  of\n  of) log.push(x)",
+    ],
+  ])("continues the header after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
 describe("minifyJs – HTML script markers written by joining", () => {
   // In a script holding `<!--`, the space that keeps `<` from `script` and `--` from `>`
   // stays; the program is the same.

@@ -79,8 +79,9 @@ type Segment = {
   integerBeforeDotLines?: Set<number>;
   /**
    * Offsets in `text` of the last character before a line break that a `from` or `as` keyword
-   * follows in an `import` or `export` clause (`import { a }\nfrom "m"`, `{ a\nas b }`). The
-   * declaration continues on that line, so the line break is a join.
+   * follows in an `import` or `export` clause (`import { a }\nfrom "m"`, `{ a\nas b }`), or
+   * that the `of` of a `for` header follows (`for (const x\nof y)`). The statement continues
+   * on that line, so the line break is a join.
    */
   moduleFromBreaks?: Set<number>;
   /**
@@ -259,10 +260,11 @@ const RESTRICTED_WORDS = new Set([
 
 /**
  * What may start the line after a binding name with no initializer and still continue the
- * declaration: its initializer, the next binding, the end, or the `in`/`of` of a `for` header.
+ * declaration: its initializer, the next binding, the end, or the `in` of a `for` header. The
+ * `of` of a header is told apart from a variable named `of` by the scanner
+ * (`moduleFromBreaks`).
  */
-const BARE_BINDING_CONTINUATION =
-  /^(?:[=,;]|(?:in|of)(?![\w$\\]|[^\x00-\x7f\s]))/;
+const BARE_BINDING_CONTINUATION = /^(?:[=,;]|in(?![\w$\\]|[^\x00-\x7f\s]))/;
 
 /** A decimal integer literal, which a `.` written right after it makes a decimal (`1.`). */
 const DECIMAL_INTEGER = /^(?:0|[1-9][\d_]*|0\d*[89]\d*)$/;
@@ -1119,11 +1121,17 @@ const scanSegments = (js: string): Segment[] => {
     if (!wordIsProperty && !memberWordEnded && isWordChar(lastRaw)) {
       // A word just ended. `x.class` and `p.catch(f)` are properties, not keywords, and a
       // class member named `class` or `function` declares nothing.
+      // `of` is a keyword only in a `for` header (`for (const x of y)`), a name elsewhere.
+      const ofInForHeader =
+        wordRun === "of" &&
+        parenIsControlHeader.at(-1) === true &&
+        (braceKind.length === 0 ||
+          braceParenDepth[braceKind.length - 1] < parenIsControlHeader.length);
       if (
         lineBreakBeforeWord &&
         valueBeforeWord &&
         wordRun !== "in" &&
-        wordRun !== "of" &&
+        !ofInForHeader &&
         wordRun !== "instanceof" &&
         atDeclarationLevel()
       ) {
@@ -1170,14 +1178,12 @@ const scanSegments = (js: string): Segment[] => {
           clauseAsTargetNext = false;
         }
       }
-      if (
-        wordRun === "of" &&
-        parenIsControlHeader.at(-1) === true &&
-        (braceKind.length === 0 ||
-          braceParenDepth[braceKind.length - 1] < parenIsControlHeader.length)
-      ) {
-        // `for (const x of\ny)`: no statement ends inside the header.
+      if (ofInForHeader) {
+        // `for (const x of\ny)`, `for (const x\nof y)`: no statement ends inside the header.
         (contextualKeywordEnds ??= new Set()).add(lastSigOffset);
+        if (lineBreakBeforeWord && sigOffsetBeforeWord !== -1) {
+          (moduleFromBreaks ??= new Set()).add(sigOffsetBeforeWord);
+        }
       }
       // Inside the braces of a clause every word is a name being imported or exported
       // (`export { default as x, let }`), never a keyword.
@@ -1879,7 +1885,7 @@ export const minifyJs = (js: string): string => {
         firstLine &&
         !importAttributes &&
         seg.continuesClause !== true &&
-        !/^(?:(?:instanceof|in|of)(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\(|\)|\}|\[|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
+        !/^(?:(?:instanceof|in)(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\(|\)|\}|\[|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
           firstLine,
         )
       ) {
@@ -1982,8 +1988,10 @@ export const minifyJs = (js: string): string => {
             /(=|,|\+|\-|\*|\/|%|\?|:|=>|\.|\&\&|\|\||\?\?)\s*$/.test(ptTail));
 
         // Do NOT insert semicolon if next line starts with closing/continuation structures.
-        // Only binary keyword operators (instanceof/in/of) continue an expression
-        // across a newline; after a value token `else`, `while`, `catch` and
+        // Only binary keyword operators (instanceof/in) continue an expression
+        // across a newline (`of` only in a `for` header, which the scanner records
+        // in `moduleFromBreaks`: elsewhere it is a name, `a\nof(1)`); after a value
+        // token `else`, `while`, `catch` and
         // `finally` start a new statement, so they must get a semicolon
         // (`do step()\nwhile(c)`, `if(a) step()\nelse other()`).
         //
@@ -1996,7 +2004,7 @@ export const minifyJs = (js: string): string => {
         const startsWithContinuation =
           seg.bareBindingEnds?.has(prevLineEnd) === true
             ? BARE_BINDING_CONTINUATION.test(line)
-            : /^(instanceof(?![\w$\\]|[^\x00-\x7f\s])|in(?![\w$\\]|[^\x00-\x7f\s])|of(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
+            : /^(instanceof(?![\w$\\]|[^\x00-\x7f\s])|in(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
                 line,
               ) ||
               ((firstChar === "(" || firstChar === "[") &&
@@ -2028,7 +2036,7 @@ export const minifyJs = (js: string): string => {
           // only the punctuation that ends the expression holding it continues the line.
           needsSemicolon = !/^[,;:)\]}]/.test(line);
         } else if (
-          !/^((?:else|catch|finally|while|instanceof|in|of)(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
+          !/^((?:else|catch|finally|while|instanceof|in)(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
             line,
           ) &&
           firstChar !== "(" &&
