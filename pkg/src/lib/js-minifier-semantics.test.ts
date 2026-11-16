@@ -1918,8 +1918,47 @@ describe("minifyJs – an import or export clause continued on the next line", (
       "export{a}from'm.json'with{type:'json'}",
     ],
     ["import 'm.css'\nwith { type: 'css' }", "import'm.css'with{type:'css'}"],
+    // `as` continues the clause on either side of a line break.
+    ["import * as\nn from 'm'", "import*as n from'm'"],
+    ["export * as\nn from 'm'", "export*as n from'm'"],
+    ["export * \nas n from 'm'", "export*as n from'm'"],
+    ["export { a as\nb }", "export{a as b}"],
+    ["import { a as\nb } from 'm'", "import{a as b}from'm'"],
+    ["export { a\nas b }", "export{a as b}"],
+    ["import { a\nas b, c\nas d } from 'm'", "import{a as b,c as d}from'm'"],
+    ["export { a as\n'b c' }", "export{a as'b c'}"],
+    ["export { 'a b'\nas c } from 'm'", "export{'a b'as c}from'm'"],
+    ["import { 'a b'\nas c } from 'm'", "import{'a b'as c}from'm'"],
+    ["import { a as as }\nfrom 'm'", "import{a as as}from'm'"],
   ])("joins %j", (source, expected) => {
     expect(minifyJs(source)).toBe(expected);
+  });
+
+  // A name `as` outside the clause is a value like any other.
+  it.each([
+    [
+      "a variable named as after an export",
+      "export { a }\nas\nfoo()",
+      "export{a};as;foo()",
+    ],
+    [
+      "a variable named as after a namespace import",
+      "import * as n from 'a'\nas\nfoo()",
+      "import*as n from'a';as;foo()",
+    ],
+    [
+      "a variable named as after an import binding",
+      "import { a as b } from 'a'\nas\nfoo()",
+      "import{a as b}from'a';as;foo()",
+    ],
+  ])("keeps %s apart", (_name, source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
+  });
+
+  it("keeps a classic script's variable named as a value", () => {
+    expectSameProgram(
+      "const as = 1, f = () => log.push('f')\nlet x = as\nf()\nlog.push(x)",
+    );
   });
 
   // Outside a clause, `from` is a name and `with` a statement, so the line break still ends
@@ -1958,6 +1997,45 @@ describe("minifyJs – an import or export clause continued on the next line", (
     expectSameProgram(
       "const o = { a: 1 }\nlet x = 'a'\nwith (o) x = a\nlog.push(x)",
     );
+  });
+});
+
+describe("minifyJs – of at the end of a line in a for header", () => {
+  // No statement ends inside a `for (...)` header: `of` takes its operand on the next line.
+  it.each([
+    ["a name", "const y = [1, 2]\nfor (const x of\n  y) log.push(x)"],
+    ["a not", "const y = ''\nfor (const x of\n  !y ? 'ab' : '') log.push(x)"],
+    [
+      "a destructuring pattern",
+      "const e = Object.entries({ a: 1 })\nfor (const [k, v] of\n  e) log.push(k, v)",
+    ],
+    ["a call", "const f = () => [3]\nfor (let x of\n  f()) log.push(x)"],
+    [
+      "a for header in a function body",
+      "function g(y) {\n  for (const x of\n    y) log.push(x)\n}\ng([4])",
+    ],
+    ["a binding named of", "for (const of of\n  [5, 6]) log.push(of)"],
+  ])("continues the header after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a variable named of",
+      "const of = 1, f = () => log.push('f')\nlet x = of\nf()\nlog.push(x)",
+    ],
+    [
+      "a variable named of in a function in a for header",
+      "const f = () => log.push('f')\nfor (const g of [function () { const of = 1\n  let x = of\n  f()\n  return x }]) log.push(g())",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it("joins `for await` too", () => {
+    expect(
+      minifyJs("async function f(y) { for await (const x of\ny) use(x) }"),
+    ).toBe("async function f(y){for await(const x of y)use(x)}");
   });
 });
 
