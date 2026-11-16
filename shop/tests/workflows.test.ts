@@ -114,23 +114,32 @@ test("a preview removes the Worker, database and queues of closed pull requests 
   // Every pkg pull request makes a set, and nothing runs when one closes.
   const deploy = readFileSync("scripts/deploy-preview.ts", "utf8");
   const openList = deploy.indexOf("pulls?state=open&per_page=100");
+  const consumer = deploy.indexOf(
+    "queues/${queue.queue_id}/consumers/${consumer.consumer_id}",
+  );
   const worker = deploy.indexOf("workers/scripts/${script.id}?force=true");
-  const queue = deploy.indexOf("queues/${queue.queue_id}");
+  const queue = deploy.indexOf("cfDelete(`queues/${queue.queue_id}`)");
   const database = deploy.indexOf("d1/database/${database.uuid}");
   const create = deploy.indexOf(
     'cf<{ name: string; uuid: string }>("d1/database", {',
   );
   expect(openList).toBeGreaterThan(-1);
-  // The Worker consumes the queue, so it goes first.
-  expect(openList).toBeLessThan(worker);
+  // Cloudflare refuses to delete a Worker that consumes a queue (10064) and a
+  // queue a Worker binds or a consumer names as its dead-letter queue (11005):
+  // the consumers go first, then the Worker, then the queues.
+  expect(deploy).toContain("`queues/${queue.queue_id}/consumers`");
+  expect(openList).toBeLessThan(consumer);
+  expect(consumer).toBeLessThan(worker);
   expect(worker).toBeLessThan(queue);
   expect(queue).toBeLessThan(database);
   expect(database).toBeLessThan(create);
   // A leftover that cannot be removed warns and lets this preview deploy; the
   // warning carries Cloudflare's reason, escaped as a workflow command value.
   const cleanup = deploy.slice(deploy.indexOf("async function cfDelete"));
-  expect(cleanup).toMatch(/catch \(error\)[\s\S]*::warning title=/);
-  expect(cleanup).toContain('.replaceAll("\\n", "%0A")');
+  expect(cleanup).toMatch(/catch \(error\) \{\s*warnCleanup\(error\);/);
+  const warn = deploy.slice(deploy.indexOf("function warnCleanup"));
+  expect(warn).toMatch(/^[^]*?::warning title=/);
+  expect(warn).toContain('.replaceAll("\\n", "%0A")');
   expect(deploy).toContain('host !== "api.cloudflare.com"');
   expect(deploy).toContain("...(body.errors ?? [])");
   // Only names this script makes, and never one of an open pull request.

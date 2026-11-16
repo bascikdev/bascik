@@ -134,8 +134,10 @@ if (!openPulls.has(String(pr)))
   throw new Error("The open pull request list does not include this one.");
 // Every pkg pull request gets a preview, and each one's Worker, database and
 // two queues stayed in the account after it closed. Only names this script
-// makes are touched: the Worker first (it consumes the queue), then its
-// queues and database.
+// makes are touched. Cloudflare refuses to delete a Worker that consumes a
+// queue (10064), a queue a Worker binds (11005), and a dead-letter queue a
+// consumer names (11005), so the queue consumers go first, then the Worker,
+// then its queues and database.
 const closedPreview = (resource: string) => {
   const match = /^bascik-shop-pr-(\d+)(?:-db|-jobs|-dead)?$/.exec(resource);
   return match !== null && !openPulls.has(match[1]);
@@ -143,6 +145,15 @@ const closedPreview = (resource: string) => {
 // A leftover that cannot be removed must not stop this pull request's own
 // preview: the failure becomes a warning on the run, and the next preview
 // tries again.
+function warnCleanup(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  // Escaped as a workflow command value, so a provider's text stays one line.
+  const value = message
+    .replaceAll("%", "%25")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A");
+  console.log(`::warning title=Shop preview cleanup::${value}`);
+}
 async function cfDelete(path: string) {
   try {
     const response = await request<{ success: boolean }>(
@@ -154,23 +165,30 @@ async function cfDelete(path: string) {
     if (!response.success)
       throw new Error(`Cloudflare preview cleanup failed: ${path}`);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    // Escaped as a workflow command value, so a provider's text stays one line.
-    const value = message
-      .replaceAll("%", "%25")
-      .replaceAll("\r", "%0D")
-      .replaceAll("\n", "%0A");
-    console.log(`::warning title=Shop preview cleanup::${value}`);
+    warnCleanup(error);
   }
+}
+const closedQueues = (
+  await cfList<{ queue_id: string; queue_name: string }>("queues")
+).filter((queue) => closedPreview(queue.queue_name));
+for (const queue of closedQueues) {
+  let consumers: { consumer_id: string }[] = [];
+  try {
+    consumers = await cf<{ consumer_id: string }[]>(
+      `queues/${queue.queue_id}/consumers`,
+    );
+  } catch (error) {
+    warnCleanup(error);
+  }
+  for (const consumer of consumers)
+    await cfDelete(
+      `queues/${queue.queue_id}/consumers/${consumer.consumer_id}`,
+    );
 }
 for (const script of await cf<{ id: string }[]>("workers/scripts"))
   if (closedPreview(script.id))
     await cfDelete(`workers/scripts/${script.id}?force=true`);
-for (const queue of await cfList<{ queue_id: string; queue_name: string }>(
-  "queues",
-))
-  if (closedPreview(queue.queue_name))
-    await cfDelete(`queues/${queue.queue_id}`);
+for (const queue of closedQueues) await cfDelete(`queues/${queue.queue_id}`);
 for (const database of await cfList<{ name: string; uuid: string }>(
   "d1/database",
 ))
