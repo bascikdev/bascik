@@ -1,8 +1,13 @@
 /**
  * What a script threw when it was not an Error: `throw "text"`, `throw null`,
  * `Promise.reject()`. Such a value carries no stack, so nothing in it names
- * the script's file or line; the report says what was thrown and how to get
- * a located one. `String(value)` alone read as Bascik's own `Error: null`.
+ * the script's file or line; the report says what was thrown and points at
+ * the language server's throw-non-error rule, which marks a literal value
+ * thrown or rejected in the source while the code is written (`bascik
+ * --check`, the editor). The rule reads the code alone, so the report also
+ * says it cannot mark a value thrown through a variable or by a dependency.
+ * Hosts add where the script starts. `String(value)` alone read as Bascik's own
+ * `Error: null`.
  *
  * Self-contained (no imports, no helpers outside its body): the build and
  * routes script runner embeds its source text.
@@ -31,7 +36,7 @@ export function describeNonErrorThrow(value: unknown): string {
     // A thrown function prints its whole source.
     shown = `the ${typeof value} ${text.length > 200 ? `${text.slice(0, 200)}…` : text}`;
   }
-  return `The script threw ${shown}, not an Error, so there is no stack trace with its line. Throw an Error instead: throw new Error("...").`;
+  return `The script threw ${shown}, not an Error, so it has no stack trace. bascik --check and the editor mark a literal value thrown or rejected in your code (rule throw-non-error), but not a value thrown through a variable or by a dependency: make that value an Error where it is created.`;
 }
 
 const wrapped = new WeakSet<Error>();

@@ -360,6 +360,8 @@ SyntaxError: Unexpected token ';'
 
 A script loaded with `src=` is its own file, so its frames name that file and its lines. Errors thrown in an imported helper keep the helper's path and line.
 
+A value that is not an `Error` (`throw "not found"`, `throw null`, `Promise.reject()`) has no stack, so the report says what was thrown and names the line the script starts on. The linter's [`throw-non-error`](/tools/linter#throw-non-error) rule marks a literal value thrown or rejected in your code while you write it; throw `new Error("...")` there. A value thrown through a variable or by a dependency is not marked: make it an `Error` where it is created.
+
 In VS Code or modern terminal emulators, `Cmd + Click` (or `Ctrl + Click`) the file reference directly in the error log to jump straight to the source HTML line where the script failed.
 
 ### Configuring Error Behavior

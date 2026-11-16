@@ -50,6 +50,7 @@ import {
   type ServerScriptDiagnostic,
 } from "./server-script-rules.js";
 import { HAND_WRITTEN_ESCAPER_RULE } from "./hand-written-escaper.js";
+import { THROW_NON_ERROR_RULE } from "./throw-non-error.js";
 import {
   normalizeModulePath,
   scriptModulesOf,
@@ -748,8 +749,9 @@ export function createDiagnostics(
       if (sd.severity === "warning") severity = DiagnosticSeverity.Warning;
       else if (sd.severity === "info")
         severity = DiagnosticSeverity.Information;
-      let data: WrapHtmlData | EscaperFixData | undefined;
-      if (sd.template)
+      let data: WrapHtmlData | EscaperFixData | ThrowFixData | undefined;
+      if (sd.wrapInError) data = { wrapInError: true };
+      else if (sd.template)
         data = {
           templateStart: bodyStart + sd.template.start,
           fixable: sd.template.fixable,
@@ -2266,6 +2268,32 @@ export function buildAutoFixEdit(
   return undefined;
 }
 
+/** throw-non-error: the diagnostic's range is a string or template literal that `new Error(...)` can wrap. */
+interface ThrowFixData {
+  wrapInError: true;
+}
+
+/**
+ * The quick fix for throw-non-error on a string or template literal: wrap
+ * it in `new Error(...)`, which keeps its text and adds a stack. Editor
+ * only: code that catches the value and compares it to the string would
+ * change, so `bascik --check --fix` never applies it.
+ */
+export function buildThrowErrorEdit(
+  document: TextDocumentLike,
+  diag: Diagnostic,
+): { title: string; edit: TextEdit } | undefined {
+  if (diag.code !== THROW_NON_ERROR_RULE) return undefined;
+  if ((diag.data as Partial<ThrowFixData> | undefined)?.wrapInError !== true)
+    return undefined;
+  const literal = document.getText(diag.range);
+  if (literal.length < 2) return undefined;
+  return {
+    title: "Wrap in new Error(...)",
+    edit: { range: diag.range, newText: `new Error(${literal})` },
+  };
+}
+
 /** Where the "Wrap template in html`...`" fix applies (offsets in the document). */
 interface WrapHtmlData {
   templateStart: number;
@@ -2617,6 +2645,17 @@ export function createCodeActions(
         diagnostics: [diag],
         isPreferred: true,
         edit: { changes: { [document.uri]: wrap.edits } },
+      });
+      continue;
+    }
+    const throwFix = buildThrowErrorEdit(document, diag);
+    if (throwFix) {
+      actions.push({
+        title: throwFix.title,
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [diag],
+        isPreferred: true,
+        edit: { changes: { [document.uri]: [throwFix.edit] } },
       });
       continue;
     }

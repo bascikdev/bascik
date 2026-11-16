@@ -17,7 +17,7 @@ describe("describeNonErrorThrow", () => {
     [10n, "the bigint 10"],
   ])("names what was thrown: %s", (value, shown) => {
     expect(describeNonErrorThrow(value)).toBe(
-      `The script threw ${shown}, not an Error, so there is no stack trace with its line. Throw an Error instead: throw new Error("...").`,
+      `The script threw ${shown}, not an Error, so it has no stack trace. bascik --check and the editor mark a literal value thrown or rejected in your code (rule throw-non-error), but not a value thrown through a variable or by a dependency: make that value an Error where it is created.`,
     );
   });
 
@@ -28,15 +28,17 @@ describe("describeNonErrorThrow", () => {
     expect(describeNonErrorThrow(circular)).toContain(
       "The script threw an object [object Object],",
     );
+    // At most 200 characters of the value, beside the fixed sentence.
+    const limit = describeNonErrorThrow("").length + 210;
     const long = describeNonErrorThrow("x".repeat(5000));
-    expect(long.length).toBeLessThan(400);
+    expect(long.length).toBeLessThan(limit);
     expect(long).toContain("…");
     // A thrown function would print its whole source text.
     const body = "x".repeat(5000);
     const fn = new Function(`return "${body}";`);
     const described = describeNonErrorThrow(fn);
     expect(described).toMatch(/^The script threw the function /);
-    expect(described.length).toBeLessThan(400);
+    expect(described.length).toBeLessThan(limit);
   });
 
   // The build and routes script runner embeds the function's source text.

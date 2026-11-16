@@ -242,7 +242,7 @@ Like build scripts, server scripts export a default function; it receives the re
 
 ### `[bascik] server script error at "/pricing":`
 
-The handler threw during a request. Under the default `scripts.onServerScriptError: 'error'` the response is a 500; `'warn'` logs and renders an empty section; `'ignore'` renders the empty section silently. The stack is remapped to the component or page file. A script that throws something other than an `Error` (`throw "not found"`, `throw null`, `Promise.reject()`) has no stack, so the report says `The script threw the string "not found", not an Error` and names the file and line where the script starts; throw `new Error("...")` to get the exact line. See [Rules and Behavior](/scripts/server#rules-and-behavior).
+The handler threw during a request. Under the default `scripts.onServerScriptError: 'error'` the response is a 500; `'warn'` logs and renders an empty section; `'ignore'` renders the empty section silently. The stack is remapped to the component or page file. A script that throws something other than an `Error` (`throw "not found"`, `throw null`, `Promise.reject()`) has no stack, so the report says `The script threw the string "not found", not an Error, so it has no stack trace` and names the file and line where the script starts. The linter's [`throw-non-error`](/tools/linter#throw-non-error) rule marks a literal value thrown or rejected in your code (`throw "not found"`, `Promise.reject()`) in the editor and in `bascik --check`, before the script runs. It reads the code alone, so it cannot mark a value thrown through a variable (`const reason = "not found"; throw reason`) or rejected by a dependency; for those, find where the value is created. Throw an `Error` there: it carries the stack that names the line, a `message`, and a `cause` for the error it wraps, and it is what `catch` blocks, loggers and error trackers expect. See [Rules and Behavior](/scripts/server#rules-and-behavior).
 
 ### `Script execution timed out` on a request
 
@@ -534,6 +534,10 @@ A hole where a tag or attribute name goes (`<h${level}>`) cannot be wrapped in `
 ### `hand-written-html-escaper`: NAME() is a hand-written HTML escaper
 
 The linter found a function that turns `&` and `<` into entities with a `.replace()` or `.split().join()` chain, a lookup object or `Map`, or a `switch`. Build the markup with `html` from `@bascik/bascik/html`, or call `esc()` for a plain string; for a one-return escaper, the editor's quick fix makes it call `esc()`. An escaper that is for XML on purpose, such as an RSS feed's, needs a comment on its own lines right above it, or inside it, that says so. See the [Linter](/tools/linter#hand-written-html-escaper).
+
+### `throw-non-error`: Throw an Error, not a string
+
+The linter found a `throw`, a `Promise.reject()` or a Promise executor's `reject()` whose value can never be an `Error`, in a script that runs in Node. Only an `Error` carries a stack trace, so when such a value is thrown Bascik's report can name only the line where the script starts. Throw `new Error("...")` with the same text (the editor's quick fix wraps a string for you), or a class that extends `Error`. See the [Linter](/tools/linter#throw-non-error).
 
 ### `analysis-failed`: Bascik could not analyze this file
 
