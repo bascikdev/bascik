@@ -74,6 +74,7 @@
  * that variables declared inside one component cannot leak into another.
  */
 
+import { withOpenFileSlot } from "./open-file-limit.ts";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, relative } from "node:path";
 import { getUniqueId, minifyAttributeName } from "./names.ts";
@@ -1374,7 +1375,7 @@ export const getComponentScripts = async (
   for (const scriptPath of matchingScriptFiles) {
     let code: string;
     try {
-      code = decodeSource(await readFile(scriptPath));
+      code = decodeSource(await withOpenFileSlot(() => readFile(scriptPath)));
     } catch (err) {
       reportUnreadableSourceFile("component script", scriptPath, err);
       continue;

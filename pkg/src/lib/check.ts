@@ -18,6 +18,7 @@
  * into human and JSON formatters.
  */
 
+import { withOpenFileSlot } from "./open-file-limit.ts";
 import { readFile, readdir } from "node:fs/promises";
 import { resolve, relative, join, dirname, extname } from "node:path";
 import { existsSync, statSync } from "node:fs";
@@ -186,7 +187,9 @@ async function walkFiles(dir: string, ext: string): Promise<string[]> {
   const out: string[] = [];
   let entries;
   try {
-    entries = await readdir(dir, { withFileTypes: true });
+    entries = await withOpenFileSlot(() =>
+      readdir(dir, { withFileTypes: true }),
+    );
   } catch {
     return out;
   }
@@ -518,7 +521,7 @@ const createScriptModuleReader = () => {
     seen.add(file);
     let text: string;
     try {
-      text = await readFile(file, "utf8");
+      text = await withOpenFileSlot(() => readFile(file, "utf8"));
     } catch {
       return;
     }
@@ -899,7 +902,9 @@ const checkProjectFiles = async (options: {
     for (const filePath of componentFilePaths) {
       let raw: string;
       try {
-        raw = stripBom(await readFile(filePath, "utf-8"));
+        raw = stripBom(
+          await withOpenFileSlot(() => readFile(filePath, "utf-8")),
+        );
       } catch {
         continue;
       }
@@ -1050,7 +1055,7 @@ const checkProjectFiles = async (options: {
   const scanResults = await Promise.all(
     allFilePaths.map(async (filePath) => {
       try {
-        const html = await readFile(filePath, "utf8");
+        const html = await withOpenFileSlot(() => readFile(filePath, "utf8"));
         return {
           filePath,
           html,
@@ -1375,7 +1380,7 @@ const checkProjectFiles = async (options: {
           let fileFailed = false;
           let html: string;
           try {
-            html = await readFile(file, "utf-8");
+            html = await withOpenFileSlot(() => readFile(file, "utf-8"));
           } catch {
             continue;
           }

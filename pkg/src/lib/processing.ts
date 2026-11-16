@@ -59,6 +59,7 @@ import {
  * hashed to short hex strings (e.g. `bab12cd3`) for smaller output.
  */
 
+import { withOpenFileSlot } from "./open-file-limit.ts";
 import { readFile } from "node:fs/promises";
 import { cpus } from "node:os";
 import { basename, relative, resolve } from "node:path";
@@ -215,7 +216,11 @@ const pageSourcesHaveServerScripts = async (
 ): Promise<boolean> => {
   const found = await Promise.all(
     pagePaths.map(async (pagePath) =>
-      sourceHasServerScripts(await readFile(pagePath, "utf8").catch(() => "")),
+      sourceHasServerScripts(
+        await withOpenFileSlot(() => readFile(pagePath, "utf8")).catch(
+          () => "",
+        ),
+      ),
     ),
   );
   return found.includes(true);
