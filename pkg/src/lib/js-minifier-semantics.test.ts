@@ -37,6 +37,39 @@ const expectSameProgram = (source: string): string => {
   return minified;
 };
 
+type AsyncBody = (log: unknown[]) => Promise<unknown>;
+const AsyncFunction = (async () => {}).constructor as new (
+  ...args: string[]
+) => AsyncBody;
+
+/** `run` for the body of an async function, where `await` is an operator. */
+const runAsync = async (code: string): Promise<Run> => {
+  const log: unknown[] = [];
+  let fn: AsyncBody;
+  try {
+    fn = new AsyncFunction("log", code);
+  } catch (error) {
+    return { syntaxError: (error as Error).message, log };
+  }
+  try {
+    await fn(log);
+  } catch (error) {
+    return { threw: (error as Error).constructor.name, log };
+  }
+  return { log };
+};
+
+/** `expectSameProgram` for the body of an async function. */
+const expectSameAsyncProgram = async (source: string): Promise<string> => {
+  const minified = minifyJs(source);
+  const dev = await runAsync(source);
+  expect(dev.syntaxError, `source must be valid: ${source}`).toBeUndefined();
+  const prod = await runAsync(minified);
+  expect(prod.syntaxError, `minified: ${minified}`).toBeUndefined();
+  expect(prod, `minified: ${minified}`).toEqual(dev);
+  return minified;
+};
+
 describe("minifyJs – operators that would join into another token", () => {
   // `+` and `+` are two operators, `++` is one; a line break or a comment kept them apart.
   it.each([
@@ -1948,5 +1981,131 @@ describe("minifyJs – HTML script markers written by joining", () => {
     ["a regex after <", "log.push(1 < /script>/.test('x'))"],
   ])("keeps %s apart", (_name, source) => {
     expect(expectSameProgram(source)).not.toMatch(/<script|-->|<\/script/i);
+  });
+});
+
+describe("minifyJs – await or yield at the end of a line", () => {
+  // `await` is an operator in an async function or a module and a name elsewhere; `yield` is
+  // a restricted production in a generator and a name elsewhere. The line break after either
+  // means something different in each, so it stays as written.
+  it.each([
+    ["a name", "const a = 2\nlog.push(await\na)"],
+    ["a declaration", "const a = 3\nlet x = await\na\nlog.push(x)"],
+    ["a sign", "const z = 4\nlog.push(await\n-z)"],
+    ["a not", "const z = 0\nlog.push(await\n!z)"],
+    ["a number", "log.push(await\n5)"],
+    ["an object", "log.push((await\n{ a: 6 }).a)"],
+    ["a template", "log.push(await\n`t`)"],
+    ["a regex", "log.push((await\n/re/g).flags)"],
+    ["a call", "const f = () => 7\nlog.push(await\nf())"],
+  ])(
+    "awaits %s on the next line in an async function",
+    async (_name, source) => {
+      await expectSameAsyncProgram(source);
+    },
+  );
+
+  it.each([
+    [
+      "a name line",
+      "const await = 1, a = 2\nlet x\nx = await\na\nlog.push(x, a)",
+    ],
+    [
+      "a call line",
+      "const await = (v) => v * 2\nlet x = await\n(4)\nlog.push(x)",
+    ],
+    ["a sign line", "const await = 5, z = 1\nlet x = await\n-z\nlog.push(x)"],
+    [
+      "a regex-looking line",
+      "const await = 8, re = 2, g = 2\nlet x = await\n/re/g\nlog.push(x)",
+    ],
+  ])("reads a variable named await before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a name line",
+      "var yield = 1, a = 2\nlet x\nx = yield\na\nlog.push(x, a)",
+    ],
+    [
+      "a call line",
+      "var yield = (v) => v * 2\nlet x = yield\n(4)\nlog.push(x)",
+    ],
+    [
+      "an index line",
+      "var yield = [5, 6], i = 1\nlet x = yield\n[i]\nlog.push(x)",
+    ],
+    ["a sign line", "var yield = 5, z = 1\nlet x = yield\n-z\nlog.push(x)"],
+    [
+      "a tagged template",
+      "var yield = (s) => s[0] + '!'\nlet x = yield\n`t`\nlog.push(x)",
+    ],
+    [
+      "a regex-looking line",
+      "var yield = 8, re = 2, g = 2\nlet x = yield\n/re/g\nlog.push(x)",
+    ],
+  ])("reads a variable named yield before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    ["a call line", "function* g() { yield\n(1) }\nlog.push([...g()])"],
+    ["an index line", "function* g() { yield\n[1] }\nlog.push([...g()])"],
+    [
+      "a name line",
+      "const a = 2\nfunction* g() { yield\na }\nlog.push([...g()])",
+    ],
+    ["a template", "function* g() { yield\n`t` }\nlog.push([...g()])"],
+    ["a regex", "function* g() { yield\n/re/g }\nlog.push([...g()])"],
+    ["a string", "function* g() { yield\n'a' }\nlog.push([...g()])"],
+    [
+      "the ) of a call",
+      "const f = (v) => log.push(v)\nfunction* g() { f(yield\n) }\nconst it = g()\nit.next()\nit.next(1)",
+    ],
+    [
+      "the ] of an array",
+      "function* g() { log.push([yield\n]) }\nconst it = g()\nit.next()\nit.next(2)",
+    ],
+    [
+      "a comma",
+      "function* g() { log.push([yield\n, 3]) }\nconst it = g()\nit.next()\nit.next(2)",
+    ],
+    [
+      "the : of a conditional",
+      "function* g(a) { log.push(a ? yield\n: 4) }\nconst it = g(1)\nit.next()\nit.next(5)",
+    ],
+  ])("ends a generator's yield before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a property named await",
+      "const o = { await: 1 }, a = 2\nlet x = o.await\na\nlog.push(x)",
+    ],
+    [
+      "a property named yield",
+      "const o = { yield: [3] }\nlet x = o.yield\n[0]\nlog.push(x)",
+    ],
+    [
+      "a name ending in await",
+      "const $await = 4, a = 5\nlet x = $await\na\nlog.push(x)",
+    ],
+  ])("joins the line after %s as any other value", (_name, source) => {
+    expect(expectSameProgram(source)).not.toContain("\n");
+  });
+
+  it("writes the line break in place of a semicolon", () => {
+    expect(minifyJs("async function f() { await\na }")).toBe(
+      "async function f(){await\na}",
+    );
+    expect(minifyJs("function* g() { yield\n(a) }")).toBe(
+      "function*g(){yield\n(a)}",
+    );
+    // A line that cannot start an operand reads the same either way.
+    expect(minifyJs("function* g() { f(yield\n) }")).toBe(
+      "function*g(){f(yield)}",
+    );
   });
 });
