@@ -1454,3 +1454,59 @@ describe("minifyJs – `extends` on the line after a class name", () => {
     expectSameProgram(source);
   });
 });
+
+describe("minifyJs – names with non-ASCII characters or escapes", () => {
+  // An identifier is any Unicode ID_Start/ID_Continue character, `$`, `_`, ZWNJ, ZWJ or a
+  // `\u` escape: a line break or comment between two of them must not join them into one name.
+  it.each([
+    ["an accented name", "let x, y, é = 1\nx = é\ny = é\nlog.push(x, y)"],
+    ["a CJK name", "let x, y, 值 = 2\nx = 值\ny = 1\nlog.push(x, y)"],
+    [
+      "a Greek name at the line start",
+      "let x, a = 1, π\nx = a\nπ = 3\nlog.push(x, π)",
+    ],
+    ["a name ending in ZWNJ", "let x, a\u200c = 1\nx = a\u200c\nlog.push(x)"],
+    ["an astral name", "let x, 𝑥 = 4\nx = 𝑥\nlog.push(x)"],
+    [
+      "a name ending in a \\u escape",
+      "let x, y, ab = 5\nx = a\\u0062\ny = 1\nlog.push(x, y)",
+    ],
+    [
+      "a name ending in a \\u{} escape",
+      "let x, ab = 5\nx = a\\u{62}\nin {}\nlog.push(x)",
+    ],
+    [
+      "an astral \\u{} escape",
+      "let x, 𝑥 = 6\nx = \\u{1D465}\nin {}\nlog.push(x, \\u{1d465})",
+    ],
+    [
+      "a name starting with a \\u escape",
+      "let x, a = 1, b\nx = a\n\\u0062 = 6\nlog.push(x, b)",
+    ],
+    [
+      "an accented name after return",
+      "const é = 7\nlog.push((() => { return/* c */é })())",
+    ],
+    ["an operand after typeof", "const é = 8\nlog.push(typeof/* c */é)"],
+    ["an escape after typeof", "const a = 8\nlog.push(typeof\n\\u0061)"],
+    [
+      "a string after an accented name",
+      "let x, é = 9\nx = é\n'y'\nlog.push(x)",
+    ],
+    [
+      "an accented name before in",
+      "const o = { k: 1 }, kö = 'k'\nlog.push(kö\nin o)",
+    ],
+    [
+      "a name starting with in",
+      "let x, a = 1, iné = 2\nx = a\niné = 3\nlog.push(x, iné)",
+    ],
+    ["a label with an accent", "é: for (;;) { log.push(1); break é\n(2) }"],
+  ])("keeps %s apart", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it("still joins `in` before a non-breaking space", () => {
+    expectSameProgram("const o = { k: 1 }, k = 'k'\nlog.push(k\nin\u00a0o)");
+  });
+});

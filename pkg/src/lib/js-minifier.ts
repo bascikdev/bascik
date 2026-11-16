@@ -140,7 +140,7 @@ const EXPRESSION_CONTINUING_KEYWORDS = new Set(
  * `x.case` a property and `this.#class` a private name.
  */
 const LINE_END_CONTINUING_KEYWORD =
-  /(?:^|[^.\w$#])(?:else|do|try|finally|in|instanceof|typeof|void|delete|new|case|extends|default|export|import|var|let|const|function|class|for)\s*$/;
+  /(?:^|(?![\w$\\]|[^\x00-\x7f\s])[^.#])(?:else|do|try|finally|in|instanceof|typeof|void|delete|new|case|extends|default|export|import|var|let|const|function|class|for)\s*$/;
 
 /**
  * A line ending in a restricted production: ECMAScript ends the statement at the line break
@@ -148,7 +148,7 @@ const LINE_END_CONTINUING_KEYWORD =
  * label), so a following `(` or `[` line is a new statement.
  */
 const RESTRICTED_PRODUCTION_END =
-  /(?:^|[^.\w$])(?:return|throw|yield|debugger|(?:break|continue)(?:\s+[A-Za-z_$][\w$]*)?)$/;
+  /(?:^|(?![\w$\\]|[^\x00-\x7f\s])[^.])(?:return|throw|yield|debugger|(?:break|continue)(?:\s+(?:[\w$\\]|[^\x00-\x7f\s])+)?)$/;
 
 /** The keywords of those restricted productions, for the scanner. */
 const RESTRICTED_WORDS = new Set([
@@ -164,7 +164,8 @@ const RESTRICTED_WORDS = new Set([
  * What may start the line after a binding name with no initializer and still continue the
  * declaration: its initializer, the next binding, the end, or the `in`/`of` of a `for` header.
  */
-const BARE_BINDING_CONTINUATION = /^(?:[=,;]|(?:in|of)(?![\w$]))/;
+const BARE_BINDING_CONTINUATION =
+  /^(?:[=,;]|(?:in|of)(?![\w$\\]|[^\x00-\x7f\s]))/;
 
 /** Keywords that start a variable declaration. */
 const DECLARATION_KEYWORDS = new Set(["var", "let", "const"]);
@@ -231,13 +232,20 @@ const EXPRESSION_START_AFTER = new Set(["=", "(", ",", "[", "?", "&", "|"]);
 /** Words that, at the start of a class member, modify the member named after them. */
 const CLASS_MEMBER_MODIFIERS = new Set(["get", "set", "async", "accessor"]);
 
-/** Identifier/number characters: the "word" class the scanner tracks. */
+/**
+ * Identifier/number characters: the "word" class the scanner tracks. Outside string, template
+ * and regex literals, a non-ASCII character that is not whitespace can only be part of a name
+ * (Unicode ID_Start or ID_Continue, ZWNJ, ZWJ, or half of an astral one), and a `\` only starts
+ * a `\u` escape in one, so both count.
+ */
 const isWordChar = (c: string): boolean =>
   (c >= "a" && c <= "z") ||
   (c >= "A" && c <= "Z") ||
   (c >= "0" && c <= "9") ||
   c === "_" ||
-  c === "$";
+  c === "$" ||
+  c === "\\" ||
+  (c >= "\u0080" && !isSpace(c));
 
 /** `\w` as JS regex defines it: word chars minus `$`. Needed to mirror `\b`. */
 const isRegexWordChar = (c: string): boolean => c !== "$" && isWordChar(c);
@@ -1272,6 +1280,27 @@ const scanSegments = (js: string): Segment[] => {
       continue;
     }
 
+    if (ch === "\\" && js[i + 1] === "u" && js[i + 2] === "{") {
+      // `\u{62}` in a name is the same name as `b`, and `\u{1D465}` as `𝑥`. Writing the
+      // escape without braces keeps its `}` out of the brace tracking and away from the rules
+      // that drop the spaces around a `}` (`a\u{62} in o` must not become `a\u{62}in o`).
+      let end = i + 3;
+      while (end < len && end - i < 64 && /[0-9a-fA-F]/.test(js[end])) end++;
+      const codePoint =
+        js[end] === "}" && end > i + 3
+          ? Number.parseInt(js.slice(i + 3, end), 16)
+          : Number.NaN;
+      if (codePoint <= 0x10ffff) {
+        const escape =
+          codePoint <= 0xffff
+            ? `\\u${codePoint.toString(16).padStart(4, "0")}`
+            : String.fromCodePoint(codePoint);
+        for (let k = 0; k < escape.length; k++) appendCode(escape[k]);
+        i = end + 1;
+        continue;
+      }
+    }
+
     appendCode(ch);
     i++;
   }
@@ -1341,7 +1370,7 @@ export const minifyJs = (js: string): string => {
       if (
         resultLast &&
         firstLine &&
-        !/^(?:(?:instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\(|\)|\}|\[|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
+        !/^(?:(?:instanceof|in|of)(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\(|\)|\}|\[|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
           firstLine,
         )
       ) {
@@ -1409,7 +1438,7 @@ export const minifyJs = (js: string): string => {
       let needsSemicolon = false;
 
       // Statements ending in value tokens or return/break/continue/throw require ; before next statement
-      if (/[a-zA-Z0-9_\)$\]'"`]/.test(lastChar)) {
+      if (isWordChar(lastChar) || /[)\]'"`]/.test(lastChar)) {
         // Do NOT insert semicolon if line ends with an open control flow / operator
         let endsWithOpenControl = false;
         if (seg.bodyHeaderEnds?.has(prevLineEnd)) {
@@ -1446,7 +1475,7 @@ export const minifyJs = (js: string): string => {
         const startsWithContinuation =
           seg.bareBindingEnds?.has(prevLineEnd) === true
             ? BARE_BINDING_CONTINUATION.test(line)
-            : /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
+            : /^(instanceof(?![\w$\\]|[^\x00-\x7f\s])|in(?![\w$\\]|[^\x00-\x7f\s])|of(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
                 line,
               ) ||
               ((firstChar === "(" || firstChar === "[") &&
@@ -1477,7 +1506,7 @@ export const minifyJs = (js: string): string => {
           // only the punctuation that ends the expression holding it continues the line.
           needsSemicolon = !/^[,;:)\]}]/.test(line);
         } else if (
-          !/^((?:else|catch|finally|while|instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
+          !/^((?:else|catch|finally|while|instanceof|in|of)(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
             line,
           ) &&
           firstChar !== "(" &&
@@ -1486,7 +1515,7 @@ export const minifyJs = (js: string): string => {
           needsSemicolon = true;
         } else if (
           seg.valueBraceCloses?.has(prevLineEnd) === true &&
-          /^(?:else|while)(?![a-zA-Z0-9_$])/.test(line)
+          /^(?:else|while)(?![\w$\\]|[^\x00-\x7f\s])/.test(line)
         ) {
           // `if (a) x = {}\nelse y()`: the `}` ends a value, not the `if` body, so the
           // statement still needs its `;` before `else` (or before a `while` loop).
@@ -1494,7 +1523,7 @@ export const minifyJs = (js: string): string => {
         }
       } else if (seg.postfixUpdateEnds?.has(prevLineEnd)) {
         const startsWithContinuation =
-          /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
+          /^(instanceof(?![\w$\\]|[^\x00-\x7f\s])|in(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
             line,
           );
         if (!startsWithContinuation) {
