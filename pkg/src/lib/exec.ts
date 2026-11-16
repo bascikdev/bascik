@@ -224,9 +224,28 @@ const isRunning = (child: ChildProcess): boolean =>
   child.exitCode == null &&
   child.signalCode == null;
 
+/**
+ * True when `pid` names one process. `process.kill` reads 0 as this
+ * process's whole group and a negative pid as another group, so neither may
+ * ever reach it.
+ */
+const isProcessId = (pid: number | undefined): pid is number =>
+  Number.isInteger(pid) && (pid as number) > 0;
+
+/**
+ * The child's pid, or undefined while it has none of its own. A spawn that
+ * failed (ENOENT for a missing `cwd`) leaves `child.pid` undefined, yet Node
+ * keeps the handle with pid 0 until the error is emitted on the next tick:
+ * `child.kill()` in that window is kill(0, signal), which signals Bascik's
+ * own process group.
+ */
+const pidOf = (child: ChildProcess): number | undefined =>
+  isProcessId(child.pid) ? child.pid : undefined;
+
 /** SIGKILL each listed process (already confirmed by stillRunning). */
 const killListed = (listed: ListedProcess[]): void => {
   for (const { pid } of listed) {
+    if (!isProcessId(pid)) continue;
     try {
       process.kill(pid, "SIGKILL");
     } catch {
@@ -292,9 +311,11 @@ const signalTree = (
   descendants: ListedProcess[],
   script: string,
 ): void => {
+  // No pid of its own: there is nothing to signal, and `child.kill()` could
+  // signal Bascik's own process group (see `pidOf`).
+  if (pidOf(child) === undefined) return;
   if (
     process.platform === "win32" &&
-    child.pid !== undefined &&
     child.exitCode == null &&
     child.signalCode == null
   ) {
@@ -317,6 +338,7 @@ const signalTree = (
     }
   }
   for (const { pid } of descendants) {
+    if (!isProcessId(pid)) continue;
     try {
       process.kill(pid, signal);
     } catch {
@@ -332,9 +354,9 @@ const signalTree = (
 
 /** The record's descendants, listed on first use (while the child still holds them). */
 const descendantsOf = (record: ChildExecutionRecord): ListedProcess[] => {
-  if (record.descendants.length === 0 && record.child.pid !== undefined)
-    record.descendants =
-      listDescendants([record.child.pid]).get(record.child.pid) ?? [];
+  const pid = pidOf(record.child);
+  if (record.descendants.length === 0 && pid !== undefined)
+    record.descendants = listDescendants([pid]).get(pid) ?? [];
   return record.descendants;
 };
 
@@ -374,13 +396,14 @@ export const execShutdownHandler = async (
   const childrenToClose = Array.from(activeChildren);
   const trees = listDescendants(
     childrenToClose
-      .map((child) => child.pid)
+      .map(pidOf)
       .filter((pid): pid is number => pid !== undefined),
     atStart,
   );
   const treeOf = (child: ChildProcess): ListedProcess[] => {
     const record = childRecords.get(child);
-    const listed = child.pid !== undefined ? (trees.get(child.pid) ?? []) : [];
+    const pid = pidOf(child);
+    const listed = pid !== undefined ? (trees.get(pid) ?? []) : [];
     if (record) {
       const known = new Set(record.descendants.map((entry) => entry.pid));
       record.descendants = [
