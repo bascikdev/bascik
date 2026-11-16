@@ -88,6 +88,10 @@ import {
 import { readComponentManifest } from "./component-manifest-file.ts";
 import type { ComponentList } from "./types.ts";
 import { privateDirFor } from "./private-dir.ts";
+import {
+  findInlinedStylesheetLinks,
+  inlinedStylesheetLinkMessage,
+} from "./inline-style-links.ts";
 
 export type FindingSeverity = "error" | "warning";
 
@@ -1007,6 +1011,28 @@ export const checkProject = async (
     }),
   );
 
+  // A stylesheet assets.inlineStyles inlines is not copied to the output, so
+  // a <link> to it left in a page or a component 404s (the build warns too).
+  const pageFiles = new Set(pageList);
+  for (const { filePath, html } of scanResults) {
+    const fromFile = pageFiles.has(filePath) ? filePath : undefined;
+    for (const link of findInlinedStylesheetLinks(html, fromFile)) {
+      const before = html.slice(0, link.offset);
+      items.push({
+        category: "inlined-stylesheet-link",
+        severity: "warning",
+        message: inlinedStylesheetLinkMessage(link.href),
+        locations: [
+          {
+            filePath: toDisplay(filePath),
+            line: before.split("\n").length,
+            column: link.offset - before.lastIndexOf("\n"),
+          },
+        ],
+      });
+    }
+  }
+
   const isExternalTag = createExternalTagMatcher(
     BascikConfig.components?.external,
   );
@@ -1500,6 +1526,13 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
     title: "Configuration validation",
     description:
       "Configuration keys, values, and path references that need correction.",
+  },
+  "inlined-stylesheet-link": {
+    title: "Links to a stylesheet assets.inlineStyles inlines",
+    description:
+      "assets.inlineStyles puts these stylesheets into every page's <head> and does\n" +
+      'not copy them to the output, so a <link rel="stylesheet"> to one answers\n' +
+      "404. Remove the <link>; the styles are already in the page.",
   },
   "missing-site-url": {
     title: "Missing site URL",

@@ -443,6 +443,7 @@ Project-level findings (missing site URL, config validation, pages directory) ci
 | Multiple API route files resolving to one URL, or ambiguous catch-all pairs                            | `route-collision`              | Error    |
 | Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`)                               | `invalid-catch-all`            | Error    |
 | Unmatched component tag usage                                                                          | `unmatched-tag`                | Warning  |
+| A `<link rel="stylesheet">` to a file `assets.inlineStyles` inlines, which is not copied to `dist/`    | `inlined-stylesheet-link`      | Warning  |
 | Unused component file                                                                                  | `unused-component`             | Warning  |
 | WHATWG HTML5 parse errors in compiled `dist/` HTML files                                               | `dist-html-spec`               | Error    |
 | Components a server or stream script cannot return (read from the last build)                          | `request-render-unsupported`   | Warning  |

@@ -6,6 +6,10 @@ import { getTag, listComponents, maskRawTextContent } from "./components.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
 import {
+  findInlinedStylesheetLinks,
+  inlinedStylesheetLinkMessage,
+} from "./inline-style-links.ts";
+import {
   getDirectoryPath,
   getDistPagePath,
   getRelativePath,
@@ -402,6 +406,17 @@ export const transpilePage = async (
         `[bascik] Unresolved component tag${unresolved.size > 1 ? "s" : ""} in "${relativePagePath}": ` +
           `${[...unresolved].map((t) => `<${t}>`).join(", ")} — no matching component file found. ` +
           `Run \`bascik --check\` for a full report.`,
+      );
+    }
+  }
+
+  // A stylesheet that assets.inlineStyles inlines is not copied to the
+  // output, so a <link> to it that the page (or a component) still has
+  // would answer 404 without a word.
+  for (const chunk of [transpiledHeadContent, transpiledHtmlBody]) {
+    for (const link of findInlinedStylesheetLinks(chunk, pagePath)) {
+      console.warn(
+        `[bascik] ${relativePagePathForDiagnostics(pagePath)}: ${inlinedStylesheetLinkMessage(link.href)}`,
       );
     }
   }
