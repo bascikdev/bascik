@@ -84,6 +84,12 @@ type Segment = {
    */
   asiBefore?: boolean;
   /**
+   * Literal segments only: the line break before this string stays in the output, because
+   * whether it ends the statement depends on context the scanner does not track
+   * (`await\n"a"` is one statement in an async function and two where `await` is a name).
+   */
+  lineBreakBefore?: boolean;
+  /**
    * Literal segments only: an HTML-like `<!--` comment, to the end of its line. A classic
    * script reads it as a line comment, a module as the operators `<`, `!` and `--`, so it is
    * kept as written and followed by a line break, which runs the same program as either.
@@ -188,6 +194,17 @@ const BARE_BINDING_CONTINUATION =
 /** A decimal integer literal, which a `.` written right after it makes a decimal (`1.`). */
 const DECIMAL_INTEGER = /^(?:0|[1-9][\d_]*|0\d*[89]\d*)$/;
 
+/** Words after which an `export` declares or exports a value instead of a `from` clause. */
+const MODULE_CLAUSE_ENDING_WORDS = new Set([
+  "default",
+  "var",
+  "let",
+  "const",
+  "function",
+  "class",
+  "async",
+]);
+
 /** Keywords that start a variable declaration. */
 const DECLARATION_KEYWORDS = new Set(["var", "let", "const"]);
 
@@ -268,9 +285,6 @@ const isWordChar = (c: string): boolean =>
   c === "\\" ||
   (c >= "\u0080" && !isSpace(c));
 
-/** `\w` as JS regex defines it: word chars minus `$`. Needed to mirror `\b`. */
-const isRegexWordChar = (c: string): boolean => c !== "$" && isWordChar(c);
-
 const isDigit = (c: string): boolean => c >= "0" && c <= "9";
 
 /** ECMAScript's LineTerminator: LF, CR, LINE SEPARATOR and PARAGRAPH SEPARATOR. */
@@ -297,32 +311,6 @@ const isSpace = (c: string): boolean => {
     code === 0x3000 ||
     code === 0xfeff
   );
-};
-
-/**
- * Given the maximal run of word characters immediately before a `/`, return
- * the identifier the old implementation's `\b([a-zA-Z_$][a-zA-Z0-9_$]*)$`
- * match would have produced, or `undefined` when it would not have matched.
- *
- * `\b` is defined in terms of `\w`, which excludes `$`, so the match starts at
- * the leftmost position whose character is not a digit and where exactly one
- * of (previous char, this char) is a `\w` character. The character before the
- * run is never a word character (that is what ends the run), so at position 0
- * the boundary exists exactly when the run starts with a letter or `_`.
- * Examples: `return` -> `return`; `$return` -> `return`; `9return` -> none.
- *
- * Cost is the run length, and each run precedes at most one `/`, so total work
- * across a scan stays linear in the input.
- */
-const lastWordBeforeSlash = (run: string): string | undefined => {
-  for (let p = 0; p < run.length; p++) {
-    const cur = run[p];
-    __scanStatsForTests.charsExamined++;
-    if (isDigit(cur)) continue;
-    const prevIsW = p === 0 ? false : isRegexWordChar(run[p - 1]);
-    if (prevIsW !== isRegexWordChar(cur)) return run.slice(p);
-  }
-  return undefined;
 };
 
 const skipQuotedString = (js: string, start: number): number => {
@@ -596,6 +584,21 @@ const scanSegments = (js: string): Segment[] => {
   let i = 0;
   const len = js.length;
 
+  // An `import` or `export` was read and its module specifier has not come yet, so a `from`
+  // here is the keyword before it, not a variable named `from`.
+  let moduleClauseOpen = false;
+
+  /**
+   * Whether `word`, read as a keyword, takes an operand next. The contextual words count only
+   * where they are keywords: `from` in an `import` or `export`, `of` in a `for` header.
+   */
+  const continuesExpression = (word: string): boolean => {
+    if (!EXPRESSION_CONTINUING_KEYWORDS.has(word)) return false;
+    if (word === "from") return moduleClauseOpen;
+    if (word === "of") return parenIsControlHeader.at(-1) === true;
+    return true;
+  };
+
   /** The segment before is a string, template or regex literal: a value, not a comment. */
   const previousIsValueLiteral = (): boolean => {
     const previous = segments.at(-1);
@@ -654,7 +657,7 @@ const scanSegments = (js: string): Segment[] => {
     if (lastSigIsPostfixUpdate) return true;
     if (lastSig === ")" || lastSig === "]" || lastSig === "}") return true;
     if (!isWordChar(lastSig)) return false;
-    return wordIsProperty || !EXPRESSION_CONTINUING_KEYWORDS.has(wordRun);
+    return wordIsProperty || !continuesExpression(wordRun);
   };
 
   const closeDeclaration = (): void => {
@@ -738,7 +741,7 @@ const scanSegments = (js: string): Segment[] => {
       if (wordRun === "static") return wordStartsClassMember;
       return (
         lineBreakSinceSignificant &&
-        !EXPRESSION_CONTINUING_KEYWORDS.has(wordRun) &&
+        !continuesExpression(wordRun) &&
         !CLASS_MEMBER_MODIFIERS.has(wordRun)
       );
     }
@@ -824,8 +827,7 @@ const scanSegments = (js: string): Segment[] => {
     if (lastSig === ")") return !lastParenClosedControlHeader;
     if (isWordChar(lastSig)) {
       if (wordIsProperty) return true;
-      const word = lastWordBeforeSlash(wordRun);
-      return word === undefined || !EXPRESSION_CONTINUING_KEYWORDS.has(word);
+      return !continuesExpression(wordRun);
     }
     return false;
   };
@@ -995,6 +997,12 @@ const scanSegments = (js: string): Segment[] => {
       if (wordIsBindingName && atDeclarationLevel()) {
         (bareBindingEnds ??= new Set()).add(lastSigOffset);
       }
+      if (wordRun === "import" || wordRun === "export") {
+        moduleClauseOpen = !atObjectMemberLevel();
+      } else if (MODULE_CLAUSE_ENDING_WORDS.has(wordRun)) {
+        // `export default from`, `export const a = from`: a value follows, not a clause.
+        moduleClauseOpen = false;
+      }
       if (DECLARATION_KEYWORDS.has(wordRun) && !atObjectMemberLevel()) {
         // `{ const: v, deprecated }` names a key, not a declaration.
         declarationParenDepth.push(parenIsControlHeader.length);
@@ -1021,6 +1029,10 @@ const scanSegments = (js: string): Segment[] => {
       }
     }
     endDeclarationAtLineStart(c);
+    if (c === "(" || c === "." || c === ";" || c === "=") {
+      // `import("a")`, `import.meta`, the end of the statement, or an initializer.
+      moduleClauseOpen = false;
+    }
     switch (c) {
       case "(": {
         // `Symbol.for(key)` and `$if(a)` are calls, not headers.
@@ -1135,6 +1147,15 @@ const scanSegments = (js: string): Segment[] => {
     kind: "string" | "template" | "regex",
   ): void => {
     const asiBefore = asiBeforeLiteral(kind);
+    const afterWord = isWordChar(lastSig) && !wordIsProperty ? wordRun : "";
+    // The module specifier ends the clause (a string export name, `export { "a b" as c }`,
+    // does not).
+    if (afterWord === "from" || afterWord === "import")
+      moduleClauseOpen = false;
+    // `await\n"a"` is `await "a"` in a module or an async function and two statements where
+    // `await` is a name. The scanner does not track which, so the line break stays.
+    const lineBreakBefore =
+      kind === "string" && lineBreakSinceSignificant && afterWord === "await";
     if (operatorAfterValueBreak !== "") {
       // `let p = 1\n!"x"`: the `!` started a new statement.
       endDeclarationAtLineStart(text[0]);
@@ -1145,7 +1166,11 @@ const scanSegments = (js: string): Segment[] => {
     bindingNameExpected = false;
     flushCode();
     segments.push(
-      asiBefore ? { literal: true, text, asiBefore } : { literal: true, text },
+      asiBefore
+        ? { literal: true, text, asiBefore }
+        : lineBreakBefore
+          ? { literal: true, text, lineBreakBefore }
+          : { literal: true, text },
     );
     lineBreakSinceSignificant = false;
   };
@@ -1263,14 +1288,10 @@ const scanSegments = (js: string): Segment[] => {
             couldBeRegex = true;
           }
         } else if (isWordChar(lastSig)) {
-          // Preceded by a word token — regex only if word is an expression keyword (e.g. return /a/)
-          const lastWord = lastWordBeforeSlash(wordRun);
-          if (
-            lastWord !== undefined &&
-            REGEX_PRECEDING_KEYWORDS.has(lastWord)
-          ) {
-            couldBeRegex = true;
-          }
+          // Preceded by a word token: a regex only after an expression keyword (`return /a/`).
+          // The whole word counts: `$return / 2 / g` and `o.return / 2` divide.
+          couldBeRegex =
+            !wordIsProperty && REGEX_PRECEDING_KEYWORDS.has(wordRun);
         } else if (lastSig === ")") {
           // `if (x) /re/.test(y)` is a regex statement; `f(x) / 2` is division.
           couldBeRegex = lastParenClosedControlHeader;
@@ -1480,6 +1501,8 @@ export const minifyJs = (js: string): string => {
       if (seg.asiBefore && result && resultLast !== ";") {
         // The source's line break ended the statement (`const a = 1\n"use strict"`).
         result += ";";
+      } else if (seg.lineBreakBefore) {
+        result += "\n";
       } else if (result && isWordChar(resultLast) && isWordChar(seg.text[0])) {
         // Ensure space between preceding keyword/identifier and literal if needed
         result += " ";
