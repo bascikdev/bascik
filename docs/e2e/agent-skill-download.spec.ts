@@ -18,6 +18,7 @@ const docsDir = fileURLToPath(new URL("..", import.meta.url));
 const pkgIndex = join(docsDir, "../pkg/dist/index.js");
 const skillsDir = join(docsDir, "../skills");
 const authored = join(skillsDir, "bascik/SKILL.md");
+const BOOT_PAGE_TITLE = "<title>Building site\u2026</title>";
 
 async function freePort(): Promise<number> {
   const server = createServer();
@@ -40,7 +41,14 @@ async function download(
   for (let attempt = 0; attempt < attempts && !signal.aborted; attempt++) {
     try {
       const response = await fetch(url, { redirect: "manual" });
-      if (response.status === 200) return response;
+      // While the first compile runs, a path with no file yet and no known file type (an
+      // untyped `.md` too) gets the boot page, which reloads into the real answer: SKILL.md
+      // comes from a pre producer and can be written after the server starts listening.
+      if (
+        response.status === 200 &&
+        !(await response.clone().text()).includes(BOOT_PAGE_TITLE)
+      )
+        return response;
     } catch {
       /* server not listening yet */
     }
@@ -231,9 +239,7 @@ export { dev, build };
       for (
         const deadline = Date.now() + 90_000;
         control.status === 200 &&
-        (await control.clone().text()).includes(
-          "<title>Building site\u2026</title>",
-        ) &&
+        (await control.clone().text()).includes(BOOT_PAGE_TITLE) &&
         Date.now() < deadline;
       ) {
         await new Promise((done) => setTimeout(done, 250));

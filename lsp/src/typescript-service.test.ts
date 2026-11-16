@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   compilerOptionsFor,
   SERVER_WEB_LIBS,
@@ -74,6 +74,10 @@ function check(
 
 const page = (body: string, attributes = "") =>
   `<!doctype html>\n<main>Milk frother</main>\n<script type="text/typescript"${attributes}>\n${body}\n</script>\n`;
+
+// Each test builds real TypeScript programs: about 3 seconds alone, over 8 when the whole
+// suite shares the CPU, so the 5-second default fails under load.
+vi.setConfig({ testTimeout: 30_000 });
 
 describe("TypeScriptProject diagnostics", () => {
   it("reports a type error at its exact range in the HTML", () => {
