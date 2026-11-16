@@ -25,9 +25,12 @@ import {
   listPages,
   getRelativePath,
   deepReadDirFlat,
-  setStrictFolderReads,
   UnreadableFolderError,
 } from "./file-system.ts";
+import {
+  setStrictSourceReads,
+  UnreadableSourceError,
+} from "./unreadable-source.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import {
   NATIVE_HTML_ELEMENTS,
@@ -746,11 +749,11 @@ export const checkProject = async (
   options: { fix?: boolean; typescript?: boolean } = {},
 ): Promise<CheckFindings> => {
   // As in a build, a folder the check cannot read is an error, not a skip.
-  setStrictFolderReads(true);
+  setStrictSourceReads(true);
   try {
     return await checkProjectFiles(options);
   } finally {
-    setStrictFolderReads(undefined);
+    setStrictSourceReads(undefined);
   }
 };
 
@@ -973,7 +976,14 @@ const checkProjectFiles = async (options: {
         category: "component-list",
         severity: "error",
         message,
-        locations: [{ filePath: configSource }],
+        locations: [
+          {
+            filePath:
+              error instanceof UnreadableSourceError
+                ? error.file
+                : configSource,
+          },
+        ],
       });
     }
 

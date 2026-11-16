@@ -32,6 +32,13 @@ import {
 import { minifyCss } from "./css-minifier.ts";
 import { minifyJs } from "./js-minifier.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
+import { isStrictSourceRead } from "./unreadable-source.ts";
+
+export {
+  forgetUnreadableSourceFile,
+  reportUnreadableSourceFile,
+  setStrictSourceReads,
+} from "./unreadable-source.ts";
 import { rewriteCssBasePaths, rewriteManifestBasePaths } from "./base-path.ts";
 import { manifestCollector } from "./manifest.ts";
 import { trimSlashes, trimTrailingSlashes } from "./slashes.ts";
@@ -462,17 +469,6 @@ export class UnreadableFolderError extends Error {
   }
 }
 
-let strictFolderReads: boolean | undefined;
-
-/**
- * Whether an unreadable sub-folder fails the scan (a build, `bascik --check`)
- * or is skipped with a warning (the dev server, where a folder can be mid
- * edit). Unset, it follows `BascikConfig.isBuild`.
- */
-export const setStrictFolderReads = (strict: boolean | undefined): void => {
-  strictFolderReads = strict;
-};
-
 const warnedUnreadableFolders = new Set<string>();
 
 const unreadableSubfolder = (dirPath: string, error: unknown): NestedPaths => {
@@ -480,7 +476,7 @@ const unreadableSubfolder = (dirPath: string, error: unknown): NestedPaths => {
   // Removed (or replaced by a file) since its parent was listed: nothing to read.
   if (code === "ENOENT" || code === "ENOTDIR") return [];
   const unreadable = new UnreadableFolderError(dirPath, error);
-  if (strictFolderReads ?? BascikConfig.isBuild) throw unreadable;
+  if (isStrictSourceRead()) throw unreadable;
   // The dev server scans the same folders on every rebuild: warn once per
   // folder until it is readable again.
   if (!warnedUnreadableFolders.has(unreadable.folder)) {

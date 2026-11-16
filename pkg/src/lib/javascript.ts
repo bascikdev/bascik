@@ -200,6 +200,10 @@ import {
 import type { BascikComponent } from "./types.ts";
 import { decodeSource } from "./source-text.ts";
 import {
+  forgetUnreadableSourceFile,
+  reportUnreadableSourceFile,
+} from "./unreadable-source.ts";
+import {
   createNamedOpenTagScanner,
   createOpenTagScanner,
   isRegexWhitespace,
@@ -1372,9 +1376,10 @@ export const getComponentScripts = async (
     try {
       code = decodeSource(await readFile(scriptPath));
     } catch (err) {
-      console.warn("warning: Failed to read script for %s", scriptPath, err);
+      reportUnreadableSourceFile("component script", scriptPath, err);
       continue;
     }
+    forgetUnreadableSourceFile(scriptPath);
     const relPath = relative(process.cwd(), scriptPath).replace(/\\/g, "/");
     // Referenced `.ts` browser scripts are transformed here, before scoping
     // and before any optional `minify.js` step, so raw TypeScript never

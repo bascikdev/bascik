@@ -49,6 +49,10 @@ const elementOpenTags = (
   });
 import type { BascikComponent } from "./types.ts";
 import { decodeSource, stripBom } from "./source-text.ts";
+import {
+  forgetUnreadableSourceFile,
+  reportUnreadableSourceFile,
+} from "./unreadable-source.ts";
 
 /**
  * The class Bascik generates for an element selector: `p { }` in component
@@ -1847,10 +1851,16 @@ export const getComponentCss = async (
     (cssFileName) => cssFileName.replace(/\.css$/, ".html") === htmlFileName,
   );
   if (!cssFileName) return;
+  let source: Buffer;
   try {
-    const raw = removeCommentsFromCss(
-      decodeSource(await readFile(cssFileName)),
-    );
+    source = await readFile(cssFileName);
+  } catch (error) {
+    reportUnreadableSourceFile("component stylesheet", cssFileName, error);
+    return;
+  }
+  forgetUnreadableSourceFile(cssFileName);
+  try {
+    const raw = removeCommentsFromCss(decodeSource(source));
     return await resolveCssImports(
       raw,
       cssFileName,

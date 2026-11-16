@@ -18,6 +18,10 @@ import {
 } from "./companion-scripts.ts";
 import { executeBuildScripts } from "./build-scripts.ts";
 import { deepReadDirFlat } from "./file-system.ts";
+import {
+  forgetUnreadableSourceFile,
+  reportUnreadableSourceFile,
+} from "./unreadable-source.ts";
 import { BascikConfig } from "./config.ts";
 import {
   collectCssClasses,
@@ -1201,10 +1205,11 @@ export const listComponents = async (
         // the user's source, not an I/O hiccup; surface it instead of shipping
         // the component without its script.
         if (e instanceof TypeScriptTransformError) throw e;
-        console.warn("warning: Failed to process %s", fileName, e);
         recordImportedStylesheets();
+        reportUnreadableSourceFile("component file", fileName, e);
         return {};
       }
+      forgetUnreadableSourceFile(fileName);
 
       const rawContent = decodeSource(fileContentBuffer);
       if (!rawContent.trim()) {
