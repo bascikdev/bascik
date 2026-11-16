@@ -495,6 +495,14 @@ describe("minifyJs – lines starting with ( or [ continue the expression (F037)
     ["an initializer on the next line", "var a = 1, b\n  = 2\nlog.push(a, b)"],
     ["a comma on the next line", "var a = 1, b\n  , c = 3\nlog.push(a, b, c)"],
     [
+      "an object key named const before a shorthand property",
+      "const v = 1, deprecated = 2\nconst o = { const: v, deprecated\n}\nlog.push(o.const, o.deprecated)",
+    ],
+    [
+      "object keys named var and let in a call",
+      "const f = (o) => o\nconst a = 1, b = 2\nlog.push(f({ var: a, b\n}).b, f({ let: 3, a\n}).a)",
+    ],
+    [
       "a destructuring pattern's names",
       "const o = { a: 1, b: [[6]] }, i = 0\nconst { a, b } = o\nlog.push(a, b\n[i])",
     ],
