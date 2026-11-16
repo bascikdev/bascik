@@ -1895,6 +1895,7 @@ describe("minifyJs – HTML-like comments", () => {
       "const s = '<!--', a = 1\r\nlet b, x\r\nx = a\r\n/* --> */\r\nb = 2\r\nlog.push(x, b)",
     ],
   ])("keeps %s holding an HTML marker", (_name, source) => {
+    // codeql[js/bad-tag-filter] Test assertion that the output still holds a marker, not an HTML filter.
     expect(expectSameProgram(source)).toMatch(/-->|<script>/);
   });
 
@@ -2327,6 +2328,7 @@ describe("minifyJs – HTML script markers written by joining", () => {
     ],
     ["a regex after <", "log.push(1 < /script>/.test('x'))"],
   ])("keeps %s apart", (_name, source) => {
+    // codeql[js/bad-tag-filter] Test assertion that joining wrote no marker, not an HTML filter.
     expect(expectSameProgram(source)).not.toMatch(/<script|-->|<\/script/i);
   });
 });
