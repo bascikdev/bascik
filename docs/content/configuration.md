@@ -58,7 +58,7 @@ Configuration errors in bascik.config.ts
 5 configuration errors
 ```
 
-Unknown keys are rejected with a "did you mean" suggestion when there is a near miss, so a typo like `minfy:`, `directroy:` or `security.blockScriptUrl` fails loudly instead of being silently ignored. Values are checked against their type as well: a setting that takes `true` or `false` rejects the string `"false"`, a section such as `generate` must be an object, and `scripts.cache` and each `pipeline.exec` entry's `watch`, `cwd`, `env`, `args`, and `timeout` must have the documented shape. Referenced paths (`directory.pages`, `pipeline.watchPaths`, `pipeline.exec[].script`, `assets.inlineStyles`, and TLS key/cert files when TLS is enabled) are checked for existence at startup. A missing `pipeline.exec[].cwd` is only a warning, since an earlier step may create it, and a `cwd` inside `directory.out` (a `post` script that runs in `dist/`) is not reported at all. The `base` option is normalized to a leading and trailing slash, so `docs`, `/docs`, and `/docs/` are all accepted. Use a literal path prefix without a query, fragment, percent escape, backslash, or `.` and `..` segments; full URLs are rejected too.
+Unknown keys are rejected with a "did you mean" suggestion when there is a near miss, so a typo like `minfy:`, `directroy:` or `security.blockScriptUrl` fails loudly instead of being silently ignored. Values are checked against their type as well: a setting that takes `true` or `false` rejects the string `"false"`, a section such as `generate` must be an object literal (a `Map`, `Date`, or class instance is rejected, because its settings would be ignored), a path setting such as `directory.out` or `scripts.importRoot` must not be blank, and `scripts.cache` and each `pipeline.exec` entry's `watch`, `cwd`, `env`, `args`, and `timeout` must have the documented shape. Referenced paths (`directory.pages`, `pipeline.watchPaths`, `pipeline.exec[].script`, `assets.inlineStyles`, and TLS key/cert files when TLS is enabled) are checked for existence at startup. A missing `pipeline.exec[].cwd` is only a warning, since an earlier step may create it, and a `cwd` inside `directory.out` (a `post` script that runs in `dist/`) is not reported at all. The `base` option is normalized to a leading and trailing slash, so `docs`, `/docs`, and `/docs/` are all accepted. Use a literal path prefix without a query, fragment, percent escape, backslash, or `.` and `..` segments; full URLs are rejected too.
 
 ## Create a Config Only for a Non-Default Requirement
 
@@ -265,7 +265,7 @@ Set the URL path where the built site will be mounted. The default `/` is a comp
 base: '/docs/',
 ```
 
-Bascik normalizes `docs`, `/docs`, and `/docs/` to `/docs/`. Nested paths such as `/products/docs` normalize to `/products/docs/`. An empty value is treated as `/`, while full URLs such as `https://example.com/docs` are rejected. Use `BASCIK_SITE_URL` for the origin instead.
+Bascik normalizes `docs`, `/docs`, and `/docs/` to `/docs/`. Nested paths such as `/products/docs` normalize to `/products/docs/`. An empty value is treated as `/`, a value of only spaces or with spaces around it is rejected, and full URLs such as `https://example.com/docs` are rejected. Use `BASCIK_SITE_URL` for the origin instead.
 
 For a non-root base, the build rewrites root-relative URLs in HTML URL attributes, `srcset`, inline and hoisted CSS, copied stylesheets, and web app manifest URL fields. Absolute URLs, protocol-relative URLs, other schemes, fragments, and already-relative paths remain unchanged. Serving the resulting site under this prefix is described in [Deployment Overview](/deployment).
 
@@ -641,7 +641,7 @@ export default defineConfig({
 });
 ```
 
-Unlike `directory.out`, the import root is read-only, so a value that resolves outside the project root is accepted. It must be a non-empty string; if the directory does not exist Bascik prints a warning at startup rather than an error, because a project with no shared helpers is valid. The import root directory is watched automatically in dev mode with `directory.pages` and `directory.components` excluded when nested inside it. See [Monorepos](/how-to/monorepos).
+Unlike `directory.out`, the import root is read-only, so a value that resolves outside the project root is accepted. It must not be a folder that contains the project, such as `..` or `/`: dev would watch every file under it, and `@/` would reach anything on the disk. It must be a non-empty string; if the directory does not exist Bascik prints a warning at startup rather than an error, because a project with no shared helpers is valid. The import root directory is watched automatically in dev mode with `directory.pages` and `directory.components` excluded when nested inside it. See [Monorepos](/how-to/monorepos).
 
 ### `scripts.stripAnsi`
 

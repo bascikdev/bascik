@@ -1939,6 +1939,91 @@ describe("error report formatting", () => {
   });
 });
 
+describe("sections that are not object literals, and blank paths", () => {
+  it.each([
+    ["scoping", new Map()],
+    ["directory", new Date(0)],
+    ["generate", /sitemap/],
+    ["http", new Set()],
+    ["logging", Object.create({ level: "info" })],
+  ])("rejects %s given a %o instead of an object literal", (section, value) => {
+    const errors = validateConfigShape({ [section]: value });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].key).toBe(section);
+    expect(errors[0].message).toMatch(/expected an object/);
+  });
+
+  it("names the class it received", () => {
+    const [error] = validateConfigShape({ scoping: new Map() });
+    expect(error.message).toContain("not a Map");
+  });
+
+  it("rejects a class instance one level down too", () => {
+    const errors = validateConfigShape({ scoping: { attributes: new Map() } });
+    expect(errors.map((e) => e.key)).toEqual(["scoping.attributes"]);
+  });
+
+  it("still accepts object literals, including Object.create(null)", () => {
+    const bare = Object.assign(Object.create(null), { sitemap: false });
+    expect(validateConfigShape({ generate: bare, scoping: {} })).toEqual([]);
+  });
+
+  it.each(["pages", "out", "api"])("rejects a blank directory.%s", (key) => {
+    for (const value of [" ", "\t", "  \n"]) {
+      const errors = validateConfigShape(
+        { directory: { [key]: value } },
+        { cwd: "/project" },
+      );
+      expect(errors.map((e) => e.key)).toEqual([`directory.${key}`]);
+      expect(errors[0].message).toContain("blank");
+    }
+  });
+
+  it("rejects a blank scripts.importRoot", () => {
+    const errors = validateConfigShape({ scripts: { importRoot: "  " } });
+    expect(errors.map((e) => e.key)).toEqual(["scripts.importRoot"]);
+  });
+
+  it.each([" ", "  ", " /docs/", "/docs/ "])(
+    "rejects a base that is blank or has surrounding spaces: %j",
+    (base) => {
+      const errors = validateConfigShape({ base });
+      expect(errors.map((e) => e.key)).toEqual(["base"]);
+    },
+  );
+
+  it("still accepts an empty base, which means the site root", () => {
+    expect(validateConfigShape({ base: "" })).toEqual([]);
+  });
+
+  it.each([
+    ["/", "/project"],
+    ["..", "/project"],
+    ["../..", "/work/project"],
+    ["/work", "/work/project"],
+  ])(
+    "rejects scripts.importRoot %j, which holds the whole project (cwd %s)",
+    (importRoot, cwd) => {
+      const errors = validateConfigShape({ scripts: { importRoot } }, { cwd });
+      expect(errors.map((e) => e.key)).toEqual(["scripts.importRoot"]);
+      expect(errors[0].message).toContain("contains the project");
+    },
+  );
+
+  it("still accepts a sibling import root and one inside the project", () => {
+    for (const importRoot of [
+      "../shared/scripts",
+      "src",
+      "./lib",
+      ".",
+      "/shared",
+    ])
+      expect(
+        validateConfigShape({ scripts: { importRoot } }, { cwd: "/project" }),
+      ).toEqual([]);
+  });
+});
+
 describe("valid config", () => {
   it("produces zero errors for a fully valid config", () => {
     const errors = validateUserConfig(

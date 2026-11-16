@@ -89,8 +89,32 @@ const MAX_TIMER_DELAY = 2 ** 31 - 1;
 /** One extension, dot optional: `.css` or `css`, never `*.css` or `a/b.css`. */
 const CACHE_CONTROL_EXTENSION = /^\.?[^./\\*?\s]+$/;
 
-const isPlainObject = (val: unknown): val is Record<string, unknown> =>
-  val !== null && typeof val === "object" && !Array.isArray(val);
+/**
+ * An object literal (or `Object.create(null)`). A Map, Date, RegExp or class
+ * instance is an object too, but its settings are not own keys, so the merge
+ * would drop the section's defaults and read none of its values.
+ */
+const isPlainObject = (val: unknown): val is Record<string, unknown> => {
+  if (val === null || typeof val !== "object" || Array.isArray(val))
+    return false;
+  const proto = Object.getPrototypeOf(val);
+  return proto === null || proto === Object.prototype;
+};
+
+/** "expected an object", naming the class of an object that is not a literal. */
+const expectedObjectMessage = (value: unknown, detail = ""): string => {
+  const base = `expected an object${detail}`;
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return base;
+  const name = (value as { constructor?: { name?: unknown } }).constructor
+    ?.name;
+  return typeof name === "string" && name && name !== "Object"
+    ? `${base} literal, not a ${name}`
+    : `${base} literal`;
+};
+
+/** A string that is empty or only whitespace, which names no path. */
+const isBlank = (value: string): boolean => value.trim() === "";
 
 /**
  * The built-in source and output folders. config.ts builds its defaults from
@@ -429,7 +453,7 @@ export const validateConfigShape = (
   for (const section of OBJECT_SECTIONS) {
     const value = raw[section];
     if (value !== undefined && !isPlainObject(value))
-      push(section, value, "expected an object");
+      push(section, value, expectedObjectMessage(value));
   }
   for (const [section, keys] of BOOLEAN_LEAVES) {
     const value = raw[section];
@@ -441,7 +465,7 @@ export const validateConfigShape = (
       push(
         "scoping.attributes",
         attributes,
-        "expected an object { class?, id?, name? }",
+        expectedObjectMessage(attributes, " { class?, id?, name? }"),
       );
     else
       validateBooleans(
@@ -459,6 +483,12 @@ export const validateConfigShape = (
       const value = dir[key];
       if (value !== undefined && typeof value !== "string") {
         push(`directory.${key}`, value, "expected a string path");
+      } else if (typeof value === "string" && isBlank(value)) {
+        push(
+          `directory.${key}`,
+          value,
+          "expected a directory path; the value is blank",
+        );
       }
     }
     // components accepts one root or many. Outside-project roots are a
@@ -500,7 +530,7 @@ export const validateConfigShape = (
         );
       }
     }
-    if (typeof dir.out === "string") {
+    if (typeof dir.out === "string" && !isBlank(dir.out)) {
       const root = resolve(cwd);
       const resolvedOut = resolve(cwd, dir.out);
       if (resolvedOut === root) {
@@ -794,15 +824,27 @@ export const validateConfigShape = (
     }
     // importRoot is read-only and may legitimately resolve outside the project
     // root (monorepo shared scripts), so there is deliberately no escape check
-    // here, unlike directory.out.
+    // here, unlike directory.out. A folder that holds the whole project (`..`,
+    // `/`) is another matter: dev watches every file under it, other sites
+    // and node_modules included, and `@/` would reach anything on the disk.
     if (scripts.importRoot !== undefined) {
       const importRoot = scripts.importRoot;
-      if (typeof importRoot !== "string" || importRoot.length === 0) {
+      if (typeof importRoot !== "string" || isBlank(importRoot)) {
         push(
           "scripts.importRoot",
           importRoot,
           'expected a non-empty directory path like "src"',
         );
+      } else {
+        const root = resolve(cwd);
+        const resolvedRoot = resolve(cwd, importRoot);
+        if (resolvedRoot !== root && isSameOrInside(root, resolvedRoot)) {
+          push(
+            "scripts.importRoot",
+            importRoot,
+            'resolves to a folder that contains the project; point it at the folder that holds your shared scripts, such as "src" or "../shared/scripts"',
+          );
+        }
       }
     }
     validateScriptsCache(scripts.cache, push);
@@ -1027,6 +1069,19 @@ export const validateConfigShape = (
     const base = raw.base;
     if (typeof base !== "string") {
       push("base", base, 'expected a root-relative path like "/docs/"');
+    } else if (base !== "" && isBlank(base)) {
+      // "" is documented as "/"; a value of only spaces is a mistake.
+      push(
+        "base",
+        base,
+        'expected a root-relative path like "/docs/"; the value is blank (use "/" for the site root)',
+      );
+    } else if (base !== base.trim()) {
+      push(
+        "base",
+        base,
+        'expected a root-relative path like "/docs/" without spaces around it',
+      );
     } else if (
       /^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)?\/\//.test(base) ||
       /^[a-zA-Z]:[\\/]/.test(base)
