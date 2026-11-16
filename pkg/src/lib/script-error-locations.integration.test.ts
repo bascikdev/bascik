@@ -631,7 +631,7 @@ describe.each([
         expect(response.status).toBe(status);
         await response.text();
         const header = `[bascik] server script error at "${path}":`;
-        await waitFor(new RegExp(header.replace(/[[\]()"/.]/g, "\\$&")));
+        await waitFor(new RegExp(RegExp.escape(header)));
         const source = PAGES[`src/pages/${file}` as keyof typeof PAGES];
         const report = reportFor(output, header);
         expect(report).toContain(NON_ERROR_DESCRIPTIONS[thrown]);
