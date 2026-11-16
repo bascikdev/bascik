@@ -1,4 +1,5 @@
 import { stat } from "node:fs/promises";
+import { listenError } from "./listen-errors.ts";
 import { liveReloadVersionOf } from "./live-reload.ts";
 import { pipeline } from "node:stream/promises";
 import http2 from "node:http2";
@@ -1538,7 +1539,7 @@ export const startServerInstance = async (
           : Promise.resolve();
         void release.then(() => {
           if (err.code === "EADDRINUSE") portInUse(p);
-          else reject(err);
+          else reject(listenError(err, p, hostname));
         });
       };
       server.once("error", errorHandler);
