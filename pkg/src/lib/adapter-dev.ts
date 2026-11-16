@@ -15,7 +15,7 @@ import { parseEnv } from "node:util";
 import type { CliFlags } from "./cli.ts";
 import { resolveAdapterTarget } from "./adapter-resolution.ts";
 import { availableDevPort } from "./adapter-dev-platform.ts";
-import { registerExitStopper } from "./exit-stoppers.ts";
+import { registerExitStopper, STOP_SIGNALS } from "./exit-stoppers.ts";
 import { isSameOrInside } from "./path-containment.ts";
 import {
   formatServerOrigin,
@@ -396,9 +396,7 @@ export const startAdapterDev = async (
     closing = true;
     clearInterval(heartbeat);
     clearTimeout(debounce);
-    process.off("SIGINT", onSignal);
-    process.off("SIGTERM", onSignal);
-    process.off("SIGHUP", onSignal);
+    for (const signal of STOP_SIGNALS) process.off(signal, onSignal);
     await watcher?.close();
     await Promise.all([stopAdapterChild(builder), stopAdapterChild(runtime)]);
     for (const client of clients) client.end();
@@ -577,9 +575,7 @@ export const startAdapterDev = async (
       report(error);
       void close();
     });
-    process.once("SIGINT", onSignal);
-    process.once("SIGTERM", onSignal);
-    process.once("SIGHUP", onSignal);
+    for (const signal of STOP_SIGNALS) process.once(signal, onSignal);
     registerExitStopper(() => (closing ? null : close()));
     const { watch } = await import("chokidar");
     watcher = watch(location.roots, {

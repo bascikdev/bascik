@@ -338,7 +338,7 @@ Over HTTPS (a TLS server, a `:scheme` of `https`, or `x-forwarded-proto: https` 
 
 ### Graceful shutdown sequence and health checks
 
-When receiving `SIGTERM`, `SIGINT` or `SIGHUP` (a supervisor or IDE that stops the server with `SIGHUP` gets the same graceful stop, and `pipeline.exec` children are stopped rather than orphaned):
+When receiving `SIGTERM`, `SIGINT` or `SIGHUP`, or on POSIX `SIGQUIT` or `SIGUSR2` (`STOP_SIGNALS` in `exit-stoppers.ts`; a supervisor or IDE that stops the server with `SIGHUP`, a Ctrl+\, or nodemon's `SIGUSR2` restart gets the same graceful stop, and `pipeline.exec` children are stopped rather than orphaned):
 
 1. Server health state changes to `draining`, causing `/_health` readiness checks to immediately return `503 Service Unavailable` while `/_health/live` continues returning `200 OK`.
 2. Idle keepalive connections are closed with `closeIdleConnections()`, and HTTP/2 sessions receive `session.close()` (GOAWAY) to prevent new streams without resetting active work.
@@ -465,7 +465,7 @@ For the full cross-subsystem time model, ownership boundaries, and deterministic
 
 ### Graceful shutdown
 
-The server registers signal handlers for `SIGTERM`, `SIGINT` and `SIGHUP` (the `--target` dev proxy handles `SIGHUP` too). Upon receiving a signal, it marks readiness as draining, stops accepting new connections, closes idle keepalive sockets, initiates graceful close on HTTP/2 sessions, and awaits registered cleanup handlers for resources such as watchers, exec children, and the SSE live-reload manager. Live-reload SSE streams are terminated immediately at signal time so open browser tabs do not delay shutdown. If all requests drain and cleanup succeeds before `http.timeouts.drain` (default 5000 ms), the process exits with code 0. If the deadline expires, Bascik force-destroys remaining sockets and sessions and exits with code 1.
+The server registers signal handlers for `SIGTERM`, `SIGINT` and `SIGHUP`, plus `SIGQUIT` and `SIGUSR2` outside Windows (the `--target` dev proxy handles the same set). A build, and a dev boot before its server is up, stop the `pipeline.exec` children on the same signals and then end with that signal (`exitOnSignalsAfterStopping`). Upon receiving a signal, it marks readiness as draining, stops accepting new connections, closes idle keepalive sockets, initiates graceful close on HTTP/2 sessions, and awaits registered cleanup handlers for resources such as watchers, exec children, and the SSE live-reload manager. Live-reload SSE streams are terminated immediately at signal time so open browser tabs do not delay shutdown. If all requests drain and cleanup succeeds before `http.timeouts.drain` (default 5000 ms), the process exits with code 0. If the deadline expires, Bascik force-destroys remaining sockets and sessions and exits with code 1.
 
 ## E2E Server Testing
 

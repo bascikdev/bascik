@@ -13,6 +13,8 @@
  * loading the compiler.
  */
 
+import os from "node:os";
+
 /**
  * Returns a promise while there is something to stop, `null` when there is
  * nothing (so an exit with nothing running stays synchronous).
@@ -146,23 +148,35 @@ export const exitAfterStopping = (
 };
 
 /**
- * Remove every SIGINT, SIGTERM and SIGHUP listener, so the next one of them
+ * The signals that end a process by default and that Bascik turns into a
+ * stop: SIGINT (Ctrl+C), SIGTERM, SIGHUP (a closed terminal, a supervisor),
+ * and, where the platform has them (not Windows), SIGQUIT (Ctrl+\\) and
+ * SIGUSR2 (nodemon's restart). Left to their default action they end Bascik
+ * at once and leave its `pipeline.exec` scripts running with no parent.
+ */
+export const STOP_SIGNALS: readonly NodeJS.Signals[] =
+  process.platform === "win32"
+    ? ["SIGINT", "SIGTERM", "SIGHUP"]
+    : ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT", "SIGUSR2"];
+
+/**
+ * Remove every listener for the `STOP_SIGNALS`, so the next one of them
  * ends the process at once with the signal's default action. For a process
  * that is already on its way out and only waiting for stoppers.
  */
 export const releaseSignals = (): void => {
-  process.removeAllListeners("SIGINT");
-  process.removeAllListeners("SIGTERM");
-  process.removeAllListeners("SIGHUP");
+  for (const signal of STOP_SIGNALS) process.removeAllListeners(signal);
 };
 
-const SIGNAL_EXIT_CODES = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 } as const;
+/** 128 + the signal's number: the status a shell reports for a death by it. */
+const signalExitCode = (signal: NodeJS.Signals): number =>
+  128 + (os.constants.signals[signal] ?? 0);
 
 let stopExitingOnSignals: (() => void) | undefined;
 
 /**
  * Until a server takes the signals over (`handOverSignals`), the first
- * SIGINT, SIGTERM or SIGHUP runs `stop` and then ends the process with that
+ * of the `STOP_SIGNALS` runs `stop` and then ends the process with that
  * same signal, as it would have ended without a listener.
  *
  * A build, and a dev boot before its server is up, have no server and so no
@@ -178,9 +192,7 @@ let stopExitingOnSignals: (() => void) | undefined;
  */
 export const exitOnSignalsAfterStopping = (stop: ExitStopper): void => {
   if (stopExitingOnSignals) return;
-  const listeners = (
-    Object.keys(SIGNAL_EXIT_CODES) as (keyof typeof SIGNAL_EXIT_CODES)[]
-  ).map((signal) => {
+  const listeners = STOP_SIGNALS.map((signal) => {
     const listener = () => {
       // No listener is left by the time this runs, so the signal takes its
       // default action.
@@ -199,7 +211,7 @@ export const exitOnSignalsAfterStopping = (stop: ExitStopper): void => {
         return;
       }
       // The code the process holds if it ends some other way first.
-      process.exitCode = SIGNAL_EXIT_CODES[signal];
+      process.exitCode = signalExitCode(signal);
       exiting = true;
       releaseSignals();
       quietStdout();

@@ -20,7 +20,7 @@ import {
   registerShutdownHandler,
   runShutdownHandlers,
 } from "./events.ts";
-import { handOverSignals } from "./exit-stoppers.ts";
+import { handOverSignals, STOP_SIGNALS } from "./exit-stoppers.ts";
 import { getHttpPath } from "./paths.ts";
 import { cspHeadersForPage } from "./csp-header-node.ts";
 import { MIME_MAP } from "./mime.ts";
@@ -1602,7 +1602,7 @@ export const startServerInstance = async (
   // General runtime error handler
   server.on("error", (error) => console.error(error));
 
-  // ── Graceful shutdown on SIGTERM / SIGINT / SIGHUP ───────────────────────
+  // ── Graceful shutdown on SIGTERM / SIGINT / SIGHUP / SIGQUIT / SIGUSR2 ──
   const drainTimeout =
     BascikConfig.http.timeouts?.drain ?? DEFAULT_DRAIN_TIMEOUT_MS;
 
@@ -1614,46 +1614,41 @@ export const startServerInstance = async (
     runShutdownHandlers,
   });
 
-  process.setMaxListeners(process.getMaxListeners() + 3);
+  process.setMaxListeners(process.getMaxListeners() + STOP_SIGNALS.length);
   // Each handler runs once, so a repeat of the same signal takes the
   // default action and ends the process at once. In dev the first signal
-  // also removes the other handler: any further Ctrl-C or SIGTERM ends the
+  // also removes the other handlers: any further Ctrl-C or SIGTERM ends the
   // process at once while the shutdown waits (for connections to drain, or
   // for page workers to finish loading). The production server keeps the
-  // other handler (a no-op once shutting down), so a process manager's
+  // other handlers (a no-op once shutting down), so a process manager's
   // SIGTERM after a Ctrl-C cannot cut the connection drain short.
+  // A supervisor or IDE that stops the server with SIGHUP, a Ctrl+\ (SIGQUIT)
+  // or nodemon's restart (SIGUSR2) signals only this process; by default it
+  // would die without running the exit stoppers and orphan pipeline.exec
+  // children (audit 159 finding 142). Each is treated as SIGTERM.
+  const shutdownHandlers = new Map(
+    STOP_SIGNALS.map((signal) => [
+      signal,
+      () => {
+        if (!BascikConfig.isProdServer) releaseShutdownSignals();
+        void gracefulShutdown(signal);
+      },
+    ]),
+  );
   const releaseShutdownSignals = () => {
-    process.removeListener("SIGTERM", sigtermHandler);
-    process.removeListener("SIGINT", sigintHandler);
-    process.removeListener("SIGHUP", sighupHandler);
-  };
-  const onFirstSignal = () => {
-    if (!BascikConfig.isProdServer) releaseShutdownSignals();
-  };
-  const sigtermHandler = () => {
-    onFirstSignal();
-    void gracefulShutdown("SIGTERM");
-  };
-  const sigintHandler = () => {
-    onFirstSignal();
-    void gracefulShutdown("SIGINT");
-  };
-  // A supervisor or IDE that stops the server with SIGHUP signals only this
-  // process; by default it would die without running the exit stoppers and
-  // orphan pipeline.exec children (audit 159 finding 142). Treat it as SIGTERM.
-  const sighupHandler = () => {
-    onFirstSignal();
-    void gracefulShutdown("SIGHUP");
+    for (const [signal, handler] of shutdownHandlers)
+      process.removeListener(signal, handler);
   };
   // The CLI's own listeners covered the time before this server existed.
   handOverSignals();
-  process.once("SIGTERM", sigtermHandler);
-  process.once("SIGINT", sigintHandler);
-  process.once("SIGHUP", sighupHandler);
+  for (const [signal, handler] of shutdownHandlers)
+    process.once(signal, handler);
 
   server.once("close", () => {
     releaseShutdownSignals();
-    process.setMaxListeners(Math.max(0, process.getMaxListeners() - 3));
+    process.setMaxListeners(
+      Math.max(0, process.getMaxListeners() - STOP_SIGNALS.length),
+    );
   });
 
   return origin;
