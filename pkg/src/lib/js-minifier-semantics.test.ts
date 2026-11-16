@@ -2109,3 +2109,76 @@ describe("minifyJs – await or yield at the end of a line", () => {
     );
   });
 });
+
+describe("minifyJs – a private name spelled like a keyword", () => {
+  // `#return`, `#typeof` and `#if` are names: none of them is the keyword it is spelled like.
+  const inClass = (members: string, body: string): string =>
+    `class A {\n  ${members}\n  m() {\n    ${body}\n  }\n}\nlog.push(new A().m())`;
+
+  it.each([
+    [
+      "#return before a call line",
+      inClass("#return = (v) => v + 1", "return this.#return\n(1)"),
+    ],
+    [
+      "#throw before a sign line",
+      inClass("#throw = 5", "const z = 1\nreturn this.#throw\n-z"),
+    ],
+    [
+      "#break before an index line",
+      inClass("#break = [2, 3]", "return this.#break\n[1]"),
+    ],
+    [
+      "#yield before a call line",
+      inClass("#yield = (v) => v * 2", "return this.#yield\n(4)"),
+    ],
+    [
+      "#return before a tagged template",
+      inClass("#return = (s) => s[0] + '!'", "return this.#return\n`t`"),
+    ],
+    [
+      "#typeof before a division and a comment",
+      inClass(
+        "#typeof = 8",
+        "const g = 2\nconst x = this.#typeof / 2 // c/d\nreturn x / g",
+      ),
+    ],
+    [
+      "#in before a division",
+      inClass("#in = 8", "const g = 2\nreturn this.#in / 2 / g"),
+    ],
+    [
+      "#if before a call line",
+      inClass(
+        "#if = (v) => v",
+        "const x = this.#if(1)\nconst y = 2\nreturn x + y",
+      ),
+    ],
+    [
+      "#let before an index line",
+      inClass("#let = [4, 5]", "const a = 1\nlet x = this.#let\n[a]\nreturn x"),
+    ],
+    [
+      "#class before a brace line",
+      inClass("#class = 6", "let x = this.#class\n{ x++ }\nreturn x"),
+    ],
+    [
+      "#function before a call line",
+      inClass("#function = () => 7", "return this.#function\n()"),
+    ],
+    [
+      "#return after a postfix update",
+      inClass("#return = 1", "this.#return++\nreturn this.#return"),
+    ],
+    [
+      "#static before a computed field",
+      "const k = 'key'\nclass A {\n  #static\n  [k] = 1\n  has() { return #static in this }\n}\nconst a = new A()\nlog.push(a.has(), a.key)",
+    ],
+    [
+      "#get before a computed field",
+      "const k = 'key'\nclass A {\n  #get\n  [k] = 2\n  has() { return #get in this }\n}\nconst a = new A()\nlog.push(a.has(), a.key)",
+    ],
+  ])("reads %s as a name", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
