@@ -368,6 +368,84 @@ describe("invokeWithDeadline", () => {
     expect(result.timedOut).toBe(false);
   });
 
+  // An abort reason is the caller's, not something the script threw, so it
+  // is never described as "The script threw ...".
+  it.each([
+    ["a string", "client went away", "client went away"],
+    ["a number", 42, "42"],
+    ["an object", { code: "SHUTDOWN" }, '{"code":"SHUTDOWN"}'],
+    ["null", null, "null"],
+  ])(
+    "an abort reason that is %s keeps its own message, before or during the call",
+    async (_label, reason, message) => {
+      const before = new AbortController();
+      before.abort(reason);
+      const preAborted = await invokeWithDeadline(() => "never", {
+        signal: before.signal,
+      });
+      const during = new AbortController();
+      const pending = invokeWithDeadline(() => new Promise<string>(() => {}), {
+        signal: during.signal,
+      });
+      during.abort(reason);
+      const midCall = await pending;
+      for (const result of [preAborted, midCall]) {
+        expect(result.ok).toBe(false);
+        expect(result.aborted).toBe(true);
+        expect(result.thrown).toBe(reason);
+        expect(result.error).toBeInstanceOf(Error);
+        expect(result.error?.message).toBe(message);
+        expect(result.error?.message).not.toContain("The script threw");
+      }
+    },
+  );
+
+  it("an Error abort reason is the error itself", async () => {
+    const reason = new Error("server shutting down");
+    const abort = new AbortController();
+    const pending = invokeWithDeadline(() => new Promise<string>(() => {}), {
+      signal: abort.signal,
+    });
+    abort.abort(reason);
+    const result = await pending;
+    expect(result.aborted).toBe(true);
+    expect(result.error).toBe(reason);
+  });
+
+  it("an abort with no reason reports the platform's AbortError", async () => {
+    const abort = new AbortController();
+    abort.abort();
+    const result = await invokeWithDeadline(() => "never", {
+      signal: abort.signal,
+    });
+    expect(result.aborted).toBe(true);
+    expect(result.error?.name).toBe("AbortError");
+    expect(result.error?.message).not.toContain("The script threw");
+  });
+
+  it("a script that throws a string is still described as a thrown non-Error", async () => {
+    const result = await invokeWithDeadline(() => {
+      throw "not found";
+    });
+    expect(result.aborted).toBe(false);
+    expect(result.error?.message).toMatch(
+      /^The script threw the string "not found", not an Error/,
+    );
+  });
+
+  it("a string a script throws before an abort is described as thrown, not as the abort", async () => {
+    const abort = new AbortController();
+    const result = await invokeWithDeadline(
+      () => Promise.reject("plain failure"),
+      { signal: abort.signal },
+    );
+    abort.abort("too late");
+    expect(result.aborted).toBe(false);
+    expect(result.error?.message).toMatch(
+      /^The script threw the string "plain failure"/,
+    );
+  });
+
   it("observes a late rejection after settlement without an unhandled rejection", async () => {
     let fire!: () => void;
     const clock = {

@@ -550,6 +550,30 @@ export interface InvokeResult<T> {
 // stack: one made here would show only Bascik's own frames.
 const toError = toThrownError;
 
+/**
+ * The Error for the reason a call was stopped with: a fired deadline, a
+ * client that went away, or an upstream signal's `abort(reason)`. That
+ * reason is the caller's, not something the script threw, so it keeps its
+ * own message instead of `toThrownError`'s "The script threw ...". A
+ * non-Error reason has no useful stack: the Error's stack is its message.
+ */
+const toAbortReasonError = (reason: unknown): Error => {
+  if (reason instanceof Error) return reason;
+  let message: string;
+  if (typeof reason === "string") message = reason;
+  else if (reason === undefined) message = "The script was aborted.";
+  else if (typeof reason === "object" && reason !== null) {
+    try {
+      message = JSON.stringify(reason) ?? String(reason);
+    } catch {
+      message = Object.prototype.toString.call(reason);
+    }
+  } else message = String(reason);
+  const error = new Error(message);
+  error.stack = message;
+  return error;
+};
+
 /** The message a timed-out server, stream or component script reports on every host. */
 export const scriptTimeoutError = (timeoutMs: number): Error =>
   new Error(`Script execution timed out after ${timeoutMs}ms`);
@@ -724,7 +748,9 @@ export const invokeLoadedWithDeadline = async <M, T>(
       abortedBeforeCall || (gate.decided && raw === signal.reason);
     return {
       ok: false,
-      error: toError(raw),
+      // The abort's reason is the caller's; only the script's own throw
+      // is described as one.
+      error: abortWon ? toAbortReasonError(raw) : toError(raw),
       thrown: raw,
       timedOut: abortWon && deadlineAborted,
       aborted: abortWon && !deadlineAborted,
