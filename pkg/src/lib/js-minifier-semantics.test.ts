@@ -1664,3 +1664,70 @@ describe("minifyJs – HTML-like comments", () => {
     expect(minifyJs("<!--\nx = 1\n//-->")).toBe("<!--\nx=1");
   });
 });
+
+describe("minifyJs – a name spelled like a keyword before a string line", () => {
+  // A string cannot continue a name, so the line break before it ends the statement: only a
+  // keyword that takes an operand (`typeof`, `in`, `else`) keeps the string on its line.
+  it.each([
+    [
+      "a name ending in else",
+      "const $else = 1\nlet x\nx = $else\n'y'.length\nlog.push(x)",
+    ],
+    [
+      "a name ending in typeof",
+      "const a$typeof = 1\nlet x\nx = a$typeof\n'y'\nlog.push(x)",
+    ],
+    ["a name ending in in", "const $in = 1\nlet x\nx = $in\n'y'\nlog.push(x)"],
+    [
+      "a variable named from",
+      "const from = 1\nlet x\nx = from\n'a'.trim()\nlog.push(x)",
+    ],
+    [
+      "a variable named of",
+      "const of = 2\nlet x\nx = of\n'a'.trim()\nlog.push(x)",
+    ],
+    [
+      "a variable named await",
+      "const await = 3\nlet x\nx = await\n'a'.trim()\nlog.push(x)",
+    ],
+    [
+      "a variable named from after a dynamic import",
+      "const from = 4, f = () => {}\nlet x\nf('a')\nx = from\n'y'\nlog.push(x)",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    ["for-of", "for (const c of\n'ab') log.push(c)"],
+    [
+      "a name ending in a keyword, then a division",
+      "const $return = 8, g = 2\nlog.push($return / 2 / g)",
+    ],
+    [
+      "a name ending in typeof, then a division",
+      "const a$typeof = 8, g = 2\nlog.push(a$typeof / 2 /g)",
+    ],
+    ["await in an async function", "(async () => { log.push(await\n'a') })()"],
+  ])("keeps %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // `new Function` bodies cannot hold module syntax, so these compare text.
+  it.each([
+    ["import a from\n'm'", "import a from'm'"],
+    ["export * from\n'm'", "export*from'm'"],
+    ["export { a as from } from\n'm'", "export{a as from}from'm'"],
+    ["import { from } from\n'm'", "import{from}from'm'"],
+    ["export default from\n'y'", "export default from;'y'"],
+    ["export const a = from\n'y'", "export const a=from;'y'"],
+  ])("reads `from` in %j", (source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
+  });
+
+  // `await` is an operator in a module or an async function and a name elsewhere, which the
+  // minifier does not track: the line break stays, so both read it as the source does.
+  it("keeps the line break between await and a string", () => {
+    expect(minifyJs("x = await\n'a'")).toBe("x=await\n'a'");
+  });
+});
