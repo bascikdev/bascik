@@ -72,7 +72,11 @@ export const startDevServer = (
     isDev: !BascikConfig.isBuild && !BascikConfig.isProdServer,
   });
   const url = startServer().catch((err) => {
-    console.error("Server startup failed:", err);
+    // A located error (a port that needs privileges, a host that is not
+    // this computer's) is its message; anything else keeps its stack.
+    if (err instanceof Error && err.message.startsWith("[bascik]"))
+      console.error(err.message);
+    else console.error("Server startup failed:", err);
     if (options.exitOnError !== false) {
       exitAfterStopping(1);
     }
