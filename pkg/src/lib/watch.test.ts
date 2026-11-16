@@ -192,6 +192,17 @@ vi.mock("node:fs", () => ({
   existsSync: mockExistsSync,
 }));
 
+// The pages folder is there unless a test says otherwise; its removal is
+// covered for real in dev-pages-folder-removed.integration.test.ts.
+const pagesRootMissing = vi.hoisted(() => vi.fn(() => false));
+vi.mock("./pages-root-removal.js", () => ({
+  createPagesRootRemoval: () => ({
+    root: "/project/src/pages",
+    isMissing: pagesRootMissing,
+    compileAtBoot: (compile: () => Promise<void>) => compile(),
+  }),
+}));
+
 vi.mock("./file-system.js", () => ({
   copyReplicatePath: mockCopyReplicatePath,
   copyStaticAssets: mockCopyStaticAssets,
@@ -532,6 +543,24 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
     const handler = getHandler(0, "unlinkDir");
     handler?.("/path/to/dir");
     expect(deleteDistDir).toHaveBeenCalledWith("/path/to/dir");
+  });
+
+  it("never deletes the output root when the pages folder itself is removed", async () => {
+    pagesRootMissing.mockReturnValue(true);
+    try {
+      const unlinkDir = getHandler(0, "unlinkDir");
+      unlinkDir?.("/project/src/pages");
+      await Promise.resolve();
+      expect(mockDeleteDistDir).not.toHaveBeenCalled();
+      expect(pagesRootMissing).toHaveBeenCalled();
+      // Nor do the rebuilds that follow try to read the missing folder.
+      vi.mocked(processAllPages).mockClear();
+      getHandler(1, "unlink")?.("/project/src/pages/index.html");
+      await new Promise((done) => setTimeout(done, 0));
+      expect(processAllPages).not.toHaveBeenCalled();
+    } finally {
+      pagesRootMissing.mockReturnValue(false);
+    }
   });
 
   it("rescans static assets when a removed directory is recreated", async () => {

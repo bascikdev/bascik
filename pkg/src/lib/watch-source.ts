@@ -25,6 +25,7 @@ import {
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { createSourceWatchIgnore, sourceWatchRoot } from "./watch-root.ts";
 import { privateDirFor } from "./private-dir.ts";
+import { createPagesRootRemoval } from "./pages-root-removal.ts";
 
 /** One filesystem observer owns source/exec overlap, including page edits.
  * Outputs are ignored unconditionally. No timestamp or self-write heuristic
@@ -43,7 +44,8 @@ export const watchSourceCycles = async (
         : [entry.watch]
       : [],
   );
-  const pagesRoot = resolve(BascikConfig.directory.pages);
+  const pagesRootRemoval = createPagesRootRemoval();
+  const pagesRoot = pagesRootRemoval.root;
   const componentRoots = BascikConfig.directory.components.map((root) =>
     resolve(root),
   );
@@ -162,7 +164,8 @@ export const watchSourceCycles = async (
                 pages.add(resolve(page));
             }
             if (kind === "unlinkDir") {
-              if (inPages) {
+              // The pages folder itself maps to the output root.
+              if (inPages && path !== pagesRoot) {
                 await deleteDistDir(path);
               }
               all = true;
@@ -205,9 +208,17 @@ export const watchSourceCycles = async (
               publish("asset-changed");
             }
           }
-          if (staticAssetsInvalidated) await copyStaticAssets();
-          if (all) await processAllPages();
-          else if (pages.size) await processPageBatch([...pages]);
+          // Nothing to compile from a removed pages folder, and a compile
+          // that started before it went fails on it: the warning says so.
+          if (pagesRootRemoval.isMissing()) return;
+          try {
+            if (staticAssetsInvalidated) await copyStaticAssets();
+            if (all) await processAllPages();
+            else if (pages.size) await processPageBatch([...pages]);
+          } catch (error) {
+            if (pagesRootRemoval.isMissing()) return;
+            throw error;
+          }
         },
         { onPageErrors: "throw" },
       ),
@@ -273,9 +284,10 @@ export const watchSourceCycles = async (
       });
     });
   });
-  const compileInitialSources = async (): Promise<void> => {
-    await Promise.all([copyStaticAssets(), processAllPages()]);
-  };
+  const compileInitialSources = (): Promise<void> =>
+    pagesRootRemoval.compileAtBoot(async () => {
+      await Promise.all([copyStaticAssets(), processAllPages()]);
+    });
   if (bootCompile) {
     await bootCompile(compileInitialSources);
   } else {

@@ -22,6 +22,7 @@ import {
   deleteDistDir,
   deleteDistFile,
 } from "./file-system.ts";
+import { createPagesRootRemoval } from "./pages-root-removal.ts";
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { clearBuildScriptCaches } from "./build-scripts.ts";
 import { BascikConfig, shouldLog } from "./config.ts";
@@ -87,7 +88,16 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
     return;
   }
 
+  // `rm -rf src/pages` while the dev server runs: said once, its rebuilds
+  // skipped, and the pages picked up again when the folder comes back.
+  const pagesRootRemoval = createPagesRootRemoval();
+  const pagesRoot = pagesRootRemoval.root;
+  const pagesRootIsMissing = pagesRootRemoval.isMissing;
+
   const onWatchError = (err: unknown) => {
+    // A rebuild that started before the folder went, and every one after,
+    // fails on the missing folder: the warning above says it once.
+    if (pagesRootIsMissing()) return;
     if (isLocatedBascikError(err)) console.error(err.message);
     // A page that failed on save (a half-written file with no <body>, say)
     // reads as it does at boot and in a build: the page and the reason.
@@ -119,7 +129,10 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
   // each of these events rebuilds every page. Run one rebuild at a time and
   // fold the events that arrive meanwhile into one more rebuild after it;
   // overlapping rebuilds of a large site ran out of file handles and memory.
-  const rebuildAllPages = coalesceRuns(() => processAllPages(), onWatchError);
+  const rebuildAllPages = coalesceRuns(
+    async () => (pagesRootIsMissing() ? undefined : processAllPages()),
+    onWatchError,
+  );
   // Request-time modules (`src=` server scripts, their helpers, API routes)
   // are imported by the runtime registry, not by the build, so the page
   // dependency graph knows nothing about them. Any file event under a watched
@@ -201,6 +214,13 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
       return Promise.resolve();
     };
     const handleUnlinkDir = (path: string): void => {
+      // Both watchers see the pages folder itself go. Its pages and files
+      // each get their own unlink, which clears their output; the folder
+      // maps to the output root, which must not be deleted.
+      if (resolve(path) === pagesRoot) {
+        pagesRootIsMissing();
+        return;
+      }
       deleteDistDir(path)
         .then(async () => {
           // When a directory is removed and immediately recreated, a delayed
@@ -295,7 +315,7 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
         })
         .on("unlinkDir", handleUnlinkDir)
         .on("addDir", () => {
-          if (!initialScanDone) return;
+          if (!initialScanDone || pagesRootIsMissing()) return;
           // An editor or test can replace a directory faster than Chokidar emits
           // unlinkDir, or create nested subdirectories before their file watches
           // attach. Always rescan static assets when a directory appears after boot.
@@ -307,7 +327,9 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
 
     // Transpile pages as they change
     compileInitialSources = async (): Promise<void> => {
-      await Promise.all([copyStaticAssets(), processAllPages()]);
+      await pagesRootRemoval.compileAtBoot(async () => {
+        await Promise.all([copyStaticAssets(), processAllPages()]);
+      });
       initialScanDone = true;
       if (!rebuildAfterBoot && pagesRemovedDuringBoot.size === 0) return;
       // The boot compile may have stored a removed page after its removal.

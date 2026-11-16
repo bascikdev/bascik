@@ -21,7 +21,7 @@ import {
   basename,
 } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { BascikConfig, shouldLog } from "./config.ts";
 import {
@@ -32,6 +32,7 @@ import {
 import { minifyCss } from "./css-minifier.ts";
 import { minifyJs } from "./js-minifier.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
+import { isNoSuchFileError } from "./fs-errors.ts";
 import { isStrictSourceRead } from "./unreadable-source.ts";
 import {
   isOpenFileLimitError,
@@ -382,7 +383,10 @@ export async function copyReplicatePath(
     // vanished from the manifest.
     await manifestCollector.recordFileFromDisk(destPath);
   } catch (err) {
-    console.error("Failed to copy file:", src, err);
+    // A source deleted since its folder was listed is the caller's to
+    // judge (the dev server skips it); anything else is printed here.
+    if (!(isNoSuchFileError(err) && !existsSync(src)))
+      console.error("Failed to copy file:", src, err);
     throw err;
   }
 }
@@ -593,18 +597,42 @@ export const deepReadDirFlat = async (
   return files.filter((filePath) => `${filePath}`.match(filter));
 };
 
+const copiedPageAssets = new Set<string>();
+
+/**
+ * The static assets under directory.pages the last copies wrote to the
+ * output directory, so the dev server can clear them when the whole pages
+ * folder is removed and no per-file event arrives.
+ */
+export const copiedPageAssetPaths = (): string[] => [...copiedPageAssets];
+
+export const forgetCopiedPageAsset = (filePath: string): void => {
+  copiedPageAssets.delete(filePath);
+};
+
 export const copyStaticAssets = async (): Promise<void> => {
   const pagesRoot = BascikConfig.directory.pages;
   const allPageFiles = await readPagesDirectory();
   const pageAssetFiles = allPageFiles.filter((filePath) =>
     isStaticAssetPath(filePath, pagesRoot, true),
   );
+  for (const filePath of pageAssetFiles) copiedPageAssets.add(filePath);
 
   await Promise.all(
     pageAssetFiles.map((filePath) =>
       withOpenFileSlot(() =>
         copyReplicatePath(filePath, BascikConfig.directory.out),
-      ),
+      ).catch((error: unknown) => {
+        // Deleted while the dev server was copying it (a folder being
+        // removed): its own unlink event clears it. A build has no such race.
+        if (
+          BascikConfig.isBuild ||
+          !isNoSuchFileError(error) ||
+          existsSync(filePath)
+        )
+          throw error;
+        copiedPageAssets.delete(filePath);
+      }),
     ),
   );
 };
