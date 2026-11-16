@@ -99,6 +99,17 @@ test("a preview removes the Stripe endpoints of closed pull requests before it a
   expect(deploy).toContain("pulls?state=open&per_page=100");
   expect(deploy).toContain("if (!openPulls.has(String(pr)))");
 });
+test("a preview reads every page of the account's databases and queues before it creates its own", () => {
+  // Each open pull request's preview has a database and two queues; reading
+  // only the first 100 made an existing queue look missing (HTTP 409).
+  const deploy = readFileSync("scripts/deploy-preview.ts", "utf8");
+  expect(deploy).toContain("per_page=100&page=${page}");
+  expect(deploy).toContain(
+    'cfList<{ name: string; uuid: string }>("d1/database")',
+  );
+  expect(deploy).toContain('cfList<{ queue_name: string }>("queues")');
+  expect(deploy).not.toMatch(/cf<[^>]*\[\]>\(\s*"(?:queues|d1\/database)\?/);
+});
 test("main deployments cannot be cancelled by a later main push", () => {
   const workflow = readFileSync("../.github/workflows/shop.yml", "utf8");
   expect(workflow).toContain(

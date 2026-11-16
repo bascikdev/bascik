@@ -94,20 +94,31 @@ async function cf<T>(path: string, data?: unknown) {
     throw new Error(`Cloudflare preview operation failed: ${path}`);
   return response.result;
 }
+// Every open pull request's preview has its own database and two queues, so
+// the account holds more than one page of each: read every page, or an
+// existing queue looks missing and creating it again answers HTTP 409.
+async function cfList<T>(path: string): Promise<T[]> {
+  const found: T[] = [];
+  for (let page = 1; ; ++page) {
+    const batch = await cf<T[]>(`${path}?per_page=100&page=${page}`);
+    found.push(...batch);
+    if (batch.length < 100) return found;
+    if (page === 100)
+      throw new Error(`Incomplete Cloudflare pagination: ${path}`);
+  }
+}
 const { subdomain } = await cf<{ subdomain: string }>("workers/subdomain");
 if (!subdomain || !/^[a-z0-9-]+$/.test(subdomain))
   throw new Error("Cloudflare Workers subdomain is not configured.");
 const origin = `https://${name}.${subdomain}.workers.dev`;
-const dbs = await cf<{ name: string; uuid: string }[]>(
-  "d1/database?per_page=100",
-);
+const dbs = await cfList<{ name: string; uuid: string }>("d1/database");
 const dbName = `${name}-db`;
 let db = dbs.find((entry) => entry.name === dbName);
 if (!db)
   db = await cf<{ name: string; uuid: string }>("d1/database", {
     name: dbName,
   });
-const queues = await cf<{ queue_name: string }[]>("queues?per_page=100");
+const queues = await cfList<{ queue_name: string }>("queues");
 for (const queue_name of [`${name}-dead`, `${name}-jobs`])
   if (!queues.some((entry) => entry.queue_name === queue_name))
     await cf("queues", { queue_name });
