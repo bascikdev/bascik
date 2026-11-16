@@ -242,7 +242,7 @@ Like build scripts, server scripts export a default function; it receives the re
 
 ### `[bascik] server script error at "/pricing":`
 
-The handler threw during a request. Under the default `scripts.onServerScriptError: 'error'` the response is a 500; `'warn'` logs and renders an empty section; `'ignore'` renders the empty section silently. The stack is remapped to the component or page file. See [Rules and Behavior](/scripts/server#rules-and-behavior).
+The handler threw during a request. Under the default `scripts.onServerScriptError: 'error'` the response is a 500; `'warn'` logs and renders an empty section; `'ignore'` renders the empty section silently. The stack is remapped to the component or page file. A script that throws something other than an `Error` (`throw "not found"`, `throw null`, `Promise.reject()`) has no stack, so the report says `The script threw the string "not found", not an Error` and names the file and line where the script starts; throw `new Error("...")` to get the exact line. See [Rules and Behavior](/scripts/server#rules-and-behavior).
 
 ### `Script execution timed out` on a request
 
