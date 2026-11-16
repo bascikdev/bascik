@@ -779,6 +779,14 @@ export const createRequestHandler = () => {
       // A page name can hold a dot too (`release-1.0.html`, a `[version]`
       // route of `v2.0`, the folder `v1.2/`): when no file has the path and a
       // page does, the request leaves this block for the page lookup.
+      // During the dev server's first compile the page may not be in memory
+      // yet, so a dotted path with no file and no known file type goes to the
+      // page lookup too, which serves the boot page (a missing `.png` stays a
+      // 404). The boot page reloads into a 404 if no page lands there.
+      const mayBeBootingPage =
+        !BascikConfig.isProdServer &&
+        (mem.isBooting || Boolean(getBootFailure())) &&
+        !MIME_MAP.has(ext);
       staticAsset: if (
         ext &&
         !ext.match(/^\.htm.*$/) &&
@@ -829,7 +837,10 @@ export const createRequestHandler = () => {
         try {
           fileStat = await stat(fullPath);
         } catch (err) {
-          if (isNoSuchFileError(err) && mem.getPageExact(pathname))
+          if (
+            isNoSuchFileError(err) &&
+            (mayBeBootingPage || mem.getPageExact(pathname))
+          )
             break staticAsset;
           responseStatus = isNoSuchFileError(err) ? 404 : 500;
           res.respond(responseStatus, {
@@ -1208,6 +1219,7 @@ export const createRequestHandler = () => {
 
       if (
         !exactPage &&
+        !mayBeBootingPage &&
         pathname.split(".").length > 1 &&
         !/\.html?$/i.test(pathname)
       ) {
