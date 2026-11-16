@@ -292,6 +292,26 @@ describe("extractScriptTags", () => {
     );
   });
 
+  it.each([
+    // The property test's counterexample (seed 399778186): `\f</` is moved
+    // before the table whole; split by the scripts, `\f` alone would stay in it.
+    "<table><script>a()</script>\f</",
+    "<table><script>a()</script>\f</x",
+    "<table><tr><td>a</td></tr><script>a()</script>\f\f</",
+    "<table><script>a()</script>\fb\f</",
+  ])(
+    "keeps text in a table together when the document ends inside markup after it: %j",
+    (html) => {
+      expectSameParse(html);
+    },
+  );
+
+  it("still appends hoisted scripts after text that ends a table document", () => {
+    expect(expectSameParse("<table><script>a()</script>\fx")).toBe(
+      "<table><!---->\fx\n<script>a()</script>",
+    );
+  });
+
   it("never changes what the browser builds or which scripts can run, on random malformed markup", () => {
     // parse5 is the oracle: structure, text, and the set of scripts that can
     // run must match before and after. A joined script, a script hoisted into
