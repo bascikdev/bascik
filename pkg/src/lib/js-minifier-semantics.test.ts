@@ -1856,3 +1856,74 @@ describe("minifyJs – a get, set or static modifier before a string-named membe
     expectSameProgram(withShape(source));
   });
 });
+
+describe("minifyJs – an import or export clause continued on the next line", () => {
+  // In a module, `from` after an import or export clause and `with` after its module
+  // specifier continue the declaration across a line break. `new Function` bodies cannot
+  // hold module syntax, so these compare text; each expected output parses as a module.
+  it.each([
+    ["import { a }\nfrom 'm'", "import{a}from'm'"],
+    ["import { a }\nfrom\n'm'", "import{a}from'm'"],
+    ["import a\nfrom 'm'", "import a from'm'"],
+    ["import * as a\nfrom 'm'", "import*as a from'm'"],
+    ["import a, { b }\nfrom 'm'", "import a,{b}from'm'"],
+    ["import {}\nfrom 'm'", "import{}from'm'"],
+    ["export { a }\nfrom 'm'", "export{a}from'm'"],
+    ["export { a as of }\nfrom\n'm'", "export{a as of}from'm'"],
+    ["export * as a\nfrom 'm'", "export*as a from'm'"],
+    ["export { 'a b' as c }\nfrom 'm'", "export{'a b'as c}from'm'"],
+    [
+      "import a from 'm.json'\nwith { type: 'json' }",
+      "import a from'm.json'with{type:'json'}",
+    ],
+    [
+      "import { a }\nfrom 'm.json'\nwith { type: 'json' }\na()",
+      "import{a}from'm.json'with{type:'json'};a()",
+    ],
+    [
+      "export { a } from 'm.json'\nwith { type: 'json' }",
+      "export{a}from'm.json'with{type:'json'}",
+    ],
+    ["import 'm.css'\nwith { type: 'css' }", "import'm.css'with{type:'css'}"],
+  ])("joins %j", (source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
+  });
+
+  // Outside a clause, `from` is a name and `with` a statement, so the line break still ends
+  // the statement before them.
+  it.each([
+    [
+      "a variable named from after an export",
+      "export { a }\nlet from = 1\nfrom\n'x'.length",
+      "export{a};let from=1;from;'x'.length",
+    ],
+    [
+      "a variable named from after a dynamic import",
+      "import('m')\nfrom\n'x'.length",
+      "import('m');from;'x'.length",
+    ],
+    [
+      "a variable named from after import.meta",
+      "import.meta\nfrom\n'x'.length",
+      "import.meta;from;'x'.length",
+    ],
+    [
+      "a with statement after a string",
+      "x = 'a'\nwith (o) f()",
+      "x='a';with(o)f()",
+    ],
+    [
+      "a with statement after a module specifier and a semicolon",
+      "import 'm';\nwith (o) f()",
+      "import'm';with(o)f()",
+    ],
+  ])("keeps %s apart", (_name, source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
+  });
+
+  it("keeps a classic script's with statement after a string apart", () => {
+    expectSameProgram(
+      "const o = { a: 1 }\nlet x = 'a'\nwith (o) x = a\nlog.push(x)",
+    );
+  });
+});
