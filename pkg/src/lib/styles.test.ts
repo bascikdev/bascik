@@ -344,6 +344,55 @@ describe("prefixKeyframes", () => {
     expect(result).toContain(`@keyframes ${scoped}`);
     expect(result).toContain(`animation: ${scoped} 1s`);
   });
+
+  // `-webkit-animation: k` names the keyframes `@-webkit-keyframes k`
+  // declares; renaming one without the other breaks the animation in
+  // browsers that read only the prefixed rules.
+  it("scopes a vendor-prefixed @keyframes name with its references", () => {
+    const scoped = "bascik__my-comp__keyframe__spin";
+    const result = prefixKeyframes(
+      "@-webkit-keyframes spin { from { opacity: 0; } }\n" +
+        ".box { -webkit-animation: spin 1s; animation-name: spin; }",
+      "my-comp",
+    );
+    expect(result).toContain(`@-webkit-keyframes ${scoped} {`);
+    expect(result).toContain(`-webkit-animation: ${scoped} 1s`);
+    expect(result).toContain(`animation-name: ${scoped}`);
+    expect(getKeyframeNames("@-moz-keyframes fade{to{opacity:0}}")).toEqual([
+      "fade",
+    ]);
+  });
+
+  it("scopes the prefixed and unprefixed rules of one animation to one name", () => {
+    const result = prefixKeyframes(
+      "@-webkit-keyframes spin { to { opacity: 0; } }\n" +
+        "@keyframes spin { to { opacity: 0; } }\n" +
+        ".box { -webkit-animation: spin 1s; animation: spin 1s; }",
+      "my-comp",
+    );
+    expect(result).not.toMatch(/\bspin\b(?!__)/);
+    expect(result.match(/bascik__my-comp__keyframe__spin/g)).toHaveLength(4);
+    // A name that only looks like a prefix is left alone.
+    expect(getKeyframeNames("@webkit-keyframes x{} @-keyframes y{}")).toBe(
+      null,
+    );
+    // An at-rule name is ASCII case-insensitive.
+    expect(getKeyframeNames("@-WebKit-KeyFrames a{} @KeyFrames b{}")).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  it("scopes a vendor-prefixed @keyframes in a component style tag", () => {
+    const { html } = scopeInlineStyleTags(
+      '<style>@-webkit-keyframes spin { from { opacity: 0; } to { opacity: 1; } }\n.a { -webkit-animation: spin 1s; }</style><p class="a">x</p>',
+      "c",
+    );
+    expect(html).toContain("@-webkit-keyframes bascik__c__keyframe__spin {");
+    expect(html).toContain("-webkit-animation: bascik__c__keyframe__spin 1s");
+    // Keyframe stops are not element selectors.
+    expect(html).toContain("from { opacity: 0; }");
+  });
 });
 
 describe("removeIdSelectors", () => {
