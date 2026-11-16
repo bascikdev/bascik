@@ -17,7 +17,7 @@ describe("describeNonErrorThrow", () => {
     [10n, "the bigint 10"],
   ])("names what was thrown: %s", (value, shown) => {
     expect(describeNonErrorThrow(value)).toBe(
-      `The script threw ${shown}, not an Error, so there is no stack trace with its line. Throw an Error instead: throw new Error("...").`,
+      `The script threw ${shown}, not an Error, so it has no stack trace. bascik --check and the editor mark the line of a throw or reject like this one (rule throw-non-error).`,
     );
   });
 

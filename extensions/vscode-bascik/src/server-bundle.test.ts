@@ -176,6 +176,15 @@ describe("the bundled language server", () => {
     );
   });
 
+  it("reports throw-non-error from the bundled server", async () => {
+    const diagnostics = await diagnosticsFor(
+      "src/pages/books.html",
+      "html",
+      '<script data-bascik-server>\nexport default async () => {\n  throw "not found";\n};\n</script>',
+    );
+    expect(diagnostics.map((d) => d.code)).toContain("throw-non-error");
+  });
+
   it("answers Find All References for a component", async () => {
     // A nested project of its own, so its snapshot is built after these files exist.
     const refs = join(project, "refs");

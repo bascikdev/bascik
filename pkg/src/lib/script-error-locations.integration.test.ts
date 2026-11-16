@@ -474,11 +474,13 @@ const throwingPage = (directive: string, statement: string): string =>
     "Throws",
     `    <script ${directive}>\n      export default ${directive === "data-bascik-stream" ? "async function* ()" : "() =>"} {\n        ${directive === "data-bascik-stream" ? 'yield "<p>a</p>";\n        ' : ""}${statement}\n      };\n    </script>`,
   );
+// The whole sentence, so the copy the build runner embeds is checked too.
+const NOT_AN_ERROR =
+  ", not an Error, so it has no stack trace. bascik --check and the editor mark the line of a throw or reject like this one (rule throw-non-error).";
 const NON_ERROR_DESCRIPTIONS = {
-  string: 'The script threw the string "just a string", not an Error',
-  null: "The script threw null, not an Error",
-  empty:
-    "The script threw undefined (or rejected with no reason), not an Error",
+  string: `The script threw the string "just a string"${NOT_AN_ERROR}`,
+  null: `The script threw null${NOT_AN_ERROR}`,
+  empty: `The script threw undefined (or rejected with no reason)${NOT_AN_ERROR}`,
 };
 
 describe("build-time scripts that throw a non-Error (real `bascik --build`)", () => {

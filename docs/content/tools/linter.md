@@ -93,7 +93,7 @@ Two rules are fixable:
 - `missing-prop-prefix`: `<my-card title="Hello">` becomes `<my-card data-bascik-prop-title="Hello">` when `title` is a declared prop of `my-card`.
 - `prefer-self-closing-component`: `<zero-slot-comp></zero-slot-comp>` becomes `<zero-slot-comp />` when the component has no slots.
 
-In VS Code, the same two fixes appear as Quick Fixes (`Cmd+.` or `Ctrl+.`) on the warning. `bascik --check --fix` applies exactly the same fixes, by calling this tool, so either command works in a pre-commit hook. The editor also offers **Wrap template in html\`...\`** for [`server-script-unescaped-markup`](#server-script-unescaped-markup), which `--fix` never applies (see below).
+In VS Code, the same two fixes appear as Quick Fixes (`Cmd+.` or `Ctrl+.`) on the warning. `bascik --check --fix` applies exactly the same fixes, by calling this tool, so either command works in a pre-commit hook. The editor also offers **Wrap template in html\`...\`** for [`server-script-unescaped-markup`](#server-script-unescaped-markup) and **Wrap in new Error(...)** for [`throw-non-error`](#throw-non-error), which `--fix` never applies (see below).
 
 ### `css-unbalanced-braces`
 
@@ -208,6 +208,25 @@ It finds a `.replace()` or `.replaceAll()` chain, a `.split("<").join("&lt;")` c
 The quick fix **Make escapeHtml() call esc() from @bascik/bascik/html** is offered when the escaper has one plain parameter and is one `return` (or an arrow's expression) of that parameter (or `String(value)`, `(value ?? "")`) followed only by `.replace()` or `.replaceAll()` calls that write entities: the body becomes `return esc(value);` and `esc` is imported (as `escapeValue` when the escaper is itself `esc`). Callers keep working. An escaper that does more (turns newlines into `<br>`, trims, adds text) does not get it, since `esc` would drop that. Other escapers get **Import html from @bascik/bascik/html to build markup safely**, which only adds the import.
 
 A template that calls the escaper is reported by `server-script-unescaped-markup` with the longer hand-written escaper message, so the two rules point at both ends: build the template with `html` and pass the value as it is.
+
+### `throw-non-error`
+
+Only an `Error` carries a stack trace. When a script that runs in Node throws a string, `null`, or an object literal, or rejects with one, Bascik's error report can say what was thrown and where the script starts, but not which line threw it. The linter warns on the value instead, while you write the code, in every directive script (`data-bascik-server`, `data-bascik-stream`, `data-bascik-build`, `data-bascik-build-once` and `data-bascik-routes`), in API routes, and in the `.ts` and `.js` modules they run in Node (see [`server-script-unescaped-markup`](#server-script-unescaped-markup) for which files count):
+
+```text
+src/pages/book.html:11:28 - warning: (throw-non-error) Throw an Error, not a string: throw new Error("Book not found"). Only an Error carries a stack trace, so without one Bascik's error report cannot name this line.
+src/lib/books.ts:4:17 - warning: (throw-non-error) Pass Promise.reject() an Error: Promise.reject(new Error("...")). A rejection with no reason has no stack trace, so Bascik's error report cannot name this line.
+```
+
+It is the same idea as ESLint's [`no-throw-literal`](https://eslint.org/docs/latest/rules/no-throw-literal) and [`prefer-promise-reject-errors`](https://eslint.org/docs/latest/rules/prefer-promise-reject-errors), read from the code alone, with no type checker. It reports:
+
+- `throw` with a value that can never be an `Error`: a string, number, bigint, boolean, `null` or regular expression literal, a template literal, `undefined`, an object or array literal, a function, `void x`, `typeof x`, `!x`, arithmetic, a comparison, or a concatenation such as `"Book " + id + " not found"`. A cast changes no value, so `"x" as unknown as Error` is still a string;
+- `Promise.reject()` with such a value, or with no value at all;
+- the reject parameter of a `new Promise((resolve, reject) => ...)` executor called the same way (`reject("timeout")`, `reject()`), when the executor's body never declares that name again.
+
+A value that could be an `Error` is never reported: a name (`throw err`, a rethrow in a `catch`), `new HttpError(404)`, a call (`throw makeError()`), a member (`throw result.error`), `await`, or a conditional or `||` with an `Error` in any branch (`throw ok ? "fine" : new Error("x")`). The word `throw` in strings, comments, template text and regular expressions, a generator's `.throw("x")`, a property or method named `throw`, and TypeScript members named `throw` are not throws. Browser scripts are not checked: a browser names the line of an uncaught value itself. Code the rule cannot read for certain, such as a half-typed expression, is not reported.
+
+The quick fix **Wrap in new Error(...)** is offered on a string or template literal: `throw "Book not found"` becomes `throw new Error("Book not found")`, and `Promise.reject("gone")` becomes `Promise.reject(new Error("gone"))`. `bascik --check --fix` does not apply it, since code that catches the value and compares it to the string would change. Silence the rule with `// bascik-ignore throw-non-error` on the line above, or `"disabledRules": ["throw-non-error"]` in `bascik.ext.json`.
 
 ### `shared-name-group`
 
@@ -392,7 +411,7 @@ To configure diagnostics project-wide, create a `bascik.ext.json` or `bascik.ext
 
 A `bascik.ext.ts` or `bascik.ext.js` is read without running it, so it holds literal values only: `export default { ... }` (with `satisfies` after it if you like), `const config: BascikExtensionConfig = { ... }; export default config;`, or `module.exports = { ... }`. The first of these files present is the config. When it cannot be read (invalid JSON, a computed value, no default export, or a file the editor may not open), the language server ignores it, without falling back to the next name, and logs the file, line, and reason to the **Bascik** output panel, or to the terminal under `--check`.
 
-`serverScriptRules: false` turns off every rule for directive scripts and the modules they run in Node, `hand-written-html-escaper` included. `escapeFunctions` lists a project's own escaping functions, which `server-script-unescaped-markup` then trusts like `esc()`; their definitions are still reported by `hand-written-html-escaper` (add it to `disabledRules`, or a `bascik-ignore` comment above the function, to keep one).
+`serverScriptRules: false` turns off every rule for directive scripts and the modules they run in Node, `hand-written-html-escaper` and `throw-non-error` included. `escapeFunctions` lists a project's own escaping functions, which `server-script-unescaped-markup` then trusts like `esc()`; their definitions are still reported by `hand-written-html-escaper` (add it to `disabledRules`, or a `bascik-ignore` comment above the function, to keep one).
 
 ---
 

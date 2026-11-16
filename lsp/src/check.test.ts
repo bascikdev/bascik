@@ -119,6 +119,69 @@ describe("checkFiles", () => {
     ).toEqual([]);
   });
 
+  it("reports throw-non-error in directive scripts, the modules they import and API routes, not in browser scripts, and never fixes it", async () => {
+    write(
+      "src/pages/index.html",
+      [
+        "<main>",
+        "  <script data-bascik-build>",
+        '    import { loadBooks } from "../lib/books.ts";',
+        "    export default async () => {",
+        "      const books = await loadBooks();",
+        '      if (books.length === 0) throw "no books";',
+        "      return books.join('');",
+        "    };",
+        "  </script>",
+        '  <script>if (!window.fetch) throw "browser";</script>',
+        "</main>",
+        "",
+      ].join("\n"),
+    );
+    write(
+      "src/lib/books.ts",
+      "export const loadBooks = async (): Promise<string[]> =>\n  Promise.reject({ status: 503 });\n",
+    );
+    write(
+      "server/routes/books.ts",
+      "export const GET = () => {\n  throw null;\n};\n",
+    );
+    const result = await checkFiles({
+      cwd: root,
+      targets: ["src/pages", "server"],
+      fix: true,
+    });
+    const found = result.diagnostics
+      .filter((d) => d.code === "throw-non-error")
+      .sort((a, b) => a.filePath.localeCompare(b.filePath));
+    expect(
+      found.map((d) => [d.filePath, d.line, d.column, d.severity]),
+    ).toEqual([
+      [path.join("server", "routes", "books.ts"), 2, 9, "warning"],
+      [path.join("src", "lib", "books.ts"), 2, 18, "warning"],
+      [path.join("src", "pages", "index.html"), 6, 37, "warning"],
+    ]);
+    expect(formatDiagnostic(found[2], false)).toBe(
+      `${path.join("src", "pages", "index.html")}:6:37 - warning: (throw-non-error) Throw an Error, not a string: throw new Error("no books"). Only an Error carries a stack trace, so without one Bascik's error report cannot name this line.`,
+    );
+    // --fix leaves it alone: code that catches the string would change.
+    expect(result.fixedFiles).toEqual([]);
+    expect(
+      fs.readFileSync(path.join(root, "src/pages/index.html"), "utf8"),
+    ).toContain('throw "no books"');
+
+    write(
+      "bascik.ext.json",
+      JSON.stringify({ diagnostics: { disabledRules: ["throw-non-error"] } }),
+    );
+    const disabled = await checkFiles({
+      cwd: root,
+      targets: ["src/pages", "server"],
+    });
+    expect(
+      disabled.diagnostics.filter((d) => d.code === "throw-non-error"),
+    ).toEqual([]);
+  });
+
   it("writes the fixes that have one correct answer and reports only what remains", async () => {
     write(
       "src/components/my-card.html",
