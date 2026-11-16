@@ -259,6 +259,13 @@ describe("scanHtml", () => {
       ).toEqual(["<!-- svg comment -->", "<!-- after -->"]);
     });
 
+    it("reads `<![CDATA[` directly in an integration point as a bogus comment and keeps scanning", () => {
+      for (const point of ["<svg><title>", "<svg><desc>", "<math><mi>"]) {
+        const html = `${point}<![CDATA[a]]><script>x()</script>`;
+        expect(scan(html).stoppedAt).toBe(html.length);
+      }
+    });
+
     it("leaves foreign content at breakout tags", () => {
       const html = "<svg><g><p><script>a()</script>";
       expect(ordinaryScripts(html)).toEqual(["<script>a()</script>"]);

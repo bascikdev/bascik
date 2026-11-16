@@ -1439,13 +1439,13 @@ export const scanHtml = (
       if (
         current &&
         current.namespace !== "html" &&
+        current.integrationPoint === NOT_AN_INTEGRATION_POINT &&
         html.startsWith("[CDATA[", start + 2)
       ) {
-        // Parsers disagree on CDATA directly inside an integration point
-        // (`<svg><title><![CDATA[`), so the scan stops there.
-        if (current.integrationPoint !== NOT_AN_INTEGRATION_POINT)
-          return giveUpAt(start);
-        // A CDATA section is text in foreign content.
+        // A CDATA section is text in foreign content. Directly inside an
+        // integration point (`<svg><title><![CDATA[`, `<math><mi>`) Blink,
+        // Gecko and parse5 allow no CDATA section, so `<![CDATA[` starts a
+        // bogus comment that ends at the first `>`, as in HTML content below.
         const close = html.indexOf("]]>", start + 9);
         if (close === -1) return endAt(start);
         emitMarkup("markup", start, close + 3);
@@ -1537,7 +1537,8 @@ export const scanHtmlComments = (html: string): HtmlRange[] =>
  * is no element and must not be rewritten. In HTML content `<![CDATA[` starts
  * a bogus comment that ends at the first `>`, which is a markup token the
  * rewriting passes already skip. A CDATA section inside an SVG `<script>` or
- * `<style>` is that element's code and is not reported.
+ * `<style>` is that element's code and is not reported. A CDATA section the
+ * input ends inside is reported to the end, as an unclosed comment is.
  */
 export const scanHtmlCommentsAndCdata = (html: string): HtmlRange[] =>
   scanCommentsAndCdata(html, html.includes("<![CDATA["));
@@ -1555,8 +1556,9 @@ const scanCommentsAndCdata = (html: string, cdata: boolean): HtmlRange[] => {
         ? ({ kind, name, start, end, inForeign, inForeignCode }) => {
             if (
               cdata &&
-              kind === "markup" &&
-              inForeign &&
+              // An unparsed token here is a CDATA section or bogus comment
+              // the input ends inside: text or a comment to the end.
+              ((kind === "markup" && inForeign) || kind === "unparsed") &&
               !inForeignCode &&
               html.startsWith("<![CDATA[", start)
             ) {
