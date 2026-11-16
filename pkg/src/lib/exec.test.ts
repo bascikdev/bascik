@@ -15,6 +15,7 @@ const {
   const makeProcess = () => {
     const handlers: Record<string, ((...args: unknown[]) => void)[]> = {};
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
         handlers[event] = handlers[event] || [];
@@ -238,6 +239,7 @@ describe("runExecPhase", () => {
   it("names the signal, not 'code null', when a script is killed", async () => {
     mockSpawn.mockImplementationOnce((() => {
       const proc = {
+        pid: 4100,
         kill: vi.fn(),
         on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
           if (event === "close")
@@ -509,6 +511,7 @@ describe("startExecDev", () => {
     const closes: ((code: number) => void)[] = [];
     mockSpawn.mockImplementation(() => {
       const child = {
+        pid: 4100,
         kill: vi.fn(),
         on: vi.fn((event: string, callback: (...args: unknown[]) => void) => {
           if (event === "close") closes.push((code) => callback(code));
@@ -658,6 +661,7 @@ describe("startExecDev", () => {
 
   it("names the missing working directory instead of the Node binary when cwd does not exist", async () => {
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "error") {
@@ -690,10 +694,70 @@ describe("startExecDev", () => {
   });
 });
 
+describe("a script whose spawn failed", () => {
+  // A spawn that fails (a typo'd `cwd`: ENOENT) has no pid, but Node keeps
+  // the handle with pid 0 until the error is emitted on the next tick.
+  // `child.kill()` then calls kill(0, signal), which signals Bascik's own
+  // process group: a stop in that window ended the whole Vitest run.
+  // Nothing is really signaled here: every kill is a mock.
+  it.each([undefined, 0, -1])(
+    "is never signaled when its pid is %s, by a stop or a timeout",
+    async (pid) => {
+      vi.useFakeTimers();
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+      const handlers: Record<string, (...args: unknown[]) => void> = {};
+      const proc = {
+        pid,
+        kill: vi.fn(),
+        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          handlers[event] = cb;
+          return proc;
+        }),
+        once: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          handlers[`once:${event}`] = cb;
+          return proc;
+        }),
+        removeListener: vi.fn(),
+      };
+      mockSpawn.mockImplementationOnce(() => proc as any);
+      // `ps` lists pid 0 (the kernel) and processes it is the parent of.
+      mockSpawnSync.mockReturnValue({
+        status: 0,
+        stdout: [
+          "0 0 Fri Oct 30 10:00:00 2026",
+          "1 0 Fri Oct 30 10:00:00 2026",
+        ].join("\n"),
+      });
+      const run = runScript({
+        script: "scripts/gen.ts",
+        cwd: "missing",
+        timeout: 10,
+      });
+      void run.catch(() => undefined);
+      const stopping = stopBeforeExit();
+      // Past the stop's SIGKILL deadline (200 ms) and the timeout's SIGTERM
+      // (10 ms) and SIGKILL (510 ms), before the timeout gives up (1010 ms).
+      vi.advanceTimersByTime(600);
+      const error = Object.assign(new Error("spawn node ENOENT"), {
+        code: "ENOENT",
+      });
+      handlers.error?.(error);
+      handlers["once:error"]?.(error);
+      await vi.advanceTimersByTimeAsync(1_500);
+      await stopping;
+      await expect(run).rejects.toThrow(/working directory "missing"/);
+      expect(proc.kill).not.toHaveBeenCalled();
+      for (const [target] of kill.mock.calls)
+        expect(Number(target)).toBeGreaterThan(0);
+    },
+  );
+});
+
 describe("exec timeout escalation and lifecycle", () => {
   it("escalates SIGTERM at timeout deadline and SIGKILL 500ms later if not exited", async () => {
     vi.useFakeTimers();
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn(() => proc),
     };
@@ -1175,6 +1239,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "close") closeCb = cb;
@@ -1204,6 +1269,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "close") closeCb = cb;
@@ -1229,6 +1295,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let errorCb: ((err: Error) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "error") errorCb = cb;
@@ -1251,6 +1318,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "close") closeCb = cb;
@@ -1287,6 +1355,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "close") closeCb = cb;
@@ -1317,6 +1386,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "close") closeCb = cb;
@@ -1542,6 +1612,7 @@ describe("exec timeout escalation and lifecycle", () => {
     };
 
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn(() => {
         return proc;
