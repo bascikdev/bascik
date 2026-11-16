@@ -938,14 +938,19 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
  * workers than permits the floor would give each one a child anyway.
  * `cpus()` can be empty on some platforms and containers; at least one
  * worker keeps the build from waiting forever on a pool that can run nothing.
+ * A number for `pipeline.workers` caps the pool at that many workers on top
+ * of all of this (`maxWorkers`).
  */
 type PagePool = WorkerPool<PageJob, PageWorkerResult | null>;
 
-const pagePoolSize = (workCount: number): number =>
-  Math.max(1, Math.min(cpus().length, workCount, SYSTEM_MAX_CHILD_PROCESSES));
+const pagePoolSize = (workCount: number, maxWorkers: number): number =>
+  Math.max(
+    1,
+    Math.min(cpus().length, workCount, SYSTEM_MAX_CHILD_PROCESSES, maxWorkers),
+  );
 
-const startPagePool = (pageList: string[]): PagePool => {
-  const poolSize = pagePoolSize(pageList.length);
+const startPagePool = (pageList: string[], maxWorkers: number): PagePool => {
+  const poolSize = pagePoolSize(pageList.length, maxWorkers);
   const workerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
   const workerUrl = new URL(`./page-worker${workerExt}`, import.meta.url);
   return new WorkerPool<PageJob, PageWorkerResult | null>(
@@ -988,9 +993,10 @@ const fitPagePool = (
   pool: PagePool,
   pageCount: number,
   jobCount: number,
+  maxWorkers: number,
 ): number => {
-  const startSize = pagePoolSize(pageCount);
-  const size = pagePoolSize(jobCount);
+  const startSize = pagePoolSize(pageCount, maxWorkers);
+  const size = pagePoolSize(jobCount, maxWorkers);
   if (size === startSize) return size;
   if (size > startSize) pool.grow(size);
   // Not awaited: the trimmed workers are out of the pool already, and their
@@ -1098,8 +1104,12 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   logInfo(colorOut.dim("Starting transpiling..."));
   resetModuleCheckerForBuild();
   invalidateComponentListCache();
-  const useWorkers =
+  const workers =
     options?.useWorkers ?? BascikConfig.pipeline?.workers ?? false;
+  // `pipeline.workers` is a boolean or a positive integer: a number turns
+  // the pool on and is the most page workers it may run.
+  const useWorkers = workers !== false && workers !== 0;
+  const maxWorkers = typeof workers === "number" ? workers : Infinity;
   const start = performance.now();
   // Summed from every page (and the build-once pass of every route template)
   // so the summary can say how much of the phase was build scripts.
@@ -1122,7 +1132,9 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       );
     }
     const pool =
-      useWorkers && pageList.length > 0 ? startPagePool(pageList) : null;
+      useWorkers && pageList.length > 0
+        ? startPagePool(pageList, maxWorkers)
+        : null;
     return { pageList, pool };
   });
   const phase: PagePoolPhase = { listed };
@@ -1321,7 +1333,12 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     };
 
     try {
-      const poolSize = fitPagePool(pool, pageList.length, allJobs.length);
+      const poolSize = fitPagePool(
+        pool,
+        pageList.length,
+        allJobs.length,
+        maxWorkers,
+      );
       // Pages already open in a browser finish first, so their reload is not
       // delayed by anything else.
       if (openJobs.length > 0) {

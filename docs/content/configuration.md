@@ -251,7 +251,7 @@ Here are just a few ways Bascik puts architectural choices back in your hands:
 - **Custom Minification (`minify`):** Toggle HTML, CSS, and JS minifiers independently, or plug in your own custom async minifiers (like esbuild or terser). TypeScript in referenced `.ts` companions and `type="text/typescript"` blocks is stripped automatically before minification, so no minifier configuration is needed for it.
 - **Granular Attribute Scoping (`scoping.attributes`):** Control exactly which attributes (classes, IDs, or name attributes) are scoped. If you are using Tailwind CSS, you can disable class scoping entirely while keeping ID scoping active.
 - **Exec Failure Behavior (`pipeline.onExecError`):** Choose whether a failing `pipeline.exec` script stops the run (`'error'`) or is reported while it continues (`'warn'`). Defaults to `'warn'` in dev and `'error'` for `--build`.
-- **Parallel Builds (`pipeline.workers`):** Optimize build speeds on larger sites by opting into a multi-core CPU worker pool, or stick to main-thread processing for smaller projects. Defaults to `false` to avoid worker startup overhead on small sites; in dev mode, Bascik advises enabling it when single-threaded transpilation of at least 20 page jobs takes 2.0s or longer on 4+ CPU cores.
+- **Parallel Builds (`pipeline.workers`):** Optimize build speeds on larger sites by opting into a multi-core CPU worker pool, or stick to main-thread processing for smaller projects. `true` starts up to one worker per CPU core (never more than there are pages); a positive integer such as `4` turns the pool on with at most that many workers, which leaves cores free on a shared CI machine. Defaults to `false` to avoid worker startup overhead on small sites; in dev mode, Bascik advises enabling it when single-threaded transpilation of at least 20 page jobs takes 2.0s or longer on 4+ CPU cores.
 - **Error Behavior (`scripts`):** Control error handling separately for `onBuildScriptError`, `onRoutesScriptError`, and `onServerScriptError` (`'error'`, `'warn'`, or `'ignore'`).
 - **Environment Overrides (`dev`, `build`, `server`):** Easily define mode-specific overrides while keeping development logs detailed and verbose.
 
@@ -510,7 +510,7 @@ pipeline: {
       watch: ['content/'],           // re-run on changes in dev mode
     },
   ],
-  workers: false,                    // enable multi-threaded worker pool (defaults to false; dev advises true on large multi-core workloads)
+  workers: false,                    // true, or the most worker threads (e.g. 4), compiles pages in parallel (defaults to false; dev advises true on large multi-core workloads)
   onExecError: 'warn',               // 'warn' | 'error'. Default: 'warn' in dev, 'error' for --build
 }
 ```

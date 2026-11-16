@@ -827,6 +827,12 @@ describe("pipeline.workers", () => {
     expect(validateConfigShape({ pipeline: { workers: -2 } })).toHaveLength(1);
   });
 
+  it("rejects fractions, NaN and Infinity, which are not a worker count", () => {
+    for (const workers of [2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(validateConfigShape({ pipeline: { workers } })).toHaveLength(1);
+    }
+  });
+
   it("accepts booleans and positive integers", () => {
     expect(validateConfigShape({ pipeline: { workers: true } })).toHaveLength(
       0,
