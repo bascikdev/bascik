@@ -69,7 +69,7 @@
     "parse5": "^8.1.0"
   },
   "peerDependencies": {
-    "@bascik/language-server": "^1.0.0"
+    "@bascik/language-server": "^1.1.0"
   },
   "peerDependenciesMeta": {
     "@bascik/language-server": {

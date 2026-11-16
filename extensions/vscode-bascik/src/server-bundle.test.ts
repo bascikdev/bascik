@@ -214,12 +214,16 @@ describe("the bundled language server", () => {
     ]);
   });
 
-  it("is released as 1.0.0, the launch version that bundles the language server with the html lint", async () => {
+  it("has a plain x.y.z version with an even minor, which the Marketplace publishes as stable", async () => {
     const { readFile } = await import("node:fs/promises");
     // The tests compile to CommonJS, so the manifest is found from the working directory (the extension root).
     const manifest = JSON.parse(
       await readFile(join(process.cwd(), "package.json"), "utf8"),
     ) as { version: string };
-    expect(manifest.version).toBe("1.0.0");
+    // RELEASING.md: an even minor publishes to the stable channel (ext-v), an odd one to
+    // pre-release (ext-pre-v), and the Marketplace takes no prerelease suffix.
+    const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(manifest.version);
+    expect(match, manifest.version).not.toBeNull();
+    expect(Number(match![2]) % 2, manifest.version).toBe(0);
   });
 });
