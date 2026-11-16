@@ -1352,9 +1352,10 @@ export const removeCommentsFromCss = (css: string): string => {
   if (!css.includes("/*")) return css;
   // Single-pass: strings/url() win over comment detection so apostrophes
   // inside comments (e.g. `/* the logo's angle */`) are never mistaken for
-  // the start of a CSS string literal.
+  // the start of a CSS string literal. A backslash escapes any character in
+  // a string, a newline included (a line continuation), as in shieldCssStrings.
   const pattern =
-    /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g;
+    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g;
   let result = "";
   let copiedTo = 0;
   for (const match of css.matchAll(pattern)) {

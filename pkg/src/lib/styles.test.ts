@@ -473,6 +473,25 @@ describe("removeCommentsFromCss", () => {
     );
     expect(html).toContain("margin: 1px 2px");
   });
+
+  // CSS Syntax: a backslash before a newline inside a string continues the
+  // string on the next line, so `/* x */` there is text, not a comment.
+  it("keeps comment-like text in a string continued over a line break", () => {
+    const double = '.a::after { content: "one \\\n/* two */ three"; }';
+    expect(removeCommentsFromCss(double)).toBe(double);
+    const single = ".a::after { content: 'one \\\r\n/* two */ three'; }";
+    expect(removeCommentsFromCss(single)).toBe(single);
+    const { html } = scopeInlineStyleTags(
+      `<style>.a::after { content: "one \\\n/* two */ three"; }</style><p class="a">x</p>`,
+      "c",
+    );
+    expect(html).toContain('content: "one \\\n/* two */ three"');
+  });
+
+  it("still removes a comment after a string that ends in an escaped quote", () => {
+    expect(removeCommentsFromCss('a{b:"x\\"" /* c */}')).toBe('a{b:"x\\"" }');
+    expect(removeCommentsFromCss('a{b:"x\\\\" /* c */}')).toBe('a{b:"x\\\\" }');
+  });
 });
 
 describe("fuzz-like malformed CSS / HTML inputs", () => {
