@@ -3872,3 +3872,63 @@ describe("convertCssElementSelectorsToClasses – namespace prefixes", () => {
     },
   );
 });
+
+describe("deduplicateCss – @namespace statements", () => {
+  // CSS Namespaces 3: an @namespace rule must follow @charset and @import
+  // and precede every other rule, or the browser ignores it, and a selector
+  // that uses its undeclared prefix (`svg|rect`) is then invalid.
+  const SVG = "@namespace svg url(http://www.w3.org/2000/svg);";
+
+  it("moves a component's prefixed @namespace above the other components' rules", () => {
+    const css = deduplicateCss([
+      { name: "aa-one", cssFileContent: ".b_el_aa-one_p { color: red }" },
+      {
+        name: "bb-two",
+        cssFileContent: `${SVG}\nsvg|rect.b_el_bb-two_rect { fill: red }`,
+      },
+    ]);
+    expect(css).toBe(
+      `${SVG}\n.b_el_aa-one_p { color: red } \nsvg|rect.b_el_bb-two_rect { fill: red }`,
+    );
+  });
+
+  it("places it after the hoisted @import statements", () => {
+    const css = hoistCssImports(
+      `.a {}\n@import url(https://x.test/a.css);\n${SVG}\nsvg|rect {}`,
+    );
+    expect(css).toBe(
+      `@import url(https://x.test/a.css);\n${SVG}\n.a {}\n\n\nsvg|rect {}`,
+    );
+  });
+
+  it.each([
+    ["a quoted URL", '@namespace xl "http://www.w3.org/1999/xlink";'],
+    [
+      "an uppercase at-rule",
+      "@NAMESPACE svg url('http://www.w3.org/2000/svg');",
+    ],
+  ])("hoists one written with %s", (_label, statement) => {
+    expect(hoistCssImports(`.a {}\n${statement}`)).toBe(`${statement}\n.a {}`);
+  });
+
+  it("writes a namespace two components declare the same way once", () => {
+    const css = deduplicateCss([
+      { name: "aa-one", cssFileContent: `${SVG}\nsvg|a.x {}` },
+      { name: "bb-two", cssFileContent: `${SVG}\nsvg|g.y {}` },
+    ]);
+    expect(css.split("@namespace").length - 1).toBe(1);
+    expect(css.startsWith(SVG)).toBe(true);
+  });
+
+  it.each([
+    [
+      "a default namespace, which would apply to every component's rules",
+      ".a {}\n@namespace url(http://www.w3.org/2000/svg);\n.b {}",
+    ],
+    ["@namespace text in a string", '.a { content: "@namespace svg url(x);" }'],
+    ["an @namespace inside a block", "@media print { @namespace s url(x); }"],
+    ["an @namespace in a comment", ".a {}\n/* @namespace s url(x); */"],
+  ])("leaves %s where it is", (_label, css) => {
+    expect(hoistCssImports(css)).toBe(css);
+  });
+});
