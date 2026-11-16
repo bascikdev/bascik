@@ -837,6 +837,17 @@ const scanSegments = (js: string): Segment[] => {
     if (lastSig === ")") return !lastParenClosedControlHeader;
     if (isWordChar(lastSig)) {
       if (wordIsProperty) return true;
+      // `get\n'a'() {}`, `static\n'a' = 1`: a line break may follow these modifiers, so the
+      // string names the member they modify.
+      if (memberModifierEnds?.has(lastSigOffset) === true) return false;
+      if (
+        (wordRun === "get" || wordRun === "set") &&
+        atObjectMemberLevel() &&
+        (codeAccum[sigOffsetBeforeWord] === "{" ||
+          codeAccum[sigOffsetBeforeWord] === ",")
+      ) {
+        return false;
+      }
       return !continuesExpression(wordRun);
     }
     return false;
