@@ -1659,9 +1659,58 @@ describe("minifyJs – HTML-like comments", () => {
 
   // A module has no HTML-like comments: there `a <!--b` is `a < !--b`. Keeping the comment's
   // line and its line break as written runs the same program as either kind of script.
+  // In a script holding `<!--`, comments holding `-->` or `<script` are kept (the HTML parser
+  // reads them); the program stays the same.
+  it.each([
+    ["a line comment", "const s = '<!--'\nlog.push(1) // -->\nlog.push(2)"],
+    [
+      "a block comment",
+      "const s = '<!--', b = 1, c = 2\nconst a = b /* --> */ + c\nlog.push(a)",
+    ],
+    [
+      "a block comment that spans lines",
+      "const s = '<!--'\nlog.push((() => { return /*\n<script>*/ 1 })())",
+    ],
+    [
+      "a division before a line comment",
+      "const s = '<!--', a = 4\nconst x = a / // <script>\n2\nlog.push(x)",
+    ],
+    // The line breaks around a kept one-line block comment still end the statement.
+    [
+      "a block comment on its own line between statements",
+      "const s = '<!--', a = 1\nlet b, x\nx = a\n/* --> */\nb = 2\nlog.push(x, b)",
+    ],
+    [
+      "a block comment on its own line before an update",
+      "const s = '<!--', a = 1\nlet b = 5, x\nx = a\n/* --> */\n++b\nlog.push(x, b)",
+    ],
+    [
+      "a block comment at the end of a line",
+      "const s = '<!--'\nlet x\nx = 1 /* <script> */\nx = 2\nlog.push(x)",
+    ],
+    [
+      "a block comment at the start of a line",
+      "const s = '<!--'\nlet x\nx = 1\n/* <script> */ x = 2\nlog.push(x)",
+    ],
+    [
+      "a block comment before a string line",
+      "const s = '<!--'\nlet x\nx = s /* --> */\n'a'.length\nlog.push(x)",
+    ],
+    [
+      "a block comment after return",
+      "const s = '<!--'\nlog.push((() => { return /* --> */\n1 })())",
+    ],
+    [
+      "a block comment on its own line with CRLF line ends",
+      "const s = '<!--', a = 1\r\nlet b, x\r\nx = a\r\n/* --> */\r\nb = 2\r\nlog.push(x, b)",
+    ],
+  ])("keeps %s holding an HTML marker", (_name, source) => {
+    expect(expectSameProgram(source)).toMatch(/-->|<script>/);
+  });
+
   it("keeps a <!-- comment and its line break as written", () => {
     expect(minifyJs("x = a <!--b\nf()")).toBe("x=a<!--b\nf()");
-    expect(minifyJs("<!--\nx = 1\n//-->")).toBe("<!--\nx=1");
+    expect(minifyJs("<!--\nx = 1\n//-->")).toBe("<!--\nx=1//-->");
   });
 });
 
