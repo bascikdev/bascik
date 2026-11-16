@@ -421,6 +421,76 @@ describe("removeCommentsFromCss", () => {
     const result = removeCommentsFromCss(css);
     expect(result).toContain('"/* not a comment */"');
   });
+
+  // CSS Syntax: a comment separates tokens, so `1px/**/2px` is two
+  // dimensions. Dropping it must not merge them into `1px2px`.
+  it("keeps the tokens on each side of a comment apart", () => {
+    expect(removeCommentsFromCss("a{margin:1px/**/2px}")).toBe(
+      "a{margin:1px 2px}",
+    );
+    expect(removeCommentsFromCss("a{margin:0/* x */auto}")).toBe(
+      "a{margin:0 auto}",
+    );
+    expect(removeCommentsFromCss("a{margin:1px/**//* y */2px}")).toBe(
+      "a{margin:1px 2px}",
+    );
+    expect(removeCommentsFromCss("a{color:#/**/fff}")).toBe("a{color:# fff}");
+    expect(removeCommentsFromCss("a{width:1/**/.5em}")).toBe("a{width:1 .5em}");
+    expect(removeCommentsFromCss("a{width:1/**/%}")).toBe("a{width:1 %}");
+    // `/` then `*` would open a new comment.
+    expect(removeCommentsFromCss("a{b:1//**/*2}")).toBe("a{b:1/ *2}");
+  });
+
+  // A name right before `(` is a function token (`and(`), and `-->` and
+  // `<!--` are CDC and CDO tokens, so a comment there separates them too.
+  it("keeps a name apart from a ( and CDC/CDO characters apart", () => {
+    expect(
+      removeCommentsFromCss("@media screen and/**/(min-width:1px){}"),
+    ).toBe("@media screen and (min-width:1px){}");
+    expect(removeCommentsFromCss("@media not/* x */(color){}")).toBe(
+      "@media not (color){}",
+    );
+    expect(removeCommentsFromCss("a{b:--/**/>c}")).toBe("a{b:-- >c}");
+    expect(removeCommentsFromCss("a{b:<!/**/--c}")).toBe("a{b:<! --c}");
+    // A function written with a comment after its `(` is unchanged.
+    expect(removeCommentsFromCss("a{b:rgb(/**/1 2 3)}")).toBe(
+      "a{b:rgb(1 2 3)}",
+    );
+    expect(removeCommentsFromCss("a{b:calc(1px/**/)}")).toBe("a{b:calc(1px)}");
+  });
+
+  it("adds nothing where a space would change a selector or a value", () => {
+    // A space here would add a descendant combinator.
+    expect(removeCommentsFromCss(".a/**/.b{}")).toBe(".a.b{}");
+    expect(removeCommentsFromCss("a/**/:hover{}")).toBe("a:hover{}");
+    expect(removeCommentsFromCss("a/**/[href]{}")).toBe("a[href]{}");
+    expect(removeCommentsFromCss("a{margin:1px /**/ 2px}")).toBe(
+      "a{margin:1px  2px}",
+    );
+    expect(removeCommentsFromCss("a{color:red/**/;}")).toBe("a{color:red;}");
+    expect(removeCommentsFromCss("/* a */.a{}/* b */")).toBe(".a{}");
+  });
+
+  it("keeps non-ASCII names, escapes and keywords apart across a comment", () => {
+    expect(removeCommentsFromCss("a{font:12px/**/serif}")).toBe(
+      "a{font:12px serif}",
+    );
+    expect(removeCommentsFromCss("a{b:café/**/x}")).toBe("a{b:café x}");
+    expect(removeCommentsFromCss("a{b:x/**/\\31}")).toBe("a{b:x \\31}");
+    expect(removeCommentsFromCss("a{b:1/**/-2}")).toBe("a{b:1 -2}");
+    // A comment inside a string or url() is text, not a comment.
+    expect(removeCommentsFromCss('a{b:url(a/**/b) "c/**/d"}')).toBe(
+      'a{b:url(a/**/b) "c/**/d"}',
+    );
+  });
+
+  it("keeps scoped style tag values apart across a comment", () => {
+    const { html } = scopeInlineStyleTags(
+      "<style>p { margin: 1px/**/2px; }</style><p>x</p>",
+      "c",
+    );
+    expect(html).toContain("margin: 1px 2px");
+  });
 });
 
 describe("fuzz-like malformed CSS / HTML inputs", () => {

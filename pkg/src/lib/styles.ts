@@ -1329,14 +1329,59 @@ const shieldAtRulePreludes = (
   };
 };
 
+// A character that continues an identifier, number or dimension token.
+const CSS_NAME_CHAR = /[\w\-\\\u0080-\uffff]/;
+
+/**
+ * Whether the text on each side of a removed comment would join into one
+ * token without it (CSS Syntax: a comment separates tokens). `1px/**\/2px`
+ * is two dimensions, but `1px2px` is one; `.a/**\/.b` is already `.a.b`.
+ */
+const commentSeparatesTokens = (
+  before: string | undefined,
+  after: string | undefined,
+  afterNext: string | undefined,
+): boolean => {
+  if (before === undefined || after === undefined) return false;
+  // `/` then `*` would open a new comment.
+  if (before === "/") return after === "*";
+  // A name before `(` would become a function token (`and/**/(` is not
+  // `and(`); `-` before `>` and `!` before `-` could form `-->` or `<!--`.
+  if (after === "(") return CSS_NAME_CHAR.test(before);
+  if (after === ">") return before === "-";
+  if (after === "-" && before === "!") return true;
+  if (CSS_NAME_CHAR.test(after))
+    // Names and numbers (`0/**/auto`), and a hash or at-keyword
+    // (`#/**/fff`), a signed or decimal number (`+/**/1`, `./**/5`).
+    return CSS_NAME_CHAR.test(before) || "#@+.".includes(before);
+  if (!/[0-9]/.test(before)) return false;
+  // A percentage (`1/**/%`) or a decimal (`1/**/.5`).
+  return after === "%" || (after === "." && /[0-9]/.test(afterNext ?? ""));
+};
+
 export const removeCommentsFromCss = (css: string): string => {
+  if (!css.includes("/*")) return css;
   // Single-pass: strings/url() win over comment detection so apostrophes
   // inside comments (e.g. `/* the logo's angle */`) are never mistaken for
   // the start of a CSS string literal.
-  return css.replace(
-    /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g,
-    (_match, stringOrUrl?: string) => stringOrUrl ?? "",
-  );
+  const pattern =
+    /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g;
+  let result = "";
+  let copiedTo = 0;
+  for (const match of css.matchAll(pattern)) {
+    result += css.slice(copiedTo, match.index);
+    copiedTo = match.index + match[0].length;
+    if (match[1] !== undefined) {
+      result += match[1];
+      continue;
+    }
+    // A comment right after this one decides the separator itself, once it
+    // sees the text that follows it.
+    if (css.startsWith("/*", copiedTo)) continue;
+    if (commentSeparatesTokens(result.at(-1), css[copiedTo], css[copiedTo + 1]))
+      result += " ";
+  }
+  return result + css.slice(copiedTo);
 };
 
 // ─── CSS @import Resolution & Scoping ────────────────────────────────────────
