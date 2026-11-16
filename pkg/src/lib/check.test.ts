@@ -565,6 +565,56 @@ describe("checkProject", () => {
       ]);
     });
 
+    it.each([
+      ["style", `<style>.a::before { content: "<!--"; }</style>`],
+      ["script", `<script>const open = "<!--";</script>`],
+      [
+        "JSON data block",
+        `<script type="application/json">{"a": "<!--"}</script>`,
+      ],
+      ["textarea", `<textarea><!--</textarea>`],
+    ])(
+      "`<!--` inside a %s is text: the tags after it are still read",
+      async (_where, element) => {
+        await setupProject({
+          "pages/index.html": `${element}\n<used-card></used-card>\n<my-typo></my-typo>\n<!-- a real comment -->`,
+          "components/used-card/used-card.html": "<div>used</div>",
+        });
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({
+          "used-card": {
+            fileName: join(workDir, "components/used-card/used-card.html"),
+          },
+        });
+        const findings = await checkProject();
+        expect(
+          findings.items.filter((i) => i.category === "unused-component"),
+        ).toEqual([]);
+        const unmatched = findings.items.filter(
+          (i) => i.category === "unmatched-tag",
+        );
+        expect(unmatched.map((i) => i.message)).toEqual(["<my-typo>"]);
+        expect(unmatched[0].locations).toEqual([
+          { filePath: expect.stringContaining("index.html"), line: 3 },
+        ]);
+      },
+    );
+
+    it("a tag inside an unclosed comment is not read, and lines after a multi-line comment stay right", async () => {
+      await setupProject({
+        "pages/index.html":
+          "<!--\n<gone-a></gone-a>\n-->\n<my-typo></my-typo>\n<!-- <gone-b></gone-b>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+      const findings = await checkProject();
+      const unmatched = findings.items.filter(
+        (i) => i.category === "unmatched-tag",
+      );
+      expect(unmatched.map((i) => i.message)).toEqual(["<my-typo>"]);
+      expect(unmatched[0].locations[0].line).toBe(4);
+    });
+
     it("checkProject prints nothing directly to console", async () => {
       await setupProject({
         "pages/index.html": "<model-viewer></model-viewer>",

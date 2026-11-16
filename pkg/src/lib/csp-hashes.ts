@@ -125,6 +125,11 @@ export const sha256Source = (body: string): string =>
  * Regex scan for the part of a page the tokenizer could not follow. It errs
  * toward hashing more: an extra hash permits nothing the page does not
  * contain, while a missing one blocks a script.
+ *
+ * Without the tokenizer it cannot tell whether a `<!--` is a comment or text
+ * inside a script or style (`var open = "<!--"`), so it reads the markup both
+ * ways and hashes what either reading finds. Every body is hashed as written,
+ * comments in it included, since that is the text the browser hashes.
  */
 const scanWithRegexFallback = (
   emittedHtml: string,
@@ -134,6 +139,22 @@ const scanWithRegexFallback = (
   const uncommented = emittedHtml.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
     " ".repeat(comment.length),
   );
+  scanFallbackView(emittedHtml, uncommented, scripts, styles);
+  if (uncommented !== emittedHtml)
+    scanFallbackView(emittedHtml, emittedHtml, scripts, styles);
+  return { scripts, styles };
+};
+
+/**
+ * Find the scripts and styles in `view` (a same-length copy of `emittedHtml`
+ * with some text blanked) and hash their bodies from `emittedHtml`.
+ */
+const scanFallbackView = (
+  emittedHtml: string,
+  uncommented: string,
+  scripts: Set<string>,
+  styles: Set<string>,
+): void => {
   // `/<(textarea|title|noscript|xmp)(?=[\t\n\f\r />])((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/\1(?:[\t\n\f\r /][^>]*)?>)/gi`
   // with each element's content blanked, in linear time.
   let scannable = "";
@@ -165,7 +186,7 @@ const scanWithRegexFallback = (
   );
   for (const match of scriptMatches) {
     const openTag = scannable.slice(match.start + 7, match.contentStart - 1);
-    const body = scannable.slice(match.contentStart, match.contentEnd);
+    const body = emittedHtml.slice(match.contentStart, match.contentEnd);
 
     // Exclude external scripts (<script src="...">). `src` must be a whole
     // attribute name: `data-src` does not make a script external.
@@ -190,7 +211,7 @@ const scanWithRegexFallback = (
   let styleScannable = "";
   cursor = 0;
   for (const match of scriptMatches) {
-    styleScannable += `${scannable.slice(cursor, match.start)}<script${scannable.slice(match.start + 7, match.contentStart)}${" ".repeat(match.contentEnd - match.contentStart)}</script>`;
+    styleScannable += `${scannable.slice(cursor, match.contentStart)}${" ".repeat(match.contentEnd - match.contentStart)}${scannable.slice(match.contentEnd, match.end)}`;
     cursor = match.end;
   }
   styleScannable += scannable.slice(cursor);
@@ -203,11 +224,9 @@ const scanWithRegexFallback = (
     "style",
     RAW_ELEMENT_SCAN,
   )) {
-    const body = styleScannable.slice(match.contentStart, match.contentEnd);
+    const body = emittedHtml.slice(match.contentStart, match.contentEnd);
     styles.add(sha256Source(body));
   }
-
-  return { scripts, styles };
 };
 
 class CspHashCollector {

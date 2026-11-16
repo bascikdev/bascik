@@ -606,6 +606,44 @@ describe("attr-binding classification", () => {
     });
   });
 
+  it.each([
+    ["style", `<style>.w::before { content: "<!--"; }</style>`],
+    ["script", `<script>const open = "<!--";</script>`],
+    [
+      "JSON data block",
+      `<script type="application/json">{"a": "<!--"}</script>`,
+    ],
+    ["textarea", `<textarea><!--</textarea>`],
+  ])(
+    "`<!--` inside a %s is text: a scoped binding after it is still found",
+    async (_where, element) => {
+      const manifest = await build({
+        "text-card": {
+          fileName: "src/components/text-card.html",
+          fileContent: `<div class="w">\n  ${element}\n  <span data-bascik-attr-id="v">x</span>\n  <!-- a real comment -->\n</div>`,
+          cssFileContent: ".w { color: red }",
+        },
+      });
+      expect(entryOf(manifest, "text-card").unsupported).toEqual({
+        reason: "attr-binding-to-scoped-attribute",
+        detail:
+          "its data-bascik-attr-id binding targets an attribute scoping rewrites",
+        line: 3,
+      });
+    },
+  );
+
+  it("a binding inside an unclosed comment is never found: the comment runs to the end", async () => {
+    const manifest = await build({
+      "open-card": {
+        fileName: "src/components/open-card.html",
+        fileContent: `<div class="w"><p>x</p></div>\n<!-- <span data-bascik-attr-id="v">x</span>`,
+        cssFileContent: ".w { color: red }",
+      },
+    });
+    expect(entryOf(manifest, "open-card").unsupported).toBeUndefined();
+  });
+
   it("with name scoping off (the default), name and usemap bindings are supported and render like the build", async () => {
     config.scoping.attributes = { class: true, id: true, name: false };
     const list: ComponentList = {
@@ -1156,6 +1194,26 @@ describe("component build scripts", () => {
       expect(entryOf(manifest, name).template).toBeNull();
     },
   );
+
+  it("a printed marker after `<!--` in a printed <style> is still found", async () => {
+    const output = `<style>.built::before { content: "<!--"; }</style><div data-bascik-slot="x">default x</div><!-- note -->`;
+    const list: ComponentList = {
+      "printed-style-card": printingCard("printed-style-card", output),
+    };
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) =>
+      String(options?.extraEnv?.BASCIK_SOURCE_FILE).includes(
+        "printed-style-card",
+      )
+        ? { result: output, stdout: "", stderr: "", readsPageContext: false }
+        : defaultHandler(),
+    );
+    const manifest = await build(list);
+    expect(entryOf(manifest, "printed-style-card").unsupported).toEqual({
+      reason: "scoping-template-unavailable",
+      detail:
+        "its build script printed data-bascik-slot, which a usage would be injected into at request time but never at page time",
+    });
+  });
 
   it("a printed nested usage with a valued prop and an authored marker stay supported", async () => {
     const list = { ...printedMarkerCards(), ...nestedCards() };

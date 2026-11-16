@@ -140,6 +140,47 @@ describe("computePageCspHashes line endings (F085)", () => {
     expect(hashes.scripts).toEqual([sha("a();\nb();\nc();\nd();\n\ne();")]);
   });
 
+  // CDATA directly inside an SVG integration point stops the tokenizer, so
+  // everything after it goes to the regex fallback.
+  const STOP = "<svg><title><![CDATA[t]]></title></svg>";
+
+  it.each([
+    [
+      "a script string holding `<!--` before a later comment",
+      `<script>var open = "<!--";</script><style>.a{}</style><script>b();</script><!-- note -->`,
+      ['var open = "<!--";', "b();"],
+      [".a{}"],
+    ],
+    [
+      "a script string holding a whole comment",
+      `<script>var c = "<!-- x -->";</script>`,
+      ['var c = "<!-- x -->";'],
+      [],
+    ],
+    [
+      "a style holding a whole comment",
+      `<style>/* <!-- x --> */ .a{}</style>`,
+      [],
+      ["/* <!-- x --> */ .a{}"],
+    ],
+  ])(
+    "the regex fallback hashes the browser's body for %s",
+    (_case, rest, scriptBodies, styleBodies) => {
+      const hashes = computePageCspHashes(`${STOP}${rest}`);
+      for (const body of scriptBodies)
+        expect(hashes.scripts, body).toContain(sha(body));
+      for (const body of styleBodies)
+        expect(hashes.styles, body).toContain(sha(body));
+    },
+  );
+
+  it("the regex fallback still hashes the real script after a comment that holds a script tag", () => {
+    const hashes = computePageCspHashes(
+      `${STOP}<!-- <script> --><script>real();</script>`,
+    );
+    expect(hashes.scripts).toContain(sha("real();"));
+  });
+
   it("the regex fallback normalizes the same way", () => {
     const { scripts, styles } = __cspRegexFallbackForTests(
       "<script>\r\nrun();\r\n</script><style>\r.a{}\r</style>",
