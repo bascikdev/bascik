@@ -140,6 +140,8 @@ const signalWhileExecRuns = async (
   args: string[],
   signal: Signal,
   afterSignal?: () => Promise<void>,
+  // Output to wait for, after the script started, before the signal.
+  ready?: RegExp,
 ): Promise<{
   exit: { code: number | null; signal: NodeJS.Signals | null } | "timeout";
   execPid: number;
@@ -168,6 +170,8 @@ const signalWhileExecRuns = async (
   if (!started) throw new Error(`exec script never started:\n${output}`);
   const execPid = Number(readFileSync(pidFile, "utf8"));
   execPids.add(execPid);
+  if (ready && !(await waitFor(() => ready.test(output), 30_000)))
+    throw new Error(`never printed ${ready}:\n${output}`);
 
   process.kill(child.pid!, signal);
   await afterSignal?.();
@@ -271,6 +275,37 @@ describe.skipIf(process.platform === "win32")(
         "the post script was started after the signal",
       ).toBe(false);
     });
+
+    // Once the server is up, its graceful shutdown stops the exec scripts.
+    // A script it stopped is not a failure: the shutdown used to print
+    // "exec error: ... exited with code null" with a stack for a parallel
+    // script, and "Continuing because pipeline.onExecError is 'warn'" for a
+    // post script.
+    // A post script starts once the server is bound, before the URL is
+    // logged; a parallel one starts before the server exists.
+    const shutdownCases: [Phase, Signal, string, RegExp | undefined][] = [
+      ["parallel", "SIGINT", "24603", /Server running/],
+      ["parallel", "SIGTERM", "24604", /Server running/],
+      ["post", "SIGINT", "24605", undefined],
+    ];
+    for (const [phase, signal, port, ready] of shutdownCases) {
+      it(`bascik (dev), server up, ${phase} script running, ${signal}: the stopped script is not reported`, async () => {
+        const root = await project(`dev-up-${phase}-${signal}`, phase);
+        const result = await signalWhileExecRuns(
+          root,
+          ["--port", port, "--no-pin"],
+          signal,
+          undefined,
+          ready,
+        );
+        expect(result.execGone, "the exec script is still running").toBe(true);
+        expect(result.output).toMatch(/shutting down gracefully/);
+        expect(result.exit).toEqual({ code: 0, signal: null });
+        expect(result.output).not.toMatch(
+          /exec error|exited with code|was ended by|Continuing because|\n\s+at /,
+        );
+      });
+    }
 
     it("bascik (dev), pre script running before the server is up, SIGTERM", async () => {
       const root = await project("dev-pre", "pre");

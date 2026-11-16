@@ -633,7 +633,7 @@ const spawnScript = (
       }, timeoutMs);
     }
 
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       cleanupRecord();
       if (record.settled) return;
       record.settled = true;
@@ -653,8 +653,13 @@ const spawnScript = (
         );
         resolvePromise(elapsed);
       } else {
+        // A script killed by a signal has no exit code: name the signal.
         rejectPromise(
-          new Error(`[bascik] exec "${scriptPath}" exited with code ${code}`),
+          new Error(
+            code === null && signal
+              ? `[bascik] exec "${scriptPath}" was ended by ${signal}`
+              : `[bascik] exec "${scriptPath}" exited with code ${code}`,
+          ),
         );
       }
     });
@@ -769,12 +774,20 @@ const publishParallelOutcomes = (handle: ParallelExecHandle): void => {
         eventEmitter.emit("exec-completed", { entry, paths });
       })
       .catch((err) => {
+        // A script that ends while Bascik shuts down was stopped by Bascik
+        // (a dev server's Ctrl-C): not a failure to report or act on.
+        if (isExitInProgress()) return;
         // Single stderr report per failure. The `exec-failed` -> `build-error`
         // path only broadcasts an SSE frame to browser overlays (sse.ts); it
         // does not write to stderr. Under `'error'` the stop message is that
         // one report.
         const stopping = getExecErrorAction() === "error";
-        if (!stopping) console.error("[bascik] exec error:", err);
+        // The message names the script and how it ended; the stack would
+        // show only Bascik's own frames.
+        if (!stopping)
+          console.error(
+            `[bascik] exec error: ${(err instanceof Error ? err.message : String(err)).replace(/^\[bascik\] /, () => "")}`,
+          );
         eventEmitter.emit("exec-failed", { entry, paths, error: err });
         // A parallel script has no caller to reject to once boot has moved on,
         // so `pipeline.onExecError: 'error'` ends the dev session here.

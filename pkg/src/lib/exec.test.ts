@@ -119,7 +119,11 @@ import {
   resetActiveExecChildrenForTests,
 } from "./exec.ts";
 import { type FrameworkClock } from "./clock.ts";
-import { stopBeforeExit } from "./exit-stoppers.ts";
+import {
+  markShutdownStarted,
+  resetShutdownStateForTests,
+  stopBeforeExit,
+} from "./exit-stoppers.ts";
 
 const cfg = BascikConfig as {
   pipeline: { exec: typeof BascikConfig.pipeline.exec };
@@ -136,6 +140,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetShutdownStateForTests();
   resetActiveExecChildrenForTests();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -226,6 +231,26 @@ describe("runExecPhase", () => {
     cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "pre" }];
     await expect(runExecPhase("pre")).rejects.toThrow(
       'exec "scripts/fail.ts" exited with code 1',
+    );
+  });
+
+  // Node reports no exit code for a process a signal ended.
+  it("names the signal, not 'code null', when a script is killed", async () => {
+    mockSpawn.mockImplementationOnce((() => {
+      const proc = {
+        kill: vi.fn(),
+        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          if (event === "close")
+            Promise.resolve().then(() => cb(null, "SIGKILL"));
+          return proc;
+        }),
+      };
+      return proc;
+    }) as never);
+    cfg.pipeline.exec = [{ script: "scripts/oom.ts", phase: "pre" }];
+    const failure = await runExecPhase("pre").catch((error) => error);
+    expect((failure as Error).message).toBe(
+      '[bascik] exec "scripts/oom.ts" was ended by SIGKILL',
     );
   });
 });
@@ -387,9 +412,9 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
     // One failure prints exactly one stderr line; exec-failed only feeds the
     // SSE build-error overlay, which does not log.
     expect(errorSpy).toHaveBeenCalledTimes(1);
+    // The message alone: the stack would show only Bascik's own frames.
     expect(errorSpy).toHaveBeenCalledWith(
-      "[bascik] exec error:",
-      expect.any(Error),
+      '[bascik] exec error: exec "scripts/fail.ts" exited with code 1',
     );
     errorSpy.mockRestore();
   });
@@ -433,6 +458,35 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
     expect(exitSpy).not.toHaveBeenCalled();
     exitSpy.mockRestore();
     errorSpy.mockRestore();
+  });
+
+  // A dev server's graceful shutdown stops the parallel scripts itself: one
+  // ending then is not a failure, so nothing reads as one.
+  it("reports nothing for a parallel script that ends while Bascik shuts down", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/watch.ts", phase: "parallel" }];
+    (cfg.pipeline as any).onExecError = "error";
+    setNextExitCode(null as unknown as number);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    try {
+      const handle = startExecParallel();
+      markShutdownStarted();
+      await startExecDev({ parallel: handle });
+      await handle.catch(() => {});
+      await new Promise((done) => setTimeout(done, 10));
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(mockEventEmit).not.toHaveBeenCalledWith(
+        "exec-failed",
+        expect.anything(),
+      );
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      delete (cfg.pipeline as any).onExecError;
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   it("publishes parallel outcomes even when no watched entries exist", async () => {
