@@ -59,6 +59,13 @@ type Segment = {
    */
   memberModifierEnds?: Set<number>;
   /**
+   * Offsets in `text` of the last character of a binding name in a `var`, `let` or `const`
+   * declaration that has no initializer (`var p`, the `b` of `var a = 1, b`). A binding name
+   * cannot be called, indexed or operated on, so a line break after it ends the declaration
+   * unless the next line starts with `=`, `,`, `;`, `in` or `of`.
+   */
+  bareBindingEnds?: Set<number>;
+  /**
    * Literal segments only: the source has a line break before this literal that JavaScript's
    * automatic semicolon insertion turns into a statement end (`const a = 1\n"use strict"`).
    * The minified output must keep that boundary as a `;`.
@@ -143,14 +150,13 @@ const RESTRICTED_PRODUCTION_END =
   /(?:^|[^.\w$])(?:return|throw|yield|debugger|(?:break|continue)(?:\s+[A-Za-z_$][\w$]*)?)$/;
 
 /**
- * A line ending in a declaration whose last binding has no initializer (`var p`,
- * `let a, b`). A binding name cannot be called or indexed, so ECMAScript ends the
- * declaration at the line break before a `(` or `[` line: `var p\n[a, b].forEach(f)` is
- * `var p;[a,b].forEach(f)`. Only bare names are recognized; after an initializer
- * (`var a = 1, b`) the line is read as any other.
+ * What may start the line after a binding name with no initializer and still continue the
+ * declaration: its initializer, the next binding, the end, or the `in`/`of` of a `for` header.
  */
-const BARE_DECLARATION_END =
-  /(?:^|[^.\w$#])(?:var|let|const)\s+[A-Za-z_$][\w$]*(?:\s*,\s*[A-Za-z_$][\w$]*)*$/;
+const BARE_BINDING_CONTINUATION = /^(?:[=,;]|(?:in|of)(?![\w$]))/;
+
+/** Keywords that start a variable declaration. */
+const DECLARATION_KEYWORDS = new Set(["var", "let", "const"]);
 
 /**
  * Keywords whose parenthesized header is followed by a statement (or, for `switch`, its
@@ -469,6 +475,21 @@ const scanSegments = (js: string): Segment[] => {
   // before it, so a `class D\nextends B` header can keep the line break before `extends`.
   let sigOffsetBeforeWord = -1;
   let lineBreakBeforeWord = false;
+  // The token before the word being read ends a value, so a line break between them is a
+  // statement end when the word is a name (`var a = 1\nfoo`).
+  let valueBeforeWord = false;
+  // One entry per open `var`/`let`/`const` declaration: the `(`, `[` and `{` depth it was
+  // read at. Its commas and binding names are the ones at exactly that depth.
+  const declarationParenDepth: number[] = [];
+  const declarationBracketDepth: number[] = [];
+  const declarationBraceDepth: number[] = [];
+  // The next word is a binding name: right after the declaration keyword or one of its commas.
+  let bindingNameExpected = false;
+  let wordIsBindingName = false;
+  let bareBindingEnds: Set<number> | undefined;
+  // A `+`, `-` or `!` that started a line after a value in a declaration: the next character
+  // tells whether it starts a new statement (`++b`, `!f()`) or continues (`+ b`, `!= b`).
+  let operatorAfterValueBreak = "";
   // Offset in `codeAccum` of `lastSig`.
   let lastSigOffset = -1;
   let lineBreakSinceSignificant = false;
@@ -508,6 +529,87 @@ const scanSegments = (js: string): Segment[] => {
   let wordFollowsStaticModifier = false;
   let i = 0;
   const len = js.length;
+
+  /** Directly in an object literal, where a word is a key: not inside one of its values. */
+  const atObjectMemberLevel = (): boolean => {
+    const top = braceKind.length - 1;
+    return (
+      top !== -1 &&
+      braceKind[top] === BRACE_OBJECT &&
+      braceParenDepth[top] === parenIsControlHeader.length &&
+      braceBracketDepth[top] === bracketDepth
+    );
+  };
+
+  /** Directly in the innermost open declaration: not inside one of its initializers. */
+  const atDeclarationLevel = (): boolean => {
+    const top = declarationParenDepth.length - 1;
+    return (
+      top !== -1 &&
+      declarationParenDepth[top] === parenIsControlHeader.length &&
+      declarationBracketDepth[top] === bracketDepth &&
+      declarationBraceDepth[top] === braceKind.length
+    );
+  };
+
+  /** Close the declarations a `)`, `]` or `}` just left (`for (let x of y)`). */
+  const closeLeftDeclarations = (): void => {
+    let top = declarationParenDepth.length - 1;
+    while (
+      top !== -1 &&
+      (declarationParenDepth[top] > parenIsControlHeader.length ||
+        declarationBracketDepth[top] > bracketDepth ||
+        declarationBraceDepth[top] > braceKind.length)
+    ) {
+      declarationParenDepth.pop();
+      declarationBracketDepth.pop();
+      declarationBraceDepth.pop();
+      top--;
+    }
+  };
+
+  /**
+   * Whether the last token ends a value (a name, `)`, `]`, `}`, a literal or a postfix
+   * update), so a name after a line break here starts a new statement. A keyword that takes
+   * an operand next (`typeof`, `new`) does not end one.
+   */
+  const valueEndsHere = (): boolean => {
+    if (!lastSig) return segments.at(-1)?.literal === true;
+    if (lastSigIsPostfixUpdate) return true;
+    if (lastSig === ")" || lastSig === "]" || lastSig === "}") return true;
+    if (!isWordChar(lastSig)) return false;
+    return wordIsProperty || !EXPRESSION_CONTINUING_KEYWORDS.has(wordRun);
+  };
+
+  const closeDeclaration = (): void => {
+    declarationParenDepth.pop();
+    declarationBracketDepth.pop();
+    declarationBraceDepth.pop();
+  };
+
+  /**
+   * Close the open declaration when the punctuator `c`, the first on its line, starts a new
+   * statement, so a comma later on that statement's line does not start a binding
+   * (`let p\n(0, f)\n(5)` calls `f`). After a binding name with no initializer only `=`, `,`
+   * and `;` continue the declaration; after any other value a `++`, `--` (a postfix update
+   * cannot follow a line break), `~` or `!` that is not `!=` starts a new statement.
+   */
+  const endDeclarationAtLineStart = (c: string): void => {
+    const pending = operatorAfterValueBreak;
+    operatorAfterValueBreak = "";
+    if (isSpace(c) || !atDeclarationLevel()) return;
+    if (pending !== "") {
+      if (pending === "!" ? c !== "=" : c === pending) closeDeclaration();
+      return;
+    }
+    if (!lineBreakSinceSignificant) return;
+    if (bareBindingEnds?.has(lastSigOffset) === true) {
+      if (c !== "=" && c !== "," && c !== ";") closeDeclaration();
+    } else if (valueEndsHere()) {
+      if (c === "~") closeDeclaration();
+      else if (c === "+" || c === "-" || c === "!") operatorAfterValueBreak = c;
+    }
+  };
 
   /** Directly in a class body: not inside a member's parameters, value or computed name. */
   const atClassMemberLevel = (): boolean => {
@@ -564,9 +666,11 @@ const scanSegments = (js: string): Segment[] => {
         fieldNameEnds,
         memberKeywordNameEnds,
         memberModifierEnds,
+        bareBindingEnds,
       });
       codeAccum = "";
     }
+    bareBindingEnds = undefined;
     controlHeaderCloses = undefined;
     postfixUpdateEnds = undefined;
     arrowBodyCloses = undefined;
@@ -599,6 +703,8 @@ const scanSegments = (js: string): Segment[] => {
     // Neither an arrow function nor a postfix update can be called, indexed or tagged.
     if (lastSigIsPostfixUpdate) return true;
     if (lastSig === "}") return lastBraceClosedArrowBody || kind === "string";
+    // `var a = 1, b\n\`x\``: a binding name cannot be tagged.
+    if (bareBindingEnds?.has(lastSigOffset) === true) return true;
     if (kind === "template") return false;
     if (lastSig === "]") return true;
     if (lastSig === ")") return !lastParenClosedControlHeader;
@@ -709,9 +815,13 @@ const scanSegments = (js: string): Segment[] => {
           (wordRun === "static" && !wordIsProperty) ||
           (lineBreakSinceSignificant &&
             memberKeywordNameEnds?.has(lastSigOffset) === true);
+        valueBeforeWord = valueEndsHere() && !DECLARATION_KEYWORDS.has(wordRun);
         wordIsProperty = lastSig === ".";
         sigOffsetBeforeWord = lastSigOffset;
         lineBreakBeforeWord = lineBreakSinceSignificant;
+        wordIsBindingName = bindingNameExpected;
+        bindingNameExpected = false;
+        if (operatorAfterValueBreak !== "") endDeclarationAtLineStart(c);
         wordRun = c;
       }
       lastRaw = c;
@@ -746,6 +856,27 @@ const scanSegments = (js: string): Segment[] => {
     if (!wordIsProperty && !memberWordEnded && isWordChar(lastRaw)) {
       // A word just ended. `x.class` and `p.catch(f)` are properties, not keywords, and a
       // class member named `class` or `function` declares nothing.
+      if (
+        lineBreakBeforeWord &&
+        valueBeforeWord &&
+        wordRun !== "in" &&
+        wordRun !== "of" &&
+        wordRun !== "instanceof" &&
+        atDeclarationLevel()
+      ) {
+        // `var a = 1\nfoo`: a name after a value on a new line starts a new statement.
+        closeDeclaration();
+      }
+      if (wordIsBindingName && atDeclarationLevel()) {
+        (bareBindingEnds ??= new Set()).add(lastSigOffset);
+      }
+      if (DECLARATION_KEYWORDS.has(wordRun) && !atObjectMemberLevel()) {
+        // `{ const: v, deprecated }` names a key, not a declaration.
+        declarationParenDepth.push(parenIsControlHeader.length);
+        declarationBracketDepth.push(bracketDepth);
+        declarationBraceDepth.push(braceKind.length);
+        bindingNameExpected = true;
+      }
       if (wordRun === "function" || wordRun === "catch") {
         bodyHeaderPending = true;
         functionIsExpression = wordRun === "function" && wordStartsExpression;
@@ -764,6 +895,7 @@ const scanSegments = (js: string): Segment[] => {
         (bodyHeaderEnds ??= new Set()).add(sigOffsetBeforeWord);
       }
     }
+    endDeclarationAtLineStart(c);
     switch (c) {
       case "(": {
         // `Symbol.for(key)` and `$if(a)` are calls, not headers.
@@ -831,8 +963,10 @@ const scanSegments = (js: string): Segment[] => {
         break;
       case ";":
         bodyHeaderPending = false;
+        if (atDeclarationLevel()) closeDeclaration();
         break;
     }
+    if (c === ")" || c === "]" || c === "}") closeLeftDeclarations();
     codeAccum += c;
     if (isSpace(c)) {
       if (c === "\n" || c === "\r" || c === "\u2028" || c === "\u2029")
@@ -840,6 +974,7 @@ const scanSegments = (js: string): Segment[] => {
       lastRaw = c;
       return;
     }
+    bindingNameExpected = c === "," && atDeclarationLevel();
     wordRun = "";
     lastRaw = c;
     prevSig = lastSig;
@@ -854,6 +989,14 @@ const scanSegments = (js: string): Segment[] => {
     kind: "string" | "template" | "regex",
   ): void => {
     const asiBefore = asiBeforeLiteral(kind);
+    if (operatorAfterValueBreak !== "") {
+      // `let p = 1\n!"x"`: the `!` started a new statement.
+      endDeclarationAtLineStart(text[0]);
+    } else if (asiBefore && atDeclarationLevel()) {
+      // `var a = 1\n"x"`: the literal starts a new statement, which declares nothing.
+      closeDeclaration();
+    }
+    bindingNameExpected = false;
     flushCode();
     segments.push(
       asiBefore ? { literal: true, text, asiBefore } : { literal: true, text },
@@ -1181,14 +1324,17 @@ export const minifyJs = (js: string): string => {
         // A line starting with `(` or `[` continues a value as a call or an index
         // (`getEl("x")\n(fn)()` is `getEl("x")(fn)()`), unless the previous line
         // ends in a restricted production (`return`, `break label`, ...) where the
-        // line break itself ends the statement.
+        // line break itself ends the statement. A declaration's binding name with no
+        // initializer (`var a = 1, b`) takes only `=`, `,`, `;`, `in` or `of` next, so
+        // any other line starts a new statement (`var p\n[a].map(f)`, `let p\n+z`).
         const startsWithContinuation =
-          /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
-            line,
-          ) ||
-          ((firstChar === "(" || firstChar === "[") &&
-            !RESTRICTED_PRODUCTION_END.test(prevLine) &&
-            !BARE_DECLARATION_END.test(prevLine));
+          seg.bareBindingEnds?.has(prevLineEnd) === true
+            ? BARE_BINDING_CONTINUATION.test(line)
+            : /^(instanceof(?![a-zA-Z0-9_$])|in(?![a-zA-Z0-9_$])|of(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
+                line,
+              ) ||
+              ((firstChar === "(" || firstChar === "[") &&
+                !RESTRICTED_PRODUCTION_END.test(prevLine));
 
         if (
           !endsWithOpenControl &&
