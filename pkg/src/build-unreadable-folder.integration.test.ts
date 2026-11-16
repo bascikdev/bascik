@@ -148,46 +148,103 @@ describe.skipIf(!canLock)(
       expect(output).not.toMatch(/\n\s+at /);
     });
 
-    it("the dev server warns once and serves the other pages", async () => {
-      const root = await project("dev", false);
-      const child = spawn(
-        process.execPath,
-        [cli, "--port", String(DEV_PORT), "--no-pin"],
-        { cwd: root, detached: true, stdio: ["ignore", "pipe", "pipe"] },
-      );
-      let output = "";
-      child.stdout.on("data", (chunk) => (output += chunk));
-      child.stderr.on("data", (chunk) => (output += chunk));
-      try {
-        let status: number | null = null;
-        const deadline = Date.now() + 45_000;
-        while (status === null && Date.now() < deadline) {
-          try {
-            const response = await fetch(`http://localhost:${DEV_PORT}/about`);
-            await response.arrayBuffer();
-            status = response.status;
-          } catch {
-            await new Promise((done) => setTimeout(done, 100));
-          }
+    // The second dev server runs with an exec entry that watches a file, so
+    // one source watcher (watch-source.ts) owns the pages instead.
+    for (const exec of [false, true]) {
+      const devMode = exec ? "pipeline.exec watch mode" : "page watchers";
+      it(`the dev server warns once and serves the other pages (${devMode})`, async () => {
+        const root = await project(exec ? "dev-exec" : "dev", false);
+        const port = exec ? DEV_PORT + 1 : DEV_PORT;
+        if (exec) {
+          await writeFixtureFile(root, "scripts/pre.mjs", "");
+          await writeFixtureFile(root, "content/books.md", "# Books");
+          await writeFixtureFile(
+            root,
+            "bascik.config.js",
+            `export default { pipeline: { workers: false, exec: [{ script: "scripts/pre.mjs", watch: ["content/"] }] }, generate: { sitemap: false, robots: false } };`,
+          );
         }
-        expect(status, output).toBe(200);
-        const warning =
-          /\[bascik\] warning: could not read folder "src\/pages\/sub": EACCES/g;
-        const warned = Date.now() + 20_000;
-        while (!warning.test(output) && Date.now() < warned)
-          await new Promise((done) => setTimeout(done, 50));
-        // Let the boot's other scans of the same folder finish.
-        await new Promise((done) => setTimeout(done, 1_000));
-        expect(output.match(warning) ?? [], output).toHaveLength(1);
-        expect(output).not.toMatch(/\n\s+at /);
-        expect(child.exitCode).toBeNull();
-      } finally {
-        const exited = new Promise((done) => child.once("exit", done));
-        if (child.exitCode === null && child.signalCode === null) {
-          process.kill(-child.pid!, "SIGKILL");
-          await exited;
-        }
-      }
-    });
+        await devServerRecovers(root, port);
+      });
+    }
   },
 );
+
+/**
+ * Start the dev server on a project whose src/pages/sub cannot be read,
+ * check the one warning and the other pages, then make the folder readable
+ * and check that its pages, and a page and a stylesheet added to it right
+ * after, are served.
+ */
+const devServerRecovers = async (root: string, port: number): Promise<void> => {
+  const child = spawn(
+    process.execPath,
+    [cli, "--port", String(port), "--no-pin"],
+    { cwd: root, detached: true, stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let output = "";
+  child.stdout.on("data", (chunk) => (output += chunk));
+  child.stderr.on("data", (chunk) => (output += chunk));
+  try {
+    let status: number | null = null;
+    const deadline = Date.now() + 45_000;
+    while (status === null && Date.now() < deadline) {
+      try {
+        const response = await fetch(`http://localhost:${port}/about`);
+        await response.arrayBuffer();
+        status = response.status;
+      } catch {
+        await new Promise((done) => setTimeout(done, 100));
+      }
+    }
+    expect(status, output).toBe(200);
+    const warning =
+      /\[bascik\] warning: could not read folder "src\/pages\/sub": EACCES/g;
+    const warned = Date.now() + 20_000;
+    while (!warning.test(output) && Date.now() < warned)
+      await new Promise((done) => setTimeout(done, 50));
+    // Let the boot's other scans of the same folder finish.
+    await new Promise((done) => setTimeout(done, 1_000));
+    expect(output.match(warning) ?? [], output).toHaveLength(1);
+    expect(output).not.toMatch(/\n\s+at /);
+    // Linux refuses to watch the folder (EACCES), macOS does not: the
+    // watcher's error is the same warning, not a raw "watch error".
+    expect(output).not.toMatch(/watch error/);
+    expect(child.exitCode).toBeNull();
+
+    // Readable again: its pages are built, and a page added to it later
+    // is seen too (on Linux the folder is watched again).
+    await chmod(join(root, "src/pages/sub"), 0o755);
+    const served = async (
+      path: string,
+      expected = "<h1>",
+    ): Promise<boolean> => {
+      const until = Date.now() + 20_000;
+      while (Date.now() < until) {
+        const response = await fetch(`http://localhost:${port}${path}`);
+        const body = await response.text();
+        if (response.status === 200 && body.includes(expected)) return true;
+        await new Promise((done) => setTimeout(done, 100));
+      }
+      return false;
+    };
+    expect(await served("/sub/inner"), output).toBe(true);
+    // Written while the folder is being watched again: on Linux a file
+    // that lands before that watch starts is not reported as added.
+    await writeFixtureFile(root, "src/pages/sub/later.html", page("Later"));
+    await writeFixtureFile(root, "src/pages/sub/later.css", "h1{color:red}");
+    expect(await served("/sub/later"), output).toBe(true);
+    expect(await served("/sub/later.css", "color:red"), output).toBe(true);
+    // And a page added once the folder is watched again.
+    await new Promise((done) => setTimeout(done, 1_500));
+    await writeFixtureFile(root, "src/pages/sub/last.html", page("Last"));
+    expect(await served("/sub/last"), output).toBe(true);
+    expect(output).not.toMatch(/watch error/);
+  } finally {
+    const exited = new Promise((done) => child.once("exit", done));
+    if (child.exitCode === null && child.signalCode === null) {
+      process.kill(-child.pid!, "SIGKILL");
+      await exited;
+    }
+  }
+};

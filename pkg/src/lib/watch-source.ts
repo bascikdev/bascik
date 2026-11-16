@@ -26,6 +26,7 @@ import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { createSourceWatchIgnore, sourceWatchRoot } from "./watch-root.ts";
 import { privateDirFor } from "./private-dir.ts";
 import { createPagesRootRemoval } from "./pages-root-removal.ts";
+import { createUnreadableWatchFolders } from "./watch-permission.ts";
 
 /** One filesystem observer owns source/exec overlap, including page edits.
  * Outputs are ignored unconditionally. No timestamp or self-write heuristic
@@ -268,7 +269,19 @@ export const watchSourceCycles = async (
       cycle.enqueue(pagesRoot);
     }),
   );
+  // A folder watched again once it is readable (Linux): the watcher ignores
+  // the files already in it, so a page or stylesheet written to it before
+  // the new watch started is never reported. Rescan, as for the pages
+  // folder coming back.
+  const unreadableFolders = createUnreadableWatchFolders({
+    onWatchedAgain: () => {
+      changes.set(pagesRoot, "addDir");
+      if (booted) cycle.enqueue(pagesRoot);
+      else deferred.add(pagesRoot);
+    },
+  });
   registerShutdownHandler(async () => {
+    unreadableFolders.close();
     cycle.close();
     eventEmitter.removeListener("boot-done", onBoot);
     await watcher.close();
@@ -284,6 +297,9 @@ export const watchSourceCycles = async (
       resolveReady();
     });
     watcher.on("error", (error) => {
+      // A folder it cannot read (Linux refuses to watch it) is warned about
+      // once, as the page scan does, and does not fail boot.
+      if (unreadableFolders.handle(watcher, error)) return;
       if (!settled) {
         settled = true;
         reject(error);
