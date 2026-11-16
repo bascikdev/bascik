@@ -575,6 +575,32 @@ describe("removeCommentsFromCss", () => {
   });
 });
 
+// CSS Syntax: a comment with no `*/` runs to the end of the stylesheet. Left
+// in place, it would swallow whatever Bascik joins after it.
+describe("removeCommentsFromCss – unclosed comment", () => {
+  it("removes a comment that runs to the end of the stylesheet", () => {
+    expect(removeCommentsFromCss(".a { color: red; } /* unclosed")).toBe(
+      ".a { color: red; } ",
+    );
+    expect(removeCommentsFromCss(".a{margin:1px/* unclosed")).toBe(
+      ".a{margin:1px",
+    );
+    // `/*` inside a string is text, even when the string is the last token.
+    expect(removeCommentsFromCss('.a::after { content: "/* x" }')).toBe(
+      '.a::after { content: "/* x" }',
+    );
+  });
+
+  it("keeps the style blocks after one that ends in an unclosed comment", () => {
+    const { css } = extractInlineStyles(
+      '<style media="print">.a { color: red; } /* oops</style><style>.b { color: blue; }</style><p>x</p>',
+    );
+    expect(css).not.toContain("/*");
+    expect(css).toContain("@media print {\n.a { color: red; }\n}");
+    expect(css).toContain(".b { color: blue; }");
+  });
+});
+
 describe("shieldCssStrings – escapes outside strings", () => {
   it("does not open a string at an escaped quote in a selector", () => {
     const css = ".it\\'s { color: red; } .b { content: 'x'; }";

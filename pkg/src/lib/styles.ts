@@ -1383,9 +1383,11 @@ export const removeCommentsFromCss = (css: string): string => {
   // the start of a CSS string literal. A backslash escapes any character in
   // a string, a newline included (a line continuation), as in shieldCssStrings.
   // Outside a string an escape (`\'`, `\/`) is part of a name: kept as
-  // written, never the start of a string or a comment.
+  // written, never the start of a string or a comment. A comment with no
+  // `*/` runs to the end of the stylesheet (CSS Syntax), so it is removed
+  // too: left in, it would swallow the CSS Bascik joins after it.
   const pattern =
-    /(\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g;
+    /(\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*(?:[\s\S]*?\*\/|[\s\S]*$)/g;
   let result = "";
   let copiedTo = 0;
   for (const match of css.matchAll(pattern)) {
