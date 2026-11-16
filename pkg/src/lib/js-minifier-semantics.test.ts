@@ -1780,3 +1780,79 @@ describe("minifyJs – a name spelled like a keyword before a string line", () =
     expect(minifyJs("x = await\n'a'")).toBe("x=await\n'a'");
   });
 });
+
+describe("minifyJs – a get, set or static modifier before a string-named member", () => {
+  // ECMAScript allows a line break after `get`, `set` and `static`, so the member they modify
+  // can have a string name on the next line. `async` and `accessor` take no line break there,
+  // so after them the line break ends a member named `async` or `accessor`.
+  const shape = (o: object): string =>
+    Object.getOwnPropertyNames(o)
+      .map((key) => {
+        const d = Object.getOwnPropertyDescriptor(o, key)!;
+        return `${key}:${d.get ? "get" : ""}${d.set ? "set" : ""}${typeof d.value}`;
+      })
+      .join();
+  const withShape = (source: string): string =>
+    `const shape = ${shape.toString()}\n${source}`;
+
+  it.each([
+    [
+      "a getter",
+      "class A { get\n'a'() { return 1 } }\nlog.push(shape(A.prototype))",
+    ],
+    ["a setter", "class A { set\n'a'(v) {} }\nlog.push(shape(A.prototype))"],
+    ["a static field", "class A { static\n'a' = 1 }\nlog.push(shape(A))"],
+    ["a static method", 'class A { static\n"a"() {} }\nlog.push(shape(A))'],
+    [
+      "a static getter",
+      "class A { static get\n'a'() { return 1 } }\nlog.push(shape(A))",
+    ],
+    [
+      "a getter after a field",
+      "class A { x = 1\nget\n'a'() { return 1 } }\nlog.push(shape(A.prototype))",
+    ],
+    [
+      "a getter whose parameters are on a third line",
+      "class A { get\n'a'\n() { return 1 } }\nlog.push(shape(A.prototype))",
+    ],
+    [
+      "an object getter",
+      "const o = { get\n'a'() { return 1 } }\nlog.push(shape(o))",
+    ],
+    [
+      "an object setter after another member",
+      "const o = { b: 1, set\n'a'(v) {} }\nlog.push(shape(o))",
+    ],
+  ])("keeps %s", (_name, source) => {
+    expectSameProgram(withShape(source));
+  });
+
+  it.each([
+    [
+      "a field named async",
+      "class A { async\n'a'() {} }\nlog.push(shape(A.prototype), shape(new A()))",
+    ],
+    [
+      "a field named accessor",
+      "class A { accessor\n'a' = 1 }\nlog.push(shape(new A()))",
+    ],
+    [
+      "a static field named async",
+      "class A { static async\n'a'() {} }\nlog.push(shape(A), shape(A.prototype))",
+    ],
+    [
+      "a property named get",
+      "const o = { get: 1 }\nlet x\nx = o.get\n'a'.length\nlog.push(x)",
+    ],
+    [
+      "a variable named get",
+      "const get = 1\nlet x\nx = get\n'a'.length\nlog.push(x)",
+    ],
+    [
+      "a shorthand property named get in a block",
+      "let get = 1\n{ get\n'a'.length }\nlog.push(get)",
+    ],
+  ])("ends the member or statement after %s", (_name, source) => {
+    expectSameProgram(withShape(source));
+  });
+});
