@@ -121,7 +121,9 @@ try {
 }
 
 // A thrown string, null or empty rejection: what it was, since it names no line.
-${describeNonErrorThrow.toString()}
+// Bound to its name here, so the call below holds even if a build of this
+// package renames the function.
+const describeNonErrorThrow = ${describeNonErrorThrow.toString()};
 
 let mod;
 try {
