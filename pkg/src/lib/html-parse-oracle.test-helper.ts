@@ -120,11 +120,18 @@ export interface DomSnapshot {
   /** Collected scripts as `namespace:attributes:text`, sorted. */
   scripts: string[];
   /**
-   * Collected scripts in tree order, each with the number of elements written
-   * in the source before it (formatting elements left out, since the parser
-   * re-creates them around whitespace; implied `<html>`, `<head>`, `<body>`
-   * too). A script runs once those elements exist, wherever the parser put
-   * them, so a step that moves scripts must never lower this count.
+   * Collected scripts in the order the parser reads them (source order), each
+   * with the number of elements written in the source before it (formatting
+   * elements left out, since the parser re-creates them around whitespace;
+   * implied `<html>`, `<head>`, `<body>` too). A script runs once those
+   * elements exist, wherever the parser put them, so a step that moves
+   * scripts must never lower this count.
+   *
+   * Source order, not tree order: scripts run, and deferred and module
+   * scripts queue, in the order the parser inserts them. Foster parenting
+   * puts content written after a `<table>`'s script before the table in the
+   * tree, so a script appended inside a foster-parented `<pre>` sits before
+   * the table's scripts in the tree while it still runs after them.
    */
   scriptPositions: { script: string; elementsBefore: number }[];
 }
@@ -233,9 +240,11 @@ export const domSnapshot = (
   return {
     structure: out.join(""),
     scripts: scripts.sort(),
-    scriptPositions: scriptStarts.map(({ script, start }) => ({
-      script,
-      elementsBefore: elementStarts.filter((offset) => offset < start).length,
-    })),
+    scriptPositions: [...scriptStarts]
+      .sort((a, b) => a.start - b.start)
+      .map(({ script, start }) => ({
+        script,
+        elementsBefore: elementStarts.filter((offset) => offset < start).length,
+      })),
   };
 };

@@ -306,6 +306,21 @@ describe("extractScriptTags", () => {
     },
   );
 
+  it("keeps two identical module scripts in run order when the hoisted one lands in a foster-parented element", () => {
+    // The property test's counterexample (seed 870887758): the document ends
+    // inside a `<pre>` written in a table, which the parser moves before the
+    // table, so the hoisted copy sits before the first one in the tree. It is
+    // still parsed, and so queued and run, after it.
+    const html =
+      "<table><script type=module>m()</script><svg><script></svg><script type=module>m()</script><pre>";
+    expect(expectSameParse(html)).toBe(
+      "<table><script type=module>m()</script><svg><script></svg><!----><pre><script type=module>m()</script>",
+    );
+    expectSameParse(
+      "<table><script type=module>a()</script><svg><script></svg><script type=module>b()</script><pre>",
+    );
+  });
+
   it("still appends hoisted scripts after text that ends a table document", () => {
     expect(expectSameParse("<table><script>a()</script>\fx")).toBe(
       "<table><!---->\fx\n<script>a()</script>",
