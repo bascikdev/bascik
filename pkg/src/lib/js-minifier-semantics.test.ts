@@ -1159,8 +1159,26 @@ describe("minifyJs – a call that only looks like a control header", () => {
       "async function f(o){for await(const a of o)/x/.test(a)&&use(a)}",
     ],
     ["const r = o.for\nawait (a)\nb()", "const r=o.for;await(a);b()"],
+    [
+      "(async () => { for\nawait (const x of y)\n z(x)\n})",
+      "(async()=>{for await(const x of y)z(x)})",
+    ],
+    [
+      "async function f(o) {\n  for // each\n  await (const a of o) use(a)\n}",
+      "async function f(o){for await(const a of o)use(a)}",
+    ],
+    [
+      "const o = { for: 1 }\nconst r = o.for\nb()",
+      "const o={for:1};const r=o.for;b()",
+    ],
   ])("reads the header of `for await`: %j", (source, expected) => {
     expect(minifyJs(source)).toBe(expected);
+  });
+
+  it("still ends a class field named for at its line break", () => {
+    expectSameProgram(
+      "class A {\n  for\n  m() { return 1 }\n}\nconst a = new A()\nlog.push(a.m(), 'for' in a)",
+    );
   });
 
   it.each([
