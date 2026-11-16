@@ -92,7 +92,8 @@ type Segment = {
   /**
    * Literal segments only: the line break before this string stays in the output, because
    * whether it ends the statement depends on context the scanner does not track
-   * (`await\n"a"` is one statement in an async function and two where `await` is a name).
+   * (`await\n"a"` is one statement in an async function and two where `await` is a name;
+   * `yield\n\`x\`` is two statements in a generator and a tagged template elsewhere).
    */
   lineBreakBefore?: boolean;
   /**
@@ -194,6 +195,23 @@ const LINE_END_CONTINUING_KEYWORD =
  */
 const RESTRICTED_PRODUCTION_END =
   /(?:^|(?![\w$\\]|[^\x00-\x7f\s])[^.])(?:return|throw|yield|debugger|(?:break|continue)(?:\s+(?:[\w$\\]|[^\x00-\x7f\s])+)?)$/;
+
+/**
+ * A line ending in `await` or `yield`. `await` is an operator in an async function or a
+ * module and a name elsewhere; `yield` is a restricted production in a generator and a name
+ * elsewhere. The scanner does not track which, and the line break after either word means
+ * something different in each (`await\na` is `await a` or two statements, `yield\n(a)` is two
+ * statements or a call), so it stays as written. `x.await` and `#yield` are names.
+ */
+const CONTEXTUAL_OPERATOR_END =
+  /(?:^|(?![\w$\\]|[^\x00-\x7f\s])[^.#])(?:await|yield)$/;
+
+/**
+ * Stands for a line break kept in the output (see `CONTEXTUAL_OPERATOR_END`) while the code
+ * is normalized, which collapses whitespace. Outside literals, U+0001 is not valid JavaScript,
+ * so none is in the source.
+ */
+const KEPT_LINE_BREAK = "\u0001";
 
 /** The keywords of those restricted productions, for the scanner. */
 const RESTRICTED_WORDS = new Set([
@@ -1200,9 +1218,12 @@ const scanSegments = (js: string): Segment[] => {
     if (afterWord === "from" || afterWord === "import")
       moduleClauseOpen = false;
     // `await\n"a"` is `await "a"` in a module or an async function and two statements where
-    // `await` is a name. The scanner does not track which, so the line break stays.
+    // `await` is a name, and `yield\n\`x\`` is two statements in a generator and a tagged
+    // template where `yield` is a name. The scanner does not track which, so the line break
+    // stays (see `CONTEXTUAL_OPERATOR_END`).
     const lineBreakBefore =
-      kind === "string" && lineBreakSinceSignificant && afterWord === "await";
+      lineBreakSinceSignificant &&
+      (afterWord === "await" || afterWord === "yield");
     if (operatorAfterValueBreak !== "") {
       // `let p = 1\n!"x"`: the `!` started a new statement.
       endDeclarationAtLineStart(text[0]);
@@ -1213,10 +1234,10 @@ const scanSegments = (js: string): Segment[] => {
     bindingNameExpected = false;
     flushCode();
     segments.push(
-      asiBefore
-        ? { literal: true, text, asiBefore }
-        : lineBreakBefore
-          ? { literal: true, text, lineBreakBefore }
+      lineBreakBefore
+        ? { literal: true, text, lineBreakBefore }
+        : asiBefore
+          ? { literal: true, text, asiBefore }
           : moduleSpecifier
             ? { literal: true, text, moduleSpecifier }
             : { literal: true, text },
@@ -1545,6 +1566,9 @@ const normalizeCodeSegment = (text: string): string => {
   code = code.replace(/([^\d])\s*\.\s*([^\d\s])/g, "$1.$2");
   // `a < !--b` and `a <\n!--b` compare with a decrement: joined, `<!--` would start a comment.
   code = code.replace(/<!--/g, "< !--");
+  if (code.includes(KEPT_LINE_BREAK)) {
+    code = code.replaceAll(KEPT_LINE_BREAK, "\n");
+  }
   return code.includes("\0") ? code.replace(/\0/g, " ") : code;
 };
 
@@ -1770,11 +1794,12 @@ export const minifyJs = (js: string): string => {
           needsSemicolon = true;
         } else if (
           RESTRICTED_PRODUCTION_END.test(prevLine) &&
-          !/^[;}]/.test(line)
+          !/^[;,:)\]}]/.test(line)
         ) {
           // `return\n-z` returns undefined: the line break after a restricted production
           // ends the statement whatever the next line starts with, so a sign, an operator
-          // or a regex there starts a new statement (`return;-z`).
+          // or a regex there starts a new statement (`return;-z`). Punctuation that ends
+          // the expression holding a `yield` (`f(yield\n)`) takes no `;` before it.
           needsSemicolon = true;
         }
       } else if (lastChar === "}") {
@@ -1819,10 +1844,16 @@ export const minifyJs = (js: string): string => {
         // `import { a }\nfrom "m"`: the clause continues with its `from`.
         needsSemicolon = false;
       }
+      // `await\na`, `yield\n(a)`: the line break stays as written, unless the next line
+      // starts with punctuation that no operand can start with, which reads the same joined.
+      const keepLineBreak =
+        CONTEXTUAL_OPERATOR_END.test(prevLine) && !/^[;,:)\]}]/.test(line);
 
       prevLineEnd = lineEnd;
       prevLine = line;
-      if (needsSemicolon) {
+      if (keepLineBreak) {
+        appendProcessed(KEPT_LINE_BREAK + line);
+      } else if (needsSemicolon) {
         appendProcessed(";" + line);
       } else if (
         (isWordChar(lastChar) && isWordChar(firstChar)) ||
