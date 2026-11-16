@@ -27,8 +27,9 @@ type Segment = {
   /**
    * Offsets in `text` of the last character before a line break that is followed by the `{`
    * of a function, method, class, static block or `catch` body (`function f(a)\n{`,
-   * `class A\n{`). That `{` belongs to its header, so the line break is not a statement end,
-   * unlike the one in `foo()\n{ block }`.
+   * `class A\n{`), or by the `extends` of a class header (`class D\nextends B`). That `{` or
+   * `extends` belongs to its header, so the line break is not a statement end, unlike the one
+   * in `foo()\n{ block }`.
    */
   bodyHeaderEnds?: Set<number>;
   /**
@@ -464,6 +465,10 @@ const scanSegments = (js: string): Segment[] => {
   // so a `{` inside its heritage clause (`extends mix({})`) is not taken for the body.
   let classPendingParenDepth = -1;
   let classPendingBracketDepth = -1;
+  // For the word being read: `lastSigOffset` and `lineBreakSinceSignificant` as they were
+  // before it, so a `class D\nextends B` header can keep the line break before `extends`.
+  let sigOffsetBeforeWord = -1;
+  let lineBreakBeforeWord = false;
   // Offset in `codeAccum` of `lastSig`.
   let lastSigOffset = -1;
   let lineBreakSinceSignificant = false;
@@ -705,6 +710,8 @@ const scanSegments = (js: string): Segment[] => {
           (lineBreakSinceSignificant &&
             memberKeywordNameEnds?.has(lastSigOffset) === true);
         wordIsProperty = lastSig === ".";
+        sigOffsetBeforeWord = lastSigOffset;
+        lineBreakBeforeWord = lineBreakSinceSignificant;
         wordRun = c;
       }
       lastRaw = c;
@@ -746,6 +753,15 @@ const scanSegments = (js: string): Segment[] => {
         classPendingParenDepth = parenIsControlHeader.length;
         classPendingBracketDepth = bracketDepth;
         classIsExpression = wordStartsExpression;
+      } else if (
+        wordRun === "extends" &&
+        lineBreakBeforeWord &&
+        sigOffsetBeforeWord !== -1 &&
+        classPendingParenDepth === parenIsControlHeader.length &&
+        classPendingBracketDepth === bracketDepth
+      ) {
+        // `class D\nextends B {}`: the heritage clause continues the class header.
+        (bodyHeaderEnds ??= new Set()).add(sigOffsetBeforeWord);
       }
     }
     switch (c) {
