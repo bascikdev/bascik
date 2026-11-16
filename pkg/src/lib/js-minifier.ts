@@ -1447,7 +1447,14 @@ const scanSegments = (js: string): Segment[] => {
           nextChar &&
           ((isWordChar(lastRaw) && isWordChar(nextChar)) ||
             ((lastRaw === "+" || lastRaw === "-") && nextChar === lastRaw) ||
-            (nextChar === "." && lastRaw === lastSig && wordIsDecimalInteger()))
+            (nextChar === "." &&
+              lastRaw === lastSig &&
+              wordIsDecimalInteger()) ||
+            // `a </* c */script` and `a--/* c */> b` must not write `<script` or `-->` into a
+            // script holding `<!--`, where the HTML parser reads them.
+            (htmlMarkersMatter &&
+              ((lastRaw === "<" && (nextChar === "s" || nextChar === "S")) ||
+                (lastRaw === "-" && nextChar === ">"))))
         ) {
           appendCode(" ");
         }
@@ -1537,7 +1544,8 @@ const normalizeCodeSegment = (text: string): string => {
   code = code.replace(/([^\d\s])\s*\.\s*/g, "$1.");
   code = code.replace(/([^\d])\s*\.\s*([^\d\s])/g, "$1.$2");
   // `a < !--b` and `a <\n!--b` compare with a decrement: joined, `<!--` would start a comment.
-  return code.replace(/<!--/g, "< !--");
+  code = code.replace(/<!--/g, "< !--");
+  return code.includes("\0") ? code.replace(/\0/g, " ") : code;
 };
 
 /**
@@ -1556,6 +1564,9 @@ export const minifyJs = (js: string): string => {
   }
 
   const segments = scanSegments(js);
+  // Once a script holds `<!--`, the HTML parser reads `<script` and `-->` in it to find the
+  // `</script>` that ends the element, so joining code must not write either one.
+  const htmlMarkersMatter = js.includes("<!--");
 
   // Process code segments and assemble minified JS.
   // `resultLast` mirrors result.slice(-1) without flattening the growing
@@ -1604,9 +1615,13 @@ export const minifyJs = (js: string): string => {
       } else if (result && isWordChar(resultLast) && isWordChar(seg.text[0])) {
         // Ensure space between preceding keyword/identifier and literal if needed
         result += " ";
-      } else if (resultLast === "/" && seg.text[0] === "/") {
+      } else if (
+        (resultLast === "/" || resultLast === "<") &&
+        seg.text[0] === "/"
+      ) {
         // A division sign and then a regex literal (`a / /b/.source.length`): without the
         // space the two slashes start a line comment that swallows the rest of the script.
+        // After `<` (`a < /script>/`), `</script` would end an inline `<script>` element.
         result += " ";
       }
       result += seg.text;
@@ -1812,7 +1827,10 @@ export const minifyJs = (js: string): string => {
       } else if (
         (isWordChar(lastChar) && isWordChar(firstChar)) ||
         ((lastChar === "+" || lastChar === "-") && firstChar === lastChar) ||
-        integerBeforeDot
+        integerBeforeDot ||
+        (htmlMarkersMatter &&
+          ((lastChar === "<" && /^script/i.test(line)) ||
+            (ptTail.endsWith("--") && firstChar === ">")))
       ) {
         // Ensure space between word tokens when joining without semicolon, and between a
         // binary `+` or `-` and a sign or update on the next line: `a +\n+b` is `a+ +b`,
@@ -1823,7 +1841,16 @@ export const minifyJs = (js: string): string => {
       }
     }
 
-    const code = codeSegmentMemo.minify(processedText);
+    // `\0` marks a space that normalization keeps: `a < script` and `a-- > b` must not
+    // become `<script` or `-->` (see `htmlMarkersMatter`). Outside literals, a NUL is not
+    // valid JavaScript, so none is in the source.
+    const code = codeSegmentMemo.minify(
+      htmlMarkersMatter
+        ? processedText
+            .replace(/<\s+(?=script)/gi, "<\0")
+            .replace(/--\s+>/g, "--\0>")
+        : processedText,
+    );
 
     // Ensure boundary spacing with previous segment if both end/start with word chars.
     // `code` can be empty (a whitespace-only segment between two literals); the

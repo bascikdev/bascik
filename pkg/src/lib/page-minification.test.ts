@@ -56,6 +56,57 @@ describe("inline script minification keeps where the browser ends the script", (
       "<script>a();b()</script>",
     );
   });
+
+  // Removing whitespace, a line break or a comment must not write a marker the source did
+  // not have: `</script` ends any script, and `<script` and `-->` move the end of one that
+  // holds `<!--`.
+  it.each([
+    [
+      "a regex after <",
+      "<script>var r = 1 < /script>/.test('x')</script><p>after</p>",
+    ],
+    [
+      "a regex after < on the next line",
+      "<script>var r = 1 <\n/script>/.test('x')</script><p>after</p>",
+    ],
+    [
+      "a regex after < and a comment",
+      "<script>var r = 1 < /* c */ /SCRIPT>/i.test('x')</script><p>after</p>",
+    ],
+    [
+      "a name script after <",
+      "<script>var m = '<!--', script = 1, a = 2\nvar r = a < script > 0</script><p>after</p>",
+    ],
+    [
+      "a name script after << on the next line",
+      "<script>var m = '<!--', script = 1, a = 2\nvar r = a <<\nscript > 0</script><p>after</p>",
+    ],
+    [
+      "a name script after < and a comment",
+      "<script>var m = '<!--', script = 1, a = 2\nvar r = a </* c */script > 0</script><p>after</p>",
+    ],
+    [
+      "a decrement before >",
+      "<script>var m = '<!--<script>', a = 3, b = 1\nvar r = a-- > b\nvar t = '<\/script>'</script><p>after</p>",
+    ],
+    [
+      "a decrement before > on the next line",
+      "<script>var m = '<!--<script>', a = 3, b = 1\nvar r = a--\n> b\nvar t = '<\/script>'</script><p>after</p>",
+    ],
+    [
+      "a decrement before > and a comment",
+      "<script>var m = '<!--<script>', a = 3, b = 1\nvar r = a--/* c */> b\nvar t = '<\/script>'</script><p>after</p>",
+    ],
+  ])("does not write a marker from %s", async (_name, body) => {
+    const html = `<!doctype html><html><body>${body}</body></html>`;
+    const minified = await minifyScriptTagsInHtml(html, minifyJs);
+    expect(bodyAsParsed(minified), minified).toEqual(bodyAsParsed(html));
+  });
+
+  it("keeps a decrement before > joined in a script that never writes <!--", () => {
+    expect(minifyJs("while (i-- > 0) f()")).toBe("while(i-->0)f()");
+    expect(minifyJs("if (a < script) f()")).toBe("if(a<script)f()");
+  });
 });
 
 describe("inline script minification uses original source spans", () => {

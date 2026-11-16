@@ -1927,3 +1927,26 @@ describe("minifyJs – an import or export clause continued on the next line", (
     );
   });
 });
+
+describe("minifyJs – HTML script markers written by joining", () => {
+  // In a script holding `<!--`, the space that keeps `<` from `script` and `--` from `>`
+  // stays; the program is the same.
+  it.each([
+    [
+      "a < script",
+      "const m = '<!--', script = 3, a = 2\nlog.push(a < script > 0)",
+    ],
+    [
+      "a << script",
+      "const m = '<!--', script = 1, a = 2\nlog.push(a <<\nscript)",
+    ],
+    ["a-- > b", "const m = '<!--'\nlet a = 3, b = 1\nlog.push(a-- > b, a)"],
+    [
+      "a-- on a line before > b",
+      "const m = '<!--'\nlet a = 3, b = 1\nlog.push(a--\n> b, a)",
+    ],
+    ["a regex after <", "log.push(1 < /script>/.test('x'))"],
+  ])("keeps %s apart", (_name, source) => {
+    expect(expectSameProgram(source)).not.toMatch(/<script|-->|<\/script/i);
+  });
+});
