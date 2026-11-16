@@ -6,6 +6,7 @@
  * characters ({}, :, ;, ,) while preserving string literals and url() contents verbatim.
  */
 
+import { createContentShield } from "./shielding.ts";
 import { shieldCssStrings, removeCommentsFromCss } from "./styles.ts";
 
 /**
@@ -20,7 +21,16 @@ export const minifyCss = (css: string): string => {
   const { css: shielded, restore } = shieldCssStrings(
     removeCommentsFromCss(css),
   );
-  const minified = shielded
+  // An escaped character is part of a name (CSS Syntax: `.sm\:`, `.a\ `,
+  // `.a\,`), never the syntax the passes below trim whitespace around, so
+  // hide each one. Escapes are read left to right, so `\\` is one escaped
+  // backslash and the digits after it are text. A hex escape stays visible:
+  // the pass below keeps the one whitespace it consumes.
+  const escapes = createContentShield(shielded);
+  const unescaped = shielded.replace(/\\[\s\S]/g, (escape) =>
+    /^\\[0-9a-fA-F\n\r\f]$/.test(escape) ? escape : escapes.hide(escape),
+  );
+  const minified = unescaped
     // CSS Syntax preprocessing: CRLF, a lone CR and FF are each one newline,
     // so a CRLF after a hex escape is the escape's one whitespace, not two.
     .replace(/\r\n?|\f/g, () => "\n")
@@ -45,5 +55,5 @@ export const minifyCss = (css: string): string => {
     .replace(/\s+:(?![^;{}]*\{)/g, ":")
     .replace(/(?<!-)--([\w-]+):(?=[;}])/g, "--$1: ")
     .trim();
-  return restore(minified);
+  return restore(escapes.restore(minified));
 };
