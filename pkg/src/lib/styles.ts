@@ -52,6 +52,7 @@ import { decodeSource, stripBom } from "./source-text.ts";
 import {
   forgetUnreadableSourceFile,
   reportUnreadableSourceFile,
+  UnreadableSourceError,
 } from "./unreadable-source.ts";
 
 /**
@@ -1625,6 +1626,27 @@ const wrapPlannedCss = (css: string, plan: CssImportPlan): string =>
   );
 
 /**
+ * An `@import`-ed stylesheet that exists but cannot be read fails a build
+ * like the component stylesheet that imports it (warns once in dev). Any
+ * other failure, such as one deleted since it was planned, keeps the warning.
+ */
+const reportUnreadableImport = (targetPath: string, error: unknown): void => {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  if (
+    error instanceof UnreadableSourceError ||
+    (typeof code === "string" && code !== "ENOENT")
+  ) {
+    reportUnreadableSourceFile("imported stylesheet", targetPath, error);
+    return;
+  }
+  console.warn(
+    "[bascik] warning: Failed to read imported CSS file %s:",
+    targetPath,
+    error,
+  );
+};
+
+/**
  * Resolves and inlines local `@import` statements in a CSS string asynchronously.
  * Remote `@import` statements (e.g. Google Fonts) are preserved.
  *
@@ -1651,6 +1673,7 @@ export const resolveCssImports = async (
       const importedRaw = cleanImportedCss(
         decodeSource(await readFile(plan.targetPath)),
       );
+      forgetUnreadableSourceFile(plan.targetPath);
       const nestedResolved = await resolveCssImports(
         importedRaw,
         plan.targetPath,
@@ -1663,11 +1686,7 @@ export const resolveCssImports = async (
         wrapPlannedCss(nestedResolved, plan),
       );
     } catch (err) {
-      console.warn(
-        "[bascik] warning: Failed to read imported CSS file %s:",
-        plan.targetPath,
-        err,
-      );
+      reportUnreadableImport(plan.targetPath, err);
       result = replaceCssImport(result, plan.fullStatement, "");
     }
   }
@@ -1697,6 +1716,7 @@ export const resolveCssImportsSync = (
       const importedRaw = cleanImportedCss(
         stripBom(readFileSync(plan.targetPath, "utf-8")),
       );
+      forgetUnreadableSourceFile(plan.targetPath);
       const nestedResolved = resolveCssImportsSync(
         importedRaw,
         plan.targetPath,
@@ -1709,11 +1729,7 @@ export const resolveCssImportsSync = (
         wrapPlannedCss(nestedResolved, plan),
       );
     } catch (err) {
-      console.warn(
-        "[bascik] warning: Failed to read imported CSS file %s:",
-        plan.targetPath,
-        err,
-      );
+      reportUnreadableImport(plan.targetPath, err);
       result = replaceCssImport(result, plan.fullStatement, "");
     }
   }
@@ -1868,6 +1884,8 @@ export const getComponentCss = async (
       importDependencies,
     );
   } catch (error) {
+    // An unreadable imported stylesheet, already worded for the user.
+    if (error instanceof UnreadableSourceError) throw error;
     console.warn("warning: Failed to read css for %s", htmlFileName, error);
   }
 };

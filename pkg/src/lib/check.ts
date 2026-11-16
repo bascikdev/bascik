@@ -971,19 +971,30 @@ const checkProjectFiles = async (options: {
         locations,
       });
     }
-    if (!matchedDuplicate && !matchedIdClassCollision && !located) {
+    if (
+      error instanceof UnreadableFolderError ||
+      error instanceof UnreadableSourceError
+    ) {
+      // Located at the folder or file, as for a pages folder, not at the config.
+      items.push({
+        category: "component-list",
+        severity: "error",
+        message: message.replace(/^\[bascik\] error: /, ""),
+        locations: [
+          {
+            filePath:
+              error instanceof UnreadableFolderError
+                ? error.folder
+                : error.file,
+          },
+        ],
+      });
+    } else if (!matchedDuplicate && !matchedIdClassCollision && !located) {
       items.push({
         category: "component-list",
         severity: "error",
         message,
-        locations: [
-          {
-            filePath:
-              error instanceof UnreadableSourceError
-                ? error.file
-                : configSource,
-          },
-        ],
+        locations: [{ filePath: configSource }],
       });
     }
 

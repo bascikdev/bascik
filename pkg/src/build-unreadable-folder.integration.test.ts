@@ -119,6 +119,26 @@ describe.skipIf(!canLock)(
       expect(output).not.toMatch(/\n\s+at /);
     });
 
+    it("fails bascik --check at an unreadable components folder, not the config", async () => {
+      const root = await project("check-components", false);
+      await chmod(join(root, "src/pages/sub"), 0o755);
+      await writeFixtureFile(
+        root,
+        "src/components/cards/book-card.html",
+        "<p>Book</p>",
+      );
+      const lockedPath = join(root, "src/components/cards");
+      await chmod(lockedPath, 0o000);
+      locked.push(lockedPath);
+      const { code, output } = await run(root, ["--check"]);
+      expect(code, output).toBe(1);
+      expect(output).toMatch(
+        /could not read folder "src\/components\/cards": EACCES[^\n]*\(src\/components\/cards\)/,
+      );
+      expect(output).not.toMatch(/\[bascik\] error: could not read folder/);
+      expect(output).not.toMatch(/\(bascik\.config\.js\)/);
+    });
+
     it("fails bascik --check, naming the folder", async () => {
       const root = await project("check", false);
       const { code, output } = await run(root, ["--check"]);
