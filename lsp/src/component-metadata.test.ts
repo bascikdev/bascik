@@ -43,6 +43,30 @@ describe("analyzeComponentSource", () => {
         '<div data-bascik-slot="a"><b data-bascik-slot="b">fb</b></div><img data-bascik-slot="c" /><i data-bascik-slot="d"></i>',
       ),
     ).toEqual(["a", "d"]);
+    // A usage with no end tag holds nothing (the build reads it as
+    // self-closing), so a marker after it is still this template's.
+    expect(
+      slotsOf('<inner-box><span data-bascik-slot="after">fb</span>'),
+    ).toEqual(["after"]);
+    expect(
+      slotsOf('<inner-box /><span data-bascik-slot="after">fb</span>'),
+    ).toEqual(["after"]);
+    // A marker with no matching end tag is never filled, and does not hide
+    // the markers after it.
+    expect(
+      slotsOf(
+        '<div><span data-bascik-slot="a"/><b data-bascik-slot="b">x</b></div>',
+      ),
+    ).toEqual(["b"]);
+    expect(
+      slotsOf('<p data-bascik-slot="a">x<p data-bascik-slot="b">y</p>'),
+    ).toEqual(["b"]);
+    // Prettier's layout: attributes on their own lines, `>` on the next line.
+    expect(
+      slotsOf(
+        '<inner-box\n  ><span\n    data-bascik-slot="tail"\n  ><i\n      data-bascik-slot="extra"\n    >fb</i\n    ></span\n  ></inner-box\n>\n<p\n  data-bascik-slot="own"\n>o</p\n>',
+      ),
+    ).toEqual(["own"]);
     // A default slot marker in a nested usage is forwarded, so it still counts.
     expect(
       analyzeComponentSource(
@@ -89,9 +113,13 @@ describe("analyzeComponentSource", () => {
 
   it("infers unquoted slot names on self-closing tags without trailing slash", () => {
     const metadata = analyzeComponentSource(
-      "<div data-bascik-slot=heroHeader/>",
+      "<div data-bascik-slot=heroHeader/></div>",
     );
     expect(metadata.slots).toEqual([{ name: "heroHeader" }]);
+    // With no end tag the build never fills the marker, so it declares no slot.
+    expect(
+      analyzeComponentSource("<div data-bascik-slot=heroHeader/>").slots,
+    ).toEqual([]);
   });
 
   it("infers named and default slots and component features", () => {
