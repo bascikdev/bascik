@@ -2516,6 +2516,36 @@ describe("minifyJs – a property spelled like a keyword apart from its dot", ()
   });
 });
 
+describe("minifyJs – an operator keyword after a spread at the end of a line", () => {
+  // `...typeof`: the keyword after a `...` is an operator, not a property, so it takes its
+  // operand on the next line.
+  it.each([
+    ["typeof in an array", "var x = 'ab'\nlog.push([...typeof\n  x])"],
+    ["new in an array", "var a = [1, 1, 2]\nlog.push([...new\n  Set(a)])"],
+    ["new in a call", "var a = [3]\nlog.push(...new\n  Set(a))"],
+    ["void in an object", "log.push({ ...void\n  0 })"],
+    [
+      "new in an object",
+      "function C() { this.a = 4 }\nlog.push({ ...new\n  C() })",
+    ],
+  ])("continues %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a property spelled like a keyword after a dot",
+      "var o = { new: 5 }, x = 0, foo = () => log.push(6)\nx = o.new\nfoo()\nlog.push(x)",
+    ],
+    [
+      "a name spread from an object",
+      "var o = { a: [7] }, foo = () => log.push(8)\nlog.push(...o.a)\nfoo()",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
 describe("minifyJs – a private name spelled like a keyword", () => {
   // `#return`, `#typeof` and `#if` are names: none of them is the keyword it is spelled like.
   const inClass = (members: string, body: string): string =>

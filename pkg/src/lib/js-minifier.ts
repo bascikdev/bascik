@@ -219,10 +219,11 @@ const EXPRESSION_CONTINUING_KEYWORDS = new Set(
  * are also valid identifiers that can end a statement. `let` is one too: it continues only where
  * the scanner saw it start a statement and a name, `[` or `{` follows (see `letKeywordEnds`),
  * and is a variable name anywhere else. The character class keeps
- * `x.case` a property and `this.#class` a private name.
+ * `x.case` a property and `this.#class` a private name; a `...` spread takes an operand
+ * (`[...new\n  Set(a)]`).
  */
 const LINE_END_CONTINUING_KEYWORD =
-  /(?:^|(?![\w$\\]|[^\x00-\x7f\s])[^.#])(?:else|do|try|finally|in|instanceof|typeof|void|delete|new|case|extends|default|export|import|var|let|const|function|class|for)\s*$/;
+  /(?:^|\.\.\.|(?![\w$\\]|[^\x00-\x7f\s])[^.#])(?:else|do|try|finally|in|instanceof|typeof|void|delete|new|case|extends|default|export|import|var|let|const|function|class|for)\s*$/;
 
 /**
  * The words the line-end keyword rules (`LINE_END_CONTINUING_KEYWORD`,
