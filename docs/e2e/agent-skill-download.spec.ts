@@ -222,10 +222,24 @@ export { dev, build };
         response!.arrayBuffer(),
       ]);
       expect(Buffer.from(body).equals(source)).toBe(true);
-      const control = await fetch(
-        `http://localhost:${port}/content/getting-started.md`,
-        { redirect: "manual" },
-      );
+      // SKILL.md comes from a pre producer, so it can arrive before the first
+      // compile ends. Until then the dev server answers any path that may
+      // be a page (an untyped `.md` too) with its boot page, which reloads
+      // into the real answer; ask again until the boot page is gone.
+      const controlUrl = `http://localhost:${port}/content/getting-started.md`;
+      let control = await fetch(controlUrl, { redirect: "manual" });
+      for (
+        const deadline = Date.now() + 90_000;
+        control.status === 200 &&
+        (await control.clone().text()).includes(
+          "<title>Building site\u2026</title>",
+        ) &&
+        Date.now() < deadline;
+      ) {
+        await new Promise((done) => setTimeout(done, 250));
+        control = await fetch(controlUrl, { redirect: "manual" });
+      }
+      // The dev server never serves the docs' Markdown sources.
       expect(control.status).not.toBe(200);
 
       const [postSearch, postLlms, postSearchBytes, postLlmsBytes] =
