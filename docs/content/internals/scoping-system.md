@@ -471,7 +471,7 @@ h1, h2:not(.lead), li:nth-child(2) { } →  commas outside ( ) → MATCHES ✓
 transition: color 0.2s, opacity 0.3s; →  ; before { → skipped ✓
 ```
 
-Pass 2 regex: `/(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/g`, checked by `replaceInSelectorPosition` in `pkg/src/lib/styles.ts`.
+Pass 2 regex: `/(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/gi`, checked by `replaceInSelectorPosition` in `pkg/src/lib/styles.ts`. Like every element pass it ignores case, because HTML element names are case-insensitive: `H1, H2 {}` scopes both names, and the generated class uses the lowercase name (`b_el_<component>_h2`), which `<H2>` and `<h2>` in the markup both get.
 
 ### Compound and descendant element selectors
 
