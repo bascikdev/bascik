@@ -392,8 +392,11 @@ describe("runDirectiveHandler real child processes (handler and result transport
       }).catch((err: Error) => err);
       const message = (failure as Error).message;
       expect(message).toMatch(
-        /^Directive script \(data-bascik-build\) failed: stdout maxBuffer length exceeded/,
+        /^Directive script \(data-bascik-build\) failed: it wrote more than 1000 bytes to stdout, so it was stopped and its output is not shown\./,
       );
+      // None of what it wrote to stdout is handed on to be echoed.
+      expect((failure as Error & { stdout?: string }).stdout).toBe("");
+      expect(message).not.toContain("xxxx");
       expect(message).toContain("warning: deprecated option");
       expect(message).not.toContain("timed out");
     } finally {

@@ -406,6 +406,7 @@ export const setChildWorkerCount = (workerCount: number): void => {
 
 export {
   runDirectiveHandler,
+  echoScriptOutput,
   type DirectiveKind,
   type DirectiveHandlerResult,
   type DirectiveHandlerOptions,

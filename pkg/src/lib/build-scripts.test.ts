@@ -966,7 +966,8 @@ describe("executeBuildScripts", () => {
       },
     );
     await executeBuildScripts("<script data-bascik-build>x</script>");
-    expect(stderrSpy).toHaveBeenCalledWith("warning: something unusual");
+    // With the newline it lacked, so the next line starts on its own.
+    expect(stderrSpy).toHaveBeenCalledWith("warning: something unusual\n");
     stderrSpy.mockRestore();
   });
 
@@ -2399,6 +2400,101 @@ describe("build-script output cache", () => {
     await expect(executeBuildScripts(html)).rejects.toThrow(
       /build script error/,
     );
+  });
+
+  // A script that writes more than the 10 MB output limit is stopped by Node.
+  // Its 10 MB were echoed first, with no newline, so the located error
+  // header was glued to the end of that line.
+  it.each(["stdout", "stderr"])(
+    "does not echo a script's %s past the output limit, and the error header starts its own line",
+    async (stream) => {
+      const flood = "x".repeat(4096);
+      mockExecFile.mockImplementation(
+        (
+          _cmd: unknown,
+          _args: unknown,
+          _opts: unknown,
+          cb: (err: Error | null, stdout?: string, stderr?: string) => void,
+        ) =>
+          cb(
+            Object.assign(new Error(`${stream} maxBuffer length exceeded`), {
+              code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+              killed: true,
+              signal: "SIGTERM",
+            }),
+            stream === "stdout" ? flood : "",
+            stream === "stderr" ? flood : "",
+          ),
+      );
+      const written: string[] = [];
+      const out = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(
+          (chunk: any) => (written.push(String(chunk)), true),
+        );
+      const err = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(
+          (chunk: any) => (written.push(String(chunk)), true),
+        );
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const error = (await executeBuildScripts(
+          "<p><script data-bascik-build>flood()</script></p>",
+          "src/pages/index.html",
+        ).catch((e: unknown) => e)) as Error;
+        expect(written.join("")).not.toContain(flood);
+        expect(error.message).not.toContain(flood);
+        expect(error.message).toMatch(
+          new RegExp(
+            `^\\[bascik\\] build script error in "src/pages/index.html" at \\(line 1, column 4\\):\\nDirective script \\(data-bascik-build\\) failed: it wrote more than 10 MB to ${stream}, so it was stopped and its output is not shown\\.`,
+          ),
+        );
+      } finally {
+        out.mockRestore();
+        err.mockRestore();
+        errorSpy.mockRestore();
+      }
+    },
+  );
+
+  // A failing script whose last write had no newline ("Loading..."): the
+  // header must still start on a line of its own.
+  it("ends a failing script's echoed output with a newline before the error", async () => {
+    mockExecFile.mockImplementation(
+      (
+        _cmd: unknown,
+        _args: unknown,
+        _opts: unknown,
+        cb: (err: Error | null, stdout?: string, stderr?: string) => void,
+      ) =>
+        cb(
+          Object.assign(new Error("Command failed"), { code: 1 }),
+          "Loading...",
+          "Error: boom\n",
+        ),
+    );
+    const order: string[] = [];
+    const out = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: any) => (order.push(String(chunk)), true));
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation((line: unknown) => void order.push(String(line)));
+    try {
+      await executeBuildScripts(
+        "<p><script data-bascik-build>boom()</script></p>",
+        "src/pages/index.html",
+      ).catch(() => undefined);
+      const text = order.join("");
+      expect(text).toContain("Loading...\n");
+      expect(text.indexOf("Loading...\n")).toBeLessThan(
+        text.indexOf("[bascik] build script error"),
+      );
+    } finally {
+      out.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   it("throws a BuildScriptError that carries the failing script's location as data", async () => {
