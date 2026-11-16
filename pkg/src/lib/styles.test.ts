@@ -3808,3 +3808,67 @@ describe("convertCssElementSelectorsToClasses – element names in any case", ()
     expect(convertCssElementSelectorsToClasses(css, "card").css).toBe(css);
   });
 });
+
+describe("convertCssElementSelectorsToClasses – namespace prefixes", () => {
+  // Selectors Level 4 `ns|E`: the prefix names a namespace declared with
+  // `@namespace`, never an element. The type keeps its namespace and gains
+  // the element class, so the rule stays scoped and still checks the namespace.
+  const SVG_NS = "@namespace svg url(http://www.w3.org/2000/svg);\n";
+
+  it.each([
+    [
+      `${SVG_NS}svg|rect { fill: red }`,
+      `${SVG_NS}svg|rect.b_el_card_rect { fill: red }`,
+    ],
+    ["*|rect {}", "*|rect.b_el_card_rect {}"],
+    ["|rect {}", "|rect.b_el_card_rect {}"],
+    ["h1, svg|rect {}", ".b_el_card_h1, svg|rect.b_el_card_rect {}"],
+    [
+      ".bascik__card__x svg|rect {}",
+      ".bascik__card__x svg|rect.b_el_card_rect {}",
+    ],
+    ["svg|rect p {}", "svg|rect.b_el_card_rect .b_el_card_p {}"],
+    [".x {\n  & > svg|rect {}\n}", ".x {\n  & > svg|rect.b_el_card_rect {}\n}"],
+    ["svg|RECT:hover {}", "svg|RECT.b_el_card_rect:hover {}"],
+  ])("scopes the element part of %j", (css, expected) => {
+    const result = convertCssElementSelectorsToClasses(css, "card");
+    expect(result.css).toBe(expected);
+    expect(result.elementsConvertedClasses).not.toContain("svg");
+  });
+
+  it("gives the markup the class the namespaced rule names", () => {
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(`${SVG_NS}svg|rect {}`, "card");
+    expect(css).toContain("svg|rect.b_el_card_rect");
+    expect(
+      addElementClassesInHtml(
+        "<svg><rect /></svg>",
+        "card",
+        elementsConvertedClasses,
+      ),
+    ).toBe('<svg><rect class="b_el_card_rect" /></svg>');
+  });
+
+  it.each(["ns|* {}", "*|* {}", "|* {}"])(
+    "leaves the universal selector %j as written, like a bare `*`",
+    (css) => {
+      const result = convertCssElementSelectorsToClasses(css, "card");
+      expect(result.css).toBe(css);
+      expect(result.elementsConvertedClasses).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["a[xlink|href] {}", ".b_el_card_a[xlink|href] {}"],
+    ["a[ xlink|href ] {}", ".b_el_card_a[ xlink|href ] {}"],
+    ["p[lang|=en] {}", ".b_el_card_p[lang|=en] {}"],
+    [":is(svg|rect) {}", ":is(svg|rect) {}"],
+  ])(
+    "leaves a namespaced attribute or :is() argument in %j alone",
+    (css, expected) => {
+      expect(convertCssElementSelectorsToClasses(css, "card").css).toBe(
+        expected,
+      );
+    },
+  );
+});
