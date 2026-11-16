@@ -74,6 +74,27 @@ describe("CDATA in SVG and MathML content", () => {
     );
   });
 
+  it("keeps reading after `<![CDATA[` directly in an SVG <title>, where browsers start a bogus comment", () => {
+    // Blink, Gecko and parse5 allow no CDATA section directly inside an
+    // integration point (<title>, <desc>, <foreignObject>, MathML <mi>), so
+    // the scan must not stop there and leave later CDATA sections unshielded.
+    const later = `<![CDATA[<p class="note">]]>`;
+    const html = `<svg><title><![CDATA[a]]></title></svg><svg><text>${later}</text></svg>`;
+    expect(
+      scanHtmlCommentsAndCdata(html).map(({ start, end }) =>
+        html.slice(start, end),
+      ),
+    ).toEqual(["<![CDATA[a]]>", later]);
+    expect(addElementClassesInHtml(html, "my-art", ["p"])).toContain(later);
+  });
+
+  it("hides a CDATA section the component ends inside, as the browser reads it as text to the end", () => {
+    const html = `<p>real</p><svg><text><![CDATA[<p class="note">`;
+    const out = addElementClassesInHtml(html, "my-art", ["p"]);
+    expect(out).toMatch(/^<p class="[^"]+">real<\/p>/);
+    expect(out.endsWith(`<![CDATA[<p class="note">`)).toBe(true);
+  });
+
   it("leaves CDATA inside an SVG <style> or <script> visible as code", () => {
     const html = `<svg><style><![CDATA[ .a{} ]]></style><text><![CDATA[t]]></text></svg>`;
     const ranges = scanHtmlCommentsAndCdata(html);
