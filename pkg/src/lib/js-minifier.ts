@@ -511,6 +511,9 @@ const scanSegments = (js: string): Segment[] => {
   let bindingNameExpected = false;
   let wordIsBindingName = false;
   let bareBindingEnds: Set<number> | undefined;
+  // A `+`, `-` or `!` that started a line after a value in a declaration: the next character
+  // tells whether it starts a new statement (`++b`, `!f()`) or continues (`+ b`, `!= b`).
+  let operatorAfterValueBreak = "";
   // The `(`, `[` and `{` nesting of each `?` of a conditional still waiting for its `:`, and
   // whether the `:` last read is a conditional's (`b ? {} : {}`), not a label's or a key's.
   const conditionalNesting: number[] = [];
@@ -614,6 +617,30 @@ const scanSegments = (js: string): Segment[] => {
     declarationParenDepth.pop();
     declarationBracketDepth.pop();
     declarationBraceDepth.pop();
+  };
+
+  /**
+   * Close the open declaration when the punctuator `c`, the first on its line, starts a new
+   * statement, so a comma later on that statement's line does not start a binding
+   * (`let p\n(0, f)\n(5)` calls `f`). After a binding name with no initializer only `=`, `,`
+   * and `;` continue the declaration; after any other value a `++`, `--` (a postfix update
+   * cannot follow a line break), `~` or `!` that is not `!=` starts a new statement.
+   */
+  const endDeclarationAtLineStart = (c: string): void => {
+    const pending = operatorAfterValueBreak;
+    operatorAfterValueBreak = "";
+    if (isSpace(c) || !atDeclarationLevel()) return;
+    if (pending !== "") {
+      if (pending === "!" ? c !== "=" : c === pending) closeDeclaration();
+      return;
+    }
+    if (!lineBreakSinceSignificant) return;
+    if (bareBindingEnds?.has(lastSigOffset) === true) {
+      if (c !== "=" && c !== "," && c !== ";") closeDeclaration();
+    } else if (valueEndsHere()) {
+      if (c === "~") closeDeclaration();
+      else if (c === "+" || c === "-" || c === "!") operatorAfterValueBreak = c;
+    }
   };
 
   /** Directly in a class body: not inside a member's parameters, value or computed name. */
@@ -847,6 +874,7 @@ const scanSegments = (js: string): Segment[] => {
         lineBreakBeforeWord = lineBreakSinceSignificant;
         wordIsBindingName = bindingNameExpected;
         bindingNameExpected = false;
+        if (operatorAfterValueBreak !== "") endDeclarationAtLineStart(c);
         wordRun = c;
       }
       lastRaw = c;
@@ -920,6 +948,7 @@ const scanSegments = (js: string): Segment[] => {
         (bodyHeaderEnds ??= new Set()).add(sigOffsetBeforeWord);
       }
     }
+    endDeclarationAtLineStart(c);
     switch (c) {
       case "(": {
         // `Symbol.for(key)` and `$if(a)` are calls, not headers.
@@ -1022,8 +1051,13 @@ const scanSegments = (js: string): Segment[] => {
     kind: "string" | "template" | "regex",
   ): void => {
     const asiBefore = asiBeforeLiteral(kind);
-    // `var a = 1\n"x"`: the literal starts a new statement, which declares nothing.
-    if (asiBefore && atDeclarationLevel()) closeDeclaration();
+    if (operatorAfterValueBreak !== "") {
+      // `let p = 1\n!"x"`: the `!` started a new statement.
+      endDeclarationAtLineStart(text[0]);
+    } else if (asiBefore && atDeclarationLevel()) {
+      // `var a = 1\n"x"`: the literal starts a new statement, which declares nothing.
+      closeDeclaration();
+    }
     bindingNameExpected = false;
     flushCode();
     segments.push(
