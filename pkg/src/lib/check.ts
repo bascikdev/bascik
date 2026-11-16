@@ -37,7 +37,7 @@ import {
   formatGeneratedIdClassCollision,
 } from "./generated-id-classes.ts";
 import { BascikConfig } from "./config.ts";
-import { maskElementContents } from "./shielding.ts";
+import { blankHtmlComments, maskElementContents } from "./shielding.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
 import {
   scanApiRouteFiles,
@@ -266,12 +266,9 @@ const scanTagOccurrences = (
   re: RegExp,
   toTag: (matched: string) => string | undefined,
 ): TagOccurrence[] => {
-  // Strip comments first while preserving newlines
-  const noComments = html.replace(/<!--[\s\S]*?-->/g, (match) => {
-    const newlines = match.match(/\n/g);
-    return newlines ? newlines.join("") : " ";
-  });
-  const stripped = stripElementContents(noComments);
+  // Blank comments first (newlines kept). Only the comments the browser
+  // sees: `<!--` inside a <style>, script or <textarea> is that element's text.
+  const stripped = stripElementContents(blankHtmlComments(html));
   const occurrences: TagOccurrence[] = [];
   let counted = 0;
   let line = 1;

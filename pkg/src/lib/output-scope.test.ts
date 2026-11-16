@@ -152,6 +152,19 @@ describe("applyOutputScope", () => {
       ).toBe(`${comment}<p class="bascik__c__item">x</p><!-- b -->`);
   });
 
+  it.each([
+    ["style", '<style>.a::before { content: "<!--"; }</style>'],
+    ["script", '<script>const open = "<!--";</script>'],
+    ["textarea", "<textarea><!--</textarea>"],
+  ])(
+    "reads `<!--` inside a %s as its text: the markup after it is scoped",
+    (_where, element) => {
+      expect(
+        applyOutputScope(`${element}<p class="item">x</p><!-- note -->`, scope),
+      ).toBe(`${element}<p class="bascik__c__item">x</p><!-- note -->`);
+    },
+  );
+
   it("treats an unclosed comment as running to the end, as the browser does", () => {
     const html = '<p class="item">a</p><!-- <p class="item">b</p>';
     expect(applyOutputScope(html, scope)).toBe(

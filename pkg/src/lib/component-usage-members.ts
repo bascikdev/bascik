@@ -10,6 +10,7 @@
  * content declare nothing.
  */
 import { maskRawTextContent } from "./component-masking.ts";
+import { blankHtmlComments } from "./shielding.ts";
 
 export interface DeclaredMembers {
   /** Lowercase named slots. */
@@ -56,7 +57,7 @@ export const mergeDeclared = (
 
 /** Whether default slot content carries anything but whitespace and comments. */
 export const hasRenderableContent = (content: string): boolean =>
-  content.replace(/<!--[\s\S]*?(?:-->|$)/g, "").trim() !== "";
+  blankHtmlComments(content).trim() !== "";
 
 /**
  * The innermost `bascik-source-file` marker open at `index`: the page or the

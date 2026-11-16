@@ -13,6 +13,15 @@ it is not `@bascik/bascik`.
 
 ### Fixed
 
+- More of Bascik now reads `<!--` inside a `<style>`, `<script>`, JSON data block or `<textarea>` as that element's text, not as the start of an HTML comment. Before, such a `<!--` hid everything up to the next `-->` (or the end of the file):
+  - In the build, `data-bascik-prop-*` receivers and `data-bascik-attr-*` bindings after a `<textarea><!--</textarea>` or a JSON block holding `"<!--"` were left unfilled, and the literal attributes shipped.
+  - `bascik --check` missed the component tags after it, reporting a used component as unused and skipping a misspelled tag.
+  - Request-time rendering could treat a component as renderable when its binding was not supported.
+  - Build-script output after it kept its unscoped class names when rendered at request time.
+  - On a page whose markup the CSP hash scan cannot follow to the end, an inline script or style holding `<!--` got no hash or the wrong hash, so the browser blocked it.
+
+  A comment now also ends where the browser ends it (`--!>`, `<!-->`) when Bascik decides whether a usage passes content to a template with no default slot. No change is needed in your code; rebuild. See the "Raw-text comments and nested scripts" row of the [compatibility page](https://bascik.dev/compatibility).
+
 - SVG and MathML elements with hyphenated names, `<font-face>` (and `font-face-src`, `font-face-uri`, `font-face-format`, `font-face-name`), `<missing-glyph>`, `<color-profile>` and `<annotation-xml>`, are no longer reported as missing components. HTML reserves these names for SVG and MathML, so no custom element or component can be the one meant, but the build printed `Unresolved component tag` for them and `bascik --check` listed them under "Components with no matching file", which failed `--check --strict`. Remove any `components.external` entries you added for them. See [`components.external`](https://bascik.dev/configuration#componentsexternal).
 - Text inside a `<![CDATA[ ... ]]>` section in a component's SVG or MathML is no longer rewritten. In `<svg><text><![CDATA[<p class="note">]]></text></svg>` the `<p>` is text, not an element, but it got the component's element and class names injected (`<p class="note b0k7...">`), and an `id` or `href="#..."` in it was renamed as if it were real markup, so the text the page showed changed. No change is needed in your code; rebuild. See the "SVG elements in component HTML" row of the [compatibility page](https://bascik.dev/compatibility).
 - In the dev server, a `data-bascik-build` script that reads its page through `BASCIK_PAGE_FILE` (or `BASCIK_SOURCE_FILE`), such as a component that copies the page's `<title>`, now follows every edit to the page. After an edit the page showed its new `<title>` next to the component's output from before the edit; with `pipeline.workers: true` the first edit refreshed and later ones served the output from an earlier edit. Deleting a page and creating it again had the same effect. Builds were not affected. No change is needed in your code. See [Performance: Output Caching](https://bascik.dev/scripts/build#performance-output-caching).

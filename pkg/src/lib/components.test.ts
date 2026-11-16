@@ -773,6 +773,28 @@ describe("injectProps", () => {
       ).toBe(`${comment}<p>Hi</p><!-- <b data-bascik-prop-title></b> -->`);
   });
 
+  it.each([
+    ["textarea", "<textarea><!--</textarea>"],
+    [
+      "JSON data block",
+      '<script type="application/json">{"a":"<!--"}</script>',
+    ],
+    ["style", '<style>.a::before { content: "<!--"; }</style>'],
+  ])(
+    "reads `<!--` inside a %s as its text: the receiver and binding after it are filled",
+    (_where, element) => {
+      const template = `${element}<h2 data-bascik-prop-title>f</h2><a data-bascik-attr-href="link">l</a><!-- note -->`;
+      expect(injectProps(template, { title: "Dune" })).toBe(
+        `${element}<h2>Dune</h2><a data-bascik-attr-href="link">l</a><!-- note -->`,
+      );
+      expect(
+        injectPropAttributes(template, { link: "/dune" }, undefined, () => {}),
+      ).toBe(
+        `${element}<h2 data-bascik-prop-title>f</h2><a href="/dune">l</a><!-- note -->`,
+      );
+    },
+  );
+
   it("leaves a receiver inside an unclosed comment as written", () => {
     expect(
       injectProps(

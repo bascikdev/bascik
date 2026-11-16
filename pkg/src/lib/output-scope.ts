@@ -1,32 +1,9 @@
 /** Helpers for applying a component's scoped names to build-script output. */
-import { findCommentEnd } from "./html-scanner.ts";
-import { maskElementContents } from "./shielding.ts";
-
-/**
- * Same-length copy with comments blanked. Comments end where the browser ends
- * them (`-->`, `--!>`, `<!-->`, `<!--->`, or the end of input), so markup the
- * browser treats as live is never hidden. An indexOf walk, not
- * `/<!--[\s\S]*?-->/g`: that regex rescans to the end from every unclosed
- * opener, which is quadratic on request-time output carrying visitor text.
- */
-const blankComments = (html: string): string => {
-  let start = html.indexOf("<!--");
-  if (start === -1) return html;
-  let result = "";
-  let cursor = 0;
-  while (start !== -1) {
-    const end = findCommentEnd(html, start);
-    const stop = end === -1 ? html.length : end;
-    result += html.slice(cursor, start) + " ".repeat(stop - start);
-    cursor = stop;
-    start = end === -1 ? -1 : html.indexOf("<!--", stop);
-  }
-  return result + html.slice(cursor);
-};
+import { blankHtmlComments, maskElementContents } from "./shielding.ts";
 
 /** Same-length copy with comments and raw-text element content blanked out. */
 const maskNonMarkup = (html: string): string =>
-  maskElementContents(blankComments(html), ["script", "style", "textarea"]);
+  maskElementContents(blankHtmlComments(html), ["script", "style", "textarea"]);
 
 export const OUTPUT_SCOPE_ATTRIBUTE = "data-bascik-output-scope";
 
