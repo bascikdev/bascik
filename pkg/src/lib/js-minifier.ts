@@ -200,22 +200,33 @@ const OBJECT_PRECEDING_KEYWORDS = new Set([
   "in",
   "of",
   "instanceof",
+  "delete",
+]);
+
+/**
+ * The last character of an operator that takes an operand next (`b + {}`, `!{}`, `a < {}`,
+ * and the `>` of `=>` before a `function` or `class`). After a postfix `++`/`--` the `+` or
+ * `-` has ended an expression instead.
+ */
+const OPERAND_EXPECTED_AFTER = new Set([
+  "+",
+  "-",
+  "*",
+  "/",
+  "%",
+  "<",
+  ">",
+  "^",
+  "~",
+  "!",
 ]);
 
 /**
  * Characters after which only an expression can start, so a `function` or `class` right
- * after one is a function or class expression: `x = function () {}`, `f(class {})`.
+ * after one is a function or class expression: `x = function () {}`, `f(class {})`. The
+ * operators in `OPERAND_EXPECTED_AFTER` and the `:` of a conditional count too.
  */
-const EXPRESSION_START_AFTER = new Set([
-  "=",
-  "(",
-  ",",
-  "[",
-  "?",
-  "&",
-  "|",
-  "!",
-]);
+const EXPRESSION_START_AFTER = new Set(["=", "(", ",", "[", "?", "&", "|"]);
 /** Words that, at the start of a class member, modify the member named after them. */
 const CLASS_MEMBER_MODIFIERS = new Set(["get", "set", "async", "accessor"]);
 
@@ -500,6 +511,10 @@ const scanSegments = (js: string): Segment[] => {
   let bindingNameExpected = false;
   let wordIsBindingName = false;
   let bareBindingEnds: Set<number> | undefined;
+  // The `(`, `[` and `{` nesting of each `?` of a conditional still waiting for its `:`, and
+  // whether the `:` last read is a conditional's (`b ? {} : {}`), not a label's or a key's.
+  const conditionalNesting: number[] = [];
+  let colonIsConditional = false;
   // Offset in `codeAccum` of `lastSig`.
   let lastSigOffset = -1;
   let lineBreakSinceSignificant = false;
@@ -539,6 +554,10 @@ const scanSegments = (js: string): Segment[] => {
   let wordFollowsStaticModifier = false;
   let i = 0;
   const len = js.length;
+
+  /** How many `(`, `[` and `{` are open. */
+  const nesting = (): number =>
+    parenIsControlHeader.length + bracketDepth + braceKind.length;
 
   /** Directly in the innermost open declaration: not inside one of its initializers. */
   const atDeclarationLevel = (): boolean => {
@@ -753,6 +772,11 @@ const scanSegments = (js: string): Segment[] => {
       (lastSig === ":" &&
         (enclosing === BRACE_OBJECT || !atMemberLevel) &&
         top !== -1) ||
+      // `b ? {} : {}`, `b + {}`, `!{}`; not the arrow body of `=> {`.
+      (lastSig === ":" && colonIsConditional) ||
+      (OPERAND_EXPECTED_AFTER.has(lastSig) &&
+        !lastSigIsPostfixUpdate &&
+        !(lastSig === ">" && prevSig === "=")) ||
       (word !== undefined &&
         !lineBreakSinceSignificant &&
         OBJECT_PRECEDING_KEYWORDS.has(word))
@@ -783,6 +807,8 @@ const scanSegments = (js: string): Segment[] => {
         // `= function`, `return function`, and `= async function` through its `async`.
         wordStartsExpression =
           EXPRESSION_START_AFTER.has(lastSig) ||
+          (OPERAND_EXPECTED_AFTER.has(lastSig) && !lastSigIsPostfixUpdate) ||
+          (lastSig === ":" && colonIsConditional) ||
           (wordRun !== "" &&
             !wordIsProperty &&
             (OBJECT_PRECEDING_KEYWORDS.has(wordRun) ||
@@ -925,6 +951,10 @@ const scanSegments = (js: string): Segment[] => {
           (valueBraceCloses ??= new Set()).add(codeAccum.length);
         }
         break;
+      case ":":
+        colonIsConditional = conditionalNesting.at(-1) === nesting();
+        if (colonIsConditional) conditionalNesting.pop();
+        break;
       case "#":
         hashStartsClassMember = startsClassMember();
         break;
@@ -952,7 +982,12 @@ const scanSegments = (js: string): Segment[] => {
         if (atDeclarationLevel()) closeDeclaration();
         break;
     }
-    if (c === ")" || c === "]" || c === "}") closeLeftDeclarations();
+    if (c === ")" || c === "]" || c === "}") {
+      closeLeftDeclarations();
+      const depth = nesting();
+      while ((conditionalNesting.at(-1) ?? -1) > depth)
+        conditionalNesting.pop();
+    }
     codeAccum += c;
     if (isSpace(c)) {
       if (c === "\n" || c === "\r" || c === "\u2028" || c === "\u2029")
@@ -1146,6 +1181,24 @@ const scanSegments = (js: string): Segment[] => {
         }
         continue;
       }
+    }
+
+    if (ch === "?") {
+      const next = js[i + 1];
+      if (next === "?") {
+        // `??` and `??=` are not a conditional.
+        appendCode(ch);
+        appendCode(next);
+        i += 2;
+        continue;
+      }
+      appendCode(ch);
+      i++;
+      // `a?.b` is an optional chain; `a?.5:1` is a conditional with a number.
+      if (next !== "." || isDigit(js[i + 1] ?? "")) {
+        conditionalNesting.push(nesting());
+      }
+      continue;
     }
 
     appendCode(ch);
