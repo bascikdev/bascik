@@ -63,9 +63,29 @@ export const stopBeforeExit = (
 };
 
 let exiting = false;
+let shuttingDown = false;
 
-/** True while `exitAfterStopping` is waiting for the stoppers. */
-export const isExitInProgress = (): boolean => exiting;
+/**
+ * True while `exitAfterStopping` or a signal is waiting for the stoppers, and
+ * from the moment a shutdown begins (`markShutdownStarted`). A script Bascik
+ * stops then is not a failure: it is neither reported nor tolerated, and no
+ * new one starts.
+ */
+export const isExitInProgress = (): boolean => exiting || shuttingDown;
+
+/**
+ * Mark the process as shutting down for good: a server's graceful shutdown
+ * or an exec failure stop (`runShutdownHandlers`), which stop the exec
+ * scripts and then exit. Never undone; the process ends next.
+ */
+export const markShutdownStarted = (): void => {
+  shuttingDown = true;
+};
+
+/** Undo `markShutdownStarted`, for tests that keep running after a shutdown. */
+export const resetShutdownStateForTests = (): void => {
+  shuttingDown = false;
+};
 
 /**
  * Drop everything written to stdout until the returned function restores

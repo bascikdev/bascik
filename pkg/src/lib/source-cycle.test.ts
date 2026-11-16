@@ -3,6 +3,10 @@ import { EventEmitter } from "node:events";
 import { resolve } from "node:path";
 import { createSourceCycle } from "./source-cycle.ts";
 import { BuildScriptError } from "./build-error.ts";
+import {
+  markShutdownStarted,
+  resetShutdownStateForTests,
+} from "./exit-stoppers.ts";
 
 const gate = () => Promise.withResolvers<void>();
 afterEach(() => vi.useRealTimers());
@@ -303,6 +307,39 @@ describe("source-owned phase cycles", () => {
     expect(errors).toHaveLength(1);
     cycle.close();
     consoleSpy.mockRestore();
+  });
+
+  // Ctrl-C while an edit's script runs: the graceful shutdown stops it, and
+  // the stopped script is not a failure to report or act on.
+  it("reports nothing for a script that ends while Bascik shuts down", async () => {
+    vi.useFakeTimers();
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const emitter = new EventEmitter();
+    const errors: unknown[] = [];
+    emitter.on("build-error", (error) => errors.push(error));
+    const onExecFailure = vi.fn();
+    const cycle = createSourceCycle({
+      entries: [{ script: "pre.ts", watch: ["content/"] }],
+      run: async () => {
+        markShutdownStarted();
+        throw new Error('[bascik] exec "pre.ts" was stopped by SIGTERM');
+      },
+      compile: vi.fn().mockResolvedValue(undefined),
+      emitter,
+      onExecFailure,
+    });
+    try {
+      cycle.enqueue("content/a.md");
+      await vi.advanceTimersByTimeAsync(50);
+      await cycle.idle();
+      expect(consoleSpy).not.toHaveBeenCalled();
+      expect(errors).toEqual([]);
+      expect(onExecFailure).not.toHaveBeenCalled();
+    } finally {
+      resetShutdownStateForTests();
+      cycle.close();
+      consoleSpy.mockRestore();
+    }
   });
 
   it("keeps the cycle alive and retries the failed paths after a post failure when the owner only observes", async () => {
