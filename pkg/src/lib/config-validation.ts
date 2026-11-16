@@ -1076,12 +1076,6 @@ export const validateConfigShape = (
         base,
         'expected a root-relative path like "/docs/"; the value is blank (use "/" for the site root)',
       );
-    } else if (base !== base.trim()) {
-      push(
-        "base",
-        base,
-        'expected a root-relative path like "/docs/" without spaces around it',
-      );
     } else if (
       /^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)?\/\//.test(base) ||
       /^[a-zA-Z]:[\\/]/.test(base)
@@ -1217,7 +1211,9 @@ const validateExecEntryFields = (
   if (cwd !== undefined && (typeof cwd !== "string" || cwd.length === 0))
     push(`${prefix}.cwd`, cwd, "expected a non-empty directory path");
   if (env !== undefined) {
-    if (!isPlainObject(env)) {
+    // `process.env` is not an object literal, but exec spreads `env` into
+    // the child's environment, so passing it (or a copy) is fine.
+    if (!isPlainObject(env) && env !== process.env) {
       push(`${prefix}.env`, env, "expected an object of string values");
     } else {
       for (const [name, value] of Object.entries(env))

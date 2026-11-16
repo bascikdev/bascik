@@ -1984,16 +1984,32 @@ describe("sections that are not object literals, and blank paths", () => {
     expect(errors.map((e) => e.key)).toEqual(["scripts.importRoot"]);
   });
 
-  it.each([" ", "  ", " /docs/", "/docs/ "])(
-    "rejects a base that is blank or has surrounding spaces: %j",
-    (base) => {
-      const errors = validateConfigShape({ base });
-      expect(errors.map((e) => e.key)).toEqual(["base"]);
-    },
-  );
+  it.each([" ", "  ", "\t"])("rejects a blank base: %j", (base) => {
+    const errors = validateConfigShape({ base });
+    expect(errors.map((e) => e.key)).toEqual(["base"]);
+  });
 
   it("still accepts an empty base, which means the site root", () => {
     expect(validateConfigShape({ base: "" })).toEqual([]);
+  });
+
+  it("still accepts a base with spaces around it, which is trimmed", () => {
+    for (const base of [" /docs/", "/docs/ "]) {
+      expect(validateConfigShape({ base })).toEqual([]);
+      expect(normalizeBasePath(base)).toBe("/docs/");
+    }
+  });
+
+  it("still accepts process.env as a pipeline.exec entry's env", () => {
+    expect(
+      validateConfigShape({
+        pipeline: { exec: [{ script: "x.ts", env: process.env }] },
+      }),
+    ).toEqual([]);
+    const errors = validateConfigShape({
+      pipeline: { exec: [{ script: "x.ts", env: new Map([["A", "1"]]) }] },
+    });
+    expect(errors.map((e) => e.key)).toEqual(["pipeline.exec[0].env"]);
   });
 
   it.each([
