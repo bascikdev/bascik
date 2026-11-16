@@ -47,7 +47,11 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // flake with ECONNREFUSED in CI. Node 24 runs .ts directly.
 const PKG_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "index.ts");
 
-/** Start `bascik --server` on a fixture and return a fetch helper + teardown. */
+/**
+ * Start `bascik --server` on a fixture and return a fetch helper + teardown.
+ * Fails with the server's own output when it exits or never answers, rather
+ * than leaving the test to fetch from a server that is not there.
+ */
 const startServerFixture = async (root: string, port: number) => {
   const child = spawn(process.execPath, [PKG_ENTRY, "--server"], {
     cwd: root,
@@ -59,27 +63,42 @@ const startServerFixture = async (root: string, port: number) => {
     stdio: ["ignore", "pipe", "pipe"],
   });
   const base = `http://localhost:${port}`;
-  let stderr = "";
-  child.stderr?.on("data", (d) => {
-    stderr += d.toString();
+  let output = "";
+  child.stdout?.on("data", (d) => {
+    output += d.toString();
   });
+  child.stderr?.on("data", (d) => {
+    output += d.toString();
+  });
+  const exited = new Promise<void>((resolveExit) =>
+    child.once("exit", () => resolveExit()),
+  );
   // Wait for the server to accept connections.
   const started = Date.now();
-  while (Date.now() - started < 15000) {
+  let ready = false;
+  while (!ready && Date.now() - started < 30_000) {
+    if (child.exitCode !== null || child.signalCode !== null)
+      throw new Error(`bascik --server exited before it answered:\n${output}`);
     try {
       const res = await fetch(`${base}/`);
-      if (res.status >= 200) break;
+      ready = res.status >= 200;
     } catch {
       await wait(150);
     }
   }
+  if (!ready) {
+    child.kill("SIGKILL");
+    await exited;
+    throw new Error(`bascik --server did not answer in 30 s:\n${output}`);
+  }
   return {
     base,
+    // Wait for the process to be gone, so the next test can bind the port.
     async close() {
-      child.kill();
-      await wait(150);
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      await exited;
     },
-    stderr: () => stderr,
+    stderr: () => output,
   };
 };
 
@@ -230,7 +249,8 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
         expect(targeted.stdout).toContain("Build complete");
 
         // Start a real production server and request B; its server script must run.
-        const srv = await startServerFixture(root, 9987);
+        // Its own port per case, below the range the system hands out for port 0.
+        const srv = await startServerFixture(root, workers ? 24987 : 24986);
         try {
           const res = await fetch(`${srv.base}/b`);
           expect(res.status).toBe(200);
