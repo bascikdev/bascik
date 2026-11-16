@@ -23,6 +23,8 @@ Bascik reads the file's `export default` object and the mode exports `dev`, `bui
 
 TypeScript configs work through Node's native type stripping, which supports erasable syntax only (type annotations, interfaces, `import type`). Non-erasable constructs such as `enum` or constructor parameter properties fail at load time with a Node error. Keep the config file to plain JavaScript plus type annotations.
 
+A config may use top-level `await`, for example to read a file before exporting its settings. Every awaited promise must settle: a config, or a module it imports, that awaits a promise that never resolves or rejects stops Bascik with `[bascik] error: bascik.config.js never finished loading` and exit code 1.
+
 ### Config Changes Need a Restart
 
 The dev server does not hot-reload configuration. Bascik deep-freezes the resolved configuration at boot so worker threads, routers, and watchers all see the same values, and reloading it in place could leave them out of sync. When you edit a root config file, the dev server keeps its boot configuration and prints:
