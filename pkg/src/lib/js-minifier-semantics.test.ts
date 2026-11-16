@@ -486,6 +486,15 @@ describe("minifyJs – a declaration keyword at the end of a line", () => {
     ["let in a for header", "for (let\n  i = 0; i < 2; i++) log.push(i)"],
     ["let after a case", "switch (1) { case 1: let\n  x = 4\n  log.push(x) }"],
     [
+      "let after a default",
+      "switch (2) { case 1: break\ndefault: let\n  x = 4\n  log.push(x) }",
+    ],
+    [
+      "let after a case with a conditional and an object",
+      "var c = 1\nswitch (1) { case c ? ({ a: 1 }).a : 2: let\n  x = 4\n  log.push(x) }",
+    ],
+    ["let in a block after a label", "a: {\nlet\n  x = 4\n  log.push(x) }"],
+    [
       "let after a statement without a semicolon",
       "const a = 1\nlet\n  b = a + 1\nlog.push(b)",
     ],
@@ -515,6 +524,19 @@ describe("minifyJs – a declaration keyword at the end of a line", () => {
     [
       "a name line in an object value",
       "var let = 1\nconst o = { a: let\n}\nlog.push(o.a)",
+    ],
+    // A label's statement cannot be a declaration, so `let` there is a name.
+    [
+      "a name line after a label",
+      "var let = 1, x = 0\na: let\nx = 2\nlog.push(x)",
+    ],
+    [
+      "a name line after a label in a case",
+      "var let = 1, x = 0\nswitch (1) { case 1: a: let\nx = 2 }\nlog.push(x)",
+    ],
+    [
+      "a name line after a label after a conditional case",
+      "var let = 1, x = 0, c = 1\nswitch (1) { case c ? 1 : 2: a: let\nx = 2 }\nlog.push(x)",
     ],
   ])("reads a variable named let before %s", (_name, source) => {
     expectSameProgram(source);

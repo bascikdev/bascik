@@ -618,6 +618,11 @@ const scanSegments = (js: string): Segment[] => {
   // whether the `:` last read is a conditional's (`b ? {} : {}`), not a label's or a key's.
   const conditionalNesting: number[] = [];
   let colonIsConditional = false;
+  // The same for each `case` or `default` of a `switch` still waiting for its `:`, and whether
+  // the `:` last read ends one. A case clause holds declarations; a label's statement does not
+  // (`case 1: let\nx` declares `x`, `a: let\nx` reads a variable named `let`).
+  const caseColonNesting: number[] = [];
+  let colonEndsCase = false;
   // Offset in `codeAccum` of `lastSig`.
   let lastSigOffset = -1;
   let lineBreakSinceSignificant = false;
@@ -1065,7 +1070,7 @@ const scanSegments = (js: string): Segment[] => {
           lastSig === "}" ||
           (lastSig === "{" && !atObjectMemberLevel()) ||
           (lastSig === "(" && parenIsControlHeader.at(-1) === true) ||
-          (lastSig === ":" && !colonIsConditional && !atObjectMemberLevel()) ||
+          (lastSig === ":" && colonEndsCase) ||
           (wordRun === "export" && !wordIsProperty) ||
           (lineBreakSinceSignificant && valueEndsHere());
         valueBeforeWord = valueEndsHere() && !DECLARATION_KEYWORDS.has(wordRun);
@@ -1193,6 +1198,15 @@ const scanSegments = (js: string): Segment[] => {
         // `export default from`, `export const a = from`: a value follows, not a clause.
         moduleClauseOpen = false;
       }
+      if (
+        (wordRun === "case" ||
+          (wordRun === "default" && wordBeforeWord !== "export")) &&
+        !clauseName &&
+        !atObjectMemberLevel()
+      ) {
+        // `case 1:` and `default:`, not `export default` or a key named `default`.
+        caseColonNesting.push(nesting());
+      }
       if (wordRun === "let" && wordAtStatementStart && !clauseName) {
         (letKeywordEnds ??= new Set()).add(lastSigOffset);
       }
@@ -1290,6 +1304,9 @@ const scanSegments = (js: string): Segment[] => {
       case ":":
         colonIsConditional = conditionalNesting.at(-1) === nesting();
         if (colonIsConditional) conditionalNesting.pop();
+        colonEndsCase =
+          !colonIsConditional && caseColonNesting.at(-1) === nesting();
+        if (colonEndsCase) caseColonNesting.pop();
         break;
       case "#":
         hashStartsClassMember = startsClassMember();
@@ -1359,6 +1376,7 @@ const scanSegments = (js: string): Segment[] => {
       const depth = nesting();
       while ((conditionalNesting.at(-1) ?? -1) > depth)
         conditionalNesting.pop();
+      while ((caseColonNesting.at(-1) ?? -1) > depth) caseColonNesting.pop();
     }
     codeAccum += c;
     if (isSpace(c)) {
