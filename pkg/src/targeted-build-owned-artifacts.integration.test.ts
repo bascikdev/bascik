@@ -465,4 +465,36 @@ describe("targeted build owned artifact transactions (fresh CLI processes)", () 
       }
     }, 120000);
   }
+
+  // The inventory is a build artifact like the others: a targeted build that
+  // changes nothing must write the same bytes as the full build, whatever
+  // order it visits the retained and rebuilt owners in.
+  for (const workers of [false, true]) {
+    it(`writes ownership.json in the same order after --only as after a full build (workers=${workers})`, async () => {
+      const root = fixtureRoot(`owned-order-${workers}`);
+      await writeOwnedFixture(root, { workers });
+      // A page that sorts after every other owner, rebuilt alone below.
+      await writeFixtureFile(
+        root,
+        "src/pages/zz.html",
+        `<!DOCTYPE html><html><head><title>Z</title></head><body><p>Z</p></body></html>`,
+      );
+      const ownershipFile = join(root, ".bascik", "dist", "ownership.json");
+      try {
+        expect((await runBuild(root)).stdout).toContain("Build complete");
+        const full = await readFile(ownershipFile, "utf8");
+        for (const only of ["a.html", "blog/*.html", "zz.html"]) {
+          const targeted = await runBuild(root, ["--only", only]);
+          expect(targeted.stdout).toContain("Build complete");
+          expect(await readFile(ownershipFile, "utf8")).toBe(full);
+        }
+        const owners = Object.keys(
+          (JSON.parse(full) as { owners: Record<string, unknown> }).owners,
+        );
+        expect(owners).toEqual([...owners].sort());
+      } finally {
+        await cleanupFixture(root);
+      }
+    }, 180000);
+  }
 });
