@@ -245,11 +245,14 @@ export const convertCssElementSelectorsToClasses = (
   const seen = new Set<string>();
   const elementsConvertedClasses: string[] = [];
 
-  const toClass = (elementName: string): string => {
+  const toClass = (authoredName: string): string => {
     // CSS unit keywords (rem, vw, px, …) are not HTML elements.  A syntax
     // error in the user's CSS can place them at column 0 where the regex
     // would otherwise match.  Return unchanged so the unit is preserved as-is.
-    if (CSS_UNIT_KEYWORDS.has(elementName.toLowerCase())) return elementName;
+    // HTML element names are ASCII case-insensitive in selectors and in
+    // markup, so `H2`, `h2` and `<H2>` all share the lowercase class.
+    const elementName = authoredName.toLowerCase();
+    if (CSS_UNIT_KEYWORDS.has(elementName)) return authoredName;
     if (!seen.has(elementName)) {
       seen.add(elementName);
       elementsConvertedClasses.push(elementName);
@@ -301,7 +304,7 @@ export const convertCssElementSelectorsToClasses = (
   //     every element of `h1, h2:not(.lead), li:nth-child(2)` is converted.
   result = replaceInSelectorPosition(
     result,
-    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/g,
+    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/gi,
     true,
     prefixed,
   );
@@ -316,13 +319,13 @@ export const convertCssElementSelectorsToClasses = (
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = replaceInSelectorPosition(
     result,
-    /(&(?:(?:::?[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])+(?:\s*[>+~]\s*|\s+)|\s*(?:[>+~]\s*)?))([a-z][a-z1-6]*)(?![\w-])/g,
+    /(&(?:(?:::?[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])+(?:\s*[>+~]\s*|\s+)|\s*(?:[>+~]\s*)?))([a-z][a-z1-6]*)(?![\w-])/gi,
     false,
     prefixed,
   );
   result = replaceInSelectorPosition(
     result,
-    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w-])/g,
+    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w-])/gi,
     false,
     prefixed,
   );
@@ -364,7 +367,7 @@ export const convertCssElementSelectorsToClasses = (
     // a descendant combinator.
     result = replaceInSelectorPosition(
       result,
-      /((?:\.(?:(?:bascik__|b_(?:el|id)_)(?:[\w-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:[ \t\n\r\f]|(?![ \t\n\r\f]))|\\[^\n0-9a-fA-F])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\((?=[^){};]*?\.(?:bascik__[\w-]|b_(?:el|id)_[\w-]|b[0-9a-zA-Z]{11}))[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])/g,
+      /((?:\.(?:(?:bascik__|b_(?:el|id)_)(?:[\w-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:[ \t\n\r\f]|(?![ \t\n\r\f]))|\\[^\n0-9a-fA-F])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\((?=[^){};]*?\.(?:bascik__[\w-]|b_(?:el|id)_[\w-]|b[0-9a-zA-Z]{11}))[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])/gi,
       false,
       prefixed,
     );
