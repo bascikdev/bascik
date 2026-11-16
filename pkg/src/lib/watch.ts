@@ -328,14 +328,24 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
               !!(stats?.isFile() && !path.endsWith(".html")),
             persistent: !BascikConfig.isBuild,
           })
-          .on("add", (_path) => {
+          .on("add", (path) => {
+            // A page replaced by delete and create (an editor, a checkout)
+            // arrives as unlink then add: its old content may be memoized.
+            if (pagesWatcherReady) clearBuildScriptCaches(path);
             if (initialScanDone) void rebuildAllPages();
             // Before `ready` an add is the initial scan, which the boot
             // compile already covers.
             else if (pagesWatcherReady) rebuildAfterBoot = true;
           })
-          .on("change", (path) => pageProcessing(path).catch(onWatchError))
+          .on("change", (path) => {
+            // A build script that reads BASCIK_PAGE_FILE folds the page's
+            // content into its cache key through the build-script content
+            // memo, so the edited page's memoized content must go first.
+            clearBuildScriptCaches(path);
+            pageProcessing(path).catch(onWatchError);
+          })
           .on("unlink", (path: string, _stats?: Stats) => {
+            clearBuildScriptCaches(path);
             const bootRunning = !initialScanDone;
             if (bootRunning) pagesRemovedDuringBoot.add(path);
             removePage(path)
