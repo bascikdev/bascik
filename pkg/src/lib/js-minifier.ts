@@ -78,6 +78,12 @@ type Segment = {
    */
   integerBeforeDotLines?: Set<number>;
   /**
+   * Offsets in `text` of the last character before a line break that a `from` keyword follows
+   * in an `import` or `export` clause (`import { a }\nfrom "m"`). The declaration continues
+   * on that line, so the line break is a join.
+   */
+  moduleFromBreaks?: Set<number>;
+  /**
    * Literal segments only: the source has a line break before this literal that JavaScript's
    * automatic semicolon insertion turns into a statement end (`const a = 1\n"use strict"`).
    * The minified output must keep that boundary as a `;`.
@@ -89,6 +95,11 @@ type Segment = {
    * (`await\n"a"` is one statement in an async function and two where `await` is a name).
    */
   lineBreakBefore?: boolean;
+  /**
+   * Literal segments only: the module specifier of an `import` or `export`, which its
+   * `with { type: "json" }` attributes may follow on the next line.
+   */
+  moduleSpecifier?: boolean;
   /**
    * Literal segments only: a comment kept as written. `"line"` runs to the end of its line and
    * is followed by a line break: an HTML-like `<!--` comment (a classic script reads it as a
@@ -547,6 +558,7 @@ const scanSegments = (js: string): Segment[] => {
   let bareBindingEnds: Set<number> | undefined;
   let numberDotEnds: Set<number> | undefined;
   let integerBeforeDotLines: Set<number> | undefined;
+  let moduleFromBreaks: Set<number> | undefined;
   // A `+`, `-` or `!` that started a line after a value in a declaration: the next character
   // tells whether it starts a new statement (`++b`, `!f()`) or continues (`+ b`, `!= b`).
   let operatorAfterValueBreak = "";
@@ -780,12 +792,14 @@ const scanSegments = (js: string): Segment[] => {
         bareBindingEnds,
         numberDotEnds,
         integerBeforeDotLines,
+        moduleFromBreaks,
       });
       codeAccum = "";
     }
     bareBindingEnds = undefined;
     numberDotEnds = undefined;
     integerBeforeDotLines = undefined;
+    moduleFromBreaks = undefined;
     controlHeaderCloses = undefined;
     postfixUpdateEnds = undefined;
     arrowBodyCloses = undefined;
@@ -1018,6 +1032,15 @@ const scanSegments = (js: string): Segment[] => {
       if (wordIsBindingName && atDeclarationLevel()) {
         (bareBindingEnds ??= new Set()).add(lastSigOffset);
       }
+      if (
+        wordRun === "from" &&
+        moduleClauseOpen &&
+        lineBreakBeforeWord &&
+        sigOffsetBeforeWord !== -1
+      ) {
+        // `import { a }\nfrom "m"`: no statement ends before the `from` of a clause.
+        (moduleFromBreaks ??= new Set()).add(sigOffsetBeforeWord);
+      }
       if (wordRun === "import" || wordRun === "export") {
         moduleClauseOpen = !atObjectMemberLevel();
       } else if (MODULE_CLAUSE_ENDING_WORDS.has(wordRun)) {
@@ -1170,7 +1193,10 @@ const scanSegments = (js: string): Segment[] => {
     const asiBefore = asiBeforeLiteral(kind);
     const afterWord = isWordChar(lastSig) && !wordIsProperty ? wordRun : "";
     // The module specifier ends the clause (a string export name, `export { "a b" as c }`,
-    // does not).
+    // does not). Its `with { type: "json" }` attributes may follow on the next line.
+    const moduleSpecifier =
+      kind === "string" &&
+      ((afterWord === "from" && moduleClauseOpen) || afterWord === "import");
     if (afterWord === "from" || afterWord === "import")
       moduleClauseOpen = false;
     // `await\n"a"` is `await "a"` in a module or an async function and two statements where
@@ -1191,7 +1217,9 @@ const scanSegments = (js: string): Segment[] => {
         ? { literal: true, text, asiBefore }
         : lineBreakBefore
           ? { literal: true, text, lineBreakBefore }
-          : { literal: true, text },
+          : moduleSpecifier
+            ? { literal: true, text, moduleSpecifier }
+            : { literal: true, text },
     );
     lineBreakSinceSignificant = false;
   };
@@ -1593,9 +1621,14 @@ export const minifyJs = (js: string): string => {
       /^\s*\n/.test(seg.text)
     ) {
       const firstLine = seg.text.match(/\S.*/)?.[0] ?? "";
+      // `import a from "m.json"\nwith { type: "json" }`: the attributes continue the import.
+      const importAttributes =
+        segments[sIdx - 1].moduleSpecifier === true &&
+        /^with(?![\w$\\]|[^\x00-\x7f\s])/.test(firstLine);
       if (
         resultLast &&
         firstLine &&
+        !importAttributes &&
         !/^(?:(?:instanceof|in|of)(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\(|\)|\}|\[|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
           firstLine,
         )
@@ -1766,6 +1799,10 @@ export const minifyJs = (js: string): string => {
       if (seg.fieldNameEnds?.has(prevLineEnd)) {
         // A class field name, then a member starting with `[` or `*` on this line.
         needsSemicolon = true;
+      }
+      if (seg.moduleFromBreaks?.has(prevLineEnd)) {
+        // `import { a }\nfrom "m"`: the clause continues with its `from`.
+        needsSemicolon = false;
       }
 
       prevLineEnd = lineEnd;
