@@ -556,14 +556,21 @@ export const addElementClassesInHtml = (
   return shielded.restore(result);
 };
 
+// `@keyframes` or a vendor-prefixed `@-webkit-keyframes`, in any case (an
+// at-rule name is ASCII case-insensitive). The prefixed rule declares the
+// name a prefixed `-webkit-animation` refers to, so both are scoped.
+const KEYFRAMES_AT_RULE = /@(?:-[a-z]+-)?keyframes/i;
+
 export const getKeyframeNames = (css: string): string[] | null => {
-  if (!css.includes("@keyframes") && !css.includes("@KEYFRAMES")) return null;
+  if (!KEYFRAMES_AT_RULE.test(css)) return null;
   // Anchor on the @keyframes at-rule itself so only the declared animation
   // name is captured — never `from`/`to`/percentage selectors or idents that
   // merely appear later in the stylesheet. Full CSS ident: [\w-]+ covers
   // dashed (fade-in), digit (spin2), and uppercase (pulseFast) names.
   const { css: shielded } = shieldCssStrings(css);
-  const matches = shielded.matchAll(/@keyframes\s+([\w-]+)\s*\{/gi);
+  const matches = shielded.matchAll(
+    /@(?:-[a-z]+-)?keyframes\s+([\w-]+)\s*\{/gi,
+  );
   const names = [...new Set([...matches].map((m) => m[1]))];
   return names.length ? names : null;
 };
@@ -777,7 +784,7 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
   const { css: shielded, restore } = shieldCssStrings(css);
   const replaced = shielded
     .replace(
-      /(@keyframes\s+)([\w-]+)(?=\s*\{)/gi,
+      /(@(?:-[a-z]+-)?keyframes\s+)([\w-]+)(?=\s*\{)/gi,
       (_match, prefix: string, name: string) =>
         `${prefix}${scopedNames.get(name) ?? name}`,
     )
