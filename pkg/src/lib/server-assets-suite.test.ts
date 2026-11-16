@@ -803,6 +803,64 @@ describe("startHttp2Server – static representation failure paths", () => {
   // A page name can hold a dot: `release-1.0.html`, a `[version]` route of
   // `v2.0`. Its URL (the one the sitemap lists) looks like a file with an
   // extension, but no such file exists, so the page answers.
+  // The first compile has not stored the page yet: a dotted page path gets
+  // the boot page every other page gets, while a missing asset stays a 404.
+  it.each(["/release-1.0", "/docs/v2.0", "/v1.2/"])(
+    "serves the boot page for a dotted path while dev is booting: %s",
+    async (path) => {
+      mockMem.isBooting = true;
+      mockStat.mockRejectedValue(
+        Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+      );
+      mockMem.getPageExact.mockReturnValue(undefined);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+
+      await handler(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ":status": 200,
+          "cache-control": "no-store",
+        }),
+      );
+      expect(String(stream.end.mock.calls[0][0])).toContain(
+        "bascik-live-reload?boot=1",
+      );
+    },
+  );
+
+  it.each(["/cover.png", "/styles.css"])(
+    "still answers 404 for a missing asset while dev is booting: %s",
+    async (path) => {
+      mockMem.isBooting = true;
+      mockStat.mockRejectedValue(
+        Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+      );
+      mockMem.getPageExact.mockReturnValue(undefined);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+
+      await handler(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
+    },
+  );
+
+  it("answers 404 for a dotted path after boot when no page has it", async () => {
+    mockStat.mockRejectedValue(
+      Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+    );
+    mockMem.getPageExact.mockReturnValue(undefined);
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+
+    await handler(stream, makeHeaders("/release-9.9", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 404 }),
+    );
+  });
+
   it.each(["/release-1.0", "/docs/v2.0", "/blog/hello.world"])(
     "serves the page at a dotted path no static file has: %s",
     async (path) => {
