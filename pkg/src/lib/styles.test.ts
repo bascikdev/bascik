@@ -490,6 +490,24 @@ describe("removeCommentsFromCss", () => {
     expect(removeCommentsFromCss("a{b:1//**/*2}")).toBe("a{b:1/ *2}");
   });
 
+  // A name right before `(` is a function token (`and(`), and `-->` and
+  // `<!--` are CDC and CDO tokens, so a comment there separates them too.
+  it("keeps a name apart from a ( and CDC/CDO characters apart", () => {
+    expect(
+      removeCommentsFromCss("@media screen and/**/(min-width:1px){}"),
+    ).toBe("@media screen and (min-width:1px){}");
+    expect(removeCommentsFromCss("@media not/* x */(color){}")).toBe(
+      "@media not (color){}",
+    );
+    expect(removeCommentsFromCss("a{b:--/**/>c}")).toBe("a{b:-- >c}");
+    expect(removeCommentsFromCss("a{b:<!/**/--c}")).toBe("a{b:<! --c}");
+    // A function written with a comment after its `(` is unchanged.
+    expect(removeCommentsFromCss("a{b:rgb(/**/1 2 3)}")).toBe(
+      "a{b:rgb(1 2 3)}",
+    );
+    expect(removeCommentsFromCss("a{b:calc(1px/**/)}")).toBe("a{b:calc(1px)}");
+  });
+
   it("adds nothing where a space would change a selector or a value", () => {
     // A space here would add a descendant combinator.
     expect(removeCommentsFromCss(".a/**/.b{}")).toBe(".a.b{}");
