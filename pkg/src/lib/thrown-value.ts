@@ -28,7 +28,8 @@ export function describeNonErrorThrow(value: unknown): string {
     } catch {
       text = typeof value;
     }
-    shown = `the ${typeof value} ${text}`;
+    // A thrown function prints its whole source.
+    shown = `the ${typeof value} ${text.length > 200 ? `${text.slice(0, 200)}…` : text}`;
   }
   return `The script threw ${shown}, not an Error, so there is no stack trace with its line. Throw an Error instead: throw new Error("...").`;
 }

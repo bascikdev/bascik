@@ -31,12 +31,19 @@ describe("describeNonErrorThrow", () => {
     const long = describeNonErrorThrow("x".repeat(5000));
     expect(long.length).toBeLessThan(400);
     expect(long).toContain("…");
+    // A thrown function would print its whole source text.
+    const body = "x".repeat(5000);
+    const fn = new Function(`return "${body}";`);
+    const described = describeNonErrorThrow(fn);
+    expect(described).toMatch(/^The script threw the function /);
+    expect(described.length).toBeLessThan(400);
   });
 
   // The build and routes script runner embeds the function's source text.
   it("runs from its own source text, with nothing outside it", () => {
+    // Bound to a name the way the runner binds it.
     const rebuilt = new Function(
-      `${describeNonErrorThrow.toString()}; return describeNonErrorThrow;`,
+      `const describe = ${describeNonErrorThrow.toString()}; return describe;`,
     )() as typeof describeNonErrorThrow;
     expect(rebuilt(null)).toBe(describeNonErrorThrow(null));
   });
