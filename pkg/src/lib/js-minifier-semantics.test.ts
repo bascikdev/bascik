@@ -917,8 +917,63 @@ describe("minifyJs – a class field name before a computed or generator member"
       "a field named async",
       "const k = 'key'\nclass A {\n  async\n  [k]() { return 4 }\n}\nconst a = new A()\nlog.push('async' in a, a.key())",
     ],
+    [
+      "a field named by a string",
+      "const k = 'key'\nclass A {\n  'a b'\n  [k] = 1\n}\nconst a = new A()\nlog.push('a b' in a, a.key)",
+    ],
+    [
+      "a field named by a double-quoted string, then a generator",
+      'class A {\n  "a"\n  *items() { yield 1 }\n}\nconst a = new A()\nlog.push("a" in a, [...a.items()])',
+    ],
+    [
+      "a static field named by a string",
+      "const k = 'key'\nclass A {\n  static 'a'\n  [k] = 1\n}\nlog.push('a' in A, new A().key)",
+    ],
+    [
+      "a field named by a computed key",
+      "const j = 'j', k = 'key'\nclass A {\n  [j]\n  [k] = 1\n}\nconst a = new A()\nlog.push('j' in a, a.key)",
+    ],
+    [
+      "three fields named by computed keys",
+      "const i = 'i', j = 'j', k = 'k'\nclass A {\n  [i]\n  [j]\n  [k] = 1\n}\nconst a = new A()\nlog.push('i' in a, 'j' in a, a.k)",
+    ],
+    [
+      "a field named by a computed key holding a string",
+      "const k = 'key'\nclass A {\n  ['j']\n  [k] = 1\n}\nconst a = new A()\nlog.push('j' in a, a.key)",
+    ],
+    [
+      "a field named by a computed key, then a generator",
+      "const j = 'j'\nclass A {\n  [j]\n  *items() { yield 2 }\n}\nconst a = new A()\nlog.push('j' in a, [...a.items()])",
+    ],
+    [
+      "a static field named by a computed key",
+      "const j = 'j', k = 'key'\nclass A {\n  static [j]\n  [k] = 1\n}\nlog.push('j' in A, new A().key)",
+    ],
+    [
+      "a computed field after a string field",
+      "const j = 'j', k = 'key'\nclass A {\n  'a'\n  [j]\n  [k] = 1\n}\nconst a = new A()\nlog.push('a' in a, 'j' in a, a.key)",
+    ],
+    [
+      "a field after a method",
+      "const j = 'j', k = 'key'\nclass A {\n  m() {}\n  [j]\n  [k] = 1\n}\nconst a = new A()\nlog.push('j' in a, a.key)",
+    ],
   ])("ends %s", (_name, source) => {
     expectSameProgram(source);
+  });
+
+  // `accessor` fields are not in Node yet, so these compare text; each output parses.
+  it.each([
+    ["class A { accessor e\n[f] = 1 }", "class A{accessor e;[f]=1}"],
+    ["class A { accessor e\n*g() {} }", "class A{accessor e;*g(){}}"],
+    [
+      "class A { static accessor e\n[f] = 1 }",
+      "class A{static accessor e;[f]=1}",
+    ],
+    ["class A { accessor #e\n[f] = 1 }", "class A{accessor #e;[f]=1}"],
+    ["class A { accessor 'e'\n[f] = 1 }", "class A{accessor'e';[f]=1}"],
+    ["class A { accessor [e]\n[f] = 1 }", "class A{accessor [e];[f]=1}"],
+  ])("ends an accessor field: %j", (source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
   });
 
   // Here the `[` or `*` line belongs to what is before it.
@@ -938,6 +993,30 @@ describe("minifyJs – a class field name before a computed or generator member"
     [
       "a field value that is indexed",
       "const b = [4]\nclass A {\n  first = b\n  [0]\n}\nlog.push(new A().first)",
+    ],
+    [
+      "a field value that is indexed twice",
+      "const b = [[4, 5]]\nclass A {\n  first = b\n  [0]\n  [1]\n}\nlog.push(new A().first)",
+    ],
+    [
+      "an object field value that is indexed",
+      "class A {\n  first = { k: 6 }\n  ['k']\n}\nlog.push(new A().first)",
+    ],
+    [
+      "a string field value that is indexed",
+      "class A {\n  first = 'ab'\n  [1]\n}\nlog.push(new A().first)",
+    ],
+    [
+      "a method named by a string",
+      "class A {\n  'm'\n  () { return 7 }\n}\nlog.push(new A().m())",
+    ],
+    [
+      "a method named by a computed key",
+      "const k = 'm'\nclass A {\n  [k]\n  () { return 8 }\n}\nlog.push(new A().m())",
+    ],
+    [
+      "a field named by a computed key with a value on the next line",
+      "const k = 'm'\nclass A {\n  [k]\n  = 9\n}\nlog.push(new A().m)",
     ],
     [
       "a field value that is multiplied",
