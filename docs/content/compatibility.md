@@ -22,7 +22,7 @@ This page documents Bascik's support matrix against authoritative **W3C Recommen
   {
     "id": "css-attribute-selector",
     "kind": "css",
-    "pattern": "(^|,)\\s*\\[(?![iI][dD](?![\\w-]))[A-Za-z0-9_-]+(?:\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+))?)?\\](?!(?:[^(),{]|\\([^)]*\\))*\\.[A-Za-z_][\\w-]*)",
+    "pattern": "(^|,)\\s*\\[\\s*(?:(?:[A-Za-z0-9_-]+|\\*)?\\|(?!=))?(?![iI][dD](?![\\w-]))[A-Za-z0-9_-]+\\s*(?:[~|^$*]?=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\]\"'\\s]+)(?:\\s+[iIsS])?\\s*)?\\](?!(?:[^(),{]|\\([^)]*\\))*\\.(?:--|-?[A-Za-z_])[\\w-]*)",
     "flags": "gm",
     "message": "Standalone attribute selectors are not scoped by Bascik and may leak globally.",
     "suggestion": "Anchor the selector with a scoped class (for example .card[data-state]) or switch to a class-only selector.",
@@ -40,7 +40,7 @@ This page documents Bascik's support matrix against authoritative **W3C Recommen
   {
     "id": "css-is-element-names",
     "kind": "css",
-    "pattern": "(?<!\\.[A-Za-z_][\\w-]*(?:\\s+[>+~]?\\s*|\\s+)):(?:is|where|has)\\s*\\((?:[^)]*(?<![.#\\w-])(?:p|div|span|section|article|main|header|footer|aside|nav|ul|ol|li|a|button|input|textarea|select|form|img|svg|path|h[1-6])(?![\\w-])[^)]*)\\)",
+    "pattern": "(?<!\\.(?:--|-?[A-Za-z_])[\\w-]*(?:\\s+[>+~]?\\s*|\\s+)):(?:is|where|has)\\s*\\((?:[^)]*(?<![.#\\w-])(?:p|div|span|section|article|main|header|footer|aside|nav|ul|ol|li|a|button|input|textarea|select|form|img|svg|path|h[1-6])(?![\\w-])[^)]*)\\)",
     "flags": "gi",
     "message": "Element names inside :is(), :where(), or :has() are not converted by Bascik.",
     "suggestion": "Use a class selector inside the pseudo-class instead of bare element names.",
