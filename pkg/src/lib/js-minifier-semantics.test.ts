@@ -1158,6 +1158,57 @@ describe("minifyJs – a call that only looks like a control header", () => {
   );
 });
 
+describe("minifyJs – a block comment that spans lines is a line break", () => {
+  // ECMAScript reads a multi-line comment holding a line terminator as a line terminator.
+  it.each([
+    [
+      "between two statements",
+      "let a = 1, b = 2, c = 3\na = b /*\n*/ c\nlog.push(a, c)",
+    ],
+    [
+      "after return",
+      "const x = 5\nlog.push((() => { return /* a\n b */ x })())",
+    ],
+    ["after break", "for (;;) { log.push('once'); break /*\n*/ -1 }"],
+    [
+      "after a postfix update",
+      "let i = 1, j = 2\ni++ /*\n*/ j\nlog.push(i, j)",
+    ],
+    [
+      "a doc comment between two declarations",
+      "const a = 1 /** first\n */ const b = 2\nlog.push(a, b)",
+    ],
+    [
+      "a comment with a carriage return",
+      "let a = 1, b = 2, c = 3\na = b /*\r*/ c\nlog.push(a, c)",
+    ],
+    [
+      "a comment with a line separator",
+      "let a = 1, b = 2, c = 3\na = b /* */ c\nlog.push(a, c)",
+    ],
+  ])("ends the statement at a comment %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "inside an expression",
+      "const a = 1, b = 2\nconst x = a + /*\n*/ b\nlog.push(x)",
+    ],
+    ["on one line", "const a = 1, b = 2\nconst x = a /* + */ + b\nlog.push(x)"],
+    [
+      "between two plus signs",
+      "const a = 1, b = '2'\nconst x = a +/*\n*/+ b\nlog.push(x)",
+    ],
+    [
+      "before a call's parentheses",
+      "const f = () => 3\nconst x = f /*\n*/ ()\nlog.push(x)",
+    ],
+  ])("keeps the expression together across a comment %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
 describe("minifyJs – `extends` on the line after a class name", () => {
   // `class D\nextends B {}` is one class header: the line break is not a statement end.
   it.each([

@@ -1152,11 +1152,22 @@ const scanSegments = (js: string): Segment[] => {
       if (next === "*") {
         // Block comment: skip to */
         i += 2;
+        let spansLines = false;
         while (i + 1 < len && !(js[i] === "*" && js[i + 1] === "/")) {
           __scanStatsForTests.charsExamined++;
+          const c = js[i];
+          if (c === "\n" || c === "\r" || c === " " || c === " ") {
+            spansLines = true;
+          }
           i++;
         }
         i += 2;
+        if (spansLines) {
+          // ECMAScript reads a comment holding a line terminator as a line terminator, so
+          // automatic semicolon insertion can end the statement there (`a = b /*\n*/ c`).
+          appendCode("\n");
+          continue;
+        }
         // If stripping a block comment between two word characters (e.g., return/*x*/v),
         // preserve a space so token boundaries aren't lost. The same goes for two `+` or
         // two `-`, which would join into `++` or `--` (`a +/* sign */+ b`).
