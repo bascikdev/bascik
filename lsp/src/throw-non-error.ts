@@ -107,6 +107,17 @@ const OPERATORS = [
   "^=",
 ];
 
+/** OPERATORS by their first character, longest first, so a one-character punctuator costs one lookup. */
+const OPERATORS_BY_FIRST = new Map<string, string[]>();
+for (const operator of OPERATORS) {
+  const list = OPERATORS_BY_FIRST.get(operator[0]);
+  if (list) list.push(operator);
+  else OPERATORS_BY_FIRST.set(operator[0], [operator]);
+}
+
+/** A bigint literal: decimal, hex, octal or binary digits followed by `n`. */
+const BIGINT = /^(?:0[xXoObB][0-9a-fA-F_]+|[0-9][0-9_]*)n$/;
+
 const BINARY_PRECEDENCE: Record<string, number> = {
   "??": 1,
   "||": 1,
@@ -253,7 +264,13 @@ function tokensOf(source: string): {
       continue;
     }
     let length = 1;
-    for (const operator of OPERATORS) {
+    // A multi-character operator is punctuation right after punctuation.
+    const following = merged[i + 1];
+    const candidates =
+      following?.kind === "punctuation" && following.start === tok.start + 1
+        ? (OPERATORS_BY_FIRST.get(source[tok.start]) ?? [])
+        : [];
+    for (const operator of candidates) {
       if (!source.startsWith(operator, tok.start)) continue;
       let adjacent = true;
       for (let k = 1; k < operator.length; k++) {
@@ -509,9 +526,7 @@ export function findNonErrorThrows(source: string): NonErrorThrow[] {
         return { couldBeError: false, kind: "a string", wrappable: true };
       case "number":
         p++;
-        return plain(
-          /^[0-9][0-9_]*n$/.test(tok.value) ? "a bigint" : "a number",
-        );
+        return plain(BIGINT.test(tok.value) ? "a bigint" : "a number");
       case "regex":
         p++;
         return plain("a regular expression");
@@ -914,7 +929,11 @@ export function findNonErrorThrows(source: string): NonErrorThrow[] {
     else return undefined;
     const paramsEnd = match[params];
     if (paramsEnd < 0) return undefined;
-    // The second parameter, when it is a plain name (typed or not).
+    // The second parameter, when it is a plain name (typed or not). A
+    // TypeScript `this` parameter (`function (this: T, resolve, reject)`) is
+    // no parameter at run time, so reject is the third.
+    const wanted =
+      isWord(params + 1, "this") && isPunct(params + 2, ":") ? 2 : 1;
     let second = -1;
     let commas = 0;
     for (let j = params + 1; j < paramsEnd; j++) {
@@ -930,7 +949,7 @@ export function findNonErrorThrows(source: string): NonErrorThrow[] {
       }
       if (isPunct(j, ",")) {
         commas++;
-        if (commas === 1) second = j + 1;
+        if (commas === wanted) second = j + 1;
       }
     }
     if (second < 0 || toks[second]?.kind !== "identifier") return undefined;
@@ -983,10 +1002,79 @@ export function findNonErrorThrows(source: string): NonErrorThrow[] {
   };
 
   /**
+   * For each bracket that opens a group, the innermost group at or around it
+   * that can declare a name read inside it: a `(` (a parameter list, a catch
+   * clause, a `for` header, or plain parentheses), or a `{` or `[` followed
+   * by `=` (a destructuring pattern). A `{` or `[` that is neither (an object
+   * or array literal, or a pattern nested in one) passes the question to the
+   * group around it, so `({ a, reject }) =>` and `([id, reject]) =>` are
+   * parameter lists. -2: not computed; -1: no such group. Memoized, so the
+   * walk costs each group once however many names are read in it.
+   */
+  let deciders: Int32Array | undefined;
+  const deciderOf = (group: number): number => {
+    deciders ??= new Int32Array(n).fill(-2);
+    const path: number[] = [];
+    let at = group;
+    while (at >= 0 && deciders[at] === -2) {
+      const end = after(at);
+      if (toks[at].value === "(" || (end > 0 && isPunct(end, "="))) {
+        deciders[at] = at;
+        break;
+      }
+      path.push(at);
+      at = parent[at];
+    }
+    const result = at < 0 ? -1 : deciders[at];
+    for (const k of path) deciders[k] = result;
+    return result;
+  };
+
+  /**
+   * 1 for each token at a bracket level whose statement starts with `let`,
+   * `const` or `var` and has not ended, so a name after a comma there
+   * (`let a, reject`) is declared. One pass, built with the first executor.
+   */
+  let inDeclaration: Uint8Array | undefined;
+  const isInDeclaration = (i: number): boolean => {
+    if (!inDeclaration) {
+      inDeclaration = new Uint8Array(n);
+      const outer: boolean[] = [];
+      let declaring = false;
+      for (let k = 0; k < n; k++) {
+        const tok = toks[k];
+        if (tok.kind === "punctuation") {
+          const v = tok.value;
+          if ((v === "(" || v === "[" || v === "{") && match[k] > k) {
+            outer.push(declaring);
+            declaring = false;
+            continue;
+          }
+          if ((v === ")" || v === "]" || v === "}") && match[k] >= 0) {
+            if (match[k] < k) declaring = outer.pop() ?? false;
+            continue;
+          }
+          if (v === ";") declaring = false;
+        } else if (
+          tok.kind === "identifier" &&
+          (tok.value === "let" ||
+            tok.value === "const" ||
+            tok.value === "var") &&
+          !isMemberName(k)
+        )
+          declaring = true;
+        if (declaring) inDeclaration[k] = 1;
+      }
+    }
+    return inDeclaration[i] === 1;
+  };
+
+  /**
    * The executor's calls to its reject parameter, or none when the body
-   * might declare the name again (a nested parameter, a `const`, a catch
-   * binding, a reassignment): only a name that is clearly the parameter
-   * counts.
+   * might declare the name again (a nested parameter, also inside a
+   * destructuring pattern, a `const` or a `let a, reject` list, a catch
+   * binding, a reassignment, a `for (reject of ...)` loop): only a name that
+   * is clearly the parameter counts.
    */
   const checkExecutor = (executor: {
     name: string;
@@ -1013,6 +1101,8 @@ export function findNonErrorThrows(source: string): NonErrorThrow[] {
       )
         return;
       if (isPunct(i - 1, "(") && isWord(i - 2, "catch")) return;
+      // `let a, reject`: a second declarator.
+      if (isPunct(i - 1, ",") && isInDeclaration(i)) return;
       const next = toks[i + 1];
       if (next?.kind === "punctuation") {
         if (next.value === "=>" || next.value === ":" || next.value === "?")
@@ -1027,16 +1117,25 @@ export function findNonErrorThrows(source: string): NonErrorThrow[] {
         }
       }
       // A plain read (`setTimeout(reject, 10)`, `.catch(reject)`), unless the
-      // brackets around it are a parameter list or a destructuring pattern.
-      const around = parent[i];
-      if (around >= 0) {
-        const end = after(around);
+      // group around it, through any object or array pattern, is a parameter
+      // list, a catch clause, a `for` header or a destructuring pattern
+      // inside the body.
+      const group = parent[i] >= 0 ? deciderOf(parent[i]) : -1;
+      if (group >= executor.bodyStart && group < executor.bodyEnd) {
+        if (toks[group].value !== "(") return; // `{ a, reject } = o`
+        const end = after(group);
         if (
           end > 0 &&
           (isPunct(end, "=>") ||
             isPunct(end, "=") ||
-            (toks[around].value === "(" &&
-              (isPunct(end, "{") || isPunct(end, ":"))))
+            isPunct(end, "{") ||
+            isPunct(end, ":"))
+        )
+          return;
+        if (
+          isWord(group - 1, "catch") ||
+          isWord(group - 1, "for") ||
+          (isWord(group - 1, "await") && isWord(group - 2, "for"))
         )
           return;
       }

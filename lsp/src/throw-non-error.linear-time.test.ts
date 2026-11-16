@@ -69,6 +69,34 @@ const cases: Array<[string, (n: number) => string]> = [
       `new Promise((resolve, reject) => { ${"on('error', reject); ".repeat(n)} });`,
   ],
   [
+    "reads of reject in blocks nested deeper and deeper",
+    (n) =>
+      `new Promise((resolve, reject) => { ${"if (a) { cb = [reject]; ".repeat(n)}${"}".repeat(n)} });`,
+  ],
+  [
+    "reads of reject in object literals nested deeper and deeper",
+    (n) =>
+      `new Promise((resolve, reject) => { x = ${"{ reject, a: ".repeat(n)}1${" }".repeat(n)}; reject('x') });`,
+  ],
+  [
+    "a long declarator list read through after each comma",
+    (n) =>
+      `new Promise((resolve, reject) => { let a = f(reject)${", b = f(reject)".repeat(n)}; reject('x') });`,
+  ],
+  [
+    "a long sequence of reads after commas",
+    (n) =>
+      `new Promise((resolve, reject) => { a${", reject".repeat(n)}; reject('x') });`,
+  ],
+  [
+    "executors with a this parameter",
+    (n) =>
+      "new Promise(function (this: T, resolve, reject) { reject('x') });\n".repeat(
+        n,
+      ),
+  ],
+  ["runs of punctuation", (n) => `throw "a"${" + (-!~a)".repeat(n)};`],
+  [
     "executors that never close",
     (n) => "new Promise((resolve, reject".repeat(n),
   ],

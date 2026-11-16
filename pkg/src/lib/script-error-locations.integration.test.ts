@@ -476,7 +476,7 @@ const throwingPage = (directive: string, statement: string): string =>
   );
 // The whole sentence, so the copy the build runner embeds is checked too.
 const NOT_AN_ERROR =
-  ", not an Error, so it has no stack trace. bascik --check and the editor mark the line of a throw or reject like this one (rule throw-non-error).";
+  ", not an Error, so it has no stack trace. bascik --check and the editor mark a literal value thrown or rejected in your code (rule throw-non-error), but not a value thrown through a variable or by a dependency: make that value an Error where it is created.";
 const NON_ERROR_DESCRIPTIONS = {
   string: `The script threw the string "just a string"${NOT_AN_ERROR}`,
   null: `The script threw null${NOT_AN_ERROR}`,

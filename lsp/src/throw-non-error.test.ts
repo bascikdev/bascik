@@ -34,6 +34,11 @@ describe("findNonErrorThrows: values that can never be an Error", () => {
     ["throw -1;", "throw:a number:[-1]"],
     ["throw .5;", "throw:a number:[.5]"],
     ["throw 10n;", "throw:a bigint:[10n]"],
+    ["throw 0x10n;", "throw:a bigint:[0x10n]"],
+    ["throw 0b101n;", "throw:a bigint:[0b101n]"],
+    ["throw 0o7n;", "throw:a bigint:[0o7n]"],
+    ["throw 1_000n;", "throw:a bigint:[1_000n]"],
+    ["throw 0x10;", "throw:a number:[0x10]"],
     ["throw true;", "throw:a boolean:[true]"],
     ["throw null;", "throw:null:[null]"],
     ["throw undefined;", "throw:undefined:[undefined]"],
@@ -204,8 +209,62 @@ describe("findNonErrorThrows: values that could be an Error are left alone", () 
       "new Promise((res, rej = noop) => rej('x'));",
       "new Promise((res, ...rej) => rej('x'));",
       "new Promise((res, { rej }) => rej('x'));",
+      // Declared inside a destructuring pattern, a declarator list or a loop header.
+      "new Promise((resolve, reject) => {\n  emitter.on('done', ({ ok, reject }) => { if (!ok) reject('cancelled'); });\n});",
+      "new Promise((resolve, reject) => {\n  items.map(([id, reject]) => reject('skip'));\n});",
+      "new Promise((res, rej) => { const f = (a, { b, rej }) => rej('x') });",
+      "new Promise((res, rej) => { const f = (a, { b: { rej } }) => rej('x') });",
+      "new Promise((res, rej) => { const f = ({ b }: { b: 1 }, [rej]: T) => rej('x') });",
+      "new Promise((res, rej) => { import('m').then(({ rej }) => rej('x')) });",
+      "new Promise((res, rej) => { function f({ rej }) { rej('x') } });",
+      "new Promise((res, rej) => { try {} catch ({ rej }) { rej('x') } });",
+      "new Promise((res, rej) => { try {} catch ({ a, rej }) { rej('x') } });",
+      "new Promise((res, rej) => { let a, rej; rej('x') });",
+      "new Promise((res, rej) => { const a = f(1, 2), rej = g; rej('x') });",
+      "new Promise((res, rej) => { var a = 1,\n  rej; rej('x') });",
+      "new Promise((res, rej) => { const [a, rej] = pair; rej('x') });",
+      "new Promise((res, rej) => { ({ a, rej } = o); rej('x') });",
+      "new Promise((res, rej) => { [a, [rej]] = pairs; rej('x') });",
+      "new Promise((resolve, reject) => { for (reject of rs) reject('x'); });",
+      "new Promise((resolve, reject) => { for ([id, reject] of rs) reject('x'); });",
+      "new Promise((resolve, reject) => { for await (reject of rs) reject('x'); });",
+      "new Promise((resolve, reject) => { for (const { reject } of rs) reject('x'); });",
     ])
       expect(found(source), source).toEqual([]);
+  });
+
+  it("misuse: the same name read in an object, an array or a call is still the parameter", () => {
+    for (const source of [
+      "new Promise((res, rej) => { handlers = { rej }; rej('x') });",
+      "new Promise((res, rej) => { const handlers = { ok: res, rej }; rej('x') });",
+      "new Promise((res, rej) => { queue.push([res, rej]); rej('x') });",
+      "new Promise((res, rej) => { let a = 1, b = wrap(res, rej); rej('x') });",
+      "new Promise((res, rej) => { if (done) { cb = [rej] } rej('x') });",
+      "new Promise((res, rej) => { for (const r of rs) { r.then(res, rej) } rej('x') });",
+    ])
+      expect(found(source), source).toEqual(["reject:a string:['x']"]);
+  });
+
+  it("a TypeScript this parameter is not the executor's resolve", () => {
+    expect(
+      found(
+        "new Promise(function (this: Ctx, resolve, reject) { resolve('ok'); });",
+      ),
+    ).toEqual([]);
+    expect(
+      found(
+        "new Promise<void>(function (this: X, resolve, reject) { reject('x') });",
+      ),
+    ).toEqual(["reject:a string:['x']"]);
+    expect(
+      found(
+        "new Promise(function (this: Map<string, number>, ok, fail) { ok(1); fail('x') });",
+      ),
+    ).toEqual(["reject:a string:['x']"]);
+    // Only `this` with a type annotation is a this parameter.
+    expect(
+      found("new Promise(function (self, reject) { reject('x') });"),
+    ).toEqual(["reject:a string:['x']"]);
   });
 });
 
