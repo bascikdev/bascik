@@ -12,6 +12,7 @@ import {
   SPILLED_ENV_FILE_VAR,
 } from "./script-runner.ts";
 import { BascikConfig } from "./config.ts";
+import { describeNonErrorThrow } from "./thrown-value.ts";
 
 export type DirectiveKind = "build" | "routes";
 
@@ -119,6 +120,11 @@ try {
   // No usable stdin: nothing to watch.
 }
 
+// A thrown string, null or empty rejection: what it was, since it names no line.
+// Bound to its name here, so the call below holds even if a build of this
+// package renames the function.
+const describeNonErrorThrow = ${describeNonErrorThrow.toString()};
+
 let mod;
 try {
   mod = await import(target);
@@ -126,7 +132,7 @@ try {
   // A caught SyntaxError carries no location. Left uncaught at the top level,
   // Node prints the file, the line, and a caret under the offending token.
   if (err instanceof SyntaxError) throw err;
-  console.error(err && (err.stack || err.message) ? err.stack || err.message : String(err));
+  console.error(err && (err.stack || err.message) ? err.stack || err.message : describeNonErrorThrow(err));
   process.exit(1);
 }
 
@@ -144,7 +150,7 @@ async function main() {
   try {
     result = await mod.default();
   } catch (err) {
-    console.error(err && (err.stack || err.message) ? err.stack || err.message : String(err));
+    console.error(err && (err.stack || err.message) ? err.stack || err.message : describeNonErrorThrow(err));
     process.exit(1);
   }
 
@@ -195,7 +201,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  console.error(err && (err.stack || err.message) ? err.stack || err.message : describeNonErrorThrow(err));
   process.exit(1);
 });
 `;

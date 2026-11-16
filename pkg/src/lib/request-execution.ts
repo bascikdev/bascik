@@ -34,6 +34,8 @@
  * `serverless-contract.test.ts` bundles it for `platform: "browser"`.
  */
 
+import { toThrownError } from "./thrown-value.ts";
+
 export type ScriptMode = "server" | "stream";
 
 export interface StaticExecutionSegment {
@@ -544,8 +546,9 @@ export interface InvokeResult<T> {
   source?: ScriptChunkSource;
 }
 
-const toError = (raw: unknown): Error =>
-  raw instanceof Error ? raw : new Error(String(raw));
+// A non-Error (`throw "text"`, `Promise.reject()`) is described, with no
+// stack: one made here would show only Bascik's own frames.
+const toError = toThrownError;
 
 /** The message a timed-out server, stream or component script reports on every host. */
 export const scriptTimeoutError = (timeoutMs: number): Error =>
