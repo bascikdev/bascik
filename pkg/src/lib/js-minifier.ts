@@ -194,7 +194,7 @@ const LINE_END_CONTINUING_KEYWORD =
  * label), so a following `(` or `[` line is a new statement.
  */
 const RESTRICTED_PRODUCTION_END =
-  /(?:^|(?![\w$\\]|[^\x00-\x7f\s])[^.])(?:return|throw|yield|debugger|(?:break|continue)(?:\s+(?:[\w$\\]|[^\x00-\x7f\s])+)?)$/;
+  /(?:^|(?![\w$\\]|[^\x00-\x7f\s])[^.#])(?:return|throw|yield|debugger|(?:break|continue)(?:\s+(?:[\w$\\]|[^\x00-\x7f\s])+)?)$/;
 
 /**
  * A line ending in `await` or `yield`. `await` is an operator in an async function or a
@@ -996,7 +996,8 @@ const scanSegments = (js: string): Segment[] => {
           isWordChar(lastSig) && !wordIsProperty && !lineBreakSinceSignificant
             ? wordRun
             : "";
-        wordIsProperty = lastSig === ".";
+        // A property (`x.class`) or a private name (`#return`): a name, never a keyword.
+        wordIsProperty = lastSig === "." || lastSig === "#";
         sigOffsetBeforeWord = lastSigOffset;
         lineBreakBeforeWord = lineBreakSinceSignificant;
         wordIsBindingName = bindingNameExpected;
@@ -1155,8 +1156,10 @@ const scanSegments = (js: string): Segment[] => {
           isWordChar(lastSig) &&
           wordStartsClassMember &&
           lastSigOffset !== -1 &&
-          wordRun !== "static" &&
-          (c === "*" || (wordRun !== "get" && wordRun !== "set"))
+          // `#static` and `#get` are field names, not modifiers.
+          (wordIsProperty ||
+            (wordRun !== "static" &&
+              (c === "*" || (wordRun !== "get" && wordRun !== "set"))))
         ) {
           (fieldNameEnds ??= new Set()).add(lastSigOffset);
         }
