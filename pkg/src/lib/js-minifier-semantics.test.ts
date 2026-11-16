@@ -1856,6 +1856,43 @@ describe("minifyJs – a get, set or static modifier before a string-named membe
       "an object setter after another member",
       "const o = { b: 1, set\n'a'(v) {} }\nlog.push(shape(o))",
     ],
+    // The same with a name, not a string, on the next line.
+    [
+      "an object getter named by a name",
+      "const o = { get\na() { return 1 } }\nlog.push(shape(o))",
+    ],
+    [
+      "an object setter named by a name",
+      "const o = { set\na(v) {} }\nlog.push(shape(o))",
+    ],
+    [
+      "an object getter and setter after other members",
+      "const o = { b: 1,\n  get\n  a() { return 1 },\n  set\n  a(v) {} }\nlog.push(shape(o))",
+    ],
+    [
+      "an object getter in a call",
+      "const f = (o) => o\nlog.push(shape(f({ get\na() { return 2 } })))",
+    ],
+    [
+      "an object getter named by a computed key",
+      "const k = 'a'\nconst o = { get\n[k]() { return 3 } }\nlog.push(shape(o))",
+    ],
+    [
+      "an object getter named get",
+      "const o = { get\nget() { return 4 } }\nlog.push(shape(o))",
+    ],
+    [
+      "a class getter and setter named by a name",
+      "class A { get\na() { return 1 }\nset\na(v) {} }\nlog.push(shape(A.prototype))",
+    ],
+    [
+      "a static getter named by a name",
+      "class A { static\nget\na() { return 1 } }\nlog.push(shape(A))",
+    ],
+    [
+      "a static method named by a name",
+      "class A { static\na() {} }\nlog.push(shape(A))",
+    ],
   ])("keeps %s", (_name, source) => {
     expectSameProgram(withShape(source));
   });
@@ -1884,6 +1921,14 @@ describe("minifyJs – a get, set or static modifier before a string-named membe
     [
       "a shorthand property named get in a block",
       "let get = 1\n{ get\n'a'.length }\nlog.push(get)",
+    ],
+    [
+      "a shorthand property named get before a name in a block",
+      "let get = 1, a = 2\n{ get\na }\nlog.push(get, a)",
+    ],
+    [
+      "an object value named get",
+      "const get = 1, a = 2\nconst o = { b: get\n}\nlog.push(shape(o), a)",
     ],
   ])("ends the member or statement after %s", (_name, source) => {
     expectSameProgram(withShape(source));

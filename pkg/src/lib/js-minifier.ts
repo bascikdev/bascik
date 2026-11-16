@@ -1080,6 +1080,15 @@ const scanSegments = (js: string): Segment[] => {
         // `var a = 1\nfoo`: a name after a value on a new line starts a new statement.
         closeDeclaration();
       }
+      if (
+        (wordRun === "get" || wordRun === "set") &&
+        atObjectMemberLevel() &&
+        (codeAccum[sigOffsetBeforeWord] === "{" ||
+          codeAccum[sigOffsetBeforeWord] === ",")
+      ) {
+        // `{ get\na() {} }`: a line break may follow the modifier of an object accessor.
+        (memberModifierEnds ??= new Set()).add(lastSigOffset);
+      }
       if (wordIsBindingName && atDeclarationLevel()) {
         (bareBindingEnds ??= new Set()).add(lastSigOffset);
       }
