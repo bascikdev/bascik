@@ -110,6 +110,42 @@ test("a preview reads every page of the account's databases and queues before it
   expect(deploy).toContain('cfList<{ queue_name: string }>("queues")');
   expect(deploy).not.toMatch(/cf<[^>]*\[\]>\(\s*"(?:queues|d1\/database)\?/);
 });
+test("a preview removes the Worker, database and queues of closed pull requests before it creates its own", () => {
+  // Every pkg pull request makes a set, and nothing runs when one closes.
+  const deploy = readFileSync("scripts/deploy-preview.ts", "utf8");
+  const openList = deploy.indexOf("pulls?state=open&per_page=100");
+  const worker = deploy.indexOf("workers/scripts/${script.id}?force=true");
+  const queue = deploy.indexOf("queues/${queue.queue_id}");
+  const database = deploy.indexOf("d1/database/${database.uuid}");
+  const create = deploy.indexOf(
+    'cf<{ name: string; uuid: string }>("d1/database", {',
+  );
+  expect(openList).toBeGreaterThan(-1);
+  // The Worker consumes the queue, so it goes first.
+  expect(openList).toBeLessThan(worker);
+  expect(worker).toBeLessThan(queue);
+  expect(queue).toBeLessThan(database);
+  expect(database).toBeLessThan(create);
+  // Only names this script makes, and never one of an open pull request.
+  const pattern = /\/\^bascik-shop-pr-\(\\d\+\)\(\?:-db\|-jobs\|-dead\)\?\$\//;
+  expect(deploy).toMatch(pattern);
+  expect(deploy).toContain("!openPulls.has(match[1])");
+  const regex = new RegExp(deploy.match(pattern)![0].slice(1, -1));
+  for (const kept of [
+    "bascik-shop",
+    "bascik-shop-pr-12-other",
+    "x-bascik-shop-pr-12",
+    "bascik-docs-pr-12",
+  ])
+    expect(regex.test(kept)).toBe(false);
+  for (const removed of [
+    "bascik-shop-pr-12",
+    "bascik-shop-pr-12-db",
+    "bascik-shop-pr-12-jobs",
+    "bascik-shop-pr-12-dead",
+  ])
+    expect(regex.exec(removed)?.[1]).toBe("12");
+});
 test("main deployments cannot be cancelled by a later main push", () => {
   const workflow = readFileSync("../.github/workflows/shop.yml", "utf8");
   expect(workflow).toContain(
