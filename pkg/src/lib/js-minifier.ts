@@ -146,7 +146,10 @@ type Segment = {
  * Text the HTML parser watches for in a `<script>` once a `<!--` is in it: `-->`, `<script`
  * and `</script` decide which `</script>` ends the element. Removing a JS comment that holds
  * one can move that end, so in a script that contains `<!--` such comments are kept.
+ * `--!>` is not one: only `-->` leaves a script's escaped text (CodeQL alert 237). The
+ * parse5 oracle in js-minifier-html-markers.test.ts checks the list.
  */
+// codeql[js/bad-tag-filter] Not a tag filter: the HTML parser ends a script's escaped text only on `-->`, never `--!>`; js-minifier-html-markers.test.ts checks this against parse5.
 const HTML_SCRIPT_MARKER = /<!--|-->|<\/?script/i;
 
 /**
