@@ -78,11 +78,22 @@ type Segment = {
    */
   integerBeforeDotLines?: Set<number>;
   /**
-   * Offsets in `text` of the last character before a line break that a `from` keyword follows
-   * in an `import` or `export` clause (`import { a }\nfrom "m"`). The declaration continues
-   * on that line, so the line break is a join.
+   * Offsets in `text` of the last character before a line break that a `from` or `as` keyword
+   * follows in an `import` or `export` clause (`import { a }\nfrom "m"`, `{ a\nas b }`). The
+   * declaration continues on that line, so the line break is a join.
    */
   moduleFromBreaks?: Set<number>;
+  /**
+   * Offsets in `text` of the last character of a contextual keyword that takes something
+   * next: the `of` of a `for` header (`for (const x of\ny)`) and the `as` of an `import` or
+   * `export` clause (`import * as\nn from "m"`). A line break after one is a join.
+   */
+  contextualKeywordEnds?: Set<number>;
+  /**
+   * Code segments only: the segment starts with a line break and then an `as` that continues
+   * the clause after a string name in the literal before it (`export { "a b"\nas c }`).
+   */
+  continuesClause?: boolean;
   /**
    * Literal segments only: the source has a line break before this literal that JavaScript's
    * automatic semicolon insertion turns into a statement end (`const a = 1\n"use strict"`).
@@ -170,9 +181,14 @@ const REGEX_CANNOT_PRECEDE = new Set(["]", "'", '"', "`"]);
  * absent, as are value keywords such as `this` or `null`.
  */
 const EXPRESSION_CONTINUING_KEYWORDS = new Set(
-  [...REGEX_PRECEDING_KEYWORDS, "else", "extends", "import", "from"].filter(
-    (keyword) => keyword !== "return" && keyword !== "yield",
-  ),
+  [
+    ...REGEX_PRECEDING_KEYWORDS,
+    "else",
+    "extends",
+    "import",
+    "from",
+    "as",
+  ].filter((keyword) => keyword !== "return" && keyword !== "yield"),
 );
 
 /**
@@ -627,14 +643,22 @@ const scanSegments = (js: string): Segment[] => {
   // An `import` or `export` was read and its module specifier has not come yet, so a `from`
   // here is the keyword before it, not a variable named `from`.
   let moduleClauseOpen = false;
+  // In an open clause: an `as` here is the keyword (after `*`, or after a name or string
+  // being imported or exported), and the `as` last read still waits for its name.
+  let clauseAsAllowed = false;
+  let clauseAsTargetNext = false;
+  let contextualKeywordEnds: Set<number> | undefined;
+  let continuesClause = false;
 
   /**
    * Whether `word`, read as a keyword, takes an operand next. The contextual words count only
-   * where they are keywords: `from` in an `import` or `export`, `of` in a `for` header.
+   * where they are keywords: `from` and `as` in an `import` or `export`, `of` in a `for`
+   * header.
    */
   const continuesExpression = (word: string): boolean => {
     if (!EXPRESSION_CONTINUING_KEYWORDS.has(word)) return false;
     if (word === "from") return moduleClauseOpen;
+    if (word === "as") return moduleClauseOpen && clauseAsTargetNext;
     if (word === "of") return parenIsControlHeader.at(-1) === true;
     return true;
   };
@@ -811,9 +835,13 @@ const scanSegments = (js: string): Segment[] => {
         numberDotEnds,
         integerBeforeDotLines,
         moduleFromBreaks,
+        contextualKeywordEnds,
+        ...(continuesClause ? { continuesClause } : {}),
       });
       codeAccum = "";
     }
+    contextualKeywordEnds = undefined;
+    continuesClause = false;
     bareBindingEnds = undefined;
     numberDotEnds = undefined;
     integerBeforeDotLines = undefined;
@@ -1060,7 +1088,37 @@ const scanSegments = (js: string): Segment[] => {
         // `import { a }\nfrom "m"`: no statement ends before the `from` of a clause.
         (moduleFromBreaks ??= new Set()).add(sigOffsetBeforeWord);
       }
+      if (moduleClauseOpen) {
+        if (wordRun === "as" && clauseAsAllowed) {
+          // `import * as\nn`, `{ a\nas b }`: the clause continues on either side of `as`.
+          clauseAsAllowed = false;
+          clauseAsTargetNext = true;
+          (contextualKeywordEnds ??= new Set()).add(lastSigOffset);
+          if (lineBreakBeforeWord) {
+            if (sigOffsetBeforeWord !== -1) {
+              (moduleFromBreaks ??= new Set()).add(sigOffsetBeforeWord);
+            } else if (previousIsValueLiteral()) {
+              continuesClause = true;
+            }
+          }
+        } else {
+          // A name imported or exported may take an `as` next; the name after `as` may not.
+          clauseAsAllowed = !clauseAsTargetNext && wordRun !== "from";
+          clauseAsTargetNext = false;
+        }
+      }
+      if (
+        wordRun === "of" &&
+        parenIsControlHeader.at(-1) === true &&
+        (braceKind.length === 0 ||
+          braceParenDepth[braceKind.length - 1] < parenIsControlHeader.length)
+      ) {
+        // `for (const x of\ny)`: no statement ends inside the header.
+        (contextualKeywordEnds ??= new Set()).add(lastSigOffset);
+      }
       if (wordRun === "import" || wordRun === "export") {
+        clauseAsAllowed = false;
+        clauseAsTargetNext = false;
         moduleClauseOpen = !atObjectMemberLevel();
       } else if (MODULE_CLAUSE_ENDING_WORDS.has(wordRun)) {
         // `export default from`, `export const a = from`: a value follows, not a clause.
@@ -1095,6 +1153,11 @@ const scanSegments = (js: string): Segment[] => {
     if (c === "(" || c === "." || c === ";" || c === "=") {
       // `import("a")`, `import.meta`, the end of the statement, or an initializer.
       moduleClauseOpen = false;
+    }
+    if (!isSpace(c)) {
+      // `* as n`; after `{`, `,` or `}` no `as` can come before a name.
+      clauseAsAllowed = c === "*" && moduleClauseOpen;
+      clauseAsTargetNext = false;
     }
     switch (c) {
       case "(": {
@@ -1220,6 +1283,10 @@ const scanSegments = (js: string): Segment[] => {
       ((afterWord === "from" && moduleClauseOpen) || afterWord === "import");
     if (afterWord === "from" || afterWord === "import")
       moduleClauseOpen = false;
+    // `export { "a b" as c }`: a string name may take an `as` next, unless it follows one.
+    clauseAsAllowed =
+      moduleClauseOpen && kind === "string" && !clauseAsTargetNext;
+    clauseAsTargetNext = false;
     // `await\n"a"` is `await "a"` in a module or an async function and two statements where
     // `await` is a name, and `yield\n\`x\`` is two statements in a generator and a tagged
     // template where `yield` is a name. The scanner does not track which, so the line break
@@ -1671,6 +1738,7 @@ export const minifyJs = (js: string): string => {
         resultLast &&
         firstLine &&
         !importAttributes &&
+        seg.continuesClause !== true &&
         !/^(?:(?:instanceof|in|of)(?![\w$\\]|[^\x00-\x7f\s])|,|;|:|\(|\)|\}|\[|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
           firstLine,
         )
@@ -1763,6 +1831,7 @@ export const minifyJs = (js: string): string => {
         endsWithOpenControl =
           endsWithOpenControl ||
           seg.memberModifierEnds?.has(prevLineEnd) === true ||
+          seg.contextualKeywordEnds?.has(prevLineEnd) === true ||
           (seg.memberKeywordNameEnds?.has(prevLineEnd) !== true &&
             LINE_END_CONTINUING_KEYWORD.test(ptTail)) ||
           (!numberDotEnd &&
