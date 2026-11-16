@@ -106,7 +106,7 @@ type Segment = {
 };
 ```
 
-Quoted strings (`"..."`, `'...'`), template literals (`` `...` ``), and regex literals (`/.../`) are placed in literal segments. A hashbang (`#!`) first line is kept as written, with its line break, and only the rest of the script is minified.
+Quoted strings (`"..."`, `'...'`), template literals (`` `...` ``), and regex literals (`/.../`) are placed in literal segments. A hashbang (`#!`) first line is kept as written, with its line break, and only the rest of the script is minified. Outside literals, a non-ASCII character that is not whitespace can only belong to a name (Unicode `ID_Start` or `ID_Continue`), and a `\` only starts a `\u` escape in one, so the scanner counts both as word characters: removing a line break or comment between two names keeps a space or a `;` between them (`x = 值\ny = 1` is `x=值;y=1`). A `\u{...}` escape is rewritten to the same name without braces (`\u0062`, or the character itself above U+FFFF), so its `}` is never read as a brace.
 
 ### Regex Disambiguation
 
