@@ -1,6 +1,11 @@
 import { fileURLToPath } from "node:url";
-import { rm } from "node:fs/promises";
-import { lstatSync, readlinkSync, realpathSync } from "node:fs";
+import { access, mkdir, rm } from "node:fs/promises";
+import {
+  constants as fsConstants,
+  lstatSync,
+  readlinkSync,
+  realpathSync,
+} from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { BascikConfig } from "./lib/config.ts";
 import { watchFiles } from "./lib/watch.ts";
@@ -189,6 +194,28 @@ export const runTranspile = async (
           { cause: err },
         );
       }
+    }
+  }
+
+  // Both folders are written at the end of a build (the pages, then the
+  // sidecar, CSP hashes and manifest in the private folder): one that cannot
+  // be written used to fail with a bare `EACCES ... mkdir` after every page
+  // had compiled. Create them, and check that they can be written, first.
+  for (const [dir, what] of [
+    [outputDirectory, "the output directory"],
+    [privateDirFor(outputDirectory), "the private build folder"],
+  ] as const) {
+    try {
+      await mkdir(dir, { recursive: true });
+      await access(dir, fsConstants.W_OK);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      const label = relative(projectRoot, dir).replace(/\\/g, "/") || dir;
+      throw new Error(
+        `[bascik] error: cannot write ${what} "${label}"` +
+          `${code ? ` (${code})` : ""}: ${cleanFailureCause(err, code)}`,
+        { cause: err },
+      );
     }
   }
 
