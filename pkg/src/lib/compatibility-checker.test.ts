@@ -166,6 +166,8 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         'document.querySelector( ".card .title" );',
         'document.querySelector("button.btn");',
         'document.querySelector(".list > li");',
+        'document.querySelector(".-mt-4");',
+        'document.querySelector(".--open");',
         'document.getElementsByClassName("btn")[0];',
         "document.getElementsByClassName('btn').item(0);",
       ],

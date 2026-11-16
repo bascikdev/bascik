@@ -867,7 +867,7 @@ export const prefixElementAttribute = (
         /(?:querySelector(?:All)?|closest|matches)\s*\(\s*["']([^"']*)["']\s*\)/gm,
       )) {
         for (const tokenMatch of callMatch[1].matchAll(
-          /(?<![a-zA-Z0-9_-])\.([a-zA-Z_][a-zA-Z0-9_-]*)/g,
+          /(?<![a-zA-Z0-9_-])\.((?:--|-?[a-zA-Z_])[a-zA-Z0-9_-]*)/g,
         )) {
           addIfNew(tokenMatch[1]);
         }
