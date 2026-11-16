@@ -20,7 +20,7 @@ import {
   replaceSpans,
   wordTagNameEnd as tagNameEnd,
 } from "./element-content-scan.ts";
-import { scanHtmlComments } from "./html-scanner.ts";
+import { scanHtmlCommentsAndCdata } from "./html-scanner.ts";
 import {
   ANIMATION_VALUES,
   BLOCKED_URL,
@@ -363,9 +363,10 @@ export const injectPropAttributes = (
   }
 
   const commentShield = createContentShield(fileContent);
-  const withoutComments = fileContent.includes("<!--")
-    ? hideComments(fileContent, commentShield.hide)
-    : fileContent;
+  const withoutComments =
+    fileContent.includes("<!--") || fileContent.includes("<![CDATA[")
+      ? hideComments(fileContent, commentShield.hide)
+      : fileContent;
   const rawShield = shieldElementContents(withoutComments, [
     "script",
     "style",
@@ -513,12 +514,13 @@ export const injectPropAttributes = (
  * marker after `--!>` is live markup and is acted on; a later `-->` must not
  * stretch the comment over it. A `<!--` inside a `<style>`, `<script>`, JSON
  * data block or `<textarea>` is that element's text and starts no comment
- * (`scanHtmlComments`).
+ * (`scanHtmlComments`). A CDATA section in SVG or MathML is text, so a
+ * marker written in it is hidden too (`scanHtmlCommentsAndCdata`).
  */
 const hideComments = (html: string, hide: (text: string) => string): string => {
   let result = "";
   let cursor = 0;
-  for (const { start, end } of scanHtmlComments(html)) {
+  for (const { start, end } of scanHtmlCommentsAndCdata(html)) {
     if (start < cursor) continue;
     result += html.slice(cursor, start) + hide(html.slice(start, end));
     cursor = end;
@@ -560,9 +562,10 @@ export const injectProps = (
   )
     return fileContent;
   const commentShield = createContentShield(fileContent);
-  const withoutComments = fileContent.includes("<!--")
-    ? hideComments(fileContent, commentShield.hide)
-    : fileContent;
+  const withoutComments =
+    fileContent.includes("<!--") || fileContent.includes("<![CDATA[")
+      ? hideComments(fileContent, commentShield.hide)
+      : fileContent;
   const rawShield = shieldElementContents(withoutComments, [
     "script",
     "style",

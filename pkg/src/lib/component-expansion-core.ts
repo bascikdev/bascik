@@ -18,6 +18,8 @@ import {
   mergeAttributesOntoRoot,
 } from "./component-inheritance.ts";
 import {
+  blankForeignCdata,
+  maskBlankedHtml,
   maskRawTextContent,
   spliceRawTextMask,
   spliceWindow,
@@ -453,7 +455,11 @@ export const expandComponents = (
     }
     return found;
   };
-  let masked = maskRawTextContent(transpiledHtmlBody);
+  // The page with its SVG and MathML CDATA sections blanked (the page
+  // itself when it has none), which the mask is read from: a splice reads
+  // tokens from it, so nothing inside a section opens a comment or element.
+  let maskSource = blankForeignCdata(transpiledHtmlBody);
+  let masked = maskBlankedHtml(maskSource);
   // Search cursor (prompt 63). Replacement happens at the FIRST unresolved
   // component, so the prefix before its start is fully resolved and cannot
   // gain new tags; the next search resumes at that start (not its end, so
@@ -527,7 +533,7 @@ export const expandComponents = (
     } else openInstances = [];
     const splicedMask: ReturnType<typeof spliceRawTextMask> | null = offsets
       ? spliceRawTextMask(
-          transpiledHtmlBody,
+          maskSource,
           masked,
           offsets.startIndex,
           offsets.endIndex,
@@ -538,6 +544,7 @@ export const expandComponents = (
           maskFacts,
         )
       : null;
+    const sourceIsBody = maskSource === transpiledHtmlBody;
     transpiledHtmlBody = replaceTag(
       transpiledHtmlBody,
       component.name,
@@ -563,10 +570,18 @@ export const expandComponents = (
         ),
       );
       masked = splicedMask.masked;
+      // The splice brought in no CDATA section (else it fell back), so the
+      // template goes into the blanked page as written.
+      maskSource = sourceIsBody
+        ? transpiledHtmlBody
+        : maskSource.slice(0, offsets.startIndex) +
+          transpiledTag +
+          maskSource.slice(offsets.endIndex);
       searchFrom = offsets.startIndex;
     } else {
       closeFacts = undefined;
-      masked = maskRawTextContent(transpiledHtmlBody);
+      maskSource = blankForeignCdata(transpiledHtmlBody);
+      masked = maskBlankedHtml(maskSource);
       chargeScan(transpiledHtmlBody.length);
       rescanFromStart = true;
       searchState.attributeCheckpoint = undefined;
@@ -998,7 +1013,8 @@ export const expandComponents = (
           "",
           masked,
         );
-        masked = maskRawTextContent(transpiledHtmlBody);
+        maskSource = blankForeignCdata(transpiledHtmlBody);
+        masked = maskBlankedHtml(maskSource);
         chargeScan(transpiledHtmlBody.length);
         rescanFromStart = true;
         // replaceTag without offsets re-searches from the document start and
