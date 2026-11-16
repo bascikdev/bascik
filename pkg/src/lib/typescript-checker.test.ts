@@ -29,6 +29,12 @@ vi.mock("./config.js", () => ({
   BascikConfig: { scripts: { typescript: true } },
 }));
 
+// These tests start real checker threads and `node --check` processes. The
+// limits they are about are asserted inside each test (the warnings name
+// them); Vitest's 5 s default would only add a wall-clock limit that a loaded
+// machine, which needs seconds to start a Node process, fails on its own.
+vi.setConfig({ testTimeout: 60_000 });
+
 const stats = __moduleCheckStatsForTests;
 const DEFAULT_TIMEOUT_MS = stats.timeoutMs;
 const DEFAULT_PROCESS_TIMEOUT_MS = stats.processTimeoutMs;
