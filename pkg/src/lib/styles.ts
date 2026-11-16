@@ -1339,6 +1339,11 @@ const commentSeparatesTokens = (
   if (before === undefined || after === undefined) return false;
   // `/` then `*` would open a new comment.
   if (before === "/") return after === "*";
+  // A name before `(` would become a function token (`and/**/(` is not
+  // `and(`); `-` before `>` and `!` before `-` could form `-->` or `<!--`.
+  if (after === "(") return CSS_NAME_CHAR.test(before);
+  if (after === ">") return before === "-";
+  if (after === "-" && before === "!") return true;
   if (CSS_NAME_CHAR.test(after))
     // Names and numbers (`0/**/auto`), and a hash or at-keyword
     // (`#/**/fff`), a signed or decimal number (`+/**/1`, `./**/5`).
