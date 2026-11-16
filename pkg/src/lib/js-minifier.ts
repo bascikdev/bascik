@@ -46,6 +46,18 @@ type Segment = {
    */
   fieldNameEnds?: Set<number>;
   /**
+   * Offsets in `text` of the last character of a class member name spelled like a word in
+   * `LINE_END_CONTINUING_KEYWORD` (`let`, `class`, `default`, ...). As a member name the word
+   * takes nothing next, so a line break after it can end the field (`let\nfoo() {}`).
+   */
+  memberKeywordNameEnds?: Set<number>;
+  /**
+   * Offsets in `text` of the last character of a `static`, `get` or `set` that starts a class
+   * member. ECMAScript allows a line break after these modifiers, so the member they modify
+   * can start on the next line (`static\nfoo() {}`).
+   */
+  memberModifierEnds?: Set<number>;
+  /**
    * Literal segments only: the source has a line break before this literal that JavaScript's
    * automatic semicolon insertion turns into a statement end (`const a = 1\n"use strict"`).
    * The minified output must keep that boundary as a `;`.
@@ -481,6 +493,14 @@ const scanSegments = (js: string): Segment[] => {
   let wordStartsClassMember = false;
   let hashStartsClassMember = false;
   let fieldNameEnds: Set<number> | undefined;
+  let memberKeywordNameEnds: Set<number> | undefined;
+  let memberModifierEnds: Set<number> | undefined;
+  // The current word follows `{`, `;`, `}` or `static`: where `in` and `instanceof` are a
+  // member name rather than an operator continuing the field value before them.
+  let wordFollowsMemberBoundary = false;
+  // The current word follows a `static` modifier, so it is the member's name even when it is
+  // spelled `static`, `get` or `set` (`static static\nfoo() {}` is a field named `static`).
+  let wordFollowsStaticModifier = false;
   let i = 0;
   const len = js.length;
 
@@ -506,6 +526,10 @@ const scanSegments = (js: string): Segment[] => {
     if (lastSig === "{" || lastSig === ";" || lastSig === "}") return true;
     if (isWordChar(lastSig)) {
       if (wordIsProperty) return lineBreakSinceSignificant;
+      // After a field named like a keyword (`typeof\nvoid`), a new line is a new member.
+      if (memberKeywordNameEnds?.has(lastSigOffset) === true) {
+        return lineBreakSinceSignificant;
+      }
       if (wordRun === "static") return wordStartsClassMember;
       return (
         lineBreakSinceSignificant &&
@@ -533,6 +557,8 @@ const scanSegments = (js: string): Segment[] => {
         bodyHeaderEnds,
         valueBraceCloses,
         fieldNameEnds,
+        memberKeywordNameEnds,
+        memberModifierEnds,
       });
       codeAccum = "";
     }
@@ -542,6 +568,8 @@ const scanSegments = (js: string): Segment[] => {
     bodyHeaderEnds = undefined;
     valueBraceCloses = undefined;
     fieldNameEnds = undefined;
+    memberKeywordNameEnds = undefined;
+    memberModifierEnds = undefined;
     lastSigOffset = -1;
     lastRaw = "";
     lastSig = "";
@@ -665,6 +693,17 @@ const scanSegments = (js: string): Segment[] => {
               (wordRun === "async" && wordStartsExpression)));
         wordStartsClassMember =
           lastSig === "#" ? hashStartsClassMember : startsClassMember();
+        wordFollowsStaticModifier =
+          wordRun === "static" &&
+          !wordIsProperty &&
+          memberModifierEnds?.has(lastSigOffset) === true;
+        wordFollowsMemberBoundary =
+          lastSig === "{" ||
+          lastSig === ";" ||
+          lastSig === "}" ||
+          (wordRun === "static" && !wordIsProperty) ||
+          (lineBreakSinceSignificant &&
+            memberKeywordNameEnds?.has(lastSigOffset) === true);
         wordIsProperty = lastSig === ".";
         wordRun = c;
       }
@@ -676,8 +715,30 @@ const scanSegments = (js: string): Segment[] => {
       lineBreakSinceSignificant = false;
       return;
     }
-    if (!wordIsProperty && isWordChar(lastRaw)) {
-      // A word just ended. `x.class` and `p.catch(f)` are properties, not keywords.
+    // A class member name (not a `class Foo\nextends` header still waiting for its body).
+    const memberWordEnded =
+      !wordIsProperty &&
+      isWordChar(lastRaw) &&
+      wordStartsClassMember &&
+      classPendingParenDepth === -1;
+    if (memberWordEnded) {
+      if (
+        (wordRun === "static" && !wordFollowsStaticModifier) ||
+        wordRun === "get" ||
+        wordRun === "set"
+      ) {
+        (memberModifierEnds ??= new Set()).add(lastSigOffset);
+      } else if (
+        LINE_END_CONTINUING_KEYWORD.test(wordRun) &&
+        ((wordRun !== "in" && wordRun !== "instanceof") ||
+          wordFollowsMemberBoundary)
+      ) {
+        (memberKeywordNameEnds ??= new Set()).add(lastSigOffset);
+      }
+    }
+    if (!wordIsProperty && !memberWordEnded && isWordChar(lastRaw)) {
+      // A word just ended. `x.class` and `p.catch(f)` are properties, not keywords, and a
+      // class member named `class` or `function` declares nothing.
       if (wordRun === "function" || wordRun === "catch") {
         bodyHeaderPending = true;
         functionIsExpression = wordRun === "function" && wordStartsExpression;
@@ -1086,9 +1147,13 @@ export const minifyJs = (js: string): string => {
           // `if (a === "x")` then a body on the next line: the scanner saw this `)` close the header.
           endsWithOpenControl = true;
         }
+        // A class member named `let` or `default` takes nothing next; `static`, `get` and
+        // `set` take the member they modify.
         endsWithOpenControl =
           endsWithOpenControl ||
-          LINE_END_CONTINUING_KEYWORD.test(ptTail) ||
+          seg.memberModifierEnds?.has(prevLineEnd) === true ||
+          (seg.memberKeywordNameEnds?.has(prevLineEnd) !== true &&
+            LINE_END_CONTINUING_KEYWORD.test(ptTail)) ||
           /(=|,|\+|\-|\*|\/|%|\?|:|=>|\.|\&\&|\|\||\?\?)\s*$/.test(ptTail);
 
         // Do NOT insert semicolon if next line starts with closing/continuation structures.

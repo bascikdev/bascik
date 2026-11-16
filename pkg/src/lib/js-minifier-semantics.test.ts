@@ -637,6 +637,131 @@ describe("minifyJs – a class field name before a computed or generator member"
   });
 });
 
+describe("minifyJs – a class field named like a keyword on a line of its own", () => {
+  // `class A {\n  let\n  foo() {}\n}` is a field named `let`, then a method: as a member name
+  // the word takes nothing next, so the line break ends the field.
+  const words = [
+    "else",
+    "do",
+    "try",
+    "finally",
+    "in",
+    "instanceof",
+    "typeof",
+    "void",
+    "delete",
+    "new",
+    "case",
+    "extends",
+    "default",
+    "export",
+    "import",
+    "var",
+    "let",
+    "const",
+    "function",
+    "class",
+  ];
+
+  it.each(words)("ends a field named %s before a method", (word) => {
+    const minified = expectSameProgram(
+      `class A {\n  ${word}\n  foo() { return 1 }\n}\nconst a = new A()\nlog.push(${JSON.stringify(word)} in a, a.foo())`,
+    );
+    expect(minified).toContain(`${word};foo(`);
+  });
+
+  it.each(words)("ends a field named %s before a field", (word) => {
+    expectSameProgram(
+      `class A {\n  ${word}\n  bar = 2\n}\nconst a = new A()\nlog.push(${JSON.stringify(word)} in a, a.bar)`,
+    );
+  });
+
+  it.each(words)("ends a static or private field named %s", (word) => {
+    expectSameProgram(
+      `class A {\n  static ${word}\n  #${word}\n  bar = 2\n  has() { return #${word} in this }\n}\nlog.push(${JSON.stringify(word)} in A, new A().has(), new A().bar)`,
+    );
+  });
+
+  it.each(words)("ends a field named %s before another one", (word) => {
+    // The second word starts a member too: `typeof\nvoid\nx` is three fields.
+    const next = word === "void" ? "typeof" : "void";
+    expectSameProgram(
+      `class A {\n  ${word}\n  ${next}\n  bar = 2\n}\nconst a = new A()\nlog.push(${JSON.stringify(word)} in a, ${JSON.stringify(next)} in a, a.bar)`,
+    );
+  });
+
+  it.each([
+    ["after the modifier on its line", "static static"],
+    ["on the line after the modifier", "static\n  static"],
+  ])("ends a static field named static %s", (_name, member) => {
+    expectSameProgram(
+      `class A {\n  ${member}\n  foo() { return 12 }\n}\nlog.push('static' in A, typeof A.prototype.foo)`,
+    );
+  });
+
+  it.each(words)("ends a field named %s after a field with a value", (word) => {
+    // `in` and `instanceof` after a value continue it (`n = 1\nin\nfoo`), so those two
+    // are only a member name after a `;`.
+    const separator = word === "in" || word === "instanceof" ? ";" : "";
+    expectSameProgram(
+      `class A {\n  n = 1${separator}\n  ${word}\n  foo() { return 3 }\n}\nconst a = new A()\nlog.push(a.n, ${JSON.stringify(word)} in a, a.foo())`,
+    );
+  });
+
+  it.each([
+    [
+      "a method named after the word on the next line",
+      "class A {\n  default\n  () { return 4 }\n}\nlog.push(new A().default())",
+    ],
+    [
+      "a field value on the next line",
+      "class A {\n  let\n  = 5\n}\nlog.push(new A().let)",
+    ],
+    [
+      "a static modifier",
+      "class A {\n  static\n  foo() { return 6 }\n}\nlog.push(typeof A.foo, typeof A.prototype.foo)",
+    ],
+    [
+      "a get modifier",
+      "class A {\n  get\n  foo() { return 7 }\n}\nlog.push(new A().foo)",
+    ],
+    [
+      "a static modifier before a field named let",
+      "class A {\n  static\n  let\n  foo() { return 8 }\n}\nlog.push('let' in A, typeof A.prototype.foo)",
+    ],
+    [
+      "a class expression's heritage on the next line",
+      "class B { n() { return 9 } }\nclass A {\n  static C = class\n  extends\n  B {}\n}\nlog.push(new A.C().n())",
+    ],
+    [
+      "a declaration inside a method",
+      "class A { m() { var\n x = 7\n return x } }\nlog.push(new A().m())",
+    ],
+    [
+      "a declaration inside a static block",
+      "class A { static { let\n y = 8\n log.push(y) } }",
+    ],
+    [
+      "an operator in a field value",
+      "class A {\n  t = typeof\n  log\n  n = 1 instanceof\n  Object\n}\nconst a = new A()\nlog.push(a.t, a.n)",
+    ],
+    [
+      "an `in` after a field value",
+      "const o = { foo: 1 }\nclass A {\n  n = 'foo'\n  in\n  o\n}\nlog.push(new A().n)",
+    ],
+    [
+      "an object literal key",
+      "const o = {\n  let\n  : 9,\n  class\n  : 10\n}\nlog.push(o.let, o.class)",
+    ],
+    [
+      "a nested class in a method",
+      "class A {\n  m() {\n    class\n    B { n() { return 11 } }\n    return new B().n()\n  }\n}\nlog.push(new A().m())",
+    ],
+  ])("keeps %s joined", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
 // A `{` on its own line after a function, method, class or catch header opens that header's
 // body. It is what brace-on-next-line code looks like, and what a TypeScript function with a
 // multi-line return type looks like once its types are stripped to spaces.
