@@ -145,4 +145,38 @@ describe("minifyCss", () => {
       ".md\\:flex p{color:red;}",
     );
   });
+
+  // An escaped character is part of the name (CSS Syntax), so the whitespace
+  // around it is never trimmed or collapsed as if it were syntax.
+  it("keeps the whitespace after an escaped colon, comma, brace or semicolon", () => {
+    // `.sm\:` and a descendant `.b`; `.sm\:.b` would be one compound.
+    expect(minifyCss(".sm\\:  .b { color: red; }")).toBe(
+      ".sm\\: .b{color:red;}",
+    );
+    expect(minifyCss(".sm\\: .b { color: red; }")).toBe(
+      ".sm\\: .b{color:red;}",
+    );
+    expect(minifyCss(".a\\, .b { color: red; }")).toBe(".a\\, .b{color:red;}");
+    expect(minifyCss(".a\\{ .b { color: red; }")).toBe(".a\\{ .b{color:red;}");
+    expect(minifyCss(".a\\; .b { color: red; }")).toBe(".a\\; .b{color:red;}");
+    expect(minifyCss(".a \\:b { color: red; }")).toBe(".a \\:b{color:red;}");
+  });
+
+  it("keeps an escaped space apart from the combinator after it", () => {
+    // `.a\ ` is the class `a ` and the next space is a descendant combinator.
+    expect(minifyCss(".a\\  .b { color: red; }")).toBe(".a\\  .b{color:red;}");
+    expect(minifyCss(".a\\    .b { color: red; }")).toBe(
+      ".a\\  .b{color:red;}",
+    );
+  });
+
+  it("misuse: an escaped backslash before digits is not a hex escape", () => {
+    // `\\` is a backslash, so `31` after it is text and the spaces after it
+    // are one combinator.
+    expect(minifyCss(".a\\\\31   p { color: red; }")).toBe(
+      ".a\\\\31 p{color:red;}",
+    );
+    // Declarations still tighten around a real colon.
+    expect(minifyCss(".a\\:b { color :  red; }")).toBe(".a\\:b{color:red;}");
+  });
 });
