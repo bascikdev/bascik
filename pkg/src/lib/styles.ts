@@ -1275,13 +1275,16 @@ const CSS_ESCAPE_SOURCE = String.raw`\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|
 /**
  * The class name after each `.` in CSS whose strings and `url()` contents are
  * shielded: an identifier that starts with a letter, `_`, a non-ASCII
- * character or an escape, and runs over word characters, `-`, non-ASCII
- * characters and escapes (`.md\:flex`, `.w-1\/2`, `.\31 0`). An escaped
- * dot (`#my\.id`) is part of a name, never the start of a class.
+ * character or an escape, optionally after one `-`, or with `--` (`.-mt-4`,
+ * `.--active`; CSS Syntax 3, "would start an identifier"), and runs over
+ * word characters, `-`, non-ASCII characters and escapes (`.md\:flex`,
+ * `.w-1\/2`, `.\31 0`). A `-` before a digit or a `.` starts a number
+ * (`-.5em`), never a class. An escaped dot (`#my\.id`) is part of a name,
+ * never the start of a class.
  */
 const cssClassSelectorNames = (): RegExp =>
   new RegExp(
-    String.raw`(?<=(?:^|[^\\])(?:\\\\)*\.)(?:[a-zA-Z_\u0080-\uffff]|${CSS_ESCAPE_SOURCE})(?:[\w\u0080-\uffff-]|${CSS_ESCAPE_SOURCE})*`,
+    String.raw`(?<=(?:^|[^\\])(?:\\\\)*\.)(?:--|-?(?:[a-zA-Z_\u0080-\uffff]|${CSS_ESCAPE_SOURCE}))(?:[\w\u0080-\uffff-]|${CSS_ESCAPE_SOURCE})*`,
     "g",
   );
 

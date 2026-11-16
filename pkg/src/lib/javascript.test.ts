@@ -2700,6 +2700,61 @@ describe("prefixElementAttribute – backslash before a closing quote", () => {
   });
 });
 
+describe("prefixElementAttribute – class names that start with a hyphen", () => {
+  // `-mt-4` and `--active` are CSS identifiers (CSS Syntax 3, "would start
+  // an identifier"), so they are scoped like any class, in CSS and markup.
+  it("scopes the selector and the class attribute token", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<div class="-mt-4 --active mt-4">x</div>',
+        ".-mt-4 { margin-top: -1rem } .--active { color: red }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("-mt-4")} { margin-top: -1rem } .${scopeClass("--active")} { color: red }`,
+    );
+    expect(result.fileContent).toBe(
+      `<div class="${scopeClass("-mt-4")} ${scopeClass("--active")} mt-4">x</div>`,
+    );
+  });
+
+  it("scopes a hyphen class that only a script names", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        `<div class="box">x</div><script>document.querySelector(".box").classList.add("--open"); document.querySelectorAll(".-mt-4");</script>`,
+        ".box {} .--open { color: red } .-mt-4 { margin: 0 }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toContain(
+      `classList.add("${scopeClass("--open")}")`,
+    );
+    expect(result.fileContent).toContain(
+      `querySelectorAll(".${scopeClass("-mt-4")}")`,
+    );
+  });
+
+  it("leaves a hyphen before a digit or a dot in a value alone", () => {
+    // `.-1` is not a class selector (`-1` is a number), and `-.5em` is a
+    // negative number.
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<p class="a -1">x</p>',
+        ".a { margin: -.5em; translate: 0 -.25rem }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("a")} { margin: -.5em; translate: 0 -.25rem }`,
+    );
+    expect(result.fileContent).toBe(`<p class="${scopeClass("a")} -1">x</p>`);
+  });
+});
+
 describe("prefixElementAttribute – escaped class selectors", () => {
   it("scopes the attribute token an escaped class selector names", () => {
     const c = makeComponent(
