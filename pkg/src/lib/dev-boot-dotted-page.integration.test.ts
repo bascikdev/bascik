@@ -175,11 +175,16 @@ describe("dev boot page for a page whose URL has a dot", () => {
     expect(after.status).toBe(200);
     expect(after.body).toContain("Release ready");
     expect((await fetchPage("/v1.2")).body).toContain("Version ready");
+    // Each page is served as soon as it is stored, which can be before the
+    // first compile ends; "Server running at" is printed once it has ended.
+    const running = new RegExp(
+      `Server running at\\s+http://[^\\s/]+:${port}\\b`,
+    );
+    while (!running.test(output) && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 100));
+    // The server kept the port it was given, so every request above went to it.
+    expect(output).toMatch(running);
     // Once the compile is done, a dotted URL no page has is a 404.
     expect((await fetchPage("/release-9.9")).status).toBe(404);
-    // The server kept the port it was given, so every request above went to it.
-    expect(output).toMatch(
-      new RegExp(`Server running at\\s+http://[^\\s/]+:${port}\\b`),
-    );
   }, 90000);
 });
