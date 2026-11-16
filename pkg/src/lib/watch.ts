@@ -172,8 +172,12 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
   // as `error` events, and an `error` event without a listener throws, which
   // would end the dev server. Every watcher logs them unless it brings its own.
   // A folder the watcher cannot read (Linux refuses to watch it) gets the
-  // same one warning as the page scan, and does not fail boot.
-  const unreadableFolders = createUnreadableWatchFolders();
+  // same one warning as the page scan, and does not fail boot. Once it is
+  // watched again, the page watchers below rebuild from it.
+  let onFolderWatchedAgain: (folder: string) => void = () => {};
+  const unreadableFolders = createUnreadableWatchFolders({
+    onWatchedAgain: (folder) => onFolderWatchedAgain(folder),
+  });
   const w = <T extends FSWatcher>(
     watcher: T,
     onError: (error: unknown) => void = onWatchError,
@@ -231,6 +235,21 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
       if (initialScanDone) return rebuildAllPages();
       rebuildAfterBoot = true;
       return Promise.resolve();
+    };
+    // A folder the watchers could not watch (Linux) is watched again once it
+    // is readable, but the asset and components watchers ignore the files
+    // already in it, and a page or stylesheet written to it before the new
+    // watch started is reported by none of them: rescan, as for `addDir`.
+    onFolderWatchedAgain = () => {
+      if (pagesRootIsMissing()) return;
+      if (!initialScanDone) {
+        rebuildAfterBoot = true;
+        return;
+      }
+      copyStaticAssets()
+        .then(() => eventEmitter.emit("asset-changed"))
+        .catch(onWatchError);
+      void rebuildAllPages();
     };
     const handleUnlinkDir = (path: string): void => {
       // Both watchers see the pages folder itself go. Its pages and files

@@ -269,7 +269,17 @@ export const watchSourceCycles = async (
       cycle.enqueue(pagesRoot);
     }),
   );
-  const unreadableFolders = createUnreadableWatchFolders();
+  // A folder watched again once it is readable (Linux): the watcher ignores
+  // the files already in it, so a page or stylesheet written to it before
+  // the new watch started is never reported. Rescan, as for the pages
+  // folder coming back.
+  const unreadableFolders = createUnreadableWatchFolders({
+    onWatchedAgain: () => {
+      changes.set(pagesRoot, "addDir");
+      if (booted) cycle.enqueue(pagesRoot);
+      else deferred.add(pagesRoot);
+    },
+  });
   registerShutdownHandler(async () => {
     unreadableFolders.close();
     cycle.close();

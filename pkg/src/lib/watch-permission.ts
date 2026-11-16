@@ -43,15 +43,31 @@ export interface UnreadableWatchFolders {
   close(): void;
 }
 
+export interface UnreadableWatchFoldersOptions {
+  /** How often the folders are checked, in milliseconds. */
+  intervalMs?: number;
+  /**
+   * Called once for a folder, one interval after it was watched again, so
+   * the caller can rescan it. A watcher with `ignoreInitial` reports none of
+   * the files already in a folder it adds, so a file written between
+   * `chmod 755` and the new watch (a page, a stylesheet) is never reported.
+   */
+  onWatchedAgain?: (folder: string) => void;
+}
+
 /**
  * Chokidar does not retry a folder it could not watch: on Linux, files added
  * to it after `chmod 755` were never seen. The folders are checked on an
  * interval and added to their watchers again when they can be read.
  */
-export const createUnreadableWatchFolders = (
+export const createUnreadableWatchFolders = ({
   intervalMs = 500,
-): UnreadableWatchFolders => {
+  onWatchedAgain,
+}: UnreadableWatchFoldersOptions = {}): UnreadableWatchFolders => {
   const pending = new Map<string, Set<RewatchableWatcher>>();
+  // Watched again on the last check: the caller is told on the next one,
+  // once the new watch has listed the folder.
+  const settling = new Set<string>();
   let timer: ReturnType<typeof setInterval> | undefined;
   let checking = false;
 
@@ -59,6 +75,10 @@ export const createUnreadableWatchFolders = (
     if (checking) return;
     checking = true;
     try {
+      for (const folder of [...settling]) {
+        settling.delete(folder);
+        onWatchedAgain?.(folder);
+      }
       for (const [folder, watchers] of [...pending]) {
         try {
           await access(folder, constants.R_OK | constants.X_OK);
@@ -70,10 +90,11 @@ export const createUnreadableWatchFolders = (
         }
         pending.delete(folder);
         for (const watcher of watchers) watcher.add(folder);
+        settling.add(folder);
       }
     } finally {
       checking = false;
-      if (pending.size === 0 && timer) {
+      if (pending.size === 0 && settling.size === 0 && timer) {
         clearInterval(timer);
         timer = undefined;
       }
@@ -100,6 +121,7 @@ export const createUnreadableWatchFolders = (
       if (timer) clearInterval(timer);
       timer = undefined;
       pending.clear();
+      settling.clear();
     },
   };
 };

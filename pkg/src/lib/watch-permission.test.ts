@@ -24,8 +24,10 @@ const canLock = process.platform !== "win32" && process.getuid?.() !== 0;
 let root: string;
 let sub: string;
 const created: ReturnType<typeof createUnreadableWatchFolders>[] = [];
-const create = (intervalMs?: number) => {
-  const folders = createUnreadableWatchFolders(intervalMs);
+const create = (
+  options?: Parameters<typeof createUnreadableWatchFolders>[0],
+) => {
+  const folders = createUnreadableWatchFolders(options);
   created.push(folders);
   return folders;
 };
@@ -108,7 +110,7 @@ describe("createUnreadableWatchFolders", () => {
     async () => {
       vi.spyOn(console, "warn").mockImplementation(() => {});
       await chmod(sub, 0o000);
-      const folders = create(10);
+      const folders = create({ intervalMs: 10 });
       const first = { add: vi.fn() };
       const second = { add: vi.fn() };
       folders.handle(first, permissionError(sub, "watch"));
@@ -125,9 +127,49 @@ describe("createUnreadableWatchFolders", () => {
     },
   );
 
+  it.skipIf(!canLock)(
+    "tells the caller once, one check after the folder is watched again",
+    async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      await chmod(sub, 0o000);
+      const order: string[] = [];
+      const onWatchedAgain = vi.fn((folder: string) =>
+        order.push(`rescan ${folder}`),
+      );
+      const folders = create({ intervalMs: 10, onWatchedAgain });
+      const first = { add: vi.fn(() => order.push("add first")) };
+      const second = { add: vi.fn(() => order.push("add second")) };
+      folders.handle(first, permissionError(sub, "watch"));
+      folders.handle(second, permissionError(sub, "watch"));
+      await new Promise((done) => setTimeout(done, 60));
+      expect(onWatchedAgain).not.toHaveBeenCalled();
+      await chmod(sub, 0o755);
+      await vi.waitFor(() => expect(onWatchedAgain).toHaveBeenCalled());
+      await new Promise((done) => setTimeout(done, 60));
+      expect(order).toEqual(["add first", "add second", `rescan ${sub}`]);
+    },
+  );
+
+  it.skipIf(!canLock)("does not tell the caller after close", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await chmod(sub, 0o000);
+    const onWatchedAgain = vi.fn();
+    const folders = create({ intervalMs: 200, onWatchedAgain });
+    const watcher = { add: vi.fn() };
+    folders.handle(watcher, permissionError(sub, "watch"));
+    await chmod(sub, 0o755);
+    await vi.waitFor(() => expect(watcher.add).toHaveBeenCalled(), {
+      interval: 5,
+      timeout: 2_000,
+    });
+    folders.close();
+    await new Promise((done) => setTimeout(done, 400));
+    expect(onWatchedAgain).not.toHaveBeenCalled();
+  });
+
   it("does not watch again after an lstat error (the watch is still open)", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const folders = create(10);
+    const folders = create({ intervalMs: 10 });
     const watcher = { add: vi.fn() };
     folders.handle(watcher, permissionError(join(sub, "a.html"), "lstat"));
     await new Promise((done) => setTimeout(done, 60));
@@ -138,7 +180,7 @@ describe("createUnreadableWatchFolders", () => {
     "forgets a folder that was removed, and stops on close",
     async () => {
       vi.spyOn(console, "warn").mockImplementation(() => {});
-      const folders = create(10);
+      const folders = create({ intervalMs: 10 });
       const watcher = { add: vi.fn() };
       await chmod(sub, 0o000);
       folders.handle(watcher, permissionError(sub, "watch"));
