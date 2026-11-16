@@ -90,12 +90,22 @@ type Segment = {
    */
   lineBreakBefore?: boolean;
   /**
-   * Literal segments only: an HTML-like `<!--` comment, to the end of its line. A classic
-   * script reads it as a line comment, a module as the operators `<`, `!` and `--`, so it is
-   * kept as written and followed by a line break, which runs the same program as either.
+   * Literal segments only: a comment kept as written. `"line"` runs to the end of its line and
+   * is followed by a line break: an HTML-like `<!--` comment (a classic script reads it as a
+   * line comment, a module as the operators `<`, `!` and `--`, and the kept text and line
+   * break run the same program as either), or a `//` comment that holds an HTML script
+   * marker. `"close"` is a line-start `-->` comment holding one, put back at a line start.
+   * `"block"` is a block comment holding one. See `HTML_SCRIPT_MARKER`.
    */
-  htmlComment?: boolean;
+  keptComment?: "line" | "close" | "block";
 };
+
+/**
+ * Text the HTML parser watches for in a `<script>` once a `<!--` is in it: `-->`, `<script`
+ * and `</script` decide which `</script>` ends the element. Removing a JS comment that holds
+ * one can move that end, so in a script that contains `<!--` such comments are kept.
+ */
+const HTML_SCRIPT_MARKER = /<!--|-->|<\/?script/i;
 
 /**
  * Test-only instrumentation: counts source characters the scanner examines.
@@ -602,7 +612,7 @@ const scanSegments = (js: string): Segment[] => {
   /** The segment before is a string, template or regex literal: a value, not a comment. */
   const previousIsValueLiteral = (): boolean => {
     const previous = segments.at(-1);
-    return previous?.literal === true && previous.htmlComment !== true;
+    return previous?.literal === true && previous.keptComment === undefined;
   };
 
   /** How many `(`, `[` and `{` are open. */
@@ -1185,6 +1195,20 @@ const scanSegments = (js: string): Segment[] => {
     return end;
   };
 
+  // A comment holding an HTML script marker is kept only where the HTML parser watches for
+  // them: once the script has a `<!--`. Elsewhere `-->` and `<script` in a comment are inert.
+  const htmlMarkersMatter = js.includes("<!--");
+
+  /** Push a comment kept as written (see `Segment.keptComment`). */
+  const pushKeptComment = (
+    text: string,
+    keptComment: "line" | "close" | "block",
+  ): void => {
+    bindingNameExpected = false;
+    flushCode();
+    segments.push({ literal: true, text, keptComment });
+  };
+
   // Only whitespace and comments since the last line break (or the start of the script), so
   // a `-->` here is an HTML-like comment.
   let atLineStart = true;
@@ -1201,7 +1225,9 @@ const scanSegments = (js: string): Segment[] => {
     if (ch === "-" && lineStart && js.startsWith("->", i + 1)) {
       // `-->` at the start of a line is a line comment in a classic script and a syntax error
       // in a module (a `--` cannot follow a line break), so it is dropped like `//`.
-      i = lineCommentEnd(i + 3);
+      const end = lineCommentEnd(i + 3);
+      if (htmlMarkersMatter) pushKeptComment(js.slice(i, end), "close");
+      i = end;
       continue;
     }
 
@@ -1211,13 +1237,7 @@ const scanSegments = (js: string): Segment[] => {
       while (js[i - 1 - lessThans] === "<") lessThans++;
       if (lessThans % 2 === 0) {
         const end = lineCommentEnd(i + 4);
-        bindingNameExpected = false;
-        flushCode();
-        segments.push({
-          literal: true,
-          text: js.slice(i, end),
-          htmlComment: true,
-        });
+        pushKeptComment(js.slice(i, end), "line");
         i = end;
         continue;
       }
@@ -1284,7 +1304,11 @@ const scanSegments = (js: string): Segment[] => {
         if (!lastSig) {
           // No significant code yet in this segment, check previous segment if any
           const lastSeg = segments[segments.length - 1];
-          if (!lastSeg || !lastSeg.literal || lastSeg.htmlComment === true) {
+          if (
+            !lastSeg ||
+            !lastSeg.literal ||
+            lastSeg.keptComment !== undefined
+          ) {
             couldBeRegex = true;
           }
         } else if (isWordChar(lastSig)) {
@@ -1344,6 +1368,7 @@ const scanSegments = (js: string): Segment[] => {
 
       if (next === "*") {
         // Block comment: skip to */
+        const commentStart = i;
         i += 2;
         let spansLines = false;
         while (i + 1 < len && !(js[i] === "*" && js[i + 1] === "/")) {
@@ -1355,6 +1380,17 @@ const scanSegments = (js: string): Segment[] => {
           i++;
         }
         i += 2;
+        if (
+          htmlMarkersMatter &&
+          HTML_SCRIPT_MARKER.test(js.slice(commentStart, i))
+        ) {
+          pushKeptComment(js.slice(commentStart, i), "block");
+          if (spansLines) {
+            atLineStart = true;
+            lineBreakSinceSignificant = true;
+          }
+          continue;
+        }
         if (spansLines) {
           atLineStart = true;
           // ECMAScript reads a comment holding a line terminator as a line terminator, so
@@ -1381,11 +1417,11 @@ const scanSegments = (js: string): Segment[] => {
 
       if (next === "/") {
         // Line comment: skip to end of line (preserve newline for statement separation)
-        i += 2;
-        while (i < len && !isLineTerminator(js[i])) {
-          __scanStatsForTests.charsExamined++;
-          i++;
+        const end = lineCommentEnd(i + 2);
+        if (htmlMarkersMatter && HTML_SCRIPT_MARKER.test(js.slice(i, end))) {
+          pushKeptComment(js.slice(i, end), "line");
         }
+        i = end;
         continue;
       }
     }
@@ -1490,11 +1526,21 @@ export const minifyJs = (js: string): string => {
   let resultLast = "";
   for (let sIdx = 0; sIdx < segments.length; sIdx++) {
     const seg = segments[sIdx];
-    if (seg.htmlComment) {
-      // `a < <!-- c`: the `<` before the comment must not join it into `<<`.
-      if (resultLast === "<") result += " ";
-      result += `${seg.text.trimEnd()}\n`;
-      resultLast = "\n";
+    if (seg.keptComment !== undefined) {
+      if (seg.keptComment === "close") {
+        // A `-->` comment only starts at the start of a line.
+        if (result && resultLast !== "\n") result += "\n";
+      } else if (resultLast === "<" || resultLast === "/") {
+        // `a < <!-- c` must not become `<<!--`, nor `a / // c` a `///` comment.
+        result += " ";
+      }
+      if (seg.keptComment === "block") {
+        result += seg.text;
+        resultLast = "/";
+      } else {
+        result += `${seg.text.trimEnd()}\n`;
+        resultLast = "\n";
+      }
       continue;
     }
     if (seg.literal) {
@@ -1519,7 +1565,7 @@ export const minifyJs = (js: string): string => {
     if (
       sIdx > 0 &&
       segments[sIdx - 1].literal &&
-      segments[sIdx - 1].htmlComment !== true &&
+      segments[sIdx - 1].keptComment === undefined &&
       /^\s*\n/.test(seg.text)
     ) {
       const firstLine = seg.text.match(/\S.*/)?.[0] ?? "";
