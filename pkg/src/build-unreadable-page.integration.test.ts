@@ -115,6 +115,26 @@ describe.skipIf(!canLock)(
         expect(output).toMatch(/EACCES/);
         expect(code).toBe(1);
       });
+
+      // A page with a failing build script prints its own error. The summary
+      // that names the unreadable page must still print, and the script
+      // error must not print a second time.
+      it(`names the page beside another page's build script error (${mode})`, async () => {
+        const root = await project(`script-${workers}`, "bad.html", workers);
+        await writeFixtureFile(
+          root,
+          "src/pages/index.html",
+          `<!doctype html><html lang="en"><head><title>Home</title></head><body><script data-bascik-build>export default async () => { throw new Error("boom from script"); };</script></body></html>`,
+        );
+        for (const name of ["p1", "p2", "p3"])
+          await writeFixtureFile(root, `src/pages/${name}.html`, page(name));
+        const { code, output } = await run(root, ["--build"]);
+        expect(code).toBe(1);
+        expect(output).toMatch(/^ {2}src\/pages\/bad\.html$/m);
+        expect(output).toMatch(/EACCES/);
+        expect(output.match(/boom from script/g) ?? []).toHaveLength(1);
+        expect(output).not.toMatch(/Build complete/);
+      });
     }
 
     // The other half of the rule: in dev the page may have been deleted
