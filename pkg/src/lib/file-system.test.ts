@@ -13,6 +13,8 @@ import {
   copyReplicatePath,
   copyStaticAssets,
   isInlineStylesheet,
+  setStrictFolderReads,
+  UnreadableFolderError,
 } from "./file-system.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
 import { BascikConfig } from "./config.ts";
@@ -203,7 +205,7 @@ describe("deepReadDirFlat", () => {
     await expect(deepReadDirFlat("pages")).rejects.toBe(error);
   });
 
-  it("warns and continues when a subdirectory disappears during recursion", async () => {
+  it("skips a subdirectory that disappears during recursion", async () => {
     const missingError = Object.assign(
       new Error("ENOENT: directory disappeared"),
       { code: "ENOENT" },
@@ -217,12 +219,73 @@ describe("deepReadDirFlat", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await expect(deepReadDirFlat("pages")).resolves.toEqual([]);
-    expect(warnSpy).toHaveBeenCalledWith(
-      "Failed to read subdirectory %s",
-      join("pages", "removed"),
-      missingError,
-    );
+    expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
+  });
+
+  describe("a subdirectory that exists but cannot be read", () => {
+    const denied = Object.assign(
+      new Error("EACCES: permission denied, scandir 'pages/locked'"),
+      { code: "EACCES" },
+    );
+    let lockedReadable = false;
+    beforeEach(() => {
+      lockedReadable = false;
+      vi.mocked(readdir).mockImplementation(async (path) => {
+        if (`${path}` === "pages")
+          return [
+            { name: "index.html", isDirectory: () => false },
+            { name: "locked", isDirectory: () => true },
+          ] as any;
+        if (`${path}` === join("pages", "locked") && !lockedReadable)
+          throw denied;
+        return [] as any;
+      });
+    });
+    afterEach(() => setStrictFolderReads(undefined));
+
+    it("fails a strict scan with an error naming the folder", async () => {
+      setStrictFolderReads(true);
+      const scan = deepReadDirFlat("pages");
+      await expect(scan).rejects.toBeInstanceOf(UnreadableFolderError);
+      await expect(scan).rejects.toThrow(
+        /^\[bascik\] error: could not read folder "pages\/locked": EACCES: permission denied/,
+      );
+    });
+
+    it("fails a scan in a build, where strict is unset", async () => {
+      (BascikConfig as { isBuild?: boolean }).isBuild = true;
+      try {
+        await expect(deepReadDirFlat("pages")).rejects.toThrow(
+          /could not read folder "pages\/locked"/,
+        );
+      } finally {
+        delete (BascikConfig as { isBuild?: boolean }).isBuild;
+      }
+    });
+
+    it("warns once, without a stack, and keeps the other files in dev", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        await expect(deepReadDirFlat("pages")).resolves.toEqual([
+          join("pages", "index.html"),
+        ]);
+        await deepReadDirFlat("pages");
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy.mock.calls[0]).toHaveLength(1);
+        expect(String(warnSpy.mock.calls[0]![0])).toMatch(
+          /^\[bascik\] warning: could not read folder "pages\/locked": EACCES[^\n]*Skipping the files in it\.[^\n]*$/,
+        );
+        // Readable again, then locked again: that is a new problem to report.
+        lockedReadable = true;
+        await deepReadDirFlat("pages");
+        lockedReadable = false;
+        await deepReadDirFlat("pages");
+        expect(warnSpy).toHaveBeenCalledTimes(2);
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
   });
 });
 

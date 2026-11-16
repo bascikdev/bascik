@@ -384,6 +384,8 @@ export async function copyReplicatePath(
  * findings 38, 49, 139).
  */
 export const pagesDirectoryError = (error: unknown): Error => {
+  // A sub-folder's error already names that folder.
+  if (error instanceof UnreadableFolderError) return error;
   const pages =
     relative(process.cwd(), resolve(BascikConfig.directory.pages)) || ".";
   const code = (error as NodeJS.ErrnoException)?.code;
@@ -439,6 +441,60 @@ const safeRealpath = async (path: string): Promise<string> => {
 };
 
 /**
+ * A folder under a scanned root (a pages or components folder) that exists
+ * but cannot be read, most often `chmod 000` or a folder owned by another
+ * user. The message names the folder relative to the project.
+ */
+export class UnreadableFolderError extends Error {
+  readonly folder: string;
+  constructor(folder: string, cause: unknown) {
+    const display =
+      relative(process.cwd(), resolve(folder)).replace(/\\/g, "/") || ".";
+    super(
+      `[bascik] error: could not read folder "${display}": ` +
+        `${cause instanceof Error ? cause.message : String(cause)}. ` +
+        `Its files would be left out. Make the folder readable, or move it ` +
+        `out of the project.`,
+      { cause },
+    );
+    this.name = "UnreadableFolderError";
+    this.folder = display;
+  }
+}
+
+let strictFolderReads: boolean | undefined;
+
+/**
+ * Whether an unreadable sub-folder fails the scan (a build, `bascik --check`)
+ * or is skipped with a warning (the dev server, where a folder can be mid
+ * edit). Unset, it follows `BascikConfig.isBuild`.
+ */
+export const setStrictFolderReads = (strict: boolean | undefined): void => {
+  strictFolderReads = strict;
+};
+
+const warnedUnreadableFolders = new Set<string>();
+
+const unreadableSubfolder = (dirPath: string, error: unknown): NestedPaths => {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  // Removed (or replaced by a file) since its parent was listed: nothing to read.
+  if (code === "ENOENT" || code === "ENOTDIR") return [];
+  const unreadable = new UnreadableFolderError(dirPath, error);
+  if (strictFolderReads ?? BascikConfig.isBuild) throw unreadable;
+  // The dev server scans the same folders on every rebuild: warn once per
+  // folder until it is readable again.
+  if (!warnedUnreadableFolders.has(unreadable.folder)) {
+    warnedUnreadableFolders.add(unreadable.folder);
+    console.warn(
+      unreadable.message
+        .replace("[bascik] error:", "[bascik] warning:")
+        .replace("Its files would be left out.", "Skipping the files in it."),
+    );
+  }
+  return [];
+};
+
+/**
  * Recursive directory read that follows symlinks.
  *
  * Symlink policy (prompt 80): a symlinked directory is recursed and a
@@ -460,6 +516,10 @@ const deepReadDir = async (
     if (isRoot) visited.add(await safeRealpath(dirPath));
     // withFileTypes is what makes it return dirent
     const dirents = await readdir(dirPath, { withFileTypes: true });
+    if (warnedUnreadableFolders.size > 0)
+      warnedUnreadableFolders.delete(
+        relative(process.cwd(), resolve(dirPath)).replace(/\\/g, "/") || ".",
+      );
     // Sort directory entries byte-wise at each level for deterministic traversal
     dirents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     const isLink = (dirent: Dirent): boolean =>
@@ -508,9 +568,8 @@ const deepReadDir = async (
 
     return [...realResults, ...linkResults];
   } catch (error) {
-    if (isRoot) throw error;
-    console.warn("Failed to read subdirectory %s", dirPath, error);
-    return [];
+    if (isRoot || error instanceof UnreadableFolderError) throw error;
+    return unreadableSubfolder(dirPath, error);
   }
 };
 

@@ -21,7 +21,13 @@
 import { readFile, readdir } from "node:fs/promises";
 import { resolve, relative, join, dirname, extname } from "node:path";
 import { existsSync, statSync } from "node:fs";
-import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
+import {
+  listPages,
+  getRelativePath,
+  deepReadDirFlat,
+  setStrictFolderReads,
+  UnreadableFolderError,
+} from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import {
   NATIVE_HTML_ELEMENTS,
@@ -743,6 +749,19 @@ const findComponentCycles = (graph: Map<string, Set<string>>): string[][] => {
 export const checkProject = async (
   options: { fix?: boolean; typescript?: boolean } = {},
 ): Promise<CheckFindings> => {
+  // As in a build, a folder the check cannot read is an error, not a skip.
+  setStrictFolderReads(true);
+  try {
+    return await checkProjectFiles(options);
+  } finally {
+    setStrictFolderReads(undefined);
+  }
+};
+
+const checkProjectFiles = async (options: {
+  fix?: boolean;
+  typescript?: boolean;
+}): Promise<CheckFindings> => {
   const items: CheckFinding[] = [];
   const configSource = resolveConfigSourcePath();
 
@@ -819,10 +838,19 @@ export const checkProject = async (
     (error) => error.key === "directory.pages",
   );
   let pageList: string[] = [];
+  let pagesUnreadable = false;
   try {
     pageList = (await listPages()) ?? [];
   } catch (error) {
-    if (!pagesRejected)
+    pagesUnreadable = true;
+    if (error instanceof UnreadableFolderError)
+      items.push({
+        category: "pages-directory",
+        severity: "error",
+        message: error.message.replace(/^\[bascik\] error: /, ""),
+        locations: [{ filePath: error.folder }],
+      });
+    else if (!pagesRejected)
       items.push({
         category: "pages-directory",
         severity: "error",
@@ -835,7 +863,12 @@ export const checkProject = async (
     process.cwd(),
     BascikConfig.directory?.pages ?? "src/pages",
   );
-  if (!pagesRejected && existsSync(pagesDir) && pageList.length === 0) {
+  if (
+    !pagesRejected &&
+    !pagesUnreadable &&
+    existsSync(pagesDir) &&
+    pageList.length === 0
+  ) {
     items.push({
       category: "pages-directory",
       severity: "error",
@@ -939,7 +972,15 @@ export const checkProject = async (
         locations,
       });
     }
-    if (!matchedDuplicate && !matchedIdClassCollision && !located) {
+    if (error instanceof UnreadableFolderError) {
+      // Located at the folder, as for a pages folder, not at the config.
+      items.push({
+        category: "component-list",
+        severity: "error",
+        message: message.replace(/^\[bascik\] error: /, ""),
+        locations: [{ filePath: error.folder }],
+      });
+    } else if (!matchedDuplicate && !matchedIdClassCollision && !located) {
       items.push({
         category: "component-list",
         severity: "error",
@@ -958,7 +999,13 @@ export const checkProject = async (
     if (componentRoots.length > 0) {
       const htmlFiles = (
         await Promise.all(
-          componentRoots.map((root) => deepReadDirFlat(root, /\.html$/i)),
+          // An unreadable folder is already reported above.
+          componentRoots.map((root) =>
+            deepReadDirFlat(root, /\.html$/i).catch((error: unknown) => {
+              if (error instanceof UnreadableFolderError) return [];
+              throw error;
+            }),
+          ),
         )
       ).flat();
       const nameToPaths = new Map<string, string[]>();
