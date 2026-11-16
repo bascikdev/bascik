@@ -2,6 +2,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it, expect } from "vitest";
+import { TextDocument } from "vscode-languageserver-textdocument";
+import { createDiagnostics } from "./analyzer.js";
 import {
   CONFIG_FILE_CANDIDATES,
   parseApiRoot,
@@ -16,6 +18,7 @@ import {
   readConfigSource,
   resolveComponentRoots,
   usedComponentSources,
+  buildSnapshot,
 } from "./project.js";
 
 describe("resolveComponentRoots", () => {
@@ -325,5 +328,42 @@ describe("parsePreserve (finding 22)", () => {
     expect(
       parsePreserve(config('  scoping: {\n    // preserve: ["pre"],\n  },')),
     ).toEqual(["code"]);
+  });
+});
+
+describe("buildSnapshot: named slots a component declares", () => {
+  it("follows the build's slot parser: a marker inside a nested component's slot wrapper is not the outer component's", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "bascik-lsp-slots-"));
+    try {
+      const components = path.join(root, "src", "components");
+      const pages = path.join(root, "src", "pages");
+      await fs.mkdir(components, { recursive: true });
+      await fs.mkdir(pages, { recursive: true });
+      await fs.writeFile(
+        path.join(components, "outer-c.html"),
+        '<div><inner-box><span data-bascik-slot="tail"><i data-bascik-slot="extra">outer-fb</i></span></inner-box><b data-bascik-slot="own"></b></div>',
+      );
+      await fs.writeFile(
+        path.join(components, "inner-box.html"),
+        '<div><em data-bascik-slot="tail">inner-fb</em></div>',
+      );
+      const snapshot = await buildSnapshot(root);
+      expect(
+        snapshot.componentMetadata.get("outer-c")?.slots.map((s) => s.name),
+      ).toEqual(["own"]);
+      const pagePath = path.join(pages, "index.html");
+      const text =
+        '<outer-c><b data-bascik-slot="extra">EXTRA-C</b><i data-bascik-slot="own">ok</i></outer-c>';
+      const diagnostics = createDiagnostics(
+        TextDocument.create(`file://${pagePath}`, "html", 1, text),
+        pagePath,
+        snapshot,
+      ).filter((d) => d.code === "undeclared-slot");
+      expect(diagnostics.map((d) => d.message)).toEqual([
+        'Component <outer-c> does not declare slot "extra".',
+      ]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });

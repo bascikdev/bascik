@@ -35,6 +35,7 @@ import {
   extractNamedSlotContent,
   keepSlotRoot,
   replaceDefaultSlots,
+  removeUnclaimedSlotWrappers,
   replaceNamedSlots,
   withoutSlotWrappers,
 } from "./component-slots.ts";
@@ -771,8 +772,8 @@ export const expandComponents = (
           // The unscoped template where the build has it, the scoped one
           // where a request render first sees the markup.
           declared = mergeDeclared(
-            declaredMembers(unscopedTemplate),
-            declaredMembers(component.fileContent ?? ""),
+            declaredMembers(unscopedTemplate, componentNames),
+            declaredMembers(component.fileContent ?? "", componentNames),
           );
           declaredByName.set(usage.name, declared);
         }
@@ -828,8 +829,13 @@ export const expandComponents = (
       let transpiledTag: string;
       const hasTemplateSlot =
         component.fileContent.includes("data-bascik-slot");
-      if (hasTemplateSlot)
-        component.fileContent = keepSlotRoot(component.fileContent);
+      if (hasTemplateSlot) {
+        componentNames ??= new Set(Object.keys(componentList));
+        component.fileContent = removeUnclaimedSlotWrappers(
+          keepSlotRoot(component.fileContent),
+          componentNames,
+        );
+      }
       const hasUsageSlot = Boolean(
         component.innerContent &&
         component.innerContent.includes("data-bascik-slot"),
@@ -854,8 +860,16 @@ export const expandComponents = (
         let childSearchFrom = 0;
         // The usage site's default slot content, computed once. It is also what a default slot
         // marker written inside a nested child's usage tag receives (see below).
+        // A usage-site wrapper inside another wrapper's content is slot
+        // content no component reads as a wrapper: it renders as its content.
+        const usageContent = hasUsageSlot
+          ? removeUnclaimedSlotWrappers(
+              component.innerContent ?? "",
+              componentNames,
+            )
+          : component.innerContent;
         const defaultSlotContent = extractDefaultSlotContent(
-          component.innerContent,
+          usageContent,
           componentNames,
         );
         while (childSearchFrom < slotTemplate.length) {
@@ -907,7 +921,7 @@ export const expandComponents = (
         }
         // Resolve named slots from the usage inner HTML.
         const namedSlots = extractNamedSlotContent(
-          component.innerContent,
+          usageContent,
           componentNames,
         );
         slotTemplate = replaceNamedSlots(
