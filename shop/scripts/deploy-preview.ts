@@ -154,6 +154,7 @@ function warnCleanup(error: unknown) {
     .replaceAll("\n", "%0A");
   console.log(`::warning title=Shop preview cleanup::${value}`);
 }
+let removed = 0;
 async function cfDelete(path: string) {
   try {
     const response = await request<{ success: boolean }>(
@@ -164,6 +165,7 @@ async function cfDelete(path: string) {
     );
     if (!response.success)
       throw new Error(`Cloudflare preview cleanup failed: ${path}`);
+    ++removed;
   } catch (error) {
     warnCleanup(error);
   }
@@ -194,6 +196,9 @@ for (const database of await cfList<{ name: string; uuid: string }>(
 ))
   if (closedPreview(database.name))
     await cfDelete(`d1/database/${database.uuid}`);
+console.log(
+  `Removed ${removed} Cloudflare resources of closed pull request previews.`,
+);
 const dbs = await cfList<{ name: string; uuid: string }>("d1/database");
 const dbName = `${name}-db`;
 let db = dbs.find((entry) => entry.name === dbName);
