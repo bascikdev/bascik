@@ -186,6 +186,26 @@ describe("hoistCssImports stays linear on unterminated statements", () => {
       "imports between rules (pinned)",
       (n: number) => ".a{color:red}\n@import 'x.css';\n".repeat(n),
     ],
+    [
+      "many @namespace with an unclosed url(",
+      (n: number) => "@namespace s url(".repeat(n),
+    ],
+    [
+      "an @namespace url( full of spaces",
+      (n: number) => `@namespace s url(${" ".repeat(n)}x`,
+    ],
+    [
+      "many unclosed @namespace strings",
+      (n: number) => '@namespace s "'.repeat(n),
+    ],
+    [
+      "distinct namespaces between rules",
+      (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) => `.a{color:red}\n@namespace s${i} url(x${i});\n`,
+        ).join(""),
+    ],
   ])(
     "on %s",
     (_label, css) => {

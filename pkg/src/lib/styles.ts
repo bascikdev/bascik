@@ -1816,13 +1816,6 @@ export const resolveCssImportsSync = (
 };
 
 /**
- * Hoist all preserved `@import` statements (e.g. remote font / stylesheet URLs)
- * to the top of the CSS block, deduplicating identical imports.
- *
- * This ensures strict compliance with W3C CSS Cascading and Inheritance Level 4,
- * which requires @import rules to precede all other style rules.
- */
-/**
  * A function returning the `{}` nesting depth at an offset of `css`, for
  * offsets asked in increasing order. Braces in strings and comments do not
  * count, and an offset inside a string or comment has depth -1: what stands
@@ -1854,8 +1847,59 @@ const braceDepthScanner = (css: string): ((offset: number) => number) => {
   };
 };
 
+// A top-level `@namespace <prefix> <url>;` statement, the URL a string or a
+// `url()`. An unquoted `url()` holds no `(`, space or quote, so each attempt
+// stops at the next `url(` and many unclosed ones stay linear. A default
+// namespace (no prefix) does not match.
+const NAMESPACE_STATEMENT =
+  /@namespace\s+(?!url\()[\w\u0080-\uffff-]+\s+(?:url\(\s*(?:(?:"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'|[^()\s"'\\]+)\s*)?\)|"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*')\s*;/gi;
+
+/**
+ * Hoist `@import` statements (and the `@layer` statements that precede
+ * them), then the prefixed `@namespace` statements, to the top of the
+ * page's combined component CSS, deduplicating identical imports. CSS
+ * Cascading 4 requires `@import` rules to precede all other style rules.
+ *
+ * CSS Namespaces 3 ignores an `@namespace` rule after any rule other than
+ * `@charset` and `@import`, and a selector that uses an undeclared prefix
+ * (`svg|rect`) is invalid. Component stylesheets are joined into one, so a
+ * component's own `@namespace` usually lands after another component's
+ * rules. A prefix only applies to selectors that name it, so moving the
+ * statement up changes no other component; identical statements are
+ * written once. A default namespace (`@namespace url(…);`) would restrict
+ * every component's selectors, so it stays where it was written.
+ */
 export const hoistCssImports = (css: string): string => {
-  if (!css || !css.includes("@import")) return css;
+  if (!css || !/@namespace/i.test(css)) return hoistImportStatements(css);
+  const depthAt = braceDepthScanner(css);
+  const namespaces = new Set<string>();
+  let rest = "";
+  let copiedTo = 0;
+  for (const statement of css.matchAll(NAMESPACE_STATEMENT)) {
+    if (depthAt(statement.index) !== 0) continue;
+    namespaces.add(statement[0]);
+    rest += css.slice(copiedTo, statement.index);
+    copiedTo = statement.index + statement[0].length;
+  }
+  if (namespaces.size === 0) return hoistImportStatements(css);
+  rest += css.slice(copiedTo);
+  const imports = hoistImportStatementParts(rest);
+  const hoisted = [...(imports?.hoisted ?? []), ...namespaces].join("\n");
+  const body = imports ? imports.body : rest.trim();
+  return body ? `${hoisted}\n${body}` : hoisted;
+};
+
+const hoistImportStatements = (css: string): string => {
+  const parts = hoistImportStatementParts(css);
+  if (!parts) return css;
+  const hoisted = parts.hoisted.join("\n");
+  return parts.body ? `${hoisted}\n${parts.body}` : hoisted;
+};
+
+const hoistImportStatementParts = (
+  css: string,
+): { hoisted: string[]; body: string } | null => {
+  if (!css || !css.includes("@import")) return null;
 
   // An `@import` statement, or an `@layer a, b;` statement. The spec lets
   // `@layer` statements precede `@import`, and a statement that names the
@@ -1913,7 +1957,7 @@ export const hoistCssImports = (css: string): string => {
   statements.forEach((statement, index) => {
     if (/^@import/i.test(statement[0])) lastImport = index;
   });
-  if (lastImport === -1) return css;
+  if (lastImport === -1) return null;
   const hoisted: string[] = [];
   const seen = new Set<string>();
   let cleanedCss = "";
@@ -1931,8 +1975,7 @@ export const hoistCssImports = (css: string): string => {
   }
   cleanedCss += css.slice(copiedTo);
 
-  const body = cleanedCss.trim();
-  return body ? `${hoisted.join("\n")}\n${body}` : hoisted.join("\n");
+  return { hoisted, body: cleanedCss.trim() };
 };
 
 export const getComponentCss = async (
