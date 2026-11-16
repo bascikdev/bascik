@@ -53,15 +53,21 @@ async function request<T>(
     );
   return response.json() as Promise<T>;
 }
-/** Stripe's own one-line reason for a refused request, so a failed run says why. */
+/**
+ * Stripe's or Cloudflare's own one-line reason for a refused request, so a
+ * failed run says why (Stripe answers `error`, Cloudflare `errors[]`).
+ */
 async function providerReason(response: Response): Promise<string> {
-  if (new URL(response.url).hostname !== "api.stripe.com") return "";
+  const host = new URL(response.url).hostname;
+  if (host !== "api.stripe.com" && host !== "api.cloudflare.com") return "";
   try {
     const body = (await response.json()) as {
       error?: { code?: string; message?: string };
+      errors?: { code?: number; message?: string }[];
     };
-    const reason = [body.error?.code, body.error?.message]
-      .filter(Boolean)
+    const reason = [body.error, ...(body.errors ?? [])]
+      .flatMap((entry) => (entry ? [entry.code, entry.message] : []))
+      .filter((part) => part !== undefined && part !== "")
       .join(": ");
     return reason ? ` (${reason.slice(0, 300)})` : "";
   } catch {
@@ -111,6 +117,88 @@ const { subdomain } = await cf<{ subdomain: string }>("workers/subdomain");
 if (!subdomain || !/^[a-z0-9-]+$/.test(subdomain))
   throw new Error("Cloudflare Workers subdomain is not configured.");
 const origin = `https://${name}.${subdomain}.workers.dev`;
+// The pull requests open now. A preview's Stripe endpoint, Worker, database
+// and queues outlive its pull request (nothing runs when one closes), so
+// those of pull requests no longer open are removed before this preview
+// makes its own.
+const openPulls = new Set<string>();
+for (let page = 1; ; ++page) {
+  const batch = await request<{ number: number }[]>(
+    `https://api.github.com/repos/bascikdev/bascik/pulls?state=open&per_page=100&page=${page}`,
+    required("GITHUB_TOKEN"),
+  );
+  for (const pull of batch) openPulls.add(String(pull.number));
+  if (batch.length < 100) break;
+}
+if (!openPulls.has(String(pr)))
+  throw new Error("The open pull request list does not include this one.");
+// Every pkg pull request gets a preview, and each one's Worker, database and
+// two queues stayed in the account after it closed. Only names this script
+// makes are touched. Cloudflare refuses to delete a Worker that consumes a
+// queue (10064), a queue a Worker binds (11005), and a dead-letter queue a
+// consumer names (11005), so the queue consumers go first, then the Worker,
+// then its queues and database.
+const closedPreview = (resource: string) => {
+  const match = /^bascik-shop-pr-(\d+)(?:-db|-jobs|-dead)?$/.exec(resource);
+  return match !== null && !openPulls.has(match[1]);
+};
+// A leftover that cannot be removed must not stop this pull request's own
+// preview: the failure becomes a warning on the run, and the next preview
+// tries again.
+function warnCleanup(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  // Escaped as a workflow command value, so a provider's text stays one line.
+  const value = message
+    .replaceAll("%", "%25")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A");
+  console.log(`::warning title=Shop preview cleanup::${value}`);
+}
+let removed = 0;
+async function cfDelete(path: string) {
+  try {
+    const response = await request<{ success: boolean }>(
+      `https://api.cloudflare.com/client/v4/accounts/${account}/${path}`,
+      cfToken,
+      undefined,
+      "DELETE",
+    );
+    if (!response.success)
+      throw new Error(`Cloudflare preview cleanup failed: ${path}`);
+    ++removed;
+  } catch (error) {
+    warnCleanup(error);
+  }
+}
+const closedQueues = (
+  await cfList<{ queue_id: string; queue_name: string }>("queues")
+).filter((queue) => closedPreview(queue.queue_name));
+for (const queue of closedQueues) {
+  let consumers: { consumer_id: string }[] = [];
+  try {
+    consumers = await cf<{ consumer_id: string }[]>(
+      `queues/${queue.queue_id}/consumers`,
+    );
+  } catch (error) {
+    warnCleanup(error);
+  }
+  for (const consumer of consumers)
+    await cfDelete(
+      `queues/${queue.queue_id}/consumers/${consumer.consumer_id}`,
+    );
+}
+for (const script of await cf<{ id: string }[]>("workers/scripts"))
+  if (closedPreview(script.id))
+    await cfDelete(`workers/scripts/${script.id}?force=true`);
+for (const queue of closedQueues) await cfDelete(`queues/${queue.queue_id}`);
+for (const database of await cfList<{ name: string; uuid: string }>(
+  "d1/database",
+))
+  if (closedPreview(database.name))
+    await cfDelete(`d1/database/${database.uuid}`);
+console.log(
+  `Removed ${removed} Cloudflare resources of closed pull request previews.`,
+);
 const dbs = await cfList<{ name: string; uuid: string }>("d1/database");
 const dbName = `${name}-db`;
 let db = dbs.find((entry) => entry.name === dbName);
@@ -304,21 +392,9 @@ const deleteWebhook = (id: string) =>
     undefined,
     "DELETE",
   );
-// Stripe allows 16 webhook endpoints per sandbox, and a preview's endpoint
-// outlives its pull request: nothing runs when one closes. Endpoints of
-// pull requests that are no longer open are removed here, before this
-// preview asks for its own, or the seventeenth preview is refused.
-const openPulls = new Set<string>();
-for (let page = 1; ; ++page) {
-  const batch = await request<{ number: number }[]>(
-    `https://api.github.com/repos/bascikdev/bascik/pulls?state=open&per_page=100&page=${page}`,
-    required("GITHUB_TOKEN"),
-  );
-  for (const pull of batch) openPulls.add(String(pull.number));
-  if (batch.length < 100) break;
-}
-if (!openPulls.has(String(pr)))
-  throw new Error("The open pull request list does not include this one.");
+// Stripe allows 16 webhook endpoints per sandbox: endpoints of pull
+// requests that are no longer open are removed before this preview asks for
+// its own, or the seventeenth preview is refused.
 for (const entry of await previewWebhooks())
   if (
     /^\d+$/.test(entry.metadata.pr ?? "") &&
