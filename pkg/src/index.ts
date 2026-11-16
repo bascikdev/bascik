@@ -229,13 +229,11 @@ export const runCli = async (
           // children is what failed the build: that exit keeps its signal.
           if (isExitInProgress())
             return { action: decision.action, exitCode: 1 };
-          const errMsg = err instanceof Error ? err.message : String(err);
-          if (
-            !errMsg.includes("[bascik] build script error") &&
-            !errMsg.includes("[bascik] server script error")
-          ) {
-            console.error(errMsg);
-          }
+          // Script errors print themselves; print only what has not been printed.
+          const { unprintedBuildFailureMessage } =
+            await import("./lib/page-diagnostics.ts");
+          const unprinted = unprintedBuildFailureMessage(err);
+          if (unprinted !== null) console.error(unprinted);
           // A failed build or dev boot may still have page workers loading
           // (exiting then can abort Node 24): stop them first.
           exitAfterStopping(1);
