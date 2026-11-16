@@ -42,8 +42,12 @@ const freePort = async (): Promise<number> => {
 };
 const BOOT_MARKER = "/bascik-live-reload?boot=1";
 
-/** A page whose build script holds the first compile for `delayMs`. */
-const slowPage = (title: string, delayMs: number): string =>
+/**
+ * A page whose build script holds the first compile until the test creates
+ * `gateFile` (at most 60 s). A gate, not a delay: on a loaded machine a fixed
+ * delay could end while the test was still asking for the boot pages.
+ */
+const slowPage = (title: string, gateFile: string): string =>
   `<!doctype html>
 <html lang="en">
   <head>
@@ -52,8 +56,11 @@ const slowPage = (title: string, delayMs: number): string =>
   <body>
     <h1>${title}</h1>
     <script data-bascik-build>
+      import { existsSync } from "node:fs";
       export default async () => {
-        await new Promise((done) => setTimeout(done, ${delayMs}));
+        const until = Date.now() + 60000;
+        while (!existsSync(${JSON.stringify(gateFile)}) && Date.now() < until)
+          await new Promise((done) => setTimeout(done, 50));
         return "<p>${title} ready</p>";
       };
     </script>
@@ -62,6 +69,7 @@ const slowPage = (title: string, delayMs: number): string =>
 `;
 
 let root = "";
+let gateFile = "";
 let child: ChildProcess | undefined;
 let output = "";
 let port = 0;
@@ -81,15 +89,19 @@ beforeAll(async () => {
     join(root, "bascik.config.js"),
     "export default { generate: { sitemap: false, robots: false } };\n",
   );
+  gateFile = join(root, "release-the-compile");
   await mkdir(join(root, "src/pages/v1.2"), { recursive: true });
-  await writeFile(join(root, "src/pages/index.html"), slowPage("Home", 6000));
+  await writeFile(
+    join(root, "src/pages/index.html"),
+    slowPage("Home", gateFile),
+  );
   await writeFile(
     join(root, "src/pages/release-1.0.html"),
-    slowPage("Release", 6000),
+    slowPage("Release", gateFile),
   );
   await writeFile(
     join(root, "src/pages/v1.2/index.html"),
-    slowPage("Version", 6000),
+    slowPage("Version", gateFile),
   );
   port = await freePort();
   base = `http://localhost:${port}`;
@@ -142,7 +154,8 @@ afterAll(async () => {
 
 describe("dev boot page for a page whose URL has a dot", () => {
   it("serves the boot page during the first compile, then the page", async () => {
-    // All three pages are still compiling (each build script waits 6 s).
+    // All three pages are still compiling (each build script waits for the
+    // gate file).
     for (const path of ["/", "/release-1.0", "/v1.2", "/v1.2/"]) {
       const during = await fetchPage(path);
       expect({ path, status: during.status }).toEqual({ path, status: 200 });
@@ -152,6 +165,7 @@ describe("dev boot page for a page whose URL has a dot", () => {
     const asset = await fetchPage("/missing-cover.png");
     expect(asset.status).toBe(404);
 
+    await writeFile(gateFile, "");
     const deadline = Date.now() + 60000;
     let after = await fetchPage("/release-1.0");
     while (after.body.includes(BOOT_MARKER) && Date.now() < deadline) {
