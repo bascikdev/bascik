@@ -83,6 +83,12 @@ type Segment = {
    * The minified output must keep that boundary as a `;`.
    */
   asiBefore?: boolean;
+  /**
+   * Literal segments only: an HTML-like `<!--` comment, to the end of its line. A classic
+   * script reads it as a line comment, a module as the operators `<`, `!` and `--`, so it is
+   * kept as written and followed by a line break, which runs the same program as either.
+   */
+  htmlComment?: boolean;
 };
 
 /**
@@ -590,6 +596,12 @@ const scanSegments = (js: string): Segment[] => {
   let i = 0;
   const len = js.length;
 
+  /** The segment before is a string, template or regex literal: a value, not a comment. */
+  const previousIsValueLiteral = (): boolean => {
+    const previous = segments.at(-1);
+    return previous?.literal === true && previous.htmlComment !== true;
+  };
+
   /** How many `(`, `[` and `{` are open. */
   const nesting = (): number =>
     parenIsControlHeader.length + bracketDepth + braceKind.length;
@@ -638,7 +650,7 @@ const scanSegments = (js: string): Segment[] => {
    * an operand next (`typeof`, `new`) does not end one.
    */
   const valueEndsHere = (): boolean => {
-    if (!lastSig) return segments.at(-1)?.literal === true;
+    if (!lastSig) return previousIsValueLiteral();
     if (lastSigIsPostfixUpdate) return true;
     if (lastSig === ")" || lastSig === "]" || lastSig === "}") return true;
     if (!isWordChar(lastSig)) return false;
@@ -735,7 +747,7 @@ const scanSegments = (js: string): Segment[] => {
     return (
       lastSig === ")" ||
       lastSig === "]" ||
-      (!lastSig && segments.at(-1)?.literal === true)
+      (!lastSig && previousIsValueLiteral())
     );
   };
 
@@ -788,7 +800,7 @@ const scanSegments = (js: string): Segment[] => {
     if (!lineBreakSinceSignificant) return false;
     if (!lastSig) {
       // Only whitespace since the previous segment: a literal (`"a"\n"b"`) or nothing.
-      return kind === "string" && segments.at(-1)?.literal === true;
+      return kind === "string" && previousIsValueLiteral();
     }
     // Neither an arrow function nor a postfix update can be called, indexed or tagged.
     if (lastSigIsPostfixUpdate) return true;
@@ -1138,12 +1150,56 @@ const scanSegments = (js: string): Segment[] => {
     lineBreakSinceSignificant = false;
   };
 
+  /** The end of the line comment that starts at `start`. */
+  const lineCommentEnd = (start: number): number => {
+    let end = start;
+    while (end < len && !isLineTerminator(js[end])) {
+      __scanStatsForTests.charsExamined++;
+      end++;
+    }
+    return end;
+  };
+
+  // Only whitespace and comments since the last line break (or the start of the script), so
+  // a `-->` here is an HTML-like comment.
+  let atLineStart = true;
+
   while (i < len) {
     const ch = js[i];
     __scanStatsForTests.charsExamined++;
+    const lineStart = atLineStart;
+    if (isLineTerminator(ch)) atLineStart = true;
+    else if (!isSpace(ch) && !(ch === "/" && js[i + 1] === "*")) {
+      atLineStart = false;
+    }
+
+    if (ch === "-" && lineStart && js.startsWith("->", i + 1)) {
+      // `-->` at the start of a line is a line comment in a classic script and a syntax error
+      // in a module (a `--` cannot follow a line break), so it is dropped like `//`.
+      i = lineCommentEnd(i + 3);
+      continue;
+    }
+
+    if (ch === "<" && js.startsWith("!--", i + 1)) {
+      // `<!--` is a line comment in a classic script, unless its `<` is the second of a `<<`.
+      let lessThans = 0;
+      while (js[i - 1 - lessThans] === "<") lessThans++;
+      if (lessThans % 2 === 0) {
+        const end = lineCommentEnd(i + 4);
+        bindingNameExpected = false;
+        flushCode();
+        segments.push({
+          literal: true,
+          text: js.slice(i, end),
+          htmlComment: true,
+        });
+        i = end;
+        continue;
+      }
+    }
 
     if ((ch === "+" || ch === "-") && js[i + 1] === ch) {
-      const previousLiteral = !lastSig && segments.at(-1)?.literal;
+      const previousLiteral = !lastSig && previousIsValueLiteral();
       const postfix =
         !lineBreakSinceSignificant &&
         (previousLiteral ||
@@ -1203,7 +1259,7 @@ const scanSegments = (js: string): Segment[] => {
         if (!lastSig) {
           // No significant code yet in this segment, check previous segment if any
           const lastSeg = segments[segments.length - 1];
-          if (!lastSeg || !lastSeg.literal) {
+          if (!lastSeg || !lastSeg.literal || lastSeg.htmlComment === true) {
             couldBeRegex = true;
           }
         } else if (isWordChar(lastSig)) {
@@ -1279,6 +1335,7 @@ const scanSegments = (js: string): Segment[] => {
         }
         i += 2;
         if (spansLines) {
+          atLineStart = true;
           // ECMAScript reads a comment holding a line terminator as a line terminator, so
           // automatic semicolon insertion can end the statement there (`a = b /*\n*/ c`).
           appendCode("\n");
@@ -1382,7 +1439,9 @@ const normalizeCodeSegment = (text: string): string => {
   code = code.replace(/([^\s+-])\s*-/g, "$1-");
   code = code.replace(/-\s*([^\s+-])/g, "-$1");
   code = code.replace(/([^\d\s])\s*\.\s*/g, "$1.");
-  return code.replace(/([^\d])\s*\.\s*([^\d\s])/g, "$1.$2");
+  code = code.replace(/([^\d])\s*\.\s*([^\d\s])/g, "$1.$2");
+  // `a < !--b` and `a <\n!--b` compare with a decrement: joined, `<!--` would start a comment.
+  return code.replace(/<!--/g, "< !--");
 };
 
 /**
@@ -1410,6 +1469,13 @@ export const minifyJs = (js: string): string => {
   let resultLast = "";
   for (let sIdx = 0; sIdx < segments.length; sIdx++) {
     const seg = segments[sIdx];
+    if (seg.htmlComment) {
+      // `a < <!-- c`: the `<` before the comment must not join it into `<<`.
+      if (resultLast === "<") result += " ";
+      result += `${seg.text.trimEnd()}\n`;
+      resultLast = "\n";
+      continue;
+    }
     if (seg.literal) {
       if (seg.asiBefore && result && resultLast !== ";") {
         // The source's line break ended the statement (`const a = 1\n"use strict"`).
@@ -1427,7 +1493,12 @@ export const minifyJs = (js: string): string => {
       continue;
     }
 
-    if (sIdx > 0 && segments[sIdx - 1].literal && /^\s*\n/.test(seg.text)) {
+    if (
+      sIdx > 0 &&
+      segments[sIdx - 1].literal &&
+      segments[sIdx - 1].htmlComment !== true &&
+      /^\s*\n/.test(seg.text)
+    ) {
       const firstLine = seg.text.match(/\S.*/)?.[0] ?? "";
       if (
         resultLast &&
