@@ -57,15 +57,9 @@ const codeToken = fc.constantFrom(
 
 describe("minifyJs segment normalization characterization", () => {
   it("matches the unmemoized regex passes for generated code and Unicode whitespace", () => {
-    const whitespace = fc.constantFrom(
-      " ",
-      "\t",
-      "\r",
-      "\u00a0",
-      "\u2028",
-      "\u2029",
-      "\ufeff",
-    );
+    // Whitespace that is not a line terminator: a lone CR, U+2028 and U+2029 end a line as
+    // LF does, so the line joiner handles them (js-minifier-semantics.test.ts).
+    const whitespace = fc.constantFrom(" ", "\t", "\u00a0", "\ufeff");
     fc.assert(
       fc.property(
         fc.array(fc.oneof(codeToken, whitespace), { maxLength: 100 }),
