@@ -387,7 +387,7 @@ describe("checkProject", () => {
         severity: "warning",
         locations: [
           {
-            filePath: expect.stringMatching(/src\/pages\/index\.html$/),
+            filePath: expect.stringMatching(/src[\\/]pages[\\/]index\.html$/),
             line: 3,
             column: 3,
           },
@@ -398,7 +398,7 @@ describe("checkProject", () => {
       );
       expect(links[1].locations[0]).toMatchObject({
         filePath: expect.stringMatching(
-          /src\/components\/site-head\/site-head\.html$/,
+          /src[\\/]components[\\/]site-head[\\/]site-head\.html$/,
         ),
         line: 1,
       });
