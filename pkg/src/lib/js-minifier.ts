@@ -66,6 +66,18 @@ type Segment = {
    */
   bareBindingEnds?: Set<number>;
   /**
+   * Offsets in `text` of each `.` that ends a number literal (`5.`). The number is a value, so
+   * a line break after it ends the statement unless the next line continues it (`x = 5.\ny`
+   * is `x=5.;y`), where a line-end `.` otherwise expects a property name next.
+   */
+  numberDotEnds?: Set<number>;
+  /**
+   * Offsets in `text` of the last digit of a decimal integer (`1`, `1_000`, `08`) that a
+   * line break separates from a `.`. Joined, the `.` would become part of the number
+   * (`1\n.y` is `1 .y`, never `1.y`), so a space stays between them.
+   */
+  integerBeforeDotLines?: Set<number>;
+  /**
    * Literal segments only: the source has a line break before this literal that JavaScript's
    * automatic semicolon insertion turns into a statement end (`const a = 1\n"use strict"`).
    * The minified output must keep that boundary as a `;`.
@@ -166,6 +178,9 @@ const RESTRICTED_WORDS = new Set([
  */
 const BARE_BINDING_CONTINUATION =
   /^(?:[=,;]|(?:in|of)(?![\w$\\]|[^\x00-\x7f\s]))/;
+
+/** A decimal integer literal, which a `.` written right after it makes a decimal (`1.`). */
+const DECIMAL_INTEGER = /^(?:0|[1-9][\d_]*|0\d*[89]\d*)$/;
 
 /** Keywords that start a variable declaration. */
 const DECLARATION_KEYWORDS = new Set(["var", "let", "const"]);
@@ -526,6 +541,8 @@ const scanSegments = (js: string): Segment[] => {
   let bindingNameExpected = false;
   let wordIsBindingName = false;
   let bareBindingEnds: Set<number> | undefined;
+  let numberDotEnds: Set<number> | undefined;
+  let integerBeforeDotLines: Set<number> | undefined;
   // A `+`, `-` or `!` that started a line after a value in a declaration: the next character
   // tells whether it starts a new statement (`++b`, `!f()`) or continues (`+ b`, `!= b`).
   let operatorAfterValueBreak = "";
@@ -658,6 +675,28 @@ const scanSegments = (js: string): Segment[] => {
     }
   };
 
+  /**
+   * Whether the word last read is a decimal integer literal that a `.` right after it would
+   * extend (`1`, `1_000`, `08`), and not `0x1`, `1e3`, a legacy octal `07`, the fraction of
+   * `1.5` or the exponent of `1e-5`, which a `.` after them only takes a property of.
+   */
+  const wordIsDecimalInteger = (): boolean => {
+    if (!isWordChar(lastSig) || wordIsProperty) return false;
+    if (!DECIMAL_INTEGER.test(wordRun)) return false;
+    const start = lastSigOffset + 1 - wordRun.length;
+    const sign = codeAccum[start - 1];
+    if (
+      (sign !== "+" && sign !== "-") ||
+      !/[eE]/.test(codeAccum[start - 2] ?? "")
+    ) {
+      return true;
+    }
+    // `1e-5`: the word before the sign is a number when it starts with a digit (`xe-5` is not).
+    let p = start - 2;
+    while (p > 0 && isWordChar(codeAccum[p - 1])) p--;
+    return !isDigit(codeAccum[p]);
+  };
+
   /** Directly in a class body: not inside a member's parameters, value or computed name. */
   const atClassMemberLevel = (): boolean => {
     const top = braceKind.length - 1;
@@ -714,10 +753,14 @@ const scanSegments = (js: string): Segment[] => {
         memberKeywordNameEnds,
         memberModifierEnds,
         bareBindingEnds,
+        numberDotEnds,
+        integerBeforeDotLines,
       });
       codeAccum = "";
     }
     bareBindingEnds = undefined;
+    numberDotEnds = undefined;
+    integerBeforeDotLines = undefined;
     controlHeaderCloses = undefined;
     postfixUpdateEnds = undefined;
     arrowBodyCloses = undefined;
@@ -764,6 +807,8 @@ const scanSegments = (js: string): Segment[] => {
     }
     if (kind === "template") return false;
     if (lastSig === "]") return true;
+    // `x = 5.\n"y"`: the dot ends the number, it does not take a property name.
+    if (lastSig === ".") return numberDotEnds?.has(lastSigOffset) === true;
     if (lastSig === ")") return !lastParenClosedControlHeader;
     if (isWordChar(lastSig)) {
       if (wordIsProperty) return true;
@@ -1034,6 +1079,17 @@ const scanSegments = (js: string): Segment[] => {
       case "]":
         if (bracketDepth > 0) bracketDepth--;
         break;
+      case ".":
+        if (wordIsDecimalInteger()) {
+          if (lastRaw === lastSig) {
+            // `5.`: the dot is part of the number.
+            (numberDotEnds ??= new Set()).add(codeAccum.length);
+          } else if (lineBreakSinceSignificant) {
+            // `1\n.toString()`: the dot takes a property of the number.
+            (integerBeforeDotLines ??= new Set()).add(lastSigOffset);
+          }
+        }
+        break;
       case ";":
         bodyHeaderPending = false;
         if (atDeclarationLevel()) closeDeclaration();
@@ -1162,8 +1218,12 @@ const scanSegments = (js: string): Segment[] => {
         } else if (lastSig === ")") {
           // `if (x) /re/.test(y)` is a regex statement; `f(x) / 2` is division.
           couldBeRegex = lastParenClosedControlHeader;
-        } else if (lastSigIsPostfixUpdate) {
-          // `count++ / 2` is division: a postfix update ends the expression.
+        } else if (
+          lastSigIsPostfixUpdate ||
+          (lastSig === "." && numberDotEnds?.has(lastSigOffset) === true)
+        ) {
+          // `count++ / 2` and `5. / 2` are division: a postfix update or a number ends the
+          // expression.
           couldBeRegex = false;
         } else if (lastSig === "}") {
           // `x = {}\n/ 2 /* d */` divides an object literal (or a function or class
@@ -1226,13 +1286,15 @@ const scanSegments = (js: string): Segment[] => {
         }
         // If stripping a block comment between two word characters (e.g., return/*x*/v),
         // preserve a space so token boundaries aren't lost. The same goes for two `+` or
-        // two `-`, which would join into `++` or `--` (`a +/* sign */+ b`).
+        // two `-`, which would join into `++` or `--` (`a +/* sign */+ b`), and for a decimal
+        // integer and a `.`, which would join into one number (`1/* c */.toString()`).
         const nextChar = js[i];
         if (
           lastRaw &&
           nextChar &&
           ((isWordChar(lastRaw) && isWordChar(nextChar)) ||
-            ((lastRaw === "+" || lastRaw === "-") && nextChar === lastRaw))
+            ((lastRaw === "+" || lastRaw === "-") && nextChar === lastRaw) ||
+            (nextChar === "." && lastRaw === lastSig && wordIsDecimalInteger()))
         ) {
           appendCode(" ");
         }
@@ -1432,13 +1494,19 @@ export const minifyJs = (js: string): string => {
 
       const lastChar = ptLast;
       const firstChar = line[0];
+      // `1\n.toString()`: joined without a space, the `.` would make `1.` a number.
+      const integerBeforeDot =
+        firstChar === "." &&
+        seg.integerBeforeDotLines?.has(prevLineEnd) === true;
       __scanStatsForTests.charsExamined += ptTail.length;
 
       // Check if semicolon is required between prevLine and current line
       let needsSemicolon = false;
 
       // Statements ending in value tokens or return/break/continue/throw require ; before next statement
-      if (isWordChar(lastChar) || /[)\]'"`]/.test(lastChar)) {
+      // `5.` ends a number: a value, though a line-end `.` otherwise takes a property next.
+      const numberDotEnd = seg.numberDotEnds?.has(prevLineEnd) === true;
+      if (numberDotEnd || isWordChar(lastChar) || /[)\]'"`]/.test(lastChar)) {
         // Do NOT insert semicolon if line ends with an open control flow / operator
         let endsWithOpenControl = false;
         if (seg.bodyHeaderEnds?.has(prevLineEnd)) {
@@ -1458,7 +1526,8 @@ export const minifyJs = (js: string): string => {
           seg.memberModifierEnds?.has(prevLineEnd) === true ||
           (seg.memberKeywordNameEnds?.has(prevLineEnd) !== true &&
             LINE_END_CONTINUING_KEYWORD.test(ptTail)) ||
-          /(=|,|\+|\-|\*|\/|%|\?|:|=>|\.|\&\&|\|\||\?\?)\s*$/.test(ptTail);
+          (!numberDotEnd &&
+            /(=|,|\+|\-|\*|\/|%|\?|:|=>|\.|\&\&|\|\||\?\?)\s*$/.test(ptTail));
 
         // Do NOT insert semicolon if next line starts with closing/continuation structures.
         // Only binary keyword operators (instanceof/in/of) continue an expression
@@ -1541,7 +1610,8 @@ export const minifyJs = (js: string): string => {
         appendProcessed(";" + line);
       } else if (
         (isWordChar(lastChar) && isWordChar(firstChar)) ||
-        ((lastChar === "+" || lastChar === "-") && firstChar === lastChar)
+        ((lastChar === "+" || lastChar === "-") && firstChar === lastChar) ||
+        integerBeforeDot
       ) {
         // Ensure space between word tokens when joining without semicolon, and between a
         // binary `+` or `-` and a sign or update on the next line: `a +\n+b` is `a+ +b`,

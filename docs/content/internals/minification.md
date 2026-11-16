@@ -102,11 +102,13 @@ type Segment = {
   valueBraceCloses?: Set<number>; // `}` ending a value: an object literal, or an arrow, function or class expression body
   fieldNameEnds?: Set<number>; // end of a class field name with no value, before a `[` or `*` member on a later line
   bareBindingEnds?: Set<number>; // end of a var/let/const binding name with no initializer
+  numberDotEnds?: Set<number>; // `.` ending a number literal (`5.`)
+  integerBeforeDotLines?: Set<number>; // last digit of an integer a line break separates from a `.`
   asiBefore?: boolean; // literal only: a line break before it ends the statement
 };
 ```
 
-Quoted strings (`"..."`, `'...'`), template literals (`` `...` ``), and regex literals (`/.../`) are placed in literal segments. A hashbang (`#!`) first line is kept as written, with its line break, and only the rest of the script is minified. Outside literals, a non-ASCII character that is not whitespace can only belong to a name (Unicode `ID_Start` or `ID_Continue`), and a `\` only starts a `\u` escape in one, so the scanner counts both as word characters: removing a line break or comment between two names keeps a space or a `;` between them (`x = 值\ny = 1` is `x=值;y=1`). A `\u{...}` escape is rewritten to the same name without braces (`\u0062`, or the character itself above U+FFFF), so its `}` is never read as a brace.
+Quoted strings (`"..."`, `'...'`), template literals (`` `...` ``), and regex literals (`/.../`) are placed in literal segments. A hashbang (`#!`) first line is kept as written, with its line break, and only the rest of the script is minified. Outside literals, a non-ASCII character that is not whitespace can only belong to a name (Unicode `ID_Start` or `ID_Continue`), and a `\` only starts a `\u` escape in one, so the scanner counts both as word characters: removing a line break or comment between two names keeps a space or a `;` between them (`x = 值\ny = 1` is `x=值;y=1`). A `\u{...}` escape is rewritten to the same name without braces (`\u0062`, or the character itself above U+FFFF), so its `}` is never read as a brace. A `.` right after a decimal integer is part of that number (`5.`), so the scanner records it in `numberDotEnds`, where a line break ends the statement, and records an integer that a line break or comment separates from a `.` in `integerBeforeDotLines`, which keeps a space (`1 .y`).
 
 ### Regex Disambiguation
 
