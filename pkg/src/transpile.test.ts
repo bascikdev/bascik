@@ -143,6 +143,8 @@ vi.mock("node:fs/promises", () => ({
   // Prompt 101: finalizeOwnedArtifacts stages and atomically renames metadata.
   // These reads return empty content (no prior metadata) and writes resolve.
   mkdir: vi.fn().mockResolvedValue(undefined),
+  // The writable check on the output and private folders before compiling.
+  access: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
   rename: vi.fn().mockResolvedValue(undefined),
   readFile: vi.fn().mockResolvedValue(""),
