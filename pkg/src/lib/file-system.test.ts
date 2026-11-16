@@ -13,7 +13,7 @@ import {
   copyReplicatePath,
   copyStaticAssets,
   isInlineStylesheet,
-  setStrictFolderReads,
+  setStrictSourceReads,
   UnreadableFolderError,
 } from "./file-system.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
@@ -242,10 +242,10 @@ describe("deepReadDirFlat", () => {
         return [] as any;
       });
     });
-    afterEach(() => setStrictFolderReads(undefined));
+    afterEach(() => setStrictSourceReads(undefined));
 
     it("fails a strict scan with an error naming the folder", async () => {
-      setStrictFolderReads(true);
+      setStrictSourceReads(true);
       const scan = deepReadDirFlat("pages");
       await expect(scan).rejects.toBeInstanceOf(UnreadableFolderError);
       await expect(scan).rejects.toThrow(
@@ -253,14 +253,16 @@ describe("deepReadDirFlat", () => {
       );
     });
 
-    it("fails a scan in a build, where strict is unset", async () => {
-      (BascikConfig as { isBuild?: boolean }).isBuild = true;
+    it("fails a scan in a build (BASCIK_BUILD=1), where strict is unset", async () => {
+      const previous = process.env.BASCIK_BUILD;
+      process.env.BASCIK_BUILD = "1";
       try {
         await expect(deepReadDirFlat("pages")).rejects.toThrow(
           /could not read folder "pages\/locked"/,
         );
       } finally {
-        delete (BascikConfig as { isBuild?: boolean }).isBuild;
+        if (previous === undefined) delete process.env.BASCIK_BUILD;
+        else process.env.BASCIK_BUILD = previous;
       }
     });
 

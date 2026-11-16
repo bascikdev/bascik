@@ -65,7 +65,7 @@ vi.mock("./file-system.js", () => ({
   getRelativePath: (filePath: string) => filePath,
   getProjectPath: (filePath: string) => filePath,
   deepReadDirFlat: deepReadDirFlatMock,
-  setStrictFolderReads: () => {},
+  setStrictSourceReads: () => {},
   UnreadableFolderError: class extends Error {
     folder = "";
   },
