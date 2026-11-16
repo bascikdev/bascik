@@ -1588,3 +1588,79 @@ describe("minifyJs \u2013 a number next to a dot across a line break", () => {
     expect(expectSameProgram(source)).toBe(expected);
   });
 });
+
+describe("minifyJs – HTML-like comments", () => {
+  // A classic script (and a `new Function` body) reads `<!--` anywhere, and `-->` at the start
+  // of a line, as a line comment (ECMAScript Annex B.1.1).
+  it.each([
+    ["a <!-- line", "log.push(1)\n<!-- the next one\nlog.push(2)"],
+    ["a <!-- after code", "let x = 1 <!-- one\nlog.push(x)"],
+    [
+      "a <!-- after an operator",
+      "const a = 1\nconst x = a +\n<!-- c\n2\nlog.push(x)",
+    ],
+    [
+      "a <!-- after a less-than",
+      "const a = 1\nconst x = a < <!-- c\n2\nlog.push(x)",
+    ],
+    ["a --> line", "log.push(1)\n--> the next one\nlog.push(2)"],
+    ["a --> line after a comment", "log.push(1)\n/* a */ --> c\nlog.push(2)"],
+    [
+      "a --> after a comment that spans lines",
+      "log.push(1) /*\n*/ --> c\nlog.push(2)",
+    ],
+    ["a --> at the start", "--> c\nlog.push(1)"],
+    [
+      "a script wrapped in <!-- and //-->",
+      "<!--\nlog.push(1)\nlog.push(2)\n//-->",
+    ],
+    ["a script wrapped in <!-- and -->", "<!--\nlog.push(1)\n-->"],
+    [
+      "a regex line after a <!-- line",
+      "<!-- c\n/a  b/.test('a  b') && log.push('re')",
+    ],
+    [
+      "a string line after a <!-- line",
+      "const a = 1\n<!-- c\n'x'\nlog.push(a)",
+    ],
+  ])("reads %s as a comment", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // These are operators, and the output must not turn them into a comment.
+  it.each([
+    [
+      "a less-than and a not-decrement",
+      "let a = 1, b = 2\nconst x = a < !--b\nlog.push(x, b)",
+    ],
+    [
+      "a less-than, a not, and a decrement",
+      "let a = 1, b = 2\nconst x = a <! --b\nlog.push(x, b)",
+    ],
+    [
+      "a less-than across a line break",
+      "let a = 1, b = 2\nconst x = a <\n!--b\nlog.push(x, b)",
+    ],
+    [
+      "a shift and a not-decrement",
+      "let a = 1, b = 3\nconst x = a <<!--b\nlog.push(x, b)",
+    ],
+    [
+      "a decrement and a greater-than",
+      "let a = 3, b = 1\nconst x = a-->b\nlog.push(x, a)",
+    ],
+    [
+      "a decrement, a space, and a greater-than",
+      "let a = 3, b = 1\nconst x = a-- > b\nlog.push(x, a)",
+    ],
+  ])("keeps %s", (_name, source) => {
+    expect(expectSameProgram(source)).not.toMatch(/<!--/);
+  });
+
+  // A module has no HTML-like comments: there `a <!--b` is `a < !--b`. Keeping the comment's
+  // line and its line break as written runs the same program as either kind of script.
+  it("keeps a <!-- comment and its line break as written", () => {
+    expect(minifyJs("x = a <!--b\nf()")).toBe("x=a<!--b\nf()");
+    expect(minifyJs("<!--\nx = 1\n//-->")).toBe("<!--\nx=1");
+  });
+});
