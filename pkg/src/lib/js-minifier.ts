@@ -645,6 +645,10 @@ const scanSegments = (js: string): Segment[] => {
   let moduleClauseOpen = false;
   // In an open clause: an `as` here is the keyword (after `*`, or after a name or string
   // being imported or exported), and the `as` last read still waits for its name.
+  // How many `{` were open at the `import` or `export`, so a `{` past that is the clause's.
+  let moduleClauseBraceLevel = 0;
+  // The clause's `{...}` has closed: only its `from` can follow.
+  let moduleClauseBracesClosed = false;
   let clauseAsAllowed = false;
   let clauseAsTargetNext = false;
   let contextualKeywordEnds: Set<number> | undefined;
@@ -1116,22 +1120,39 @@ const scanSegments = (js: string): Segment[] => {
         // `for (const x of\ny)`: no statement ends inside the header.
         (contextualKeywordEnds ??= new Set()).add(lastSigOffset);
       }
-      if (wordRun === "import" || wordRun === "export") {
+      // Inside the braces of a clause every word is a name being imported or exported
+      // (`export { default as x, let }`), never a keyword.
+      const clauseName =
+        moduleClauseOpen && braceKind.length > moduleClauseBraceLevel;
+      if (clauseName) {
+        // Nothing to track: the word declares nothing and does not end the clause.
+      } else if (wordRun === "import" || wordRun === "export") {
         clauseAsAllowed = false;
         clauseAsTargetNext = false;
         moduleClauseOpen = !atObjectMemberLevel();
-      } else if (MODULE_CLAUSE_ENDING_WORDS.has(wordRun)) {
+        moduleClauseBraceLevel = braceKind.length;
+        moduleClauseBracesClosed = false;
+      } else if (
+        MODULE_CLAUSE_ENDING_WORDS.has(wordRun) ||
+        (moduleClauseBracesClosed && wordRun !== "from")
+      ) {
         // `export default from`, `export const a = from`: a value follows, not a clause.
         moduleClauseOpen = false;
       }
-      if (DECLARATION_KEYWORDS.has(wordRun) && !atObjectMemberLevel()) {
+      if (
+        !clauseName &&
+        DECLARATION_KEYWORDS.has(wordRun) &&
+        !atObjectMemberLevel()
+      ) {
         // `{ const: v, deprecated }` names a key, not a declaration.
         declarationParenDepth.push(parenIsControlHeader.length);
         declarationBracketDepth.push(bracketDepth);
         declarationBraceDepth.push(braceKind.length);
         bindingNameExpected = true;
       }
-      if (wordRun === "function" || wordRun === "catch") {
+      if (clauseName) {
+        // `import { function as f }` names an export.
+      } else if (wordRun === "function" || wordRun === "catch") {
         bodyHeaderPending = true;
         functionIsExpression = wordRun === "function" && wordStartsExpression;
       } else if (wordRun === "class") {
@@ -1185,6 +1206,8 @@ const scanSegments = (js: string): Segment[] => {
         }
         break;
       case "{": {
+        // `export { a }\n{ let x }`: a second `{` is a block after the clause.
+        if (moduleClauseBracesClosed) moduleClauseOpen = false;
         const isArrowBody = lastSig === ">" && prevSig === "=";
         braceIsArrowBody.push(isArrowBody);
         braceEndsValue.push(openBrace() || isArrowBody);
@@ -1195,6 +1218,9 @@ const scanSegments = (js: string): Segment[] => {
         braceKind.pop();
         braceParenDepth.pop();
         braceBracketDepth.pop();
+        if (moduleClauseOpen && braceKind.length === moduleClauseBraceLevel) {
+          moduleClauseBracesClosed = true;
+        }
         if (lastBraceClosedArrowBody) {
           (arrowBodyCloses ??= new Set()).add(codeAccum.length);
         }

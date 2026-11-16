@@ -1930,6 +1930,14 @@ describe("minifyJs – an import or export clause continued on the next line", (
     ["export { 'a b'\nas c } from 'm'", "export{'a b'as c}from'm'"],
     ["import { 'a b'\nas c } from 'm'", "import{'a b'as c}from'm'"],
     ["import { a as as }\nfrom 'm'", "import{a as as}from'm'"],
+    // Inside the braces, `default`, `async` and the like are names being imported or exported.
+    ["export { default }\nfrom 'm'", "export{default}from'm'"],
+    ["export { default as x }\nfrom 'm'", "export{default as x}from'm'"],
+    ["import { default as x }\nfrom 'm'", "import{default as x}from'm'"],
+    ["export { a as default }\nfrom 'm'", "export{a as default}from'm'"],
+    ["export { default\nas x } from 'm'", "export{default as x}from'm'"],
+    ["export { async, let }\nfrom 'm'", "export{async,let}from'm'"],
+    ["import { function as f }\nfrom 'm'", "import{function as f}from'm'"],
   ])("joins %j", (source, expected) => {
     expect(minifyJs(source)).toBe(expected);
   });
@@ -1945,6 +1953,21 @@ describe("minifyJs – an import or export clause continued on the next line", (
       "a variable named as after a namespace import",
       "import * as n from 'a'\nas\nfoo()",
       "import*as n from'a';as;foo()",
+    ],
+    [
+      "a block after an export",
+      "export { a }\n{\n  let p\n  [1].forEach(f)\n}",
+      "export{a};{let p;[1].forEach(f)}",
+    ],
+    [
+      "a declaration after an export",
+      "export { a }\nlet p\n[1].forEach(f)",
+      "export{a};let p;[1].forEach(f)",
+    ],
+    [
+      "a function after an export",
+      "export { a }\nfunction f(a)\n{\n  return a\n}",
+      "export{a};function f(a){return a}",
     ],
     [
       "a variable named as after an import binding",
