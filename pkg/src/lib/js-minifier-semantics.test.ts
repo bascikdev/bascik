@@ -647,6 +647,23 @@ describe("minifyJs – a class field named like a keyword on a line of its own",
     );
   });
 
+  it.each(words)("ends a field named %s before another one", (word) => {
+    // The second word starts a member too: `typeof\nvoid\nx` is three fields.
+    const next = word === "void" ? "typeof" : "void";
+    expectSameProgram(
+      `class A {\n  ${word}\n  ${next}\n  bar = 2\n}\nconst a = new A()\nlog.push(${JSON.stringify(word)} in a, ${JSON.stringify(next)} in a, a.bar)`,
+    );
+  });
+
+  it.each([
+    ["after the modifier on its line", "static static"],
+    ["on the line after the modifier", "static\n  static"],
+  ])("ends a static field named static %s", (_name, member) => {
+    expectSameProgram(
+      `class A {\n  ${member}\n  foo() { return 12 }\n}\nlog.push('static' in A, typeof A.prototype.foo)`,
+    );
+  });
+
   it.each(words)("ends a field named %s after a field with a value", (word) => {
     // `in` and `instanceof` after a value continue it (`n = 1\nin\nfoo`), so those two
     // are only a member name after a `;`.

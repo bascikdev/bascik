@@ -488,6 +488,9 @@ const scanSegments = (js: string): Segment[] => {
   // The current word follows `{`, `;`, `}` or `static`: where `in` and `instanceof` are a
   // member name rather than an operator continuing the field value before them.
   let wordFollowsMemberBoundary = false;
+  // The current word follows a `static` modifier, so it is the member's name even when it is
+  // spelled `static`, `get` or `set` (`static static\nfoo() {}` is a field named `static`).
+  let wordFollowsStaticModifier = false;
   let i = 0;
   const len = js.length;
 
@@ -513,6 +516,10 @@ const scanSegments = (js: string): Segment[] => {
     if (lastSig === "{" || lastSig === ";" || lastSig === "}") return true;
     if (isWordChar(lastSig)) {
       if (wordIsProperty) return lineBreakSinceSignificant;
+      // After a field named like a keyword (`typeof\nvoid`), a new line is a new member.
+      if (memberKeywordNameEnds?.has(lastSigOffset) === true) {
+        return lineBreakSinceSignificant;
+      }
       if (wordRun === "static") return wordStartsClassMember;
       return (
         lineBreakSinceSignificant &&
@@ -676,11 +683,17 @@ const scanSegments = (js: string): Segment[] => {
               (wordRun === "async" && wordStartsExpression)));
         wordStartsClassMember =
           lastSig === "#" ? hashStartsClassMember : startsClassMember();
+        wordFollowsStaticModifier =
+          wordRun === "static" &&
+          !wordIsProperty &&
+          memberModifierEnds?.has(lastSigOffset) === true;
         wordFollowsMemberBoundary =
           lastSig === "{" ||
           lastSig === ";" ||
           lastSig === "}" ||
-          (wordRun === "static" && !wordIsProperty);
+          (wordRun === "static" && !wordIsProperty) ||
+          (lineBreakSinceSignificant &&
+            memberKeywordNameEnds?.has(lastSigOffset) === true);
         wordIsProperty = lastSig === ".";
         wordRun = c;
       }
@@ -699,7 +712,11 @@ const scanSegments = (js: string): Segment[] => {
       wordStartsClassMember &&
       classPendingParenDepth === -1;
     if (memberWordEnded) {
-      if (wordRun === "static" || wordRun === "get" || wordRun === "set") {
+      if (
+        (wordRun === "static" && !wordFollowsStaticModifier) ||
+        wordRun === "get" ||
+        wordRun === "set"
+      ) {
         (memberModifierEnds ??= new Set()).add(lastSigOffset);
       } else if (
         LINE_END_CONTINUING_KEYWORD.test(wordRun) &&
