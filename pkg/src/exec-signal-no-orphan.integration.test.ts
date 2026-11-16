@@ -72,7 +72,7 @@ const waitFor = async (
 };
 
 type Phase = "pre" | "parallel" | "post";
-type Signal = "SIGTERM" | "SIGINT" | "SIGHUP";
+type Signal = "SIGTERM" | "SIGINT" | "SIGHUP" | "SIGQUIT" | "SIGUSR2";
 
 const project = async (
   name: string,
@@ -193,6 +193,10 @@ describe.skipIf(process.platform === "win32")(
       ["pre", "SIGTERM"],
       ["pre", "SIGINT"],
       ["pre", "SIGHUP"],
+      // SIGQUIT (Ctrl+\) and SIGUSR2 (nodemon's restart) end a process too.
+      ["pre", "SIGQUIT"],
+      ["pre", "SIGUSR2"],
+      ["parallel", "SIGUSR2"],
       ["parallel", "SIGTERM"],
       ["post", "SIGTERM"],
     ];
@@ -287,6 +291,8 @@ describe.skipIf(process.platform === "win32")(
       ["parallel", "SIGINT", "24603", /Server running/],
       ["parallel", "SIGTERM", "24604", /Server running/],
       ["post", "SIGINT", "24605", undefined],
+      ["parallel", "SIGUSR2", "24606", /Server running/],
+      ["parallel", "SIGQUIT", "24607", /Server running/],
     ];
     for (const [phase, signal, port, ready] of shutdownCases) {
       it(`bascik (dev), server up, ${phase} script running, ${signal}: the stopped script is not reported`, async () => {

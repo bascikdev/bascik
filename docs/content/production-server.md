@@ -161,7 +161,7 @@ On boot, `bascik --server` reads all compiled HTML documents from `dist/` into a
 
 ## Graceful Shutdown & Health Checks
 
-The production server responds to `SIGTERM`, `SIGINT` and `SIGHUP` process signals by stopping acceptance of new TCP connections, closing idle keepalive connections, gracefully waiting for in-flight requests and registered cleanup tasks to finish, and exiting cleanly:
+The production server responds to `SIGTERM`, `SIGINT` and `SIGHUP` process signals (and, on macOS and Linux, `SIGQUIT` and `SIGUSR2`, the signal nodemon restarts with) by stopping acceptance of new TCP connections, closing idle keepalive connections, gracefully waiting for in-flight requests and registered cleanup tasks to finish, and exiting cleanly:
 
 - **Built-in Health Checks:** Point readiness probes at `/_health` (or `/_health/ready`) and liveness probes at `/_health/live`. Readiness answers 503 while the server boots and drains; liveness stays 200 while the process is up.
 - **Connection Draining:** In-flight streaming scripts and requests complete within `http.timeouts.drain` before connections close. Forced socket termination only occurs if the deadline expires.

@@ -1,3 +1,4 @@
+import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The registry and the "already exiting" flag are module state: every test
@@ -11,8 +12,16 @@ let savedExitCode: typeof process.exitCode;
 let savedSigint: NodeJS.SignalsListener[];
 let savedSigterm: NodeJS.SignalsListener[];
 let savedSighup: NodeJS.SignalsListener[];
+const posixOnly: NodeJS.Signals[] = ["SIGQUIT", "SIGUSR2"];
+let savedPosixOnly: Map<NodeJS.Signals, NodeJS.SignalsListener[]>;
 
 beforeEach(() => {
+  savedPosixOnly = new Map(
+    posixOnly.map((signal) => [
+      signal,
+      process.listeners(signal) as NodeJS.SignalsListener[],
+    ]),
+  );
   savedExitCode = process.exitCode;
   savedSigint = process.listeners("SIGINT") as NodeJS.SignalsListener[];
   savedSigterm = process.listeners("SIGTERM") as NodeJS.SignalsListener[];
@@ -28,6 +37,10 @@ afterEach(() => {
   for (const listener of savedSigint) process.on("SIGINT", listener);
   for (const listener of savedSigterm) process.on("SIGTERM", listener);
   for (const listener of savedSighup) process.on("SIGHUP", listener);
+  for (const [signal, listeners] of savedPosixOnly) {
+    process.removeAllListeners(signal);
+    for (const listener of listeners) process.on(signal, listener);
+  }
 });
 
 const deferred = () => {
@@ -293,6 +306,41 @@ describe("exitOnSignalsAfterStopping", () => {
     });
     process.emit("SIGINT");
     expect(kill).toHaveBeenCalledWith(process.pid, "SIGINT");
+  });
+
+  // Ctrl+\ sends SIGQUIT and nodemon restarts with SIGUSR2: both end the
+  // process by default, and left alone they orphaned the exec scripts.
+  it.skipIf(process.platform === "win32")(
+    "stops on SIGQUIT and SIGUSR2 too, and ends with that signal and its shell exit code",
+    async () => {
+      for (const signal of posixOnly) {
+        const { exitOnSignalsAfterStopping, STOP_SIGNALS } = await load();
+        expect(STOP_SIGNALS).toContain(signal);
+        kill.mockClear();
+        const stop = deferred();
+        exitOnSignalsAfterStopping(() => stop.promise);
+        process.exitCode = undefined;
+        process.emit(signal);
+        expect(process.exitCode).toBe(128 + os.constants.signals[signal]);
+        for (const other of STOP_SIGNALS)
+          expect(process.listenerCount(other)).toBe(0);
+        stop.resolve();
+        await flush();
+        expect(kill).toHaveBeenCalledWith(process.pid, signal);
+      }
+    },
+  );
+
+  // Windows has neither signal; listening for them would only mislead.
+  it("listens for SIGQUIT and SIGUSR2 only where the platform has them", async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      const { STOP_SIGNALS } = await load();
+      expect(STOP_SIGNALS).toEqual(["SIGINT", "SIGTERM", "SIGHUP"]);
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
   });
 
   it("handOverSignals removes its listeners and leaves a server's in place", async () => {
