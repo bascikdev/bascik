@@ -473,6 +473,34 @@ describe("minifyJs – lines starting with ( or [ continue the expression (F037)
     expectSameProgram(source);
   });
 
+  // The statement on the next line declares nothing, so a comma on it does not start a
+  // binding: `y\n(5)` after it is a call, as in the source.
+  it.each([
+    ["an index line", "let p\n[0].forEach(log.push, log), y\n(5)"],
+    ["a parenthesized line", "let p\n(0, y)\n(5)"],
+    ["a not line", "let p\n!function () {}(), y\n(5)"],
+    ["a bitwise not line", "let p\n~p, y\n(5)"],
+    ["an increment after a value", "let p = 1\n++p, y\n(5)\nlog.push(p)"],
+    ["a decrement after a value", "let p = 1\n--p, y\n(5)\nlog.push(p)"],
+    ["a not after a value", "let p = 1\n!p, y\n(5)"],
+    ["a not of a string after a value", "let p = 1\n!'s', y\n(5)"],
+    ["a bitwise not after a value", "let p = 1\n~p, y\n(5)"],
+  ])("ends the declaration before %s", (_name, source) => {
+    expectSameProgram(`const y = (v) => log.push('called', v)\n${source}`);
+  });
+
+  // An operator line after a value continues the initializer, so its commas still declare.
+  it.each([
+    ["a plus line", "let p = 1\n+q+q, r\n[0]\nlog.push(p, r)"],
+    ["a plus and a sign", "let p = 1\n+ +q, r\n[0]\nlog.push(p, r)"],
+    ["a minus and a sign", "let p = 1\n- -q, r\n[0]\nlog.push(p, r)"],
+    ["a plus and a string", "let p = 1\n+'x'+q, r\n[0]\nlog.push(p, r)"],
+    ["an inequality", "let p = 1\n!= q, r\n[0]\nlog.push(p, r)"],
+    ["a strict inequality", "let p = 1\n!== q, r\n[0]\nlog.push(p, r)"],
+  ])("continues the declaration after %s", (_name, source) => {
+    expectSameProgram(`const q = 2\n${source}`);
+  });
+
   // Not a declaration's last binding: the next line continues the value or the call.
   it.each([
     [
