@@ -114,6 +114,11 @@ type Segment = {
    */
   lineBreakBefore?: boolean;
   /**
+   * Literal segments only: a string that names a class member (`'a b' = 1`, `static 'a'`). A
+   * field with that name and no value ends at a line break before a `[` or `*` member.
+   */
+  classMemberName?: boolean;
+  /**
    * Literal segments only: the module specifier of an `import` or `export`, which its
    * `with { type: "json" }` attributes may follow on the next line.
    */
@@ -664,6 +669,10 @@ const scanSegments = (js: string): Segment[] => {
   let moduleClauseBracesClosed = false;
   let clauseAsAllowed = false;
   let clauseAsTargetNext = false;
+  // One entry per open `[`: true when it opens the computed key of a class member.
+  const bracketIsComputedKey: boolean[] = [];
+  // Offset in `codeAccum` of the `]` that last closed a computed key, or -1.
+  let lastComputedKeyCloseOffset = -1;
   let contextualKeywordEnds: Set<number> | undefined;
   let letKeywordEnds: Set<number> | undefined;
   // The word being read starts a statement (or a `for` header), where `let` can declare.
@@ -823,6 +832,14 @@ const scanSegments = (js: string): Segment[] => {
         return lineBreakSinceSignificant;
       }
       if (wordRun === "static") return wordStartsClassMember;
+      // `accessor e`, `get a`: the name after a modifier on its line starts the same member.
+      if (
+        CLASS_MEMBER_MODIFIERS.has(wordRun) &&
+        wordStartsClassMember &&
+        !lineBreakSinceSignificant
+      ) {
+        return true;
+      }
       return (
         lineBreakSinceSignificant &&
         !continuesExpression(wordRun) &&
@@ -863,6 +880,7 @@ const scanSegments = (js: string): Segment[] => {
     }
     contextualKeywordEnds = undefined;
     letKeywordEnds = undefined;
+    lastComputedKeyCloseOffset = -1;
     continuesClause = false;
     bareBindingEnds = undefined;
     numberDotEnds = undefined;
@@ -1277,25 +1295,48 @@ const scanSegments = (js: string): Segment[] => {
         hashStartsClassMember = startsClassMember();
         break;
       case "[":
-      case "*":
+      case "*": {
         // `name\n[key] = 1` and `name\n*items() {}` in a class body: `name` is a field of its
-        // own. `static`, `get` and `set` are modifiers of the member that follows.
-        if (
+        // own. `static`, `get` and `set` are modifiers of the member that follows. A computed
+        // key (`[name]\n[key] = 1`) cannot be indexed or multiplied either.
+        const fieldEnds =
           lineBreakSinceSignificant &&
-          isWordChar(lastSig) &&
-          wordStartsClassMember &&
           lastSigOffset !== -1 &&
-          // `#static` and `#get` are field names, not modifiers.
-          (wordIsProperty ||
-            (wordRun !== "static" &&
-              (c === "*" || (wordRun !== "get" && wordRun !== "set"))))
-        ) {
-          (fieldNameEnds ??= new Set()).add(lastSigOffset);
+          ((isWordChar(lastSig) &&
+            wordStartsClassMember &&
+            // `#static` and `#get` are field names, not modifiers.
+            (wordIsProperty ||
+              (wordRun !== "static" &&
+                (c === "*" || (wordRun !== "get" && wordRun !== "set"))))) ||
+            (lastSig === "]" && lastComputedKeyCloseOffset === lastSigOffset));
+        if (fieldEnds) (fieldNameEnds ??= new Set()).add(lastSigOffset);
+        if (c === "[") {
+          // A computed key starts a member: after `{`, `;` or the `}` of a method, after a
+          // modifier, or where the field before it has just ended.
+          bracketIsComputedKey.push(
+            atClassMemberLevel() &&
+              (fieldEnds ||
+                lastSig === "{" ||
+                lastSig === ";" ||
+                (lastSig === "}" && !lastBraceEndedValue) ||
+                (isWordChar(lastSig) &&
+                  !wordIsProperty &&
+                  wordStartsClassMember &&
+                  (wordRun === "static" ||
+                    CLASS_MEMBER_MODIFIERS.has(wordRun))) ||
+                (!lastSig &&
+                  lineBreakSinceSignificant &&
+                  segments.at(-1)?.classMemberName === true)),
+          );
+          bracketDepth++;
         }
-        if (c === "[") bracketDepth++;
         break;
+      }
       case "]":
         if (bracketDepth > 0) bracketDepth--;
+        if (bracketIsComputedKey.pop() === true) {
+          lastComputedKeyCloseOffset = codeAccum.length;
+        }
         break;
       case ".":
         if (wordIsDecimalInteger()) {
@@ -1367,17 +1408,26 @@ const scanSegments = (js: string): Segment[] => {
       // `var a = 1\n"x"`: the literal starts a new statement, which declares nothing.
       closeDeclaration();
     }
+    // `'a b'\n[k] = 1`: a string that starts a class member, or follows its modifier.
+    const classMemberName =
+      kind === "string" &&
+      (startsClassMember() ||
+        (atClassMemberLevel() &&
+          isWordChar(lastSig) &&
+          !wordIsProperty &&
+          wordStartsClassMember &&
+          CLASS_MEMBER_MODIFIERS.has(wordRun)));
     bindingNameExpected = false;
     flushCode();
-    segments.push(
-      lineBreakBefore
-        ? { literal: true, text, lineBreakBefore }
-        : asiBefore
-          ? { literal: true, text, asiBefore }
-          : moduleSpecifier
-            ? { literal: true, text, moduleSpecifier }
-            : { literal: true, text },
-    );
+    const segment: Segment = lineBreakBefore
+      ? { literal: true, text, lineBreakBefore }
+      : asiBefore
+        ? { literal: true, text, asiBefore }
+        : moduleSpecifier
+          ? { literal: true, text, moduleSpecifier }
+          : { literal: true, text };
+    if (classMemberName) segment.classMemberName = true;
+    segments.push(segment);
     lineBreakSinceSignificant = false;
   };
 
@@ -1800,7 +1850,13 @@ export const minifyJs = (js: string): string => {
       const importAttributes =
         segments[sIdx - 1].moduleSpecifier === true &&
         /^with(?![\w$\\]|[^\x00-\x7f\s])/.test(firstLine);
-      if (
+      // `'a b'\n[k] = 1`: a field named by a string ends before a `[` or `*` member.
+      const fieldNameEnds =
+        segments[sIdx - 1].classMemberName === true && /^[[*]/.test(firstLine);
+      if (resultLast && firstLine && fieldNameEnds) {
+        result += ";";
+        resultLast = ";";
+      } else if (
         resultLast &&
         firstLine &&
         !importAttributes &&
