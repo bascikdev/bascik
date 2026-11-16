@@ -200,6 +200,7 @@ vi.mock("./pages-root-removal.js", () => ({
     root: "/project/src/pages",
     isMissing: pagesRootMissing,
     compileAtBoot: (compile: () => Promise<void>) => compile(),
+    poll: () => () => {},
   }),
 }));
 

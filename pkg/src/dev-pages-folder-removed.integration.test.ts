@@ -13,7 +13,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -67,89 +67,105 @@ describe(
   () => {
     // With a watched exec entry, one source observer (watch-source.ts) owns
     // the pages folder instead of the page and asset watchers (watch.ts).
-    for (const observer of ["page watchers", "exec source observer"]) {
-      it(`warns once, clears the pages' output, and recovers (${observer})`, async () => {
-        const root = fixtureRoot(`dev-pages-folder-removed-${observer.length}`);
-        roots.push(root);
-        await mkdir(root, { recursive: true });
-        await writeFixtureFile(root, "package.json", '{"type":"module"}');
-        if (observer === "exec source observer") {
-          await writeFixtureFile(
-            root,
-            "bascik.config.js",
-            'export default { pipeline: { exec: [{ script: "scripts/pre.mjs", watch: ["content/"] }] } };',
+    // Removing a folder above it (`rm -rf src`) sends the pages watchers no
+    // event at all, so the dev server also looks for the folder itself.
+    for (const removed of ["src/pages", "src"])
+      for (const observer of ["page watchers", "exec source observer"]) {
+        it(`warns once, clears the pages' output, and recovers (rm -rf ${removed}, ${observer})`, async () => {
+          const root = fixtureRoot(
+            `dev-pages-folder-removed-${removed.length}-${observer.length}`,
           );
-          await writeFixtureFile(root, "scripts/pre.mjs", "export {};");
-          await writeFixtureFile(root, "content/books.md", "# Books");
-        }
-        await writePages(root);
-        const child = spawn(
-          process.execPath,
-          [cli, "--port", String(DEV_PORT), "--no-pin"],
-          { cwd: root, detached: true, stdio: ["ignore", "pipe", "pipe"] },
-        );
-        let output = "";
-        child.stdout.on("data", (chunk) => (output += chunk));
-        child.stderr.on("data", (chunk) => (output += chunk));
-        try {
-          expect(
-            await waitFor(
-              async () => (await status("/authors/eliot")) === 200,
-              45_000,
-            ),
-            output,
-          ).toBe(true);
-          // The boot compile and its asset copy are done, as when a person
-          // deletes the folder in a running session.
-          expect(
-            await waitFor(() => /All tasks completed/.test(output)),
-            output,
-          ).toBe(true);
-
-          await rm(join(root, "src/pages"), { recursive: true, force: true });
-          const warning =
-            /\[bascik\] warning: pages folder "src\/pages" \(directory\.pages\) was removed/g;
-          expect(await waitFor(() => warning.test(output)), output).toBe(true);
-          expect(
-            await waitFor(
-              () =>
-                !existsSync(join(root, "dist/authors/eliot.html")) &&
-                !existsSync(join(root, "dist/covers/middlemarch.txt")),
-            ),
-            output,
-          ).toBe(true);
-          expect(
-            await waitFor(async () => (await status("/authors/eliot")) === 404),
-            output,
-          ).toBe(true);
-          // Let every watcher event from the removal land.
-          await new Promise((done) => setTimeout(done, 1_500));
-          expect(output.match(warning) ?? [], output).toHaveLength(1);
-          expect(output).not.toMatch(/OutputPathError|watch error/);
-          expect(output).not.toMatch(/does not exist in/);
-          expect(output).not.toMatch(/\n\s+at /);
-
-          await writePages(root);
-          expect(
-            await waitFor(async () => (await status("/authors/eliot")) === 200),
-            output,
-          ).toBe(true);
-          expect(
-            await waitFor(
-              async () => (await status("/covers/middlemarch.txt")) === 200,
-            ),
-            output,
-          ).toBe(true);
-          expect(output).toMatch(/pages folder "src\/pages" is back/);
-          expect(child.exitCode).toBeNull();
-        } finally {
-          const exited = new Promise((done) => child.once("exit", done));
-          if (child.exitCode === null && child.signalCode === null) {
-            process.kill(-child.pid!, "SIGKILL");
-            await exited;
+          roots.push(root);
+          await mkdir(root, { recursive: true });
+          await writeFixtureFile(root, "package.json", '{"type":"module"}');
+          if (observer === "exec source observer") {
+            await writeFixtureFile(
+              root,
+              "bascik.config.js",
+              'export default { pipeline: { exec: [{ script: "scripts/pre.mjs", watch: ["content/"] }] } };',
+            );
+            await writeFixtureFile(root, "scripts/pre.mjs", "export {};");
+            await writeFixtureFile(root, "content/books.md", "# Books");
           }
-        }
-      });
-    }
+          await writePages(root);
+          const child = spawn(
+            process.execPath,
+            [cli, "--port", String(DEV_PORT), "--no-pin"],
+            { cwd: root, detached: true, stdio: ["ignore", "pipe", "pipe"] },
+          );
+          let output = "";
+          child.stdout.on("data", (chunk) => (output += chunk));
+          child.stderr.on("data", (chunk) => (output += chunk));
+          try {
+            expect(
+              await waitFor(
+                async () => (await status("/authors/eliot")) === 200,
+                45_000,
+              ),
+              output,
+            ).toBe(true);
+            // The boot compile and its asset copy are done, as when a person
+            // deletes the folder in a running session.
+            expect(
+              await waitFor(() => /All tasks completed/.test(output)),
+              output,
+            ).toBe(true);
+
+            await rm(join(root, removed), { recursive: true, force: true });
+            const warning =
+              /\[bascik\] warning: pages folder "src\/pages" \(directory\.pages\) was removed/g;
+            expect(await waitFor(() => warning.test(output)), output).toBe(
+              true,
+            );
+            expect(
+              await waitFor(
+                () =>
+                  !existsSync(join(root, "dist/authors/eliot.html")) &&
+                  !existsSync(join(root, "dist/covers/middlemarch.txt")),
+              ),
+              output,
+            ).toBe(true);
+            expect(
+              await waitFor(
+                async () => (await status("/authors/eliot")) === 404,
+              ),
+              output,
+            ).toBe(true);
+            // Let every watcher event from the removal land.
+            await new Promise((done) => setTimeout(done, 1_500));
+            expect(output.match(warning) ?? [], output).toHaveLength(1);
+            expect(output).not.toMatch(/OutputPathError|watch error/);
+            expect(output).not.toMatch(/does not exist in/);
+            expect(output).not.toMatch(/\n\s+at /);
+
+            if (removed === "src") {
+              // Put back in one step, as a branch switch or `mv` does.
+              const staged = join(root, "staged");
+              await writePages(staged);
+              await rename(join(staged, "src"), join(root, "src"));
+            } else await writePages(root);
+            expect(
+              await waitFor(
+                async () => (await status("/authors/eliot")) === 200,
+              ),
+              output,
+            ).toBe(true);
+            expect(
+              await waitFor(
+                async () => (await status("/covers/middlemarch.txt")) === 200,
+              ),
+              output,
+            ).toBe(true);
+            expect(output).toMatch(/pages folder "src\/pages" is back/);
+            expect(child.exitCode).toBeNull();
+          } finally {
+            const exited = new Promise((done) => child.once("exit", done));
+            if (child.exitCode === null && child.signalCode === null) {
+              process.kill(-child.pid!, "SIGKILL");
+              await exited;
+            }
+          }
+        });
+      }
   },
 );
