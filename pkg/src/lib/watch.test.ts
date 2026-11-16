@@ -195,14 +195,18 @@ vi.mock("node:fs", () => ({
 // The pages folder is there unless a test says otherwise; its removal is
 // covered for real in dev-pages-folder-removed.integration.test.ts.
 const pagesRootMissing = vi.hoisted(() => vi.fn(() => false));
-vi.mock("./pages-root-removal.js", () => ({
-  createPagesRootRemoval: () => ({
-    root: "/project/src/pages",
-    isMissing: pagesRootMissing,
-    compileAtBoot: (compile: () => Promise<void>) => compile(),
-    poll: () => () => {},
-  }),
-}));
+vi.mock("./pages-root-removal.js", async () => {
+  const { resolve } = await import("node:path");
+  return {
+    createPagesRootRemoval: () => ({
+      // Resolved like the real root: on Windows it gains the drive letter.
+      root: resolve("/project/src/pages"),
+      isMissing: pagesRootMissing,
+      compileAtBoot: (compile: () => Promise<void>) => compile(),
+      poll: () => () => {},
+    }),
+  };
+});
 
 vi.mock("./file-system.js", () => ({
   copyReplicatePath: mockCopyReplicatePath,
