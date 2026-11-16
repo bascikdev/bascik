@@ -284,6 +284,50 @@ describe("minifyJs – else or while on the line after a value's closing brace",
       "an object as a do body",
       "let n = 0, x\ndo x = { n: n++ }\nwhile (n < 2)\nlog.push(n, x.n)",
     ],
+    [
+      "an object after the colon of a conditional",
+      "let x, b = 0\nif (!log.length) x = b ? {} : {}\nelse x = 1\nlog.push(typeof x)",
+    ],
+    [
+      "an object after a plus",
+      "let x, b = 'a'\nif (!log.length) x = b + {}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "an object after a comparison",
+      "let x, b = 1\nif (!log.length) x = b < {}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "an object after a not",
+      "let x\nif (!log.length) x = !{}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "a function after delete",
+      "let x\nif (!log.length) x = delete function () {}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "an object after delete",
+      "let x\nif (!log.length) x = delete {}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "a function and a class after a conditional",
+      "let a = 2, x\nx = a ? function () {} : class {}\nwhile (a) a--\nlog.push(typeof x, a)",
+    ],
+    [
+      "a function after an arrow",
+      "let f\nif (!log.length) f = (b) => function () { return b }\nelse f = 1\nlog.push(f(3)())",
+    ],
+    [
+      "a class after an arrow",
+      "let f\nif (!log.length) f = () => class { m() { return 4 } }\nelse f = 1\nlog.push(new (f())().m())",
+    ],
+    [
+      "an object after a minus and a multiply",
+      "let x\nif (!log.length) x = 1 - {} * {}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "a nested conditional",
+      "let x, a = 0, b = 1\nif (!log.length) x = a ? {} : b ? {} : { k: 1 }\nelse x = 1\nlog.push(x.k)",
+    ],
   ])("ends the statement after %s", (_name, source) => {
     expectSameProgram(source);
   });
@@ -322,6 +366,26 @@ describe("minifyJs – else or while on the line after a value's closing brace",
     [
       "a labeled block inside an if",
       "let x = 0\nif (!log.length) a: { x = 1 }\nelse x = 2\nlog.push(x)",
+    ],
+    [
+      "a labeled block as a do body",
+      "let n = 0\ndo a: { n++ }\nwhile (n < 2)\nlog.push(n)",
+    ],
+    [
+      "a labeled block after a conditional",
+      "let n = 0, x = n ? 1 : 2\ndo a: { n++ }\nwhile (n < x)\nlog.push(n)",
+    ],
+    [
+      "a block after a comparison in the header",
+      "let x = 0, a = 2, b = 1\nif (a > b) { x = 1 }\nelse { x = 2 }\nlog.push(x)",
+    ],
+    [
+      "a block after a postfix update",
+      "let n = 0, m = 0\ndo {\n  n++\n}\nwhile (n < 2)\nif (m++ < 0) { m = 9 }\nelse { m += 10 }\nlog.push(n, m)",
+    ],
+    [
+      "a block after an optional chain and a nullish operator",
+      "const o = null\nlet x = 0\nif (o?.k ?? true) { x = 1 }\nelse { x = 2 }\nlog.push(x)",
     ],
   ])("keeps %s joined to what follows", (_name, source) => {
     const minified = expectSameProgram(source);
