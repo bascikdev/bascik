@@ -2457,6 +2457,65 @@ describe("minifyJs – await or yield at the end of a line", () => {
   });
 });
 
+describe("minifyJs – a property spelled like a keyword apart from its dot", () => {
+  // `o. return` and `o.\nreturn` are the property `return`: whitespace may separate a `.`
+  // from its name, and a property is a value, never a keyword.
+  it.each([
+    [
+      "a call after a spaced return",
+      "var o = { return: (v) => log.push(v) }\no. return\n(1)",
+    ],
+    [
+      "a call after a return on its own line",
+      "var o = { return: (v) => log.push(v) }\no.\nreturn\n(1)",
+    ],
+    [
+      "a call after an optional chain",
+      "var o = { throw: (v) => log.push(v) }\no?.\nthrow\n(2)",
+    ],
+    [
+      "an index after a spaced break",
+      "var o = { break: [3] }\nlog.push(o. break\n[0])",
+    ],
+    [
+      "a minus after a spaced continue",
+      "var o = { continue: 5 }\nlog.push(o. continue\n- 1)",
+    ],
+    [
+      "a template after a spaced return",
+      "var o = { return: (s) => s[0] }\nlog.push(o. return\n`t`)",
+    ],
+    [
+      "a name line after a spaced new",
+      "var o = { new: 1 }, x = 0, foo = () => log.push(6)\nx = o. new\nfoo()\nlog.push(x)",
+    ],
+    [
+      "a name line after a spaced typeof",
+      "var o = { typeof: 1 }, x = 0, foo = () => log.push(7)\nx = o.\n  typeof\nfoo()\nlog.push(x)",
+    ],
+    [
+      "a call after a spaced yield",
+      "var o = { yield: (v) => log.push(v) }\no. yield\n(8)",
+    ],
+  ])("reads the property before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // A keyword that only follows a property or a number still ends its statement.
+  it.each([
+    [
+      "a return after a dot in a number",
+      "function f() { return 1.\n}\nlog.push(f())",
+    ],
+    [
+      "a return after a property",
+      "function f(o) { return\n  o.a\n}\nlog.push(f({ a: 1 }))",
+    ],
+  ])("still ends the statement with %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
 describe("minifyJs – a private name spelled like a keyword", () => {
   // `#return`, `#typeof` and `#if` are names: none of them is the keyword it is spelled like.
   const inClass = (members: string, body: string): string =>
