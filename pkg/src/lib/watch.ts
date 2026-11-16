@@ -199,6 +199,16 @@ export const watchFiles = async (options: WatchFilesOptions = {}) => {
     await watchSourceCycles(invalidateRuntimeModule, options.bootCompile);
   } else {
     let initialScanDone = false;
+    // `rm -rf src` (a folder above the pages folder), and putting it back,
+    // can reach these watchers as no event at all.
+    registerShutdownHandler(
+      pagesRootRemoval.poll(() => {
+        copyStaticAssets()
+          .then(() => eventEmitter.emit("asset-changed"))
+          .catch(onWatchError);
+        void rebuildAllPages();
+      }),
+    );
     // Chokidar's `ready` fires before the boot compile ends. A page added or
     // removed in between is missing from (or stale in) the boot compile's
     // page list, and an inline stylesheet edited in between may have been

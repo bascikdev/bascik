@@ -82,6 +82,12 @@ const project = async (
     "src/components/book-card.css",
     `.card { color: green; }`,
   );
+  // Imported by book-card.css only in the @import test.
+  await writeFixtureFile(
+    root,
+    "src/components/shared.css",
+    `.card { margin: 0; }`,
+  );
   const lockedPath = join(root, "src/components", lockedFile);
   await chmod(lockedPath, 0o000);
   locked.push(lockedPath);
@@ -119,6 +125,24 @@ describe.skipIf(!canLock)(
       );
       expect(output).not.toMatch(/could not read component file/);
       expect(output).not.toMatch(/\n\s+at /);
+    });
+
+    // A stylesheet the companion `.css` imports is read the same way.
+    it("fails the build for an unreadable @import-ed stylesheet", async () => {
+      const root = await project("css-import", false, "shared.css");
+      await writeFixtureFile(
+        root,
+        "src/components/book-card.css",
+        `@import "./shared.css";\n.card { color: green; }`,
+      );
+      const { code, output } = await run(root, ["--build"]);
+      expect(code, output).toBe(1);
+      expect(output).toMatch(
+        /\[bascik\] error: could not read imported stylesheet "src\/components\/shared\.css": EACCES/,
+      );
+      expect(output).not.toMatch(/could not read component file/);
+      expect(output).not.toMatch(/\n\s+at /);
+      expect(output).not.toMatch(/Build complete/);
     });
 
     it("fails bascik --check at the file, not as an unmatched tag", async () => {
