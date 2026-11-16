@@ -76,11 +76,14 @@ const VOID_ELEMENTS = new Set([
 ]);
 
 /**
- * The open tags (`[start, end)`) of named slot markers that sit inside a
- * component usage or inside another named slot marker's element, or that are
- * on a void element. The build's slot parser gives the first to the nested
- * component and never fills the others, so none declares a slot of this
- * template.
+ * The open tags (`[start, end)`) of named slot markers that declare no slot
+ * of this template, read as the build's slot parser (`parseNamedSlots` in
+ * pkg's component-slots.ts) reads them: a marker inside a closed component
+ * usage belongs to that component, a marker inside a filled wrapper is that
+ * wrapper's content, and a marker whose element has no matching end tag (a
+ * void element, `<span data-bascik-slot="a"/>` with no `</span>`) is never
+ * filled. A component usage with no end tag, or written `<x-card/>`, holds
+ * nothing, so a marker after it is still this template's.
  */
 function ownedSlotMarkerTags(
   masked: string,
@@ -88,27 +91,66 @@ function ownedSlotMarkerTags(
 ): Array<[number, number]> {
   const owned: Array<[number, number]> = [];
   if (!/data-bascik-slot\s*=/i.test(masked)) return owned;
-  const stack: Array<{ name: string; boundary: boolean }> = [];
-  let boundaries = 0;
-  for (const tag of scanTags(masked)) {
+  const tags = [...scanTags(masked)];
+  // The start and end of the end tag matching each start tag, or -1, as the
+  // build's close finder matches them (`createMatchingCloseFinder`): the first
+  // end tag of the same name that no later start tag of that name takes. A
+  // start tag ending in `/>` takes none, but finds its own as any other does.
+  const closeStart = new Array<number>(tags.length).fill(-1);
+  const closeEnd = new Array<number>(tags.length).fill(-1);
+  const open = new Map<string, number[]>();
+  const selfClosed = new Map<string, Array<{ tag: number; depth: number }>>();
+  for (const [index, tag] of tags.entries()) {
     const name = tag.name.toLowerCase();
+    const stack = open.get(name) ?? [];
+    open.set(name, stack);
     if (tag.closing) {
-      let at = stack.length - 1;
-      while (at >= 0 && stack[at].name !== name) at--;
-      if (at < 0) continue;
-      for (let index = at; index < stack.length; index++)
-        if (stack[index].boundary) boundaries--;
-      stack.length = at;
+      const depth = stack.length;
+      const matched = stack.pop();
+      if (matched !== undefined) {
+        closeStart[matched] = tag.start;
+        closeEnd[matched] = tag.end;
+      }
+      const waiting = selfClosed.get(name);
+      while (waiting && waiting.length > 0 && waiting.at(-1)!.depth >= depth) {
+        const { tag: waiter } = waiting.pop()!;
+        closeStart[waiter] = tag.start;
+        closeEnd[waiter] = tag.end;
+      }
       continue;
     }
-    const named = NAMED_SLOT_ATTRIBUTE.test(tag.text);
-    // A void element has no content to replace, so the build fills no slot there.
-    if (named && (boundaries > 0 || VOID_ELEMENTS.has(name)))
-      owned.push([tag.start, tag.end]);
-    if (VOID_ELEMENTS.has(name) || /\/\s*>$/.test(tag.text)) continue;
-    const boundary = named || componentNames.has(name);
-    stack.push({ name, boundary });
-    if (boundary) boundaries++;
+    if (VOID_ELEMENTS.has(name)) continue;
+    if (/\/\s*>$/.test(tag.text)) {
+      const waiting = selfClosed.get(name) ?? [];
+      selfClosed.set(name, waiting);
+      waiting.push({ tag: index, depth: stack.length });
+      continue;
+    }
+    stack.push(index);
+  }
+  // The parser's walk: wrappers in order, skipping the content of each one it
+  // fills and every marker inside a closed component usage.
+  let insideUntil = -1;
+  let filledUntil = 0;
+  for (const [index, tag] of tags.entries()) {
+    if (tag.closing) continue;
+    if (NAMED_SLOT_ATTRIBUTE.test(tag.text)) {
+      if (
+        tag.start < filledUntil ||
+        tag.start < insideUntil ||
+        closeStart[index] === -1
+      )
+        owned.push([tag.start, tag.end]);
+      else filledUntil = closeEnd[index];
+    }
+    // A usage's content starts after its start tag, so the usage's own
+    // marker is still read above.
+    if (
+      componentNames.has(tag.name.toLowerCase()) &&
+      !/\/\s*>$/.test(tag.text) &&
+      closeStart[index] !== -1
+    )
+      insideUntil = Math.max(insideUntil, closeStart[index]);
   }
   return owned;
 }
