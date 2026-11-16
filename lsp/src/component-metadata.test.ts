@@ -76,6 +76,32 @@ describe("analyzeComponentSource", () => {
     ).toEqual({ name: "default" });
   });
 
+  it.each([
+    ["style", '<style>.a::before { content: "<!--"; }</style>'],
+    ["script", '<script>const open = "<!--";</script>'],
+    [
+      "JSON data block",
+      '<script type="application/json">{"a":"<!--"}</script>',
+    ],
+    ["textarea", "<textarea><!--</textarea>"],
+  ])(
+    "reads `<!--` inside a %s as its text: the props and slots after it are declared",
+    (_where, element) => {
+      const metadata = analyzeComponentSource(
+        `${element}<h2 data-bascik-prop-title></h2><div data-bascik-slot="aside"></div><!-- note -->`,
+      );
+      expect(metadata.props.map((prop) => prop.name)).toEqual(["title"]);
+      expect(metadata.slots.map((slot) => slot.name)).toEqual(["aside"]);
+    },
+  );
+
+  it("does not read a marker inside a comment that holds a <script> tag", () => {
+    const metadata = analyzeComponentSource(
+      "<!-- <script> data-bascik-prop-ghost --><p data-bascik-prop-real></p><script>x()</script>",
+    );
+    expect(metadata.props.map((prop) => prop.name)).toEqual(["real"]);
+  });
+
   it("does not count custom elements named like style or script as styles or scripts", () => {
     const metadata = analyzeComponentSource(
       "<style-guide></style-guide><script-loader></script-loader>",

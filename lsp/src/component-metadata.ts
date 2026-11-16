@@ -1,3 +1,4 @@
+import { maskLikeCompiler } from "./component-usages.js";
 import { scanTags } from "./tag-scan.js";
 
 export interface ComponentMetadataMember {
@@ -46,20 +47,13 @@ interface Annotation {
   end: number;
 }
 
-function maskNonMarkup(source: string): string {
-  return source
-    .replace(/<!--[\s\S]*?(?:-->|$)/g, (match) => " ".repeat(match.length))
-    .replace(
-      /(<(script|style|textarea)(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi,
-      (
-        _match,
-        openTag: string,
-        _name: string,
-        body: string,
-        closeTag: string,
-      ) => `${openTag}${" ".repeat(body.length)}${closeTag}`,
-    );
-}
+/**
+ * Comment bodies and `<script>`, `<style>` and `<textarea>` content blanked,
+ * in document order as the compiler reads them: a `<!--` inside a stylesheet
+ * or script string is that element's text, and a `<script>` inside a comment
+ * opens nothing.
+ */
+const maskNonMarkup = maskLikeCompiler;
 
 // The build's named wrapper marker (`NAMED_SLOT_MARKER_RE` in pkg's component-slots.ts).
 const NAMED_SLOT_ATTRIBUTE =
