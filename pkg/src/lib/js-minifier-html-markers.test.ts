@@ -94,7 +94,7 @@ describe("minifyJs – HTML markers in comments, checked against parse5", () => 
   });
 
   // Comment bodies built from the pieces of every marker, so near misses (`--!>`, `- ->`,
-  // `<scrip`, `</ script`) and real markers split across tokens both come up.
+  // `< script`, `</ script`) and real markers split across tokens both come up.
   const piece = fc.constantFrom(
     "<",
     "!",
