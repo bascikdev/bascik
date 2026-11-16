@@ -15,7 +15,7 @@ import {
 import { getProjectPath, getRelativePath } from "./file-system.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import { getHttpPath } from "./paths.ts";
-import { runDirectiveHandler } from "./script-runner.ts";
+import { echoScriptOutput, runDirectiveHandler } from "./script-runner.ts";
 import {
   LeadingSlashSpecifierError,
   resolveScriptSrcPath,
@@ -563,13 +563,11 @@ export const executeRoutesScript = async (
       "routes",
       { extraEnv },
     );
-    if (stdout) process.stdout.write(stdout);
-    if (stderr) process.stderr.write(stderr);
+    echoScriptOutput({ stdout, stderr });
     handlerResult = result;
   } catch (err: any) {
     // The script's own output, printed once. Its error report is the message below.
-    if (err?.stdout) process.stdout.write(err.stdout);
-    if (err?.stderr) process.stderr.write(err.stderr);
+    echoScriptOutput({ stdout: err?.stdout, stderr: err?.stderr });
     const msg = err instanceof Error ? err.message : String(err);
     // The module is padded to the file's own lines, so only the temp path needs renaming,
     // and columns after a rewritten import on the same line need putting back.

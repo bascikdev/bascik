@@ -63,7 +63,7 @@ import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace, remapRewrittenColumns } from "./stack-trace.ts";
 import { computePagePath } from "./routes.ts";
-import { runDirectiveHandler } from "./script-runner.ts";
+import { echoScriptOutput, runDirectiveHandler } from "./script-runner.ts";
 import {
   LeadingSlashSpecifierError,
   classifySpecifier,
@@ -1221,8 +1221,7 @@ export const executeBuildScripts = async (
           await runDirectiveHandler<string>(task.tmpPath, "build", {
             extraEnv: taskEnv,
           });
-        if (stdout) process.stdout.write(stdout);
-        if (stderr) process.stderr.write(stderr);
+        echoScriptOutput({ stdout, stderr });
         const output = result;
         if (task.cacheKey !== null)
           await writeScriptCache(
@@ -1238,8 +1237,7 @@ export const executeBuildScripts = async (
         task.readsPageContext = readsPageContext;
       } catch (err: any) {
         // The script's own output, printed once. Its error report is the message below.
-        if (err?.stdout) process.stdout.write(err.stdout);
-        if (err?.stderr) process.stderr.write(err.stderr);
+        echoScriptOutput({ stdout: err?.stdout, stderr: err?.stderr });
         if (options?.emptyPageContext && err?.readsPageContext === true) {
           // The script needs a page and was given none. Its component is
           // refused through onReadsPageContext; the pages that use it run the

@@ -249,6 +249,31 @@ const getRunnerDirectory = async (recreated = false): Promise<string> => {
   return getRunnerDirectory(true);
 };
 
+/** A byte count as the limit reads in prose: whole megabytes, or bytes. */
+const formatLimit = (bytes: number): string =>
+  bytes >= 1024 * 1024 && bytes % (1024 * 1024) === 0
+    ? `${bytes / (1024 * 1024)} MB`
+    : `${bytes} bytes`;
+
+/**
+ * Print what a build or routes script wrote, once, before anything Bascik
+ * prints about it. Text that does not end with a newline ("Loading...")
+ * gets one, so the next line (a located error header, a page count) starts
+ * on a line of its own.
+ */
+export const echoScriptOutput = (output: {
+  stdout?: unknown;
+  stderr?: unknown;
+}): void => {
+  for (const [text, stream] of [
+    [output.stdout, process.stdout],
+    [output.stderr, process.stderr],
+  ] as const) {
+    if (typeof text !== "string" || text === "") continue;
+    stream.write(text.endsWith("\n") ? text : `${text}\n`);
+  }
+};
+
 /**
  * Executes a prepared user module in a fresh Node.js child process, invoking its default export
  * once with zero arguments and transferring the result across a private result file.
@@ -363,6 +388,14 @@ export const runDirectiveHandler = async <T = unknown>(
           // Checked before the timeout: Node also kills the child, with the same
           // signal, when its output goes over maxBuffer.
           const stoppedByNode = typeof failure.code === "string";
+          // Over the output limit, Node stops the child and hands back the
+          // first `maxBuffer` bytes of that stream: megabytes of it, with no
+          // newline, that would bury the error report. None of it is shown.
+          const overLimit =
+            failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
+          const overStream = /^stderr\b/.test(failure.message)
+            ? "stderr"
+            : "stdout";
           const withReport = (reason: string): string =>
             report ? `${reason}\n${report}` : reason;
           // Exit code 13 is Node's "unsettled top-level await": the script
@@ -374,22 +407,33 @@ export const runDirectiveHandler = async <T = unknown>(
             /(?:^|\n)Warning: Detected unsettled top-level await at [^\n]*(?:\n[^\n]*\n[ \t]*\^[^\n]*)?/;
           const unsettled =
             failure.code === 13 && unsettledWarning.test(report);
-          failure.message = unsettled
-            ? (() => {
-                const logged = report.replace(unsettledWarning, "").trim();
-                const reason = `Directive script (data-bascik-${kind}) ended without finishing its top-level await: a promise it awaited never settled (resolved or rejected), so the script stopped before returning any output. Make sure every awaited promise resolves or rejects.`;
-                return logged ? `${reason}\n${logged}` : reason;
-              })()
-            : stoppedByNode
-              ? withReport(
-                  `Directive script (data-bascik-${kind}) failed: ${withoutRunnerFrames(failure.message).split("\n")[0]}`,
-                )
-              : timedOut
+          const overLimitReason = `Directive script (data-bascik-${kind}) failed: it wrote more than ${formatLimit(maxBuffer)} to ${overStream}, so it was stopped and its output is not shown. Write large data to a file, or return it, instead of logging it.`;
+          // Its stderr is still its report when only stdout overflowed.
+          failure.message = overLimit
+            ? overStream === "stdout"
+              ? withReport(overLimitReason)
+              : overLimitReason
+            : unsettled
+              ? (() => {
+                  const logged = report.replace(unsettledWarning, "").trim();
+                  const reason = `Directive script (data-bascik-${kind}) ended without finishing its top-level await: a promise it awaited never settled (resolved or rejected), so the script stopped before returning any output. Make sure every awaited promise resolves or rejects.`;
+                  return logged ? `${reason}\n${logged}` : reason;
+                })()
+              : stoppedByNode
                 ? withReport(
-                    `Directive script (data-bascik-${kind}) timed out after ${timeoutMs}ms`,
+                    `Directive script (data-bascik-${kind}) failed: ${withoutRunnerFrames(failure.message).split("\n")[0]}`,
                   )
-                : report || withoutRunnerFrames(failure.message);
-          reject(Object.assign(failure, { stdout: cleanedStdout, stderr: "" }));
+                : timedOut
+                  ? withReport(
+                      `Directive script (data-bascik-${kind}) timed out after ${timeoutMs}ms`,
+                    )
+                  : report || withoutRunnerFrames(failure.message);
+          reject(
+            Object.assign(failure, {
+              stdout: overLimit ? "" : cleanedStdout,
+              stderr: "",
+            }),
+          );
         } else {
           resolve({ stdout: cleanedStdout, stderr: cleanedStderr });
         }

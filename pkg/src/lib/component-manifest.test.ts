@@ -1450,13 +1450,14 @@ describe("components are built concurrently, reported in order", () => {
     });
     await build(cards(["a-card", "b-card", "c-card"]));
     // Each component's two runs print (the second is a cache hit, silent).
+    // Echoed output always ends with a newline.
     expect(order).toEqual([
       "warn a",
-      "stdout a",
+      "stdout a\n",
       "warn b",
-      "stdout b",
+      "stdout b\n",
       "warn c",
-      "stdout c",
+      "stdout c\n",
     ]);
     // Outside a manifest build, output is not held back.
     console.warn("after");
