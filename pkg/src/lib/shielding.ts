@@ -5,7 +5,7 @@ import {
   scanOpeningTags,
   scanPatternElementContents,
 } from "./element-content-scan.ts";
-import { scanHtmlComments } from "./html-scanner.ts";
+import { scanHtmlCommentsAndCdata } from "./html-scanner.ts";
 
 // A global counter plus source collision checks keep generated tokens outside user input.
 const SHIELD_TOKEN_PATTERN = /\x00BASCIK_SHIELD_(\d+)\x00/g;
@@ -93,12 +93,15 @@ export const shieldElementContents = (
  * sees: `<!--` inside a `<style>`, `<script>` or `<textarea>` is that
  * element's text (a CSS or JavaScript string, JSON, a stylesheet or script
  * wrapped in `<!-- -->`) and stays visible to the passes that read it.
- * A comment the input ends inside is hidden to the end.
+ * A comment the input ends inside is hidden to the end. A CDATA section in
+ * SVG or MathML content is text the browser never parses as markup, so it is
+ * hidden too: `<svg><text><![CDATA[<p class="x">]]></text></svg>` holds no
+ * `<p>` element and no class.
  */
 export const shieldHtmlComments = (
   html: string,
 ): { html: string; restore: (value: string) => string } => {
-  const comments = scanHtmlComments(html);
+  const comments = scanHtmlCommentsAndCdata(html);
   if (comments.length === 0) return { html, restore: (value) => value };
   const shield = createContentShield(html);
   const parts: string[] = [];

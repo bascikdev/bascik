@@ -1527,23 +1527,54 @@ const MARKUP_BODY_ELEMENT_PATTERN =
  * Past the point where the scan can no longer follow the browser's parse
  * (`stoppedAt`), every `<!--` counts, as that regex counted it.
  */
-export const scanHtmlComments = (html: string): HtmlRange[] => {
+export const scanHtmlComments = (html: string): HtmlRange[] =>
+  scanCommentsAndCdata(html, false);
+
+/**
+ * Every comment (as {@link scanHtmlComments} finds them) and every CDATA
+ * section in SVG or MathML content, in document order. A CDATA section in
+ * foreign content is text, so markup-looking text in it (`<![CDATA[<p>]]>`)
+ * is no element and must not be rewritten. In HTML content `<![CDATA[` starts
+ * a bogus comment that ends at the first `>`, which is a markup token the
+ * rewriting passes already skip. A CDATA section inside an SVG `<script>` or
+ * `<style>` is that element's code and is not reported.
+ */
+export const scanHtmlCommentsAndCdata = (html: string): HtmlRange[] =>
+  scanCommentsAndCdata(html, html.includes("<![CDATA["));
+
+const scanCommentsAndCdata = (html: string, cdata: boolean): HtmlRange[] => {
   const comments: HtmlRange[] = [];
-  if (!html.includes("<!--")) return comments;
+  if (!cdata && !html.includes("<!--")) return comments;
+  const markupBodies = MARKUP_BODY_ELEMENT_PATTERN.test(html);
   const { stoppedAt } = scanHtml(html, {
     comment: ({ start, end }) => comments.push({ start, end }),
     // Tokens cost an object each, so they are read only when such an element
-    // may be present.
-    token: MARKUP_BODY_ELEMENT_PATTERN.test(html)
-      ? ({ kind, name, start, end }) => {
-          if (kind !== "raw" || !MARKUP_BODY_ELEMENTS.has(name)) return;
-          for (const comment of scanHtmlComments(html.slice(start, end)))
-            comments.push({
-              start: start + comment.start,
-              end: start + comment.end,
-            });
-        }
-      : undefined,
+    // or a CDATA section may be present.
+    token:
+      markupBodies || cdata
+        ? ({ kind, name, start, end, inForeign, inForeignCode }) => {
+            if (
+              cdata &&
+              kind === "markup" &&
+              inForeign &&
+              !inForeignCode &&
+              html.startsWith("<![CDATA[", start)
+            ) {
+              comments.push({ start, end });
+              return;
+            }
+            if (!markupBodies) return;
+            if (kind !== "raw" || !MARKUP_BODY_ELEMENTS.has(name)) return;
+            for (const comment of scanCommentsAndCdata(
+              html.slice(start, end),
+              cdata,
+            ))
+              comments.push({
+                start: start + comment.start,
+                end: start + comment.end,
+              });
+          }
+        : undefined,
   });
   let start = stoppedAt < html.length ? html.indexOf("<!--", stoppedAt) : -1;
   while (start !== -1) {
