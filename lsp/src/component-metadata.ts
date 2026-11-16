@@ -1,3 +1,5 @@
+import { scanTags } from "./tag-scan.js";
+
 export interface ComponentMetadataMember {
   name: string;
   description?: string;
@@ -24,6 +26,11 @@ export interface ComponentMetadata {
 
 export interface AnalyzeComponentSourceOptions {
   hasCompanionStyles?: boolean;
+  /**
+   * Lowercase names of the project's components. A named slot marker inside
+   * one of their usages belongs to that component, not to this template.
+   */
+  componentNames?: ReadonlySet<string>;
 }
 
 interface InferredMember {
@@ -54,12 +61,75 @@ function maskNonMarkup(source: string): string {
     );
 }
 
-function inferMembers(source: string): {
+// The build's named wrapper marker (`NAMED_SLOT_MARKER_RE` in pkg's component-slots.ts).
+const NAMED_SLOT_ATTRIBUTE =
+  /\sdata-bascik-slot\s*=\s*(?:"[^"]+"|'[^']+'|[^\s"'=<>`/>]+)/i;
+const VOID_ELEMENTS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
+
+/**
+ * The open tags (`[start, end)`) of named slot markers that sit inside a
+ * component usage or inside another named slot marker's element, or that are
+ * on a void element. The build's slot parser gives the first to the nested
+ * component and never fills the others, so none declares a slot of this
+ * template.
+ */
+function ownedSlotMarkerTags(
+  masked: string,
+  componentNames: ReadonlySet<string>,
+): Array<[number, number]> {
+  const owned: Array<[number, number]> = [];
+  if (!/data-bascik-slot\s*=/i.test(masked)) return owned;
+  const stack: Array<{ name: string; boundary: boolean }> = [];
+  let boundaries = 0;
+  for (const tag of scanTags(masked)) {
+    const name = tag.name.toLowerCase();
+    if (tag.closing) {
+      let at = stack.length - 1;
+      while (at >= 0 && stack[at].name !== name) at--;
+      if (at < 0) continue;
+      for (let index = at; index < stack.length; index++)
+        if (stack[index].boundary) boundaries--;
+      stack.length = at;
+      continue;
+    }
+    const named = NAMED_SLOT_ATTRIBUTE.test(tag.text);
+    // A void element has no content to replace, so the build fills no slot there.
+    if (named && (boundaries > 0 || VOID_ELEMENTS.has(name)))
+      owned.push([tag.start, tag.end]);
+    if (VOID_ELEMENTS.has(name) || /\/\s*>$/.test(tag.text)) continue;
+    const boundary = named || componentNames.has(name);
+    stack.push({ name, boundary });
+    if (boundary) boundaries++;
+  }
+  return owned;
+}
+
+function inferMembers(
+  source: string,
+  componentNames: ReadonlySet<string> = new Set(),
+): {
   props: InferredMember[];
   slots: InferredMember[];
   hasDefaultSlot: boolean;
 } {
   const masked = maskNonMarkup(source);
+  const owned = ownedSlotMarkerTags(masked, componentNames);
+  let ownedAt = 0;
   const propOffsets = new Map<string, InferredMember>();
   const slots: InferredMember[] = [];
   const seenSlots = new Set<string>();
@@ -110,6 +180,9 @@ function inferMembers(source: string): {
       hasDefaultSlot = true;
       continue;
     }
+    const index = match.index ?? 0;
+    while (ownedAt < owned.length && owned[ownedAt][1] <= index) ownedAt++;
+    if (ownedAt < owned.length && owned[ownedAt][0] <= index) continue;
     const trimmed = name.trim();
     add(
       slots,
@@ -196,7 +269,7 @@ export function analyzeComponentSource(
   source: string,
   options: AnalyzeComponentSourceOptions = {},
 ): ComponentMetadata {
-  const inferred = inferMembers(source);
+  const inferred = inferMembers(source, options.componentNames);
   const documented = parseMetadataComment(source);
   const props: ComponentMetadataMember[] = inferred.props.map(({ name }) => ({
     name,

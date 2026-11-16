@@ -345,6 +345,7 @@ export async function buildSnapshot(
     if (name) componentMap.set(name, filePath);
   }
   const componentMetadata = new Map<string, ComponentMetadata>();
+  const componentNames: ReadonlySet<string> = new Set(componentMap.keys());
   const componentSourceByFile = new Map<string, string>();
   await Promise.all(
     componentFiles.map(async (filePath) => {
@@ -370,6 +371,7 @@ export async function buildSnapshot(
             hasCompanionStyles: fs.existsSync(
               filePath.replace(/\.html$/i, ".css"),
             ),
+            componentNames,
           }),
         );
       } catch {

@@ -19,6 +19,39 @@ describe("analyzeComponentSource", () => {
     }
   });
 
+  it("declares only the named slots the build fills, as its slot parser reads them", () => {
+    const componentNames = new Set(["inner-box"]);
+    const slotsOf = (source: string) =>
+      analyzeComponentSource(source, { componentNames }).slots.map(
+        (slot) => slot.name,
+      );
+    // Inside a nested component's slot wrapper: the nested component's.
+    expect(
+      slotsOf(
+        '<div><inner-box><span data-bascik-slot="tail"><i data-bascik-slot="extra">fb</i></span></inner-box><p data-bascik-slot="own"></p></div>',
+      ),
+    ).toEqual(["own"]);
+    // Directly inside a nested component's usage: also the nested one's.
+    expect(
+      slotsOf(
+        '<inner-box><span data-bascik-slot="tail"></span></inner-box><b data-bascik-slot="mine"></b>',
+      ),
+    ).toEqual(["mine"]);
+    // Inside another placeholder's fallback: never filled.
+    expect(
+      slotsOf(
+        '<div data-bascik-slot="a"><b data-bascik-slot="b">fb</b></div><img data-bascik-slot="c" /><i data-bascik-slot="d"></i>',
+      ),
+    ).toEqual(["a", "d"]);
+    // A default slot marker in a nested usage is forwarded, so it still counts.
+    expect(
+      analyzeComponentSource(
+        "<inner-box><div data-bascik-slot>fb</div></inner-box>",
+        { componentNames },
+      ).defaultSlot,
+    ).toEqual({ name: "default" });
+  });
+
   it("does not count custom elements named like style or script as styles or scripts", () => {
     const metadata = analyzeComponentSource(
       "<style-guide></style-guide><script-loader></script-loader>",
