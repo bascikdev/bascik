@@ -258,6 +258,16 @@ export const watchSourceCycles = async (
     if (booted) cycle.enqueue(path);
     else deferred.add(path);
   });
+  // `rm -rf src` (a folder above the pages folder), and putting it back,
+  // can reach the watcher as no event at all: the folder coming back is
+  // handled as if it had been re-created in place.
+  registerShutdownHandler(
+    pagesRootRemoval.poll(() => {
+      if (!booted) return;
+      changes.set(pagesRoot, "addDir");
+      cycle.enqueue(pagesRoot);
+    }),
+  );
   registerShutdownHandler(async () => {
     cycle.close();
     eventEmitter.removeListener("boot-done", onBoot);

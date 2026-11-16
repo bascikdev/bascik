@@ -34,12 +34,34 @@ export interface PagesRootRemoval {
    * missing from the start still fails the boot.
    */
   compileAtBoot(compile: () => Promise<void>): Promise<void>;
+  /**
+   * Check for the folder every `intervalMs` too, until the returned stop
+   * function runs: removing a folder above it (`rm -rf src`), and putting
+   * it back, can send the watchers no event at all. `onBack` rebuilds the
+   * pages and static files when any check sees the folder again.
+   */
+  poll(onBack: () => void, intervalMs?: number): () => void;
 }
 
+let shared: PagesRootRemoval | undefined;
+
+/**
+ * The one tracker for the process: with exec watch entries both watch.ts
+ * (its request-time observers) and watch-source.ts ask, and the warning
+ * must still print once.
+ */
 export const createPagesRootRemoval = (): PagesRootRemoval => {
   const root = resolve(BascikConfig.directory.pages);
+  if (shared?.root === root) return shared;
+  shared = createTracker(root);
+  return shared;
+};
+
+const createTracker = (root: string): PagesRootRemoval => {
   const display = relative(process.cwd(), root).replace(/\\/g, "/") || ".";
   let removed = false;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let onBack: (() => void) | undefined;
 
   // Chokidar may report only some of the removed files, or only the root:
   // drop every stored page and copied asset whose source is gone.
@@ -70,6 +92,9 @@ export const createPagesRootRemoval = (): PagesRootRemoval => {
           console.log(
             `[bascik] pages folder "${display}" is back: rebuilding its pages.`,
           );
+        // Whichever check sees it first, the whole folder (its pages and
+        // static files) is built again, not only what an event names.
+        if (onBack) queueMicrotask(onBack);
       }
       return false;
     }
@@ -99,5 +124,17 @@ export const createPagesRootRemoval = (): PagesRootRemoval => {
     if (existedAtStart) isMissing();
   };
 
-  return { root, isMissing, compileAtBoot };
+  const poll = (rebuild: () => void, intervalMs = 1_000): (() => void) => {
+    if (timer) return () => {};
+    onBack = rebuild;
+    timer = setInterval(isMissing, intervalMs);
+    timer.unref();
+    return () => {
+      clearInterval(timer);
+      timer = undefined;
+      onBack = undefined;
+    };
+  };
+
+  return { root, isMissing, compileAtBoot, poll };
 };
