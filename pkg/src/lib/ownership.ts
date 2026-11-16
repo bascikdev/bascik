@@ -235,6 +235,24 @@ export const readOwnershipInventory =
     }
   };
 
+const byCodeUnit = (a: string, b: string): number =>
+  a < b ? -1 : a > b ? 1 : 0;
+
+/**
+ * The inventory as it is serialized: owners in code-unit order of their key.
+ * Reconciliation inserts retained owners before rebuilt ones, so without this
+ * a targeted build that changed nothing wrote the same owners in a different
+ * order than the full build did.
+ */
+export const sortedInventory = (
+  inv: OwnershipInventory,
+): OwnershipInventory => ({
+  ...inv,
+  owners: Object.fromEntries(
+    Object.entries(inv.owners).sort(([a], [b]) => byCodeUnit(a, b)),
+  ),
+});
+
 /** Validate a candidate inventory before it is written. */
 export const validateInventory = (inv: OwnershipInventory): void => {
   if (!inv || typeof inv !== "object") {
@@ -428,7 +446,7 @@ export const writeOwnershipInventory = async (
   inv: OwnershipInventory,
 ): Promise<void> => {
   validateInventory(inv);
-  await atomicWriteJson(ownershipPath(), inv);
+  await atomicWriteJson(ownershipPath(), sortedInventory(inv));
 };
 
 // ─── Artifact finalization (single ownership transaction) ────────────────────
@@ -852,7 +870,9 @@ export const finalizeOwnedArtifacts = async (
       commits.push(await stageJsonArtifact(sidecarPath(), sidecar));
     }
 
-    commits.unshift(await stageJsonArtifact(ownershipPath(), inv));
+    commits.unshift(
+      await stageJsonArtifact(ownershipPath(), sortedInventory(inv)),
+    );
 
     // ── Commit. All artifacts are already validated on disk as temp siblings,
     // so a failure during writing/validation happened before the loop below and
