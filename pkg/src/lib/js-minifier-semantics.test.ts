@@ -530,6 +530,42 @@ describe("minifyJs – any line after a restricted production starts a new state
     expectSameProgram(source);
   });
 
+  // A template after a value is a tagged template, but not after a restricted production.
+  it.each([
+    ["return", "log.push((() => { return\n`x` })())"],
+    [
+      "return with a substitution",
+      "const a = 1\nlog.push((() => { return\n`${a}` })())",
+    ],
+    ["yield", "function* g() { yield\n`x` }\nlog.push([...g()])"],
+    ["break", "for (;;) { log.push('once'); break\n`x` }"],
+    ["continue", "for (const x of [1, 2]) { log.push(x); continue\n`x` }"],
+    ["break with a label", "a: for (;;) { log.push('a'); break a\n`x` }"],
+    [
+      "continue with a label",
+      "a: for (const x of [1, 2]) { log.push(x); continue a\n`x` }",
+    ],
+  ])("ends the statement before a template after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a property named return",
+      "const o = { return: (s) => s[0] + '!' }\nconst v = o.return\n`x`\nlog.push(v)",
+    ],
+    [
+      "a name ending in return",
+      "const myreturn = (s) => s[0] + '?'\nconst v = myreturn\n`x`\nlog.push(v)",
+    ],
+    [
+      "a label name after a break on the line before",
+      "const tag = (s) => s[0]\nfor (;;) { log.push(1); break\n}\nconst v = tag\n`x`\nlog.push(v)",
+    ],
+  ])("keeps a tagged template after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
   it("puts the `;` after the restricted production", () => {
     expect(minifyJs("function f() { return\n-z }")).toBe(
       "function f(){return;-z}",

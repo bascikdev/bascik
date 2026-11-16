@@ -149,6 +149,16 @@ const LINE_END_CONTINUING_KEYWORD =
 const RESTRICTED_PRODUCTION_END =
   /(?:^|[^.\w$])(?:return|throw|yield|debugger|(?:break|continue)(?:\s+[A-Za-z_$][\w$]*)?)$/;
 
+/** The keywords of those restricted productions, for the scanner. */
+const RESTRICTED_WORDS = new Set([
+  "return",
+  "throw",
+  "yield",
+  "debugger",
+  "break",
+  "continue",
+]);
+
 /**
  * What may start the line after a binding name with no initializer and still continue the
  * declaration: its initializer, the next binding, the end, or the `in`/`of` of a `for` header.
@@ -478,6 +488,9 @@ const scanSegments = (js: string): Segment[] => {
   // The token before the word being read ends a value, so a line break between them is a
   // statement end when the word is a name (`var a = 1\nfoo`).
   let valueBeforeWord = false;
+  // The word before the one being read, when only spaces (no line break) separate them, so
+  // the label of `break label` can be told from a name.
+  let wordBeforeWord = "";
   // One entry per open `var`/`let`/`const` declaration: the `(`, `[` and `{` depth it was
   // read at. Its commas and binding names are the ones at exactly that depth.
   const declarationParenDepth: number[] = [];
@@ -667,6 +680,16 @@ const scanSegments = (js: string): Segment[] => {
     if (lastSig === "}") return lastBraceClosedArrowBody || kind === "string";
     // `var a = 1, b\n\`x\``: a binding name cannot be tagged.
     if (bareBindingEnds?.has(lastSigOffset) === true) return true;
+    // `return\n\`x\`` returns undefined: the line break after a restricted production ends it.
+    if (
+      isWordChar(lastSig) &&
+      !wordIsProperty &&
+      (RESTRICTED_WORDS.has(wordRun) ||
+        wordBeforeWord === "break" ||
+        wordBeforeWord === "continue")
+    ) {
+      return true;
+    }
     if (kind === "template") return false;
     if (lastSig === "]") return true;
     if (lastSig === ")") return !lastParenClosedControlHeader;
@@ -778,6 +801,10 @@ const scanSegments = (js: string): Segment[] => {
           (lineBreakSinceSignificant &&
             memberKeywordNameEnds?.has(lastSigOffset) === true);
         valueBeforeWord = valueEndsHere() && !DECLARATION_KEYWORDS.has(wordRun);
+        wordBeforeWord =
+          isWordChar(lastSig) && !wordIsProperty && !lineBreakSinceSignificant
+            ? wordRun
+            : "";
         wordIsProperty = lastSig === ".";
         sigOffsetBeforeWord = lastSigOffset;
         lineBreakBeforeWord = lineBreakSinceSignificant;
