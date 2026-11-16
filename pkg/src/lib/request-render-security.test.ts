@@ -81,6 +81,14 @@ import { serverSidecarRegistry } from "./server-sidecar.ts";
 import type { ComponentList } from "./types.ts";
 import { html as htmlTag } from "./html-template.ts";
 
+// These tests check output, not speed: each file does seconds of real
+// compiling (generated inputs, every repository component, multi-MiB pages).
+// Vitest's 5 s default is a wall-clock limit, so on a loaded machine (CI
+// shards, a load average in the hundreds) it failed tests whose every
+// assertion held. Speed is checked where it is measured, in the
+// *.linear-time.test.ts files.
+vi.setConfig({ testTimeout: 120_000 });
+
 type MutableConfig = {
   base: string;
   minify: { identifiers: boolean; html: boolean };

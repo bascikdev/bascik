@@ -334,7 +334,11 @@ const MODULE_CHECK_TIMEOUT_MS = 30_000;
 /**
  * Test-only: `node --check` processes and shared checkers started, a switch
  * that turns the shared checker off, a source that replaces the checker's
- * (to make it crash, hang or print), and the time a check may take.
+ * (to make it crash, hang or print), the time the shared checker may take to
+ * answer (`timeoutMs`), and the time a `node --check` process may take
+ * (`processTimeoutMs`). They are separate so a test can stop a hung checker
+ * quickly without also bounding the fallback process, which starts a whole
+ * Node and can take seconds on a loaded machine.
  */
 export const __moduleCheckStatsForTests = {
   processes: 0,
@@ -343,6 +347,7 @@ export const __moduleCheckStatsForTests = {
   disableChecker: false,
   checkerSource: undefined as string | undefined,
   timeoutMs: MODULE_CHECK_TIMEOUT_MS,
+  processTimeoutMs: MODULE_CHECK_TIMEOUT_MS,
 };
 
 const seconds = (ms: number): string => `${ms / 1000}s`;
@@ -662,7 +667,7 @@ const nodeCheckProcess = async (
         resolveCheck("");
         return;
       }
-      const timeoutMs = __moduleCheckStatsForTests.timeoutMs;
+      const timeoutMs = __moduleCheckStatsForTests.processTimeoutMs;
       let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
