@@ -38,6 +38,7 @@ import {
 } from "./generated-id-classes.ts";
 import { BascikConfig } from "./config.ts";
 import { blankHtmlComments, maskElementContents } from "./shielding.ts";
+import { blankForeignCdata } from "./component-masking.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
 import {
   scanApiRouteFiles,
@@ -268,7 +269,10 @@ const scanTagOccurrences = (
 ): TagOccurrence[] => {
   // Blank comments first (newlines kept). Only the comments the browser
   // sees: `<!--` inside a <style>, script or <textarea> is that element's text.
-  const stripped = stripElementContents(blankHtmlComments(html));
+  // A tag written in an SVG or MathML CDATA section is text too.
+  const stripped = stripElementContents(
+    blankForeignCdata(blankHtmlComments(html)),
+  );
   const occurrences: TagOccurrence[] = [];
   let counted = 0;
   let line = 1;

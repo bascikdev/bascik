@@ -1543,6 +1543,34 @@ export const scanHtmlComments = (html: string): HtmlRange[] =>
 export const scanHtmlCommentsAndCdata = (html: string): HtmlRange[] =>
   scanCommentsAndCdata(html, html.includes("<![CDATA["));
 
+/**
+ * The inside of every complete CDATA section in SVG or MathML content (from
+ * just after `<![CDATA[` to just before `]]>`), in document order: text the
+ * browser shows, which holds no element, comment or raw-text element. A
+ * CDATA section inside an SVG `<script>` or `<style>` is that element's code
+ * and is not reported, and `<![CDATA[` in HTML content or directly inside an
+ * integration point is a bogus comment, never a section.
+ */
+export const scanForeignCdataText = (html: string): HtmlRange[] => {
+  const sections: HtmlRange[] = [];
+  if (!html.includes("<![CDATA[")) return sections;
+  scanHtml(html, {
+    token: ({ kind, start, end, inForeign, inForeignCode }) => {
+      // A bogus comment that happens to end in `]]>` is reported too: its
+      // inside is a comment's, no markup either.
+      if (
+        kind === "markup" &&
+        inForeign &&
+        !inForeignCode &&
+        html.startsWith("<![CDATA[", start) &&
+        html.startsWith("]]>", end - 3)
+      )
+        sections.push({ start: start + 9, end: end - 3 });
+    },
+  });
+  return sections;
+};
+
 const scanCommentsAndCdata = (html: string, cdata: boolean): HtmlRange[] => {
   const comments: HtmlRange[] = [];
   if (!cdata && !html.includes("<!--")) return comments;

@@ -4,7 +4,7 @@ import {
   type ElementContentMatch,
   type ElementScanner,
 } from "./element-content-scan.ts";
-import { findCommentEnd } from "./html-scanner.ts";
+import { findCommentEnd, scanForeignCdataText } from "./html-scanner.ts";
 import {
   createAttributeValueScanner,
   stepAttributeValueState,
@@ -26,7 +26,42 @@ import { __componentScanStatsForTests } from "./component-scan-stats.ts";
  * valid in the original.
  */
 export const maskRawTextContent = (htmlString: string): string =>
-  maskInDocumentOrder(htmlString).masked;
+  maskInDocumentOrder(blankForeignCdata(htmlString)).masked;
+
+/**
+ * `maskRawTextContent` of a page whose CDATA sections `blankForeignCdata`
+ * has already blanked: callers that keep that text to splice (`maskSource`
+ * in component-expansion-core.ts) read the page once.
+ */
+export const maskBlankedHtml = (blanked: string): string =>
+  maskInDocumentOrder(blanked).masked;
+
+/**
+ * `html` with the inside of each CDATA section in SVG or MathML content
+ * blanked to same-length white space (`scanForeignCdataText`), its
+ * `<![CDATA[` and `]]>` kept. The section is text: a `<book-card>`, `<!--`
+ * or `<script>` written in it is characters the page shows, so it opens no
+ * component, comment or raw-text element. Whether `<![CDATA[` starts a
+ * section depends on the SVG or MathML open around it, which only a read
+ * from the start of the page knows, so the slice masks that splices reuse
+ * (`resolveSlice`) do not blank it: a splice at or before a `<![CDATA[`, or
+ * one that brings one in, re-masks the page whole (`spliceRawTextMask`).
+ */
+export const blankForeignCdata = (html: string): string => {
+  const sections = scanForeignCdataText(html);
+  if (sections.length === 0) return html;
+  const parts: string[] = [];
+  let copiedTo = 0;
+  for (const { start, end } of sections) {
+    parts.push(
+      html.slice(copiedTo, start),
+      html.slice(start, end).replace(/[^\n]/g, " "),
+    );
+    copiedTo = end;
+  }
+  parts.push(html.slice(copiedTo));
+  return parts.join("");
+};
 
 const RAW_TEXT_TAGS = ["script", "style", "textarea"];
 
@@ -350,6 +385,10 @@ const resolveSlice = (
 export const maskRawTextContentWithClosure = (
   htmlString: string,
 ): { masked: string; closed: boolean } => {
+  // A CDATA section's reading depends on the text before it, which a
+  // prefix reused for a longer page does not know.
+  if (htmlString.includes("<![CDATA["))
+    return { masked: maskRawTextContent(htmlString), closed: false };
   const { masked, endState, pending, tail } = resolveSlice(htmlString);
   return {
     masked,
@@ -420,6 +459,11 @@ const completesOpener = (body: string, at: number, head: string): boolean => {
  */
 export interface MaskFacts {
   last?: Record<PendingKind, number>;
+  /**
+   * Where the last `<![CDATA[` in the page starts (-1 for none), found when
+   * first needed. A splice after it leaves it where it is.
+   */
+  lastCdata?: number;
 }
 
 // A closer's start and the character that ends its name: a fixed-length
@@ -644,6 +688,26 @@ export const spliceRawTextMask = (
   };
   if (!checkpoint || checkpoint.at > start)
     return finish({ masked: null, checkpoint: null });
+  // Only a whole read blanks CDATA sections (`blankForeignCdata`), and
+  // whether `<![CDATA[` starts one depends on the SVG or MathML open around
+  // it, which any tag before it can change (an HTML start tag such as `<div>`
+  // ends SVG and MathML). So a splice that brings a `<![CDATA[` in, or that
+  // has one at or after it, re-masks the page. `body` is the page with its
+  // sections already blanked, so nothing inside one reads as a token here.
+  // The new page's text around the replacement, seams included.
+  const bringsCdata = (
+    body.slice(Math.max(0, start - 8), start) +
+    replacement +
+    body.slice(end, end + 8)
+  ).includes("<![CDATA[");
+  if (
+    bringsCdata ||
+    (facts.lastCdata ??= body.lastIndexOf("<![CDATA[")) >= start
+  ) {
+    // Its position after this splice is not known: found again when needed.
+    delete facts.lastCdata;
+    return finish({ masked: null, checkpoint: null });
+  }
   // The prefix may end in a partial opener that the text after it does not
   // complete, before the splice (so the old mask is the prefix's own) and
   // after it. Checked on the page, not the slice: the partial opener can

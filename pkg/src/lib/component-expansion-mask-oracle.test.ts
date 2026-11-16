@@ -27,7 +27,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { propertyBounds } from "./property-runs.test-helper.ts";
 import { expandComponents } from "./component-expansion-core.ts";
-import { maskRawTextContent } from "./component-masking.ts";
+import { blankForeignCdata, maskRawTextContent } from "./component-masking.ts";
 import {
   __expansionProbeForTests,
   type ExpansionSearchProbe,
@@ -349,7 +349,9 @@ const expandUnderOracle = (
       }
     }
     if (probe.closerFacts) {
-      const actual = lastCloserTokens(probe.html);
+      // The masker reads the page with its SVG and MathML CDATA sections
+      // blanked: a closer written inside one is text that closes nothing.
+      const actual = lastCloserTokens(blankForeignCdata(probe.html));
       for (const kind of Object.keys(actual))
         if ((probe.closerFacts[kind] ?? -1) < actual[kind])
           fail(

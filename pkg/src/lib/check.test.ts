@@ -519,6 +519,32 @@ describe("checkProject", () => {
       },
     );
 
+    it("a tag inside an SVG CDATA section is text, not a usage", async () => {
+      await setupProject({
+        "pages/index.html":
+          "<svg>\n  <text><![CDATA[see <b>it</b>: <used-card></used-card> <my-typo></my-typo>]]></text>\n</svg>\n<div><![CDATA[x]]><real-typo></real-typo></div>",
+        "components/used-card/used-card.html": "<div>used</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "used-card": {
+          fileName: join(workDir, "components/used-card/used-card.html"),
+        },
+      });
+      const findings = await checkProject();
+      expect(
+        findings.items
+          .filter((i) => i.category === "unused-component")
+          .map((i) => i.message),
+      ).toEqual([expect.stringContaining("used-card")]);
+      // In HTML content `<![CDATA[x]]>` is a comment that ends at its `>`.
+      expect(
+        findings.items
+          .filter((i) => i.category === "unmatched-tag")
+          .map((i) => i.message),
+      ).toEqual(["<real-typo>"]);
+    });
+
     it("a tag inside an unclosed comment is not read, and lines after a multi-line comment stay right", async () => {
       await setupProject({
         "pages/index.html":
