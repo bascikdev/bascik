@@ -1510,3 +1510,81 @@ describe("minifyJs – names with non-ASCII characters or escapes", () => {
     expectSameProgram("const o = { k: 1 }, k = 'k'\nlog.push(k\nin\u00a0o)");
   });
 });
+
+describe("minifyJs \u2013 a number next to a dot across a line break", () => {
+  // `5.` is a whole number literal, and `1.` would start one: the line break or comment
+  // between a number and a dot keeps them two tokens.
+  it.each([
+    [
+      "a number ending in a dot, then a name",
+      "let x, y = 2\nx = 5.\ny\nlog.push(x, y)",
+    ],
+    ["a zero ending in a dot", "let x, y = 2\nx = 0.\ny\nlog.push(x)"],
+    [
+      "a number with separators ending in a dot",
+      "let x, y = 2\nx = 1_000.\ny\nlog.push(x)",
+    ],
+    [
+      "a number ending in a dot, then a string",
+      "let x\nx = 5.\n'y'\nlog.push(x)",
+    ],
+    ["an integer, then a property line", "log.push(1\n.toString())"],
+    ["a zero, then a property line", "log.push(0\n.toFixed(1))"],
+    [
+      "an integer with separators, then a property line",
+      "log.push(1_000\n.toString())",
+    ],
+    [
+      "a decimal written like an octal, then a property line",
+      "log.push(08\n.toString())",
+    ],
+    ["an integer, a comment, then a dot", "log.push(1/* c */.toString())"],
+    ["an integer, a line comment, then a dot", "log.push(1 // c\n.toString())"],
+    ["an integer, then a space and a dot", "log.push(1 .toString())"],
+    [
+      "a division after a number ending in a dot",
+      "const g = 2\nlet x = 5.\n/ 2 / g\nlog.push(x)",
+    ],
+  ])("keeps apart %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // The dot after these is a property access already: no `;` or space is needed.
+  it.each([
+    ["a decimal", "log.push(1.5\n.toFixed(1))", "log.push(1.5.toFixed(1))"],
+    [
+      "a hex number",
+      "log.push(0x1f\n.toString())",
+      "log.push(0x1f.toString())",
+    ],
+    ["an exponent", "log.push(1e3\n.toString())", "log.push(1e3.toString())"],
+    ["a BigInt", "log.push(1n\n.toString())", "log.push(1n.toString())"],
+    [
+      "a name ending in a digit",
+      "const a1 = 2\nlog.push(a1\n.toString())",
+      "const a1=2;log.push(a1.toString())",
+    ],
+    [
+      "a number with a fraction",
+      "log.push(.5\n.toFixed(1))",
+      "log.push(.5.toFixed(1))",
+    ],
+    [
+      "an exponent ending in a dot",
+      "const y = 1\nlog.push(1e-5.\ny)",
+      "const y=1;log.push(1e-5.y)",
+    ],
+    [
+      "a number ending in a dot, then a dot",
+      "log.push(5.\n.toFixed(1))",
+      "log.push(5..toFixed(1))",
+    ],
+    [
+      "an octal ending in a dot",
+      "const y = 1\nlog.push(07.\ny)",
+      "const y=1;log.push(07.y)",
+    ],
+  ])("joins %s", (_name, source, expected) => {
+    expect(expectSameProgram(source)).toBe(expected);
+  });
+});
