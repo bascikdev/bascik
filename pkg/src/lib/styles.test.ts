@@ -3758,3 +3758,53 @@ describe("extractInlineStyles – media attribute values", () => {
     },
   );
 });
+
+describe("convertCssElementSelectorsToClasses – element names in any case", () => {
+  // HTML element names are ASCII case-insensitive in selectors and markup.
+  const scope = (css: string, html: string) => {
+    const result = convertCssElementSelectorsToClasses(css, "card");
+    return {
+      css: result.css,
+      html: addElementClassesInHtml(
+        html,
+        "card",
+        result.elementsConvertedClasses,
+      ),
+    };
+  };
+
+  it.each([
+    ["H1, H2 { color: red }", ".b_el_card_h1, .b_el_card_h2 { color: red }"],
+    ["h1, H2 {}", ".b_el_card_h1, .b_el_card_h2 {}"],
+    [".bascik__card__x H2 {}", ".bascik__card__x .b_el_card_h2 {}"],
+    [".x {\n  & > H2 {}\n}", ".x {\n  & > .b_el_card_h2 {}\n}"],
+    [".x {\n  > H2 {}\n}", ".x {\n  > .b_el_card_h2 {}\n}"],
+  ])("scopes %j like its lowercase form", (css, expected) => {
+    expect(convertCssElementSelectorsToClasses(css, "card").css).toBe(expected);
+  });
+
+  it("gives the markup the class the rule names, whatever case either side uses", () => {
+    const { css, html } = scope(
+      "H1 { color: red }\nh1 .y { color: blue }\nH2, Li { margin: 0 }",
+      "<H1>a</H1><h1>b</h1><h2>c</h2><H2>d</H2><LI>e</LI>",
+    );
+    expect(css).toBe(
+      ".b_el_card_h1 { color: red }\n.b_el_card_h1 .y { color: blue }\n.b_el_card_h2, .b_el_card_li { margin: 0 }",
+    );
+    expect(html).toBe(
+      '<H1 class="b_el_card_h1">a</H1><h1 class="b_el_card_h1">b</h1><h2 class="b_el_card_h2">c</h2><H2 class="b_el_card_h2">d</H2><LI class="b_el_card_li">e</LI>',
+    );
+  });
+
+  it("still leaves an uppercase root element alone", () => {
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses("HTML, BODY { margin: 0 }", "card");
+    expect(css).toBe("HTML, BODY { margin: 0 }");
+    expect(elementsConvertedClasses).toEqual([]);
+  });
+
+  it("does not touch an uppercase word in a declaration value", () => {
+    const css = ".a { font-family: Georgia, Times; }";
+    expect(convertCssElementSelectorsToClasses(css, "card").css).toBe(css);
+  });
+});
