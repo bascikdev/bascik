@@ -1218,11 +1218,21 @@ export const shieldCssStrings = (
   // attribute-selector values (so a[href$=.pdf] keeps `[...]` visible to
   // selector passes while hiding `.pdf` from class-selector regexes).
   const shielded = css.replace(
-    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\)|(\[\s*[\w-]+\s*[~|^$*]?=\s*)([^\]"'\s]+)(?=\s*\])/gi,
-    (match, _str?: string, attrPrefix?: string, unquotedVal?: string) =>
-      attrPrefix !== undefined && unquotedVal !== undefined
+    // An escape outside a string (`.it\'s`) is part of a name, never a quote
+    // that opens a string, so it is matched first and kept as written.
+    /(\\[\s\S])|("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\)|(\[\s*[\w-]+\s*[~|^$*]?=\s*)([^\]"'\s]+)(?=\s*\])/gi,
+    (
+      match,
+      escape?: string,
+      _str?: string,
+      attrPrefix?: string,
+      unquotedVal?: string,
+    ) => {
+      if (escape !== undefined) return escape;
+      return attrPrefix !== undefined && unquotedVal !== undefined
         ? `${attrPrefix}${shield.hide(unquotedVal)}`
-        : shield.hide(match),
+        : shield.hide(match);
+    },
   );
   return {
     css: shielded,
@@ -1372,8 +1382,10 @@ export const removeCommentsFromCss = (css: string): string => {
   // inside comments (e.g. `/* the logo's angle */`) are never mistaken for
   // the start of a CSS string literal. A backslash escapes any character in
   // a string, a newline included (a line continuation), as in shieldCssStrings.
+  // Outside a string an escape (`\'`, `\/`) is part of a name: kept as
+  // written, never the start of a string or a comment.
   const pattern =
-    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g;
+    /(\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g;
   let result = "";
   let copiedTo = 0;
   for (const match of css.matchAll(pattern)) {

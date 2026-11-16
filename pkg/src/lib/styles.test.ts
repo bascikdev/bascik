@@ -559,6 +559,41 @@ describe("removeCommentsFromCss", () => {
     expect(removeCommentsFromCss('a{b:"x\\"" /* c */}')).toBe('a{b:"x\\"" }');
     expect(removeCommentsFromCss('a{b:"x\\\\" /* c */}')).toBe('a{b:"x\\\\" }');
   });
+
+  // CSS Syntax: outside a string, a backslash escapes the next character,
+  // so `\'` and `\"` are part of a name and `\/` is not the start of `/*`.
+  it("reads an escaped quote or slash outside a string as part of a name", () => {
+    expect(
+      removeCommentsFromCss(".it\\'s /* note */ { color: red; } /* it's */"),
+    ).toBe(".it\\'s  { color: red; } ");
+    expect(removeCommentsFromCss('.a\\"b /* c */ {}')).toBe('.a\\"b  {}');
+    expect(removeCommentsFromCss(".a\\/* x */ {}")).toBe(".a\\/* x */ {}");
+    // An escaped backslash ends before the quote, so the quote opens a string.
+    expect(removeCommentsFromCss("a{b:\\\\'/* c */'}")).toBe(
+      "a{b:\\\\'/* c */'}",
+    );
+  });
+});
+
+describe("shieldCssStrings – escapes outside strings", () => {
+  it("does not open a string at an escaped quote in a selector", () => {
+    const css = ".it\\'s { color: red; } .b { content: 'x'; }";
+    const { css: shielded, restore } = shieldCssStrings(css);
+    expect(shielded).toContain(".it\\'s { color: red; } .b { content: ");
+    expect(shielded).not.toContain("'x'");
+    expect(restore(shielded)).toBe(css);
+  });
+
+  it("scopes every rule of a style tag with an escaped quote in a class name", () => {
+    const { html } = scopeInlineStyleTags(
+      "<style>.it\\'s { color: red; } .b { color: blue; } .c::after { content: 'x'; }</style><p class=\"b\">x</p>",
+      "c",
+    );
+    expect(html).not.toContain("\u0000");
+    expect(html).toContain(".bascik__c__it\\'s { color: red; }");
+    expect(html).toContain(".bascik__c__b { color: blue; }");
+    expect(html).toContain("content: 'x'");
+  });
 });
 
 describe("fuzz-like malformed CSS / HTML inputs", () => {
