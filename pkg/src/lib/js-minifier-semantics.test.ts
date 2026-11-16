@@ -418,6 +418,11 @@ describe("minifyJs – lines starting with ( or [ continue the expression (F037)
     "for (const x of [1, 2]) { if (x) continue\n[x].forEach((v) => log.push(v)) }",
     "outer: for (const x of [1]) { for (const y of [2]) { if (y) continue outer\n(log.push('never')) } }\nlog.push('done')",
     "function* g() { yield\n(1) }\nlog.push([...g()])",
+    // A binding name with no initializer cannot be called or indexed either.
+    "var p\n[true, false].forEach((v) => log.push(v))",
+    "let argv\n[argv] = [7]\nlog.push(argv)",
+    "let a, b\n(() => log.push('iife'))()",
+    "const x = 2\n;[1].forEach((v) => log.push(v, x))",
     // A postfix update cannot be called or indexed, so ASI ends the statement.
     "let i = 1; i++\n(() => log.push(i))()",
     "let i = 1; i--\n[1].forEach((v) => log.push(v, i))",
@@ -425,10 +430,40 @@ describe("minifyJs – lines starting with ( or [ continue the expression (F037)
     expectSameProgram(source);
   });
 
+  it("reads a declaration that ends in an initializer as any other line", () => {
+    // `const x = 1\n[1]` is `const x = 1[1]` in the source as well.
+    expect(minifyJs("const x = 1\n[1].map(f)")).toBe("const x=1[1].map(f)");
+    // A property spelled like a keyword is not a declaration.
+    expect(minifyJs("x = a.var\n[0]")).toBe("x=a.var[0]");
+  });
+
   it("joins a keyword with its parenthesized header on the next line", () => {
     expect(minifyJs("if\n(a) b()")).toBe("if(a)b()");
     expect(minifyJs("while\n(a) b()")).toBe("while(a)b()");
     expect(minifyJs("typeof\n(a)")).toBe("typeof(a)");
+  });
+});
+
+describe("minifyJs – any line after a restricted production starts a new statement", () => {
+  it.each([
+    // `return\n-z` returns undefined; `return-z` would return -z.
+    "const z = 5\nlog.push((() => { return\n-z })())",
+    "const z = 5\nlog.push((() => { return\n+z })())",
+    "for (;;) { log.push('once'); break\n+1 }",
+    "for (const x of [1, 2]) { log.push(x); continue\n/re/.test('re') }",
+    "function* g() { yield\n-1 }\nlog.push([...g()])",
+    "a: for (;;) { log.push('a'); break a\n-1 }",
+    "log.push((() => { return\n})())",
+  ])("runs the same program as the source: %j", (source) => {
+    expectSameProgram(source);
+  });
+
+  it("puts the `;` after the restricted production", () => {
+    expect(minifyJs("function f() { return\n-z }")).toBe(
+      "function f(){return;-z}",
+    );
+    // A property named `return` is a value, and the operator continues it.
+    expect(minifyJs("o.return\n-z")).toBe("o.return-z");
   });
 });
 
