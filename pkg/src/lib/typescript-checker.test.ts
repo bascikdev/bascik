@@ -31,6 +31,7 @@ vi.mock("./config.js", () => ({
 
 const stats = __moduleCheckStatsForTests;
 const DEFAULT_TIMEOUT_MS = stats.timeoutMs;
+const DEFAULT_PROCESS_TIMEOUT_MS = stats.processTimeoutMs;
 
 /** A checker that answers like the real one, after running `before`. */
 const checkerSource = (before: string): string => `
@@ -59,6 +60,7 @@ beforeEach(async () => {
   await __stopSharedCheckerForTests();
   stats.checkerSource = undefined;
   stats.timeoutMs = DEFAULT_TIMEOUT_MS;
+  stats.processTimeoutMs = DEFAULT_PROCESS_TIMEOUT_MS;
   resetModuleCheckerForBuild();
   warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -68,6 +70,7 @@ afterEach(async () => {
   await __stopSharedCheckerForTests();
   stats.checkerSource = undefined;
   stats.timeoutMs = DEFAULT_TIMEOUT_MS;
+  stats.processTimeoutMs = DEFAULT_PROCESS_TIMEOUT_MS;
   resetModuleCheckerForBuild();
 });
 
@@ -159,6 +162,9 @@ describe("shared syntax checker: a checker that stops", () => {
 describe("shared syntax checker: a bounded wait", () => {
   it("gives up on a checker that never answers, names the file, and checks with node --check instead", async () => {
     stats.checkerSource = checkerSource(`return;`);
+    // Bounds the checker only: the node --check that takes over keeps its own
+    // (default) limit, so a loaded machine that needs seconds to start Node
+    // still gets the located error this test is about.
     stats.timeoutMs = 300;
     const before = stats.processes;
     await expect(
@@ -173,7 +179,7 @@ describe("shared syntax checker: a bounded wait", () => {
 
   it("skips a check that does not finish at all, with a located warning, and does not cache the skip", async () => {
     stats.disableChecker = true;
-    stats.timeoutMs = 1;
+    stats.processTimeoutMs = 1;
     const code = invalidModule();
     try {
       await expect(
@@ -188,7 +194,7 @@ describe("shared syntax checker: a bounded wait", () => {
       );
       expect(skipped[0]).toMatch(/shows when the script runs/);
       // The next build, with time to finish, still finds the error.
-      stats.timeoutMs = DEFAULT_TIMEOUT_MS;
+      stats.processTimeoutMs = DEFAULT_PROCESS_TIMEOUT_MS;
       await expect(
         checkDirectiveModuleSyntax(code, "src/lib/slow.ts"),
       ).rejects.toThrow(/src\/lib\/slow\.ts:2:5/);
