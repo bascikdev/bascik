@@ -9,11 +9,11 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
-## [Unreleased]
+## [1.0.1] - 2026-11-16
 
 ### Added
 
-- `@bascik/language-server` (the VS Code extension and the per-file checks of `bascik --check`) has a new rule, `throw-non-error`. In every directive script, API route and module they run in Node, a `throw`, a `Promise.reject()` or a Promise executor's `reject()` whose value can never be an `Error` is a warning on that value: `throw "Book not found"`, `throw null`, `throw { status: 404 }`, `Promise.reject()`, `reject("timeout")`. Only an `Error` carries a stack trace, so for such a value Bascik's runtime report could name only the line the script starts on. It is the same idea as ESLint's `no-throw-literal` and `prefer-promise-reject-errors`, read from the code alone: a name, a call, `new`, a member or `await` could hold an `Error` and is never reported. On a string or template literal, the editor's quick fix **Wrap in new Error(...)** keeps the text; `bascik --check --fix` does not apply it. Silence it with `// bascik-ignore throw-non-error` or `disabledRules`. See [Linter](https://bascik.dev/tools/linter#throw-non-error).
+- `@bascik/language-server` 1.1.0 and the VS Code extension 1.0.1 (the editor and the per-file checks of `bascik --check`) have a new rule, `throw-non-error`. In every directive script, API route and module they run in Node, a `throw`, a `Promise.reject()` or a Promise executor's `reject()` whose value can never be an `Error` is a warning on that value: `throw "Book not found"`, `throw null`, `throw { status: 404 }`, `Promise.reject()`, `reject("timeout")`. Only an `Error` carries a stack trace, so for such a value Bascik's runtime report could name only the line the script starts on. It is the same idea as ESLint's `no-throw-literal` and `prefer-promise-reject-errors`, read from the code alone: a name, a call, `new`, a member or `await` could hold an `Error` and is never reported. On a string or template literal, the editor's quick fix **Wrap in new Error(...)** keeps the text; `bascik --check --fix` does not apply it. Silence it with `// bascik-ignore throw-non-error` or `disabledRules`. See [Linter](https://bascik.dev/tools/linter#throw-non-error).
 
 ### Fixed
 
@@ -127,4 +127,5 @@ Bascik is a build tool for HTML components with automatically scoped CSS and
 JavaScript and no runtime. Start a site with `npm create bascik`, and see
 [Getting Started](https://bascik.dev/getting-started) for the rest.
 
+[1.0.1]: https://github.com/bascikdev/bascik/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/bascikdev/bascik/releases/tag/v1.0.0
