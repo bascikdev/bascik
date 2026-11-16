@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { access } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { extname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isMainThread } from "node:worker_threads";
 import {
   CONFIG_FILE_LIST,
   CONFIG_FILE_NAMES,
@@ -34,6 +35,32 @@ export const importUserConfig = async (
   configPath: string,
 ): Promise<UserConfigModule> => {
   return (await import(pathToFileURL(configPath).href)) as UserConfigModule;
+};
+
+/**
+ * A config (or a module it imports) whose top-level await waits on a promise
+ * that never settles leaves the event loop empty while its import is still
+ * pending. Node then exits with code 13 and "Detected unsettled top-level
+ * await at .../pkg/src/index.ts", which names Bascik's file, not the
+ * config. `beforeExit` fires first, when the loop empties: while the import
+ * is pending, that can only be the config, so it is reported by name and the
+ * process exits 1. Main thread only: a worker never owns the process.
+ */
+const failIfConfigNeverSettles = (configPath: string): (() => void) => {
+  if (!isMainThread) return () => {};
+  const onBeforeExit = () => {
+    const display =
+      relative(process.cwd(), configPath).replace(/\\/g, "/") || configPath;
+    console.error(
+      `[bascik] error: ${display} never finished loading: a top-level ` +
+        "`await` in it, or in a module it imports, waits on a promise that " +
+        "never resolves or rejects. Make that promise settle, or move the " +
+        "work out of the config's top level.",
+    );
+    process.exit(1);
+  };
+  process.on("beforeExit", onBeforeExit);
+  return () => process.off("beforeExit", onBeforeExit);
 };
 
 /**
@@ -274,6 +301,7 @@ export const loadUserConfig = async (
   // surface with its message and the config path — never be misreported as
   // "no config found" while defaults silently apply.
   let mod: UserConfigModule;
+  const stopWatchingForUnsettledAwait = failIfConfigNeverSettles(configPath);
   try {
     mod = await importUserConfig(configPath);
   } catch (err) {
@@ -288,6 +316,8 @@ export const loadUserConfig = async (
         (hint ? `\n${hint}` : ""),
       { cause: err },
     );
+  } finally {
+    stopWatchingForUnsettledAwait();
   }
 
   assertReadableExports(mod, configPath);
