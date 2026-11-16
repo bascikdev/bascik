@@ -430,6 +430,78 @@ describe("minifyJs – lines starting with ( or [ continue the expression (F037)
     expectSameProgram(source);
   });
 
+  // The last binding has no initializer even though an earlier one has: still a name.
+  it.each([
+    [
+      "an index line after `var a = 1, b`",
+      "var a = 1, b\n[2, 3].forEach((v) => log.push(v, a, b))",
+    ],
+    [
+      "a call line after `let a = 1, b`",
+      "let a = 1, b\n(() => log.push('iife', a, b))()",
+    ],
+    [
+      "three bindings, the middle one initialized",
+      "const f = () => 1\nlet a, b = f(), c\n[a, c] = [4, 5]\nlog.push(a, b, c)",
+    ],
+    [
+      "an initializer holding a call and a comma",
+      "const f = (x, y) => x + y\nvar a = f(1, 2), b\n[a].forEach((v) => log.push(v, b))",
+    ],
+    [
+      "an initializer holding an object and an array",
+      "var a = { k: [1, 2] }, b\n[a.k].forEach((v) => log.push(v, b))",
+    ],
+    [
+      "an initializer holding a function with its own declaration",
+      "var a = function () { var x = 1, y\n return x }, b\n[a()].forEach((v) => log.push(v, b))",
+    ],
+    [
+      "a declaration in a function body",
+      "function g() {\n  let a = 1, b\n  [a].forEach((v) => log.push(v, b))\n}\ng()",
+    ],
+    [
+      "a sign line after a bare name",
+      "const z = 3\nvar a = 1, b\n-z\nlog.push(a, b)",
+    ],
+    [
+      "a plus line after a bare declaration",
+      "const z = 3\nlet p\n+z\nlog.push(p)",
+    ],
+    ["a template line after a bare name", "var a = 1, b\n`x`\nlog.push(a, b)"],
+  ])("ends the declaration after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // Not a declaration's last binding: the next line continues the value or the call.
+  it.each([
+    [
+      "a call's last argument",
+      "const f = (a, b) => b\nconst v = [[7]], i = 0\nlog.push(f(1, v\n[i]))",
+    ],
+    [
+      "a name after a statement that followed a declaration",
+      "const o = { b: [9] }\nvar a = 1\nlet c = o, d = o.b\nd\n[0]\nlog.push(a, c.b[0], d)",
+    ],
+    [
+      "an expression statement on the line after a declaration",
+      "const b = [[8]], c = 0\nvar a = 1\nlog, b\n[c]\nlog.push(a, b[0][0])",
+    ],
+    ["a for header", "for (let i = 0, n = 2; i < n; i++) log.push(i)"],
+    [
+      "a for-in header with a name on its own line",
+      "const o = { k: 1 }\nfor (var k\n in o) log.push(k)",
+    ],
+    ["an initializer on the next line", "var a = 1, b\n  = 2\nlog.push(a, b)"],
+    ["a comma on the next line", "var a = 1, b\n  , c = 3\nlog.push(a, b, c)"],
+    [
+      "a destructuring pattern's names",
+      "const o = { a: 1, b: [[6]] }, i = 0\nconst { a, b } = o\nlog.push(a, b\n[i])",
+    ],
+  ])("still joins %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
   it("reads a declaration that ends in an initializer as any other line", () => {
     // `const x = 1\n[1]` is `const x = 1[1]` in the source as well.
     expect(minifyJs("const x = 1\n[1].map(f)")).toBe("const x=1[1].map(f)");
