@@ -1527,7 +1527,20 @@ export const minifyJs = (js: string): string => {
   for (let sIdx = 0; sIdx < segments.length; sIdx++) {
     const seg = segments[sIdx];
     if (seg.keptComment !== undefined) {
-      if (seg.keptComment === "close") {
+      // A kept block comment splits the code around it into two segments, so the line breaks
+      // on either side of it stay as written: they end the statement where the source's do
+      // (`x = a\n/* --> */\nb = 2`, `return /* --> */\n1`).
+      const before = segments[sIdx - 1];
+      const after = segments[sIdx + 1];
+      const breakBefore =
+        seg.keptComment === "block" &&
+        before?.literal === false &&
+        /\n\s*$/.test(before.text);
+      const breakAfter =
+        seg.keptComment === "block" &&
+        after?.literal === false &&
+        /^\s*\n/.test(after.text);
+      if (seg.keptComment === "close" || breakBefore) {
         // A `-->` comment only starts at the start of a line.
         if (result && resultLast !== "\n") result += "\n";
       } else if (resultLast === "<" || resultLast === "/") {
@@ -1535,8 +1548,8 @@ export const minifyJs = (js: string): string => {
         result += " ";
       }
       if (seg.keptComment === "block") {
-        result += seg.text;
-        resultLast = "/";
+        result += breakAfter ? `${seg.text}\n` : seg.text;
+        resultLast = breakAfter ? "\n" : "/";
       } else {
         result += `${seg.text.trimEnd()}\n`;
         resultLast = "\n";
