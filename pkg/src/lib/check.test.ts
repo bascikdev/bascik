@@ -543,6 +543,28 @@ describe("checkProject", () => {
       }
     });
 
+    it("does not report SVG and MathML elements whose names the custom element spec reserves", async () => {
+      await setupProject({
+        "pages/index.html": [
+          '<svg><font-face font-family="X"><font-face-src><font-face-uri href="x.svg"><font-face-format string="svg"></font-face-format></font-face-uri><font-face-name name="X"></font-face-name></font-face-src></font-face>',
+          '<missing-glyph></missing-glyph><color-profile name="p"></color-profile></svg>',
+          '<math><semantics><mi>x</mi><annotation-xml encoding="application/mathml+xml"><mi>x</mi></annotation-xml></semantics></math>',
+          // A near miss is still a typo worth reporting.
+          "<font-faces></font-faces><Annotation-XML-x></Annotation-XML-x>",
+        ].join("\n"),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+      const findings = await checkProject();
+      const unmatched = findings.items.filter(
+        (i) => i.category === "unmatched-tag",
+      );
+      expect(unmatched.map((i) => i.message).sort()).toEqual([
+        "<annotation-xml-x>",
+        "<font-faces>",
+      ]);
+    });
+
     it("checkProject prints nothing directly to console", async () => {
       await setupProject({
         "pages/index.html": "<model-viewer></model-viewer>",

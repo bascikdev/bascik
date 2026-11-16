@@ -26,6 +26,28 @@ describe("createExternalTagMatcher", () => {
     expect(createExternalTagMatcher(["*"])("any-tag")).toBe(true);
   });
 
+  it("always matches the SVG and MathML names HTML reserves, with or without entries", () => {
+    for (const matches of [
+      createExternalTagMatcher(undefined),
+      createExternalTagMatcher(["vendor-*"]),
+    ]) {
+      for (const name of [
+        "annotation-xml",
+        "color-profile",
+        "font-face",
+        "font-face-src",
+        "font-face-uri",
+        "font-face-format",
+        "font-face-name",
+        "missing-glyph",
+        "Font-Face",
+      ])
+        expect(matches(name), name).toBe(true);
+      expect(matches("font-faces")).toBe(false);
+      expect(matches("my-font-face")).toBe(false);
+    }
+  });
+
   it("treats regex metacharacters in entries literally and ignores non-strings", () => {
     const matches = createExternalTagMatcher([
       "a.b-c",
