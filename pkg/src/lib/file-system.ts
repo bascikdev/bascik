@@ -488,18 +488,30 @@ const unreadableSubfolder = (dirPath: string, error: unknown): NestedPaths => {
   if (code === "ENOENT" || code === "ENOTDIR") return [];
   const unreadable = new UnreadableFolderError(dirPath, error);
   if (isStrictSourceRead()) throw unreadable;
-  // The dev server scans the same folders on every rebuild: warn once per
-  // folder until it is readable again.
-  if (!warnedUnreadableFolders.has(unreadable.folder)) {
-    warnedUnreadableFolders.add(unreadable.folder);
-    console.warn(
-      unreadable.message
-        .replace("[bascik] error:", "[bascik] warning:")
-        .replace("Its files would be left out.", "Skipping the files in it."),
-    );
-  }
+  warnUnreadable(unreadable);
   return [];
 };
+
+// The dev server scans the same folders on every rebuild, and its file
+// watchers report the same folder too: warn once per folder until it is
+// readable again.
+const warnUnreadable = (unreadable: UnreadableFolderError): void => {
+  if (warnedUnreadableFolders.has(unreadable.folder)) return;
+  warnedUnreadableFolders.add(unreadable.folder);
+  console.warn(
+    unreadable.message
+      .replace("[bascik] error:", "[bascik] warning:")
+      .replace("Its files would be left out.", "Skipping the files in it."),
+  );
+};
+
+/**
+ * The dev server's warning for a folder it cannot read, printed once per
+ * folder whether a scan or a file watcher found it (Linux refuses to watch
+ * an unreadable folder; macOS only refuses to list it).
+ */
+export const warnUnreadableFolder = (dirPath: string, error: unknown): void =>
+  warnUnreadable(new UnreadableFolderError(dirPath, error));
 
 /**
  * Recursive directory read that follows symlinks.

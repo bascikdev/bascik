@@ -180,7 +180,28 @@ describe.skipIf(!canLock)(
         await new Promise((done) => setTimeout(done, 1_000));
         expect(output.match(warning) ?? [], output).toHaveLength(1);
         expect(output).not.toMatch(/\n\s+at /);
+        // Linux refuses to watch the folder (EACCES), macOS does not: the
+        // watcher's error is the same warning, not a raw "watch error".
+        expect(output).not.toMatch(/watch error/);
         expect(child.exitCode).toBeNull();
+
+        // Readable again: its pages are built, and a page added to it later
+        // is seen too (on Linux the folder is watched again).
+        await chmod(join(root, "src/pages/sub"), 0o755);
+        const served = async (path: string): Promise<boolean> => {
+          const until = Date.now() + 20_000;
+          while (Date.now() < until) {
+            const response = await fetch(`http://localhost:${DEV_PORT}${path}`);
+            const body = await response.text();
+            if (response.status === 200 && body.includes("<h1>")) return true;
+            await new Promise((done) => setTimeout(done, 100));
+          }
+          return false;
+        };
+        expect(await served("/sub/inner"), output).toBe(true);
+        await writeFixtureFile(root, "src/pages/sub/later.html", page("Later"));
+        expect(await served("/sub/later"), output).toBe(true);
+        expect(output).not.toMatch(/watch error/);
       } finally {
         const exited = new Promise((done) => child.once("exit", done));
         if (child.exitCode === null && child.signalCode === null) {
