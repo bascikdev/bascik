@@ -100,7 +100,8 @@ export const handlePageWorkerMessage = async (
     const hasDetail =
       detail.stage !== undefined ||
       detail.location !== undefined ||
-      detail.failedDependencies !== undefined;
+      detail.failedDependencies !== undefined ||
+      detail.buildScripts !== undefined;
     port?.postMessage(
       hasDetail
         ? { ok: false, error: errorMsg, detail }

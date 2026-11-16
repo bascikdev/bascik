@@ -28,6 +28,8 @@ import {
 import {
   createBuildScriptStats,
   formatPageBuildScriptStats,
+  recordFailedPageBuildScriptStats,
+  type BuildScriptStats,
 } from "./build-script-stats.ts";
 import { collectAllScriptDeps, executeBuildScripts } from "./build-scripts.ts";
 import {
@@ -170,7 +172,32 @@ export const writeTranspiledPage = async (
   );
 };
 
+/**
+ * Compile one page. A page that fails throws, and its error carries what its
+ * build scripts cost (`failedPageBuildScriptStats`), so the summary still
+ * counts the scripts that ran on it.
+ */
 export const transpilePage = async (
+  ...args: Parameters<typeof transpileCountedPage> extends [
+    unknown,
+    ...infer Rest,
+  ]
+    ? Rest
+    : never
+): Promise<TranspilePageResult | null> => {
+  // Build-script children run while the page's clock is paused, so their
+  // cost is counted separately and named on the page's line.
+  const scriptStats = createBuildScriptStats();
+  try {
+    return await transpileCountedPage(scriptStats, ...args);
+  } catch (error) {
+    recordFailedPageBuildScriptStats(error, scriptStats);
+    throw error;
+  }
+};
+
+const transpileCountedPage = async (
+  scriptStats: BuildScriptStats,
   pagePath: string,
   componentList?: ComponentList,
   globalStylesHtml?: string,
@@ -190,9 +217,6 @@ export const transpilePage = async (
   const resume = () => {
     seg = performance.now();
   };
-  // Build-script children run while the clock above is paused, so their cost
-  // is counted separately and named on the page's line.
-  const scriptStats = createBuildScriptStats();
 
   const relativePagePath = route
     ? resolveRoutePath(getRelativePath(pagePath, "pages"), route.params)

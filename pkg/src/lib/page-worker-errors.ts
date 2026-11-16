@@ -18,6 +18,10 @@ import {
   type BuildScriptLocation,
 } from "./build-error.ts";
 import { PageProcessingError } from "./page-diagnostics.ts";
+import {
+  failedPageBuildScriptStats,
+  type BuildScriptStats,
+} from "./build-script-stats.ts";
 
 /** What a page worker sends for a page that failed, beside the message. */
 export interface PageWorkerFailure {
@@ -27,6 +31,8 @@ export interface PageWorkerFailure {
   stage?: string;
   /** Where the build script that threw was written. */
   location?: BuildScriptLocation;
+  /** What the failed page's build scripts cost, for the summary's counts. */
+  buildScripts?: BuildScriptStats;
   /** Project-relative dependencies the failed compile could not find. */
   failedDependencies?: string[];
 }
@@ -54,6 +60,9 @@ export const toPageWorkerFailure = (
     };
   if (failedDependencies.length > 0)
     failure.failedDependencies = [...failedDependencies];
+  const stats = failedPageBuildScriptStats(error);
+  if (stats && (stats.ran > 0 || stats.cached > 0))
+    failure.buildScripts = { ...stats };
   return failure;
 };
 

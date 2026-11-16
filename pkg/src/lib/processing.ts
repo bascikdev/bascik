@@ -88,6 +88,7 @@ import { explicitConfigArgv } from "./config-file-names.ts";
 import {
   addBuildScriptStats,
   createBuildScriptStats,
+  failedPageBuildScriptStats,
   formatBuildScriptSummary,
   type BuildScriptStats,
 } from "./build-script-stats.ts";
@@ -99,6 +100,7 @@ import type { PageWorkerResult } from "./page-worker.ts";
 import {
   failedDependenciesOf,
   fromPageWorkerFailure,
+  type PageWorkerFailure,
 } from "./page-worker-errors.ts";
 import {
   executeRoutesScript,
@@ -703,6 +705,12 @@ export const processPageBatch = async (
 
   const results: (TranspilePageResult | null)[] = [];
 
+  // A failed page returns no result; its error carries what its scripts cost.
+  const addFailedPageStats = (error: unknown): void => {
+    const failed = failedPageBuildScriptStats(error);
+    if (failed && scriptStats) addBuildScriptStats(scriptStats, failed);
+  };
+
   const runJob = async (job: PageJob) => {
     const generation = pagesClaimed.get(job.pagePath)!;
     const result = await transpilePage(
@@ -756,6 +764,7 @@ export const processPageBatch = async (
         try {
           return await runJob(job);
         } catch (error) {
+          addFailedPageStats(error);
           pageErrors.push(normalizePageError(job.pagePath, error));
           return null;
         }
@@ -799,6 +808,7 @@ export const processPageBatch = async (
           try {
             restResults[restIndex.get(job)!] = await runJob(job);
           } catch (error) {
+            addFailedPageStats(error);
             pageErrors.push(normalizePageError(job.pagePath, error));
           }
         }
@@ -1319,6 +1329,10 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
           typeof error === "object" && error !== null && "detail" in error
             ? (error as { detail: unknown }).detail
             : undefined;
+        // The worker counted the failed page's scripts too.
+        const failedStats = (detail as PageWorkerFailure | undefined)
+          ?.buildScripts;
+        if (failedStats) addBuildScriptStats(scriptStats, failedStats);
         const restored = fromPageWorkerFailure(job.pagePath, detail);
         const failedDependencies = failedDependenciesOf(detail);
         if (!BascikConfig.isBuild && failedDependencies.length > 0)
