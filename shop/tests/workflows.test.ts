@@ -126,6 +126,13 @@ test("a preview removes the Worker, database and queues of closed pull requests 
   expect(worker).toBeLessThan(queue);
   expect(queue).toBeLessThan(database);
   expect(database).toBeLessThan(create);
+  // A leftover that cannot be removed warns and lets this preview deploy; the
+  // warning carries Cloudflare's reason, escaped as a workflow command value.
+  const cleanup = deploy.slice(deploy.indexOf("async function cfDelete"));
+  expect(cleanup).toMatch(/catch \(error\)[\s\S]*::warning title=/);
+  expect(cleanup).toContain('.replaceAll("\\n", "%0A")');
+  expect(deploy).toContain('host !== "api.cloudflare.com"');
+  expect(deploy).toContain("...(body.errors ?? [])");
   // Only names this script makes, and never one of an open pull request.
   const pattern = /\/\^bascik-shop-pr-\(\\d\+\)\(\?:-db\|-jobs\|-dead\)\?\$\//;
   expect(deploy).toMatch(pattern);

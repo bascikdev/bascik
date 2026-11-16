@@ -53,15 +53,21 @@ async function request<T>(
     );
   return response.json() as Promise<T>;
 }
-/** Stripe's own one-line reason for a refused request, so a failed run says why. */
+/**
+ * Stripe's or Cloudflare's own one-line reason for a refused request, so a
+ * failed run says why (Stripe answers `error`, Cloudflare `errors[]`).
+ */
 async function providerReason(response: Response): Promise<string> {
-  if (new URL(response.url).hostname !== "api.stripe.com") return "";
+  const host = new URL(response.url).hostname;
+  if (host !== "api.stripe.com" && host !== "api.cloudflare.com") return "";
   try {
     const body = (await response.json()) as {
       error?: { code?: string; message?: string };
+      errors?: { code?: number; message?: string }[];
     };
-    const reason = [body.error?.code, body.error?.message]
-      .filter(Boolean)
+    const reason = [body.error, ...(body.errors ?? [])]
+      .flatMap((entry) => (entry ? [entry.code, entry.message] : []))
+      .filter((part) => part !== undefined && part !== "")
       .join(": ");
     return reason ? ` (${reason.slice(0, 300)})` : "";
   } catch {
@@ -134,15 +140,28 @@ const closedPreview = (resource: string) => {
   const match = /^bascik-shop-pr-(\d+)(?:-db|-jobs|-dead)?$/.exec(resource);
   return match !== null && !openPulls.has(match[1]);
 };
+// A leftover that cannot be removed must not stop this pull request's own
+// preview: the failure becomes a warning on the run, and the next preview
+// tries again.
 async function cfDelete(path: string) {
-  const response = await request<{ success: boolean }>(
-    `https://api.cloudflare.com/client/v4/accounts/${account}/${path}`,
-    cfToken,
-    undefined,
-    "DELETE",
-  );
-  if (!response.success)
-    throw new Error(`Cloudflare preview cleanup failed: ${path}`);
+  try {
+    const response = await request<{ success: boolean }>(
+      `https://api.cloudflare.com/client/v4/accounts/${account}/${path}`,
+      cfToken,
+      undefined,
+      "DELETE",
+    );
+    if (!response.success)
+      throw new Error(`Cloudflare preview cleanup failed: ${path}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Escaped as a workflow command value, so a provider's text stays one line.
+    const value = message
+      .replaceAll("%", "%25")
+      .replaceAll("\r", "%0D")
+      .replaceAll("\n", "%0A");
+    console.log(`::warning title=Shop preview cleanup::${value}`);
+  }
 }
 for (const script of await cf<{ id: string }[]>("workers/scripts"))
   if (closedPreview(script.id))
