@@ -1122,6 +1122,50 @@ describe("minifyJs – a call that only looks like a control header", () => {
   );
 });
 
+describe("minifyJs – a line after an arrow function body", () => {
+  // An arrow function cannot be an operand, so a line break after its body ends the statement.
+  it.each([
+    ["a plus sign", "const y = '3'\nlet x = () => {}\n+y\nlog.push(typeof x)"],
+    ["a minus sign", "const y = 3\nlet x = () => {}\n-y\nlog.push(typeof x)"],
+    ["a prefix ++", "let y = 3\nlet x = () => {}\n++y\nlog.push(typeof x, y)"],
+    [
+      "a regex",
+      "let x = () => { return 1 }\n/a/.test('a') && log.push('re')\nlog.push(x())",
+    ],
+    [
+      "an async arrow",
+      "const y = 2\nlet x = async () => {}\n-y\nlog.push(typeof x)",
+    ],
+    [
+      "an arrow in a declaration with an else after it",
+      "let f\nif (log.length) f = () => {}\nelse f = () => { return 2 }\nlog.push(f())",
+    ],
+  ])("ends the statement before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a comma",
+      "const fs = [() => { return 1 }\n, () => 2]\nlog.push(fs.length)",
+    ],
+    [
+      "a closing parenthesis",
+      "const g = (f) => f()\nlog.push(g(() => { return 3 }\n))",
+    ],
+    [
+      "the colon of a conditional",
+      "const f = log.length ? () => { return 1 }\n: () => 2\nlog.push(f())",
+    ],
+    [
+      "a plus sign after an object literal",
+      "const y = 4\nconst x = {}\n+y\nlog.push(x)",
+    ],
+  ])("keeps the expression going before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
 describe("minifyJs – a block comment that spans lines is a line break", () => {
   // ECMAScript reads a multi-line comment holding a line terminator as a line terminator.
   it.each([

@@ -1348,12 +1348,16 @@ export const minifyJs = (js: string): string => {
         // A `(` or `[` line continues the `}` of an object literal or function expression
         // (and starts a new statement after a block or declaration either way), but not the
         // `}` of an arrow function body, which cannot be called or indexed.
-        if (
+        if (seg.arrowBodyCloses?.has(prevLineEnd) === true) {
+          // An arrow function is not an operand either (`() => {}\n+y` is two statements):
+          // only the punctuation that ends the expression holding it continues the line.
+          needsSemicolon = !/^[,;:)\]}]/.test(line);
+        } else if (
           !/^((?:else|catch|finally|while|instanceof|in|of)(?![a-zA-Z0-9_$])|,|;|:|\)|\}|\]|\.|\?|\*|\/|%|\^|<|>|=|\+(?!\+)|\-(?!\-)|&|\||!=)/.test(
             line,
           ) &&
-          ((firstChar !== "(" && firstChar !== "[") ||
-            seg.arrowBodyCloses?.has(prevLineEnd) === true)
+          firstChar !== "(" &&
+          firstChar !== "["
         ) {
           needsSemicolon = true;
         } else if (
