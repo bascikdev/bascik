@@ -142,6 +142,7 @@ import {
   PAGE_WORKER_INIT_MESSAGE,
 } from "./page-worker-messages.ts";
 import { listComponents } from "./components.ts";
+import { BascikConfig } from "./config.ts";
 
 const fakeCpus = (count: number) =>
   vi
@@ -639,5 +640,48 @@ describe("processAllPages – early page worker pool", () => {
     vi.mocked(listPages).mockResolvedValue(staticPages(3));
     await processAllPages({ useWorkers: false });
     expect(WorkerPoolMock).not.toHaveBeenCalled();
+  });
+
+  describe("pipeline.workers as a number", () => {
+    const pipeline = BascikConfig.pipeline as { workers: boolean | number };
+    afterEach(() => {
+      pipeline.workers = true;
+    });
+
+    it("caps the pool at the configured number of workers", async () => {
+      pipeline.workers = 3;
+      vi.mocked(listPages).mockResolvedValue(staticPages(12));
+      await processAllPages();
+      expect(WorkerPoolMock.mock.calls[0][1]).toBe(3);
+      expect(pools[0].env[CHILD_WORKER_COUNT_VAR]).toBe("3");
+    });
+
+    it("still starts no more workers than pages, or than CPUs", async () => {
+      pipeline.workers = 6;
+      vi.mocked(listPages).mockResolvedValue(staticPages(2));
+      await processAllPages();
+      expect(WorkerPoolMock.mock.calls[0][1]).toBe(2);
+      pipeline.workers = 64;
+      vi.mocked(listPages).mockResolvedValue(staticPages(20));
+      await processAllPages();
+      expect(WorkerPoolMock.mock.calls[1][1]).toBe(8);
+    });
+
+    it("does not grow a dynamic route's pool past the configured number", async () => {
+      pipeline.workers = 2;
+      vi.mocked(listPages).mockResolvedValue(["src/pages/blog/[slug].html"]);
+      holdRoutes(["a", "b", "c", "d", "e"])();
+      await processAllPages();
+      expect(WorkerPoolMock.mock.calls[0][1]).toBe(1);
+      expect(pools[0].grow).toHaveBeenCalledWith(2);
+      expect(pools[0].size).toBe(2);
+    });
+
+    it("runs one page worker with workers: 1", async () => {
+      pipeline.workers = 1;
+      vi.mocked(listPages).mockResolvedValue(staticPages(5));
+      await expect(processAllPages()).resolves.toHaveLength(5);
+      expect(WorkerPoolMock.mock.calls[0][1]).toBe(1);
+    });
   });
 });

@@ -324,7 +324,12 @@ export interface GenerateOptions {
 export interface PipelineOptions {
   watchPaths: string[];
   exec?: ExecEntry[];
-  workers: boolean;
+  /**
+   * Compile pages in a pool of worker threads. `true` sizes the pool to the
+   * CPUs (and the pages, and the child-process budget); a positive integer
+   * does the same with that number as the maximum. Default: `false`.
+   */
+  workers: boolean | number;
   /**
    * What a failing `exec` script does. `'error'` stops (a build exits 1, a dev
    * session exits 1); `'warn'` reports and continues. Default: `'error'` for
@@ -521,7 +526,7 @@ export type UserConfig = {
   pipeline?: {
     watchPaths?: string[];
     exec?: ExecEntry[];
-    workers?: boolean;
+    workers?: boolean | number;
     onExecError?: "error" | "warn";
   };
   scripts?: {
