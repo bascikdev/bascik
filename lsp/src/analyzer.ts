@@ -17,6 +17,7 @@ import {
 } from "vscode-languageserver";
 import { type TextDocumentLike } from "./types.js";
 import { scanTags } from "./tag-scan.js";
+import { maskLikeCompiler } from "./component-usages.js";
 import {
   type ProjectSnapshot,
   isInsideComponentRoots,
@@ -1335,16 +1336,10 @@ export function createDiagnostics(
       fsPath.toLowerCase().endsWith(".html") &&
       fs.existsSync(fsPath.replace(/\.html$/i, ".css"));
 
-    const maskedText = text
-      .replace(
-        /(<(style|textarea|script)(?=[\t\n\f\r />])(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2(?:[\t\n\f\r /][^>]*)?>)/gi,
-        (_m, open: string, _tag: string, content: string, close: string) =>
-          open + " ".repeat(content.length) + close,
-      )
-      .replace(
-        /<!--([\s\S]*?)-->/g,
-        (_m, content: string) => "<!--" + " ".repeat(content.length) + "-->",
-      );
+    // Comments and raw text in document order, as the compiler reads them: a
+    // `<script>` inside a comment opens nothing, and `<!--` inside a script or
+    // stylesheet is its text.
+    const maskedText = maskLikeCompiler(text);
 
     const componentMap = snapshot?.componentMap ?? new Map<string, string>();
     const componentNames = Array.from(componentMap.keys());
