@@ -150,7 +150,7 @@ Start with a system font stack: it costs nothing to load. To add a web font, sel
 
 ## Inline the Global Stylesheet
 
-`assets: { inlineStyles: ['src/pages/css/styles.css'] }` injects the file into every page's `<head>` as a `<style>` block, so the first paint needs no stylesheet request. The file is then no longer copied to `dist/`, so remove the `<link>` to it in the same change. See [Lighthouse Performance](/lighthouse/performance).
+`assets: { inlineStyles: ['src/pages/css/styles.css'] }` injects the file into every page's `<head>` as a `<style>` block, so the first paint needs no stylesheet request. The file is then no longer copied to `dist/`, so remove the `<link>` to it in the same change. A `<link rel="stylesheet">` to an inlined file left in a page or a component would answer 404: `bascik --build` and `bascik` warn with the page and the link, and `bascik --check` reports it as `inlined-stylesheet-link`. See [Lighthouse Performance](/lighthouse/performance).
 
 ## Tailwind
 

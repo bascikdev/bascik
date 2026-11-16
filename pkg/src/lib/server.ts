@@ -287,8 +287,11 @@ export const onError = (
   try {
     if (!res.headersSent) {
       if (isNoSuchFileError(error)) {
-        res.respond(404, { ...secHeaders });
-        res.end();
+        res.respond(404, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
+        res.end("Not Found");
         return 404;
       } else {
         // Try serving custom 500 page from memory store
@@ -579,8 +582,11 @@ export const createRequestHandler = () => {
     try {
       if (!req.path) {
         responseStatus = 400;
-        res.respond(400, { ...secHeaders });
-        return res.end();
+        res.respond(400, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
+        return res.end("Bad Request");
       }
 
       // Parse the request pathname once so routing decisions are never
@@ -791,7 +797,10 @@ export const createRequestHandler = () => {
           !fullPath.startsWith(distDirPrefix)
         ) {
           responseStatus = 400;
-          res.respond(400, { ...secHeaders });
+          res.respond(400, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
           res.end("Bad Request");
           return;
         }
@@ -823,7 +832,10 @@ export const createRequestHandler = () => {
           if (isNoSuchFileError(err) && mem.getPageExact(pathname))
             break staticAsset;
           responseStatus = isNoSuchFileError(err) ? 404 : 500;
-          res.respond(responseStatus, { ...secHeaders });
+          res.respond(responseStatus, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
           res.end(
             responseStatus === 404 ? "Not Found" : "Internal Server Error",
           );
@@ -874,7 +886,10 @@ export const createRequestHandler = () => {
         if (!delivery) {
           if (res.destroyed) return;
           responseStatus = 404;
-          res.respond(404, { ...secHeaders });
+          res.respond(404, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
           res.end("Not Found");
           return;
         }
@@ -991,8 +1006,11 @@ export const createRequestHandler = () => {
         // Disable in production serve mode.
         if (BascikConfig.isProdServer) {
           responseStatus = 404;
-          res.respond(404, { ...secHeaders });
-          return res.end();
+          res.respond(404, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
+          return res.end("Not Found");
         }
 
         const isHead = req.method === "HEAD";

@@ -347,6 +347,83 @@ describe("checkProject", () => {
     );
   });
 
+  describe("links to a stylesheet assets.inlineStyles inlines", () => {
+    const mutable = BascikConfig as unknown as {
+      assets: typeof BascikConfig.assets;
+    };
+    let originalAssets: typeof BascikConfig.assets;
+    beforeEach(() => {
+      originalAssets = mutable.assets;
+      mutable.assets = {
+        ...originalAssets,
+        inlineStyles: ["src/pages/css/styles.css"],
+      };
+    });
+    afterEach(() => {
+      mutable.assets = originalAssets;
+    });
+
+    it("warns with the page, line and href of a leftover <link>", async () => {
+      await setupProject({
+        "src/pages/css/styles.css": "body{color:red}",
+        "src/pages/index.html":
+          '<html>\n<head>\n  <link rel="stylesheet" href="/css/styles.css">\n</head><body>hi</body></html>',
+        "src/components/site-head/site-head.html":
+          '<link\n  rel="stylesheet"\n  href="/css/styles.css"\n/>',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "src/pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "site-head": {
+          fileName: join(workDir, "src/components/site-head/site-head.html"),
+        },
+      });
+
+      const findings = await checkProject();
+      const links = findings.items.filter(
+        (item) => item.category === "inlined-stylesheet-link",
+      );
+      expect(links).toHaveLength(2);
+      expect(links[0]).toMatchObject({
+        severity: "warning",
+        locations: [
+          {
+            filePath: expect.stringMatching(/src\/pages\/index\.html$/),
+            line: 3,
+            column: 3,
+          },
+        ],
+      });
+      expect(links[0].message).toContain(
+        '<link rel="stylesheet" href="/css/styles.css">',
+      );
+      expect(links[1].locations[0]).toMatchObject({
+        filePath: expect.stringMatching(
+          /src\/components\/site-head\/site-head\.html$/,
+        ),
+        line: 1,
+      });
+      expect(findings.errors).toBe(0);
+    });
+
+    it("does not warn once the <link> is removed, or for a stylesheet that is still copied", async () => {
+      await setupProject({
+        "src/pages/css/styles.css": "body{color:red}",
+        "src/pages/css/print.css": "body{color:black}",
+        "src/pages/index.html":
+          '<html><head><link rel="stylesheet" href="/css/print.css"></head><body>hi</body></html>',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "src/pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      expect(
+        findings.items.filter(
+          (item) => item.category === "inlined-stylesheet-link",
+        ),
+      ).toEqual([]);
+    });
+  });
+
   describe("API route table validations (Prompt 49)", () => {
     it("reports error when two route files resolve to the same URL", async () => {
       await setupProject({

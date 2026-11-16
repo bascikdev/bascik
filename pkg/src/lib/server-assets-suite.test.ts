@@ -739,7 +739,10 @@ describe("startHttp2Server – static representation failure paths", () => {
 
     await handler(stream, makeHeaders("/style.css", "GET"));
     expect(stream.respond).toHaveBeenCalledWith(
-      expect.objectContaining({ ":status": 404 }),
+      expect.objectContaining({
+        ":status": 404,
+        "content-type": "text/plain; charset=utf-8",
+      }),
     );
   });
 
@@ -762,7 +765,9 @@ describe("startHttp2Server – static representation failure paths", () => {
     },
   );
 
-  it("responds 404 when stat reports ENOENT", async () => {
+  // A stylesheet assets.inlineStyles inlines is not in dist/, so a <link>
+  // left in a page lands here: the 404 says what it is, as the page 404s do.
+  it("responds 404 as text/plain when stat reports ENOENT", async () => {
     mockStat.mockRejectedValueOnce(
       Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
     );
@@ -771,7 +776,27 @@ describe("startHttp2Server – static representation failure paths", () => {
 
     await handler(stream, makeHeaders("/style.css", "GET"));
     expect(stream.respond).toHaveBeenCalledWith(
-      expect.objectContaining({ ":status": 404 }),
+      expect.objectContaining({
+        ":status": 404,
+        "content-type": "text/plain; charset=utf-8",
+      }),
+    );
+    expect(stream.end).toHaveBeenCalledWith("Not Found");
+  });
+
+  it("responds 500 as text/plain when stat fails for another reason", async () => {
+    mockStat.mockRejectedValueOnce(
+      Object.assign(new Error("EACCES"), { code: "EACCES" }),
+    );
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+
+    await handler(stream, makeHeaders("/style.css", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ":status": 500,
+        "content-type": "text/plain; charset=utf-8",
+      }),
     );
   });
 

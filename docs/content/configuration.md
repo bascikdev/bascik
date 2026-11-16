@@ -472,6 +472,8 @@ assets: {
 }
 ```
 
+A stylesheet listed in `assets.inlineStyles` (every `.css` file under `directory.pages` with `inlineStyles: true`) is inlined into each page's `<head>` and not copied to `directory.out`. Remove any `<link rel="stylesheet">` to it: the build warns about one it finds, naming the page and the link, and `bascik --check` reports it.
+
 `assets.exclude` patterns match paths relative to `directory.pages` and provide project-specific exclusions. They do not weaken the built-in deny-list, which always applies. Keep tests and source-only helpers outside `directory.pages`. To copy a separate external asset tree, use a `pipeline.exec` script that writes intentionally selected files to `directory.out`.
 
 Set `assets.symlink` to `true` to use relative links for unchanged development assets, including images, SVGs, PDFs, fonts, media, JSON, and XML. Bascik still copies assets it transforms, such as minified CSS or JavaScript and rewritten web manifests. Every production build, including a targeted `--only` build, writes regular files. If Windows denies symlink creation, Bascik warns once and falls back to copying.
