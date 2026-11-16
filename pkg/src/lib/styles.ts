@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { withOpenFileSlot } from "./open-file-limit.ts";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { minifyAttributeName } from "./names.ts";
@@ -1649,7 +1650,7 @@ export const resolveCssImports = async (
 
     try {
       const importedRaw = cleanImportedCss(
-        decodeSource(await readFile(plan.targetPath)),
+        decodeSource(await withOpenFileSlot(() => readFile(plan.targetPath))),
       );
       const nestedResolved = await resolveCssImports(
         importedRaw,
@@ -1853,7 +1854,7 @@ export const getComponentCss = async (
   if (!cssFileName) return;
   let source: Buffer;
   try {
-    source = await readFile(cssFileName);
+    source = await withOpenFileSlot(() => readFile(cssFileName));
   } catch (error) {
     reportUnreadableSourceFile("component stylesheet", cssFileName, error);
     return;

@@ -6,12 +6,17 @@
  */
 
 import { relative, resolve } from "node:path";
+import {
+  isOpenFileLimitError,
+  OPEN_FILE_LIMIT_FIX,
+} from "./open-file-limit.ts";
 
 let strictSourceReads: boolean | undefined;
 
 /**
  * Whether an unreadable source fails the run (a build, `bascik --check`) or
- * is skipped with a warning (the dev server, where a file can be mid edit). Unset, it follows `BascikConfig.isBuild`, which config.ts mirrors into
+ * is skipped with a warning (the dev server, where a file can be mid edit).
+ * Unset, it follows `BascikConfig.isBuild`, which config.ts mirrors into
  * `BASCIK_BUILD` for page workers too.
  */
 export const setStrictSourceReads = (strict: boolean | undefined): void => {
@@ -55,7 +60,7 @@ export const reportUnreadableSourceFile = (
   const detail = `could not read ${kind} "${display}": ${error instanceof Error ? error.message : String(error)}.`;
   if (isStrictSourceRead())
     throw new UnreadableSourceError(
-      `[bascik] error: ${detail} Make the file readable, or remove it.`,
+      `[bascik] error: ${detail} ${isOpenFileLimitError(error) ? OPEN_FILE_LIMIT_FIX : "Make the file readable, or remove it."}`,
       display,
       error,
     );

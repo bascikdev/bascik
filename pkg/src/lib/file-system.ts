@@ -33,6 +33,11 @@ import { minifyCss } from "./css-minifier.ts";
 import { minifyJs } from "./js-minifier.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
 import { isStrictSourceRead } from "./unreadable-source.ts";
+import {
+  isOpenFileLimitError,
+  OPEN_FILE_LIMIT_FIX,
+  withOpenFileSlot,
+} from "./open-file-limit.ts";
 
 export {
   forgetUnreadableSourceFile,
@@ -460,8 +465,10 @@ export class UnreadableFolderError extends Error {
     super(
       `[bascik] error: could not read folder "${display}": ` +
         `${cause instanceof Error ? cause.message : String(cause)}. ` +
-        `Its files would be left out. Make the folder readable, or move it ` +
-        `out of the project.`,
+        `Its files would be left out. ` +
+        (isOpenFileLimitError(cause)
+          ? OPEN_FILE_LIMIT_FIX
+          : `Make the folder readable, or move it out of the project.`),
       { cause },
     );
     this.name = "UnreadableFolderError";
@@ -511,7 +518,9 @@ const deepReadDir = async (
   try {
     if (isRoot) visited.add(await safeRealpath(dirPath));
     // withFileTypes is what makes it return dirent
-    const dirents = await readdir(dirPath, { withFileTypes: true });
+    const dirents = await withOpenFileSlot(() =>
+      readdir(dirPath, { withFileTypes: true }),
+    );
     if (warnedUnreadableFolders.size > 0)
       warnedUnreadableFolders.delete(
         relative(process.cwd(), resolve(dirPath)).replace(/\\/g, "/") || ".",
@@ -593,7 +602,9 @@ export const copyStaticAssets = async (): Promise<void> => {
 
   await Promise.all(
     pageAssetFiles.map((filePath) =>
-      copyReplicatePath(filePath, BascikConfig.directory.out),
+      withOpenFileSlot(() =>
+        copyReplicatePath(filePath, BascikConfig.directory.out),
+      ),
     ),
   );
 };

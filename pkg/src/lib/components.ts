@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { withOpenFileSlot } from "./open-file-limit.ts";
 import { existsSync } from "node:fs";
 import { dirname, posix, relative, resolve } from "node:path";
 import {
@@ -624,7 +625,9 @@ const warnComponentCompatibility = async (
   let rawCss = "";
   if (cssFileName) {
     try {
-      rawCss = stripBom(await readFile(cssFileName, "utf8"));
+      rawCss = stripBom(
+        await withOpenFileSlot(() => readFile(cssFileName, "utf8")),
+      );
     } catch {
       rawCss = "";
     }
@@ -1181,7 +1184,7 @@ export const listComponents = async (
         }
       };
       try {
-        const fileContentRead = readFile(fileName);
+        const fileContentRead = withOpenFileSlot(() => readFile(fileName));
         [fileContentBuffer, cssFileContent, companionScripts] =
           await Promise.all([
             fileContentRead,
