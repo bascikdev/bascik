@@ -1242,11 +1242,13 @@ export const shieldCssStrings = (
   const shield = createContentShield(css);
   // Quoted strings (with escape handling), url(...) contents, and unquoted
   // attribute-selector values (so a[href$=.pdf] keeps `[...]` visible to
-  // selector passes while hiding `.pdf` from class-selector regexes).
+  // selector passes while hiding `.pdf` from class-selector regexes). The
+  // attribute may carry a namespace (`[xlink|href=…]`, `[*|href=…]`) and the
+  // value an `i` or `s` flag (`[href$=.pdf i]`, Selectors Level 4).
   const shielded = css.replace(
     // An escape outside a string (`.it\'s`) is part of a name, never a quote
     // that opens a string, so it is matched first and kept as written.
-    /(\\[\s\S])|("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\)|(\[\s*[\w-]+\s*[~|^$*]?=\s*)([^\]"'\s]+)(?=\s*\])/gi,
+    /(\\[\s\S])|("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\)|(\[\s*(?:(?:[\w-]+|\*)?\|)?[\w-]+\s*[~|^$*]?=\s*)([^\]"'\s]+)(?=\s*(?:[is]\s*)?\])/gi,
     (
       match,
       escape?: string,

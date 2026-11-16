@@ -2700,6 +2700,58 @@ describe("prefixElementAttribute – backslash before a closing quote", () => {
   });
 });
 
+describe("prefixElementAttribute – attribute selector contents", () => {
+  // Nothing inside `[...]` is a class, id or element selector, whatever
+  // follows the value: an `i` or `s` flag, a namespace, or whitespace.
+  it.each([
+    "a[href$=.pdf i]",
+    "a[href$=.pdf s]",
+    "a[href$=.pdf I ]",
+    "a[ href $= .pdf i ]",
+    "a[xlink|href$=.svg]",
+    "a[*|href$=.svg i]",
+    'a[href$=".pdf" i]',
+  ])("keeps the value of %j as written", (selector) => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<a class="pdf link" href="/a.pdf">x</a>',
+        `.link {} .pdf {} .svg {} ${selector} { color: red }`,
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toContain(
+      `${selector.replace(/^a/, `.${elementClass("a")}`)} { color: red }`,
+    );
+  });
+
+  it("still scopes the element after an attribute selector with a flag", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<p class="link" data-state="OPEN"><span>x</span></p>',
+        ".link[data-state=open i] span { color: red }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("link")}[data-state=open i] .${elementClass("span")} { color: red }`,
+    );
+  });
+
+  it("keeps an id-like value as written and still scopes the class after it", () => {
+    let component = makeComponent(
+      '<a id="top" class="link" href="#top">x</a>',
+      "#top {} .link {} a[href^=#top i].link { color: red }",
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.cssFileContent).toContain(
+      `.${elementClass("a")}[href^=#top i].${scopeClass("link")} { color: red }`,
+    );
+  });
+});
+
 describe("prefixElementAttribute – class names that start with a hyphen", () => {
   // `-mt-4` and `--active` are CSS identifiers (CSS Syntax 3, "would start
   // an identifier"), so they are scoped like any class, in CSS and markup.
