@@ -106,6 +106,7 @@ type Segment = {
   integerBeforeDotLines?: Set<number>; // last digit of an integer a line break separates from a `.`
   moduleFromBreaks?: Set<number>; // last character before a line break that a clause's `from` or `as` follows
   contextualKeywordEnds?: Set<number>; // end of a clause's `as` or a for header's `of` that a line break follows
+  letKeywordEnds?: Set<number>; // end of a `let` that starts a statement, which declares when a name, `[` or `{` follows
   asiBefore?: boolean; // literal only: a line break before it ends the statement
   keptComment?: "line" | "close" | "block"; // literal only: a comment kept as written
   lineBreakBefore?: boolean; // literal only: keep the line break before it (`await\n"a"`, `yield\n`x``)

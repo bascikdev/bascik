@@ -90,6 +90,12 @@ type Segment = {
    */
   contextualKeywordEnds?: Set<number>;
   /**
+   * Offsets in `text` of the last character of a `let` at the start of a statement (or of a
+   * `for` header), where it declares when a name, `[` or `{` follows. Anywhere else, and before
+   * anything else, a `let` is a variable name in a classic script (`x = let\nfoo()`).
+   */
+  letKeywordEnds?: Set<number>;
+  /**
    * Code segments only: the segment starts with a line break and then an `as` that continues
    * the clause after a string name in the literal before it (`export { "a b"\nas c }`).
    */
@@ -197,12 +203,19 @@ const EXPRESSION_CONTINUING_KEYWORDS = new Set(
  * `var`/`let`/`const`/`function`/`class` take the name they declare
  * (`var\n  first = 1,\n  second = 2`), the rest take an operand
  * (`typeof\nx`, `a in\nb`). Contextual words (`of`, `await`, `from`) are left out because they
- * are also valid identifiers that can end a statement; `let` is one too, but a statement that
- * ends in a variable named `let` is not something scripts contain. The character class keeps
+ * are also valid identifiers that can end a statement. `let` is one too: it continues only where
+ * the scanner saw it start a statement and a name, `[` or `{` follows (see `letKeywordEnds`),
+ * and is a variable name anywhere else. The character class keeps
  * `x.case` a property and `this.#class` a private name.
  */
 const LINE_END_CONTINUING_KEYWORD =
   /(?:^|(?![\w$\\]|[^\x00-\x7f\s])[^.#])(?:else|do|try|finally|in|instanceof|typeof|void|delete|new|case|extends|default|export|import|var|let|const|function|class|for)\s*$/;
+
+/** A line ending in the word `let` (not `x.let` or `#let`). */
+const LINE_END_LET = /(?:^|(?![\w$\\]|[^\x00-\x7f\s])[^.#])let$/;
+
+/** What may follow a `let` that declares: a binding name or a destructuring pattern. */
+const LET_DECLARATION_CONTINUATION = /^(?:[A-Za-z_$\\[{]|[^\x00-\x7f\s])/;
 
 /**
  * A line ending in a restricted production: ECMAScript ends the statement at the line break
@@ -652,6 +665,9 @@ const scanSegments = (js: string): Segment[] => {
   let clauseAsAllowed = false;
   let clauseAsTargetNext = false;
   let contextualKeywordEnds: Set<number> | undefined;
+  let letKeywordEnds: Set<number> | undefined;
+  // The word being read starts a statement (or a `for` header), where `let` can declare.
+  let wordAtStatementStart = false;
   let continuesClause = false;
 
   /**
@@ -840,11 +856,13 @@ const scanSegments = (js: string): Segment[] => {
         integerBeforeDotLines,
         moduleFromBreaks,
         contextualKeywordEnds,
+        letKeywordEnds,
         ...(continuesClause ? { continuesClause } : {}),
       });
       codeAccum = "";
     }
     contextualKeywordEnds = undefined;
+    letKeywordEnds = undefined;
     continuesClause = false;
     bareBindingEnds = undefined;
     numberDotEnds = undefined;
@@ -1023,6 +1041,15 @@ const scanSegments = (js: string): Segment[] => {
           (wordRun === "static" && !wordIsProperty) ||
           (lineBreakSinceSignificant &&
             memberKeywordNameEnds?.has(lastSigOffset) === true);
+        wordAtStatementStart =
+          lastSig === "" ||
+          lastSig === ";" ||
+          lastSig === "}" ||
+          (lastSig === "{" && !atObjectMemberLevel()) ||
+          (lastSig === "(" && parenIsControlHeader.at(-1) === true) ||
+          (lastSig === ":" && !colonIsConditional && !atObjectMemberLevel()) ||
+          (wordRun === "export" && !wordIsProperty) ||
+          (lineBreakSinceSignificant && valueEndsHere());
         valueBeforeWord = valueEndsHere() && !DECLARATION_KEYWORDS.has(wordRun);
         wordBeforeWord =
           isWordChar(lastSig) && !wordIsProperty && !lineBreakSinceSignificant
@@ -1148,9 +1175,13 @@ const scanSegments = (js: string): Segment[] => {
         // `export default from`, `export const a = from`: a value follows, not a clause.
         moduleClauseOpen = false;
       }
+      if (wordRun === "let" && wordAtStatementStart && !clauseName) {
+        (letKeywordEnds ??= new Set()).add(lastSigOffset);
+      }
       if (
         !clauseName &&
         DECLARATION_KEYWORDS.has(wordRun) &&
+        (wordRun !== "let" || wordAtStatementStart) &&
         !atObjectMemberLevel()
       ) {
         // `{ const: v, deprecated }` names a key, not a declaration.
@@ -1868,7 +1899,11 @@ export const minifyJs = (js: string): string => {
           seg.memberModifierEnds?.has(prevLineEnd) === true ||
           seg.contextualKeywordEnds?.has(prevLineEnd) === true ||
           (seg.memberKeywordNameEnds?.has(prevLineEnd) !== true &&
-            LINE_END_CONTINUING_KEYWORD.test(ptTail)) ||
+            LINE_END_CONTINUING_KEYWORD.test(ptTail) &&
+            // `x = let\nfoo()`: a `let` that does not declare is a variable name.
+            (!LINE_END_LET.test(ptTail) ||
+              (seg.letKeywordEnds?.has(prevLineEnd) === true &&
+                LET_DECLARATION_CONTINUATION.test(line)))) ||
           (!numberDotEnd &&
             /(=|,|\+|\-|\*|\/|%|\?|:|=>|\.|\&\&|\|\||\?\?)\s*$/.test(ptTail));
 
