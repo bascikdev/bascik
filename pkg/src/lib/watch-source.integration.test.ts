@@ -1,6 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { EventEmitter } from "node:events";
-import { resolve } from "node:path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, relative, resolve } from "node:path";
 
 const mocks = vi.hoisted(() => ({
   watch: vi.fn(),
@@ -17,6 +27,9 @@ const mocks = vi.hoisted(() => ({
   clear: vi.fn(),
   copy: vi.fn(),
   invalidateComponents: vi.fn(),
+  storedPages: vi.fn(),
+  copiedAssets: vi.fn(),
+  forgetAsset: vi.fn(),
   shutdown: [] as (() => Promise<void>)[],
   config: {
     directory: {
@@ -31,7 +44,10 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 vi.mock("chokidar", () => ({ default: { watch: mocks.watch } }));
-vi.mock("./config.ts", () => ({ BascikConfig: mocks.config }));
+vi.mock("./config.ts", async () => ({
+  BascikConfig: mocks.config,
+  shouldLog: (await import("./log-level.ts")).shouldLog,
+}));
 vi.mock("./events.ts", async () => {
   const { EventEmitter } = await import("node:events");
   return {
@@ -49,8 +65,13 @@ vi.mock("./processing.ts", () => ({
   processPageBatch: mocks.batch,
   removePage: mocks.remove,
 }));
+// Every member watch-source.ts and pages-root-removal.ts read. A missing one
+// throws inside the watcher, where the error becomes a "watch error" log line
+// instead of a failure: afterEach fails any test that logs one.
 vi.mock("./mem.ts", () => ({
   mem: {
+    openPages: [],
+    pages: mocks.storedPages,
     pagesDependentOnFile: mocks.deps,
     pagesThisComponentIsUsedOn: mocks.components,
     pagesWithServerScriptPlan: mocks.planPages,
@@ -68,6 +89,8 @@ vi.mock("./file-system.ts", () => ({
   copyReplicatePath: mocks.copy,
   deleteDistFile: mocks.remove,
   deleteDistDir: mocks.remove,
+  copiedPageAssetPaths: mocks.copiedAssets,
+  forgetCopiedPageAsset: mocks.forgetAsset,
 }));
 vi.mock("./asset-filter.ts", () => ({
   isInlineStylesheet: () => false,
@@ -77,9 +100,31 @@ vi.mock("./asset-filter.ts", () => ({
 import { watchSourceCycles } from "./watch-source.ts";
 import { eventEmitter } from "./events.ts";
 
+// The pages folder is a real folder (pages-root-removal.ts checks the disk
+// for it), so a test can remove it and put it back. Mem stores page paths
+// relative to the project, as `alias` gives them.
+let pagesDir = "";
+const inPages = (path: string) => join(pagesDir, path);
+const alias = (path: string) => relative(process.cwd(), inPages(path));
+let consoleError: MockInstance<typeof console.error>;
+let consoleWarn: MockInstance<typeof console.warn>;
+let consoleLog: MockInstance<typeof console.log>;
+
 let watcher: EventEmitter & { close: ReturnType<typeof vi.fn> };
 beforeEach(() => {
   vi.useFakeTimers();
+  pagesDir = join(
+    mkdtempSync(join(tmpdir(), "bascik-watch-source-")),
+    "src/pages",
+  );
+  mkdirSync(pagesDir, { recursive: true });
+  mocks.config.directory.pages = pagesDir;
+  consoleError = vi.spyOn(console, "error");
+  consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.storedPages.mockReset().mockReturnValue([]);
+  mocks.copiedAssets.mockReset().mockReturnValue([]);
+  mocks.forgetAsset.mockReset();
   for (const mock of [
     mocks.run,
     mocks.batch,
@@ -90,7 +135,7 @@ beforeEach(() => {
     mock.mockReset().mockResolvedValue(undefined);
   mocks.clear.mockReset();
   mocks.invalidateComponents.mockReset();
-  mocks.deps.mockReset().mockReturnValue(["src/pages/consumer.html"]);
+  mocks.deps.mockReset().mockReturnValue([alias("consumer.html")]);
   mocks.components.mockReset().mockReturnValue([]);
   mocks.planPages.mockReset().mockReturnValue([]);
   mocks.failedPages.mockReset().mockReturnValue([]);
@@ -112,17 +157,25 @@ afterEach(async () => {
   for (const close of mocks.shutdown.splice(0)) await close();
   eventEmitter.removeAllListeners();
   vi.useRealTimers();
+  rmSync(join(pagesDir, "../.."), { recursive: true, force: true });
+  const watchErrors = consoleError.mock.calls.filter((args) =>
+    String(args[0]).includes("watch error"),
+  );
+  consoleError.mockRestore();
+  consoleWarn.mockRestore();
+  consoleLog.mockRestore();
+  expect(watchErrors).toEqual([]);
 });
 
 describe("source observer and phase queue integration", () => {
   it("deduplicates a directly edited page also found under a relative dependency alias", async () => {
-    mocks.deps.mockReturnValue(["src/pages/index.html"]);
+    mocks.deps.mockReturnValue([alias("index.html")]);
     await watchSourceCycles(vi.fn());
     eventEmitter.emit("boot-done");
-    watcher.emit("all", "change", "src/pages/index.html");
+    watcher.emit("all", "change", inPages("index.html"));
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
-      resolve("src/pages/index.html"),
+      inPages("index.html"),
     ]);
   });
   it("watches glob roots once, filters nonmatches and output writes, and compiles one associated batch", async () => {
@@ -143,7 +196,7 @@ describe("source observer and phase queue integration", () => {
     pre.resolve();
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
-      resolve("src/pages/consumer.html"),
+      inPages("consumer.html"),
     ]);
     expect(mocks.run).toHaveBeenCalledTimes(1);
   });
@@ -199,7 +252,7 @@ describe("source observer and phase queue integration", () => {
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.run).toHaveBeenCalledTimes(1);
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
-      resolve("src/pages/consumer.html"),
+      inPages("consumer.html"),
     ]);
   });
 
@@ -208,11 +261,11 @@ describe("source observer and phase queue integration", () => {
     await watchSourceCycles(vi.fn());
     eventEmitter.emit("boot-done");
     mocks.all.mockClear();
-    watcher.emit("all", "change", "src/pages/index.html");
+    watcher.emit("all", "change", inPages("index.html"));
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.run).not.toHaveBeenCalled();
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
-      resolve("src/pages/index.html"),
+      inPages("index.html"),
     ]);
     watcher.emit("all", "change", "content/doc.md");
     await vi.advanceTimersByTimeAsync(50);
@@ -227,7 +280,7 @@ describe("source observer and phase queue integration", () => {
       path === partial ? ["my-card"] : [],
     );
     mocks.components.mockImplementation((name: string) =>
-      name === "my-card" ? ["src/pages/a.html", "src/pages/b.html"] : [],
+      name === "my-card" ? [alias("a.html"), alias("b.html")] : [],
     );
     await watchSourceCycles(vi.fn());
     eventEmitter.emit("boot-done");
@@ -237,8 +290,8 @@ describe("source observer and phase queue integration", () => {
     expect(mocks.importers).toHaveBeenCalledWith(partial);
     expect(mocks.all).not.toHaveBeenCalled();
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
-      resolve("src/pages/a.html"),
-      resolve("src/pages/b.html"),
+      inPages("a.html"),
+      inPages("b.html"),
     ]);
   });
 
@@ -248,13 +301,13 @@ describe("source observer and phase queue integration", () => {
     mocks.copy.mockClear();
     mocks.all.mockClear();
 
-    watcher.emit("all", "unlinkDir", "src/pages/images");
+    watcher.emit("all", "unlinkDir", inPages("images"));
     await vi.advanceTimersByTimeAsync(50);
 
-    expect(mocks.remove).toHaveBeenCalledWith(resolve("src/pages/images"));
+    expect(mocks.remove).toHaveBeenCalledWith(inPages("images"));
     expect(mocks.copy).not.toHaveBeenCalled();
 
-    watcher.emit("all", "addDir", "src/pages/images");
+    watcher.emit("all", "addDir", inPages("images"));
     await vi.advanceTimersByTimeAsync(50);
 
     expect(mocks.copy).toHaveBeenCalledOnce();
@@ -293,7 +346,7 @@ describe("source observer and phase queue integration", () => {
     mocks.clear.mockClear();
     mocks.invalidateComponents.mockClear();
 
-    const editedPage = resolve("src/pages/index.html");
+    const editedPage = inPages("index.html");
     watcher.emit("all", "change", editedPage);
     await vi.advanceTimersByTimeAsync(50);
 
@@ -305,13 +358,13 @@ describe("source observer and phase queue integration", () => {
   it("clears all build script caches when a matching pre producer runs before a page edit", async () => {
     mocks.deps.mockReturnValue([]);
     mocks.config.pipeline.exec = [
-      { script: "scripts/pre.ts", watch: ["src/pages/*.html"] },
+      { script: "scripts/pre.ts", watch: [alias("*.html")] },
     ];
     await watchSourceCycles(vi.fn());
     eventEmitter.emit("boot-done");
     mocks.clear.mockClear();
 
-    const editedPage = resolve("src/pages/index.html");
+    const editedPage = inPages("index.html");
     watcher.emit("all", "change", editedPage);
     await vi.advanceTimersByTimeAsync(50);
 
@@ -322,7 +375,7 @@ describe("source observer and phase queue integration", () => {
 
   it("invalidates component list cache and clears per-path build script memo when a component file changes", async () => {
     mocks.deps.mockReturnValue([]);
-    mocks.components.mockReturnValue(["src/pages/index.html"]);
+    mocks.components.mockReturnValue([alias("index.html")]);
     await watchSourceCycles(vi.fn());
     eventEmitter.emit("boot-done");
     mocks.clear.mockClear();
@@ -335,28 +388,28 @@ describe("source observer and phase queue integration", () => {
     expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
     expect(mocks.clear).toHaveBeenCalledExactlyOnceWith(editedComponent);
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
-      resolve("src/pages/index.html"),
+      inPages("index.html"),
     ]);
   });
 
   it("rebuilds a page whose last build failed when a component file changes, though no index names it (finding 40)", async () => {
     mocks.deps.mockReturnValue([]);
-    mocks.failedPages.mockReturnValue(["src/pages/cycle.html"]);
+    mocks.failedPages.mockReturnValue([alias("cycle.html")]);
     await watchSourceCycles(vi.fn());
     eventEmitter.emit("boot-done");
 
     watcher.emit("all", "change", resolve("src/components/b-card.html"));
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
-      resolve("src/pages/cycle.html"),
+      inPages("cycle.html"),
     ]);
 
     // A page edit does not need them: only component inputs can fix an expansion failure.
     mocks.batch.mockClear();
-    watcher.emit("all", "change", "src/pages/index.html");
+    watcher.emit("all", "change", inPages("index.html"));
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
-      resolve("src/pages/index.html"),
+      inPages("index.html"),
     ]);
   });
 
@@ -367,8 +420,8 @@ describe("source observer and phase queue integration", () => {
     // list invalidation) must re-store it with the next list, whether or
     // not a tab has it open; a direct page edit keeps the list and does not.
     mocks.deps.mockReturnValue([]);
-    mocks.components.mockReturnValue(["src/pages/index.html"]);
-    mocks.planPages.mockReturnValue(["src/pages/catalog.html"]);
+    mocks.components.mockReturnValue([alias("index.html")]);
+    mocks.planPages.mockReturnValue([alias("catalog.html")]);
     await watchSourceCycles(vi.fn());
     eventEmitter.emit("boot-done");
     mocks.batch.mockClear();
@@ -378,32 +431,29 @@ describe("source observer and phase queue integration", () => {
     expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
     expect(mocks.batch).toHaveBeenCalledOnce();
     expect([...mocks.batch.mock.calls[0][0]].sort()).toEqual(
-      [
-        resolve("src/pages/index.html"),
-        resolve("src/pages/catalog.html"),
-      ].sort(),
+      [inPages("index.html"), inPages("catalog.html")].sort(),
     );
 
     mocks.batch.mockClear();
     mocks.invalidateComponents.mockClear();
-    mocks.deps.mockReturnValue(["src/pages/about.html"]);
-    watcher.emit("all", "change", resolve("src/pages/about.html"));
+    mocks.deps.mockReturnValue([alias("about.html")]);
+    watcher.emit("all", "change", inPages("about.html"));
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.invalidateComponents).not.toHaveBeenCalled();
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
-      resolve("src/pages/about.html"),
+      inPages("about.html"),
     ]);
 
     // A watched input clears the build caches, and with them the list. No
     // component has a build script, so nothing a plan page renders at
     // request time can have read it: only its dependents rebuild.
     mocks.batch.mockClear();
-    mocks.deps.mockReturnValue(["src/pages/consumer.html"]);
+    mocks.deps.mockReturnValue([alias("consumer.html")]);
     watcher.emit("all", "change", resolve("content/post.md"));
     await vi.advanceTimersByTimeAsync(50);
     expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
     expect(mocks.batch).toHaveBeenCalledExactlyOnceWith([
-      resolve("src/pages/consumer.html"),
+      inPages("consumer.html"),
     ]);
 
     // With a component build script, which may read the input (a menu built
@@ -417,16 +467,13 @@ describe("source observer and phase queue integration", () => {
     expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
     expect(mocks.batch).toHaveBeenCalledOnce();
     expect([...mocks.batch.mock.calls[0][0]].sort()).toEqual(
-      [
-        resolve("src/pages/consumer.html"),
-        resolve("src/pages/catalog.html"),
-      ].sort(),
+      [inPages("consumer.html"), inPages("catalog.html")].sort(),
     );
   });
 
   it("deleting a component used only in script output rebuilds every page with a server-script plan, so the tag passes through from the next manifest (prompt 157)", async () => {
     mocks.deps.mockReturnValue([]);
-    mocks.planPages.mockReturnValue(["src/pages/catalog.html"]);
+    mocks.planPages.mockReturnValue([alias("catalog.html")]);
     await watchSourceCycles(vi.fn());
     eventEmitter.emit("boot-done");
     mocks.batch.mockClear();
@@ -436,8 +483,84 @@ describe("source observer and phase queue integration", () => {
     expect(mocks.invalidateComponents).toHaveBeenCalledOnce();
     expect(mocks.batch).toHaveBeenCalledOnce();
     expect([...mocks.batch.mock.calls[0][0]]).toContain(
-      resolve("src/pages/catalog.html"),
+      inPages("catalog.html"),
     );
+  });
+});
+
+// With exec watch entries this observer, not watch.ts, owns the pages folder.
+// The spawned dev server covers it end to end in
+// dev-pages-folder-removed.integration.test.ts; these pin each step.
+describe("source observer when the pages folder is removed", () => {
+  const warnings = () =>
+    consoleWarn.mock.calls.filter((args) =>
+      String(args[0]).includes("(directory.pages) was removed"),
+    );
+
+  it("warns once, clears the pages' output without touching the output root, skips rebuilds, and rebuilds everything when the folder is back", async () => {
+    writeFileSync(inPages("index.html"), "<h1>Middlemarch</h1>");
+    mocks.storedPages.mockReturnValue([
+      { absolutePagePath: inPages("index.html") },
+    ]);
+    mocks.copiedAssets.mockReturnValue([inPages("covers/middlemarch.txt")]);
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit("boot-done");
+    for (const mock of [mocks.all, mocks.batch, mocks.copy, mocks.remove])
+      mock.mockClear();
+
+    rmSync(pagesDir, { recursive: true, force: true });
+    watcher.emit("all", "unlink", inPages("index.html"));
+    watcher.emit("all", "unlinkDir", pagesDir);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(warnings()).toHaveLength(1);
+    expect(mocks.remove).toHaveBeenCalledWith(inPages("index.html"));
+    expect(mocks.remove).toHaveBeenCalledWith(
+      inPages("covers/middlemarch.txt"),
+    );
+    expect(mocks.remove).not.toHaveBeenCalledWith(pagesDir);
+    expect(mocks.forgetAsset).toHaveBeenCalledWith(
+      inPages("covers/middlemarch.txt"),
+    );
+    expect(mocks.all).not.toHaveBeenCalled();
+    expect(mocks.batch).not.toHaveBeenCalled();
+
+    // Later events, and the folder check, while it is gone: still quiet.
+    watcher.emit("all", "unlink", inPages("about.html"));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(warnings()).toHaveLength(1);
+    expect(mocks.all).not.toHaveBeenCalled();
+    expect(mocks.batch).not.toHaveBeenCalled();
+
+    // Put back with no watcher event (`rm -rf src`, then a branch switch):
+    // the folder check rebuilds its pages and static files.
+    mkdirSync(pagesDir, { recursive: true });
+    writeFileSync(inPages("index.html"), "<h1>Middlemarch</h1>");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(
+      consoleLog.mock.calls.some((args) => String(args[0]).includes("is back")),
+    ).toBe(true);
+    expect(mocks.copy).toHaveBeenCalledOnce();
+    expect(mocks.all).toHaveBeenCalledOnce();
+    expect(warnings()).toHaveLength(1);
+  });
+
+  it("a rebuild that fails because the folder went mid-compile is the removal, not a build error", async () => {
+    const reported: unknown[] = [];
+    eventEmitter.on("build-error", (payload) => reported.push(payload));
+    await watchSourceCycles(vi.fn());
+    eventEmitter.emit("boot-done");
+    mocks.batch.mockImplementationOnce(async () => {
+      rmSync(pagesDir, { recursive: true, force: true });
+      throw new Error(`pages directory ${pagesDir} does not exist`);
+    });
+
+    watcher.emit("all", "change", inPages("index.html"));
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(mocks.batch).toHaveBeenCalledOnce();
+    expect(warnings()).toHaveLength(1);
+    expect(reported).toEqual([]);
   });
 });
 
