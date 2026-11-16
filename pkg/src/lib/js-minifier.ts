@@ -244,6 +244,10 @@ const isRegexWordChar = (c: string): boolean => c !== "$" && isWordChar(c);
 
 const isDigit = (c: string): boolean => c >= "0" && c <= "9";
 
+/** ECMAScript's LineTerminator: LF, CR, LINE SEPARATOR and PARAGRAPH SEPARATOR. */
+const isLineTerminator = (c: string | undefined): boolean =>
+  c === "\n" || c === "\r" || c === "\u2028" || c === "\u2029";
+
 /**
  * Mirrors the `\s` class used by the previous prefix-trimming implementation
  * (ECMAScript WhiteSpace + LineTerminator), as a char-code test so the hot
@@ -319,7 +323,7 @@ const skipRegexLiteral = (js: string, start: number): number => {
     if (c === "[") inClass = true;
     else if (c === "]") inClass = false;
     else if (c === "/" && !inClass) break;
-    else if (c === "\n") return i;
+    else if (isLineTerminator(c)) return i;
   }
   while (i < js.length && /[a-z]/i.test(js[i])) i++;
   return i;
@@ -366,7 +370,7 @@ const findTemplateExpressionEnd = (js: string, start: number): number => {
       const next = js[i + 1];
       if (next === "/") {
         i += 2;
-        while (i < js.length && js[i] !== "\n") {
+        while (i < js.length && !isLineTerminator(js[i])) {
           __scanStatsForTests.charsExamined++;
           i++;
         }
@@ -1181,7 +1185,7 @@ const scanSegments = (js: string): Segment[] => {
             closed = true;
             j++;
             break;
-          } else if (c === "\n") break; // Unterminated — not a regex
+          } else if (isLineTerminator(c)) break; // Unterminated — not a regex
           j++;
         }
         if (closed) {
@@ -1200,7 +1204,7 @@ const scanSegments = (js: string): Segment[] => {
         while (i + 1 < len && !(js[i] === "*" && js[i + 1] === "/")) {
           __scanStatsForTests.charsExamined++;
           const c = js[i];
-          if (c === "\n" || c === "\r" || c === " " || c === " ") {
+          if (isLineTerminator(c)) {
             spansLines = true;
           }
           i++;
@@ -1230,7 +1234,7 @@ const scanSegments = (js: string): Segment[] => {
       if (next === "/") {
         // Line comment: skip to end of line (preserve newline for statement separation)
         i += 2;
-        while (i < len && js[i] !== "\n") {
+        while (i < len && !isLineTerminator(js[i])) {
           __scanStatsForTests.charsExamined++;
           i++;
         }
@@ -1253,6 +1257,18 @@ const scanSegments = (js: string): Segment[] => {
       if (next !== "." || isDigit(js[i + 1] ?? "")) {
         conditionalNesting.push(nesting());
       }
+      continue;
+    }
+
+    if (
+      ch === "\u2028" ||
+      ch === "\u2029" ||
+      (ch === "\r" && js[i + 1] !== "\n")
+    ) {
+      // A lone CR, LINE SEPARATOR or PARAGRAPH SEPARATOR ends a line as LF does; the line
+      // joiner reads LF only.
+      appendCode("\n");
+      i++;
       continue;
     }
 

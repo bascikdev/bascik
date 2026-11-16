@@ -1333,6 +1333,32 @@ describe("minifyJs – a line after an arrow function body", () => {
   });
 });
 
+describe("minifyJs – carriage return, line separator and paragraph separator line breaks", () => {
+  // ECMAScript has four line terminators: LF, CR, U+2028 and U+2029.
+  it.each([
+    ["a lone CR", "\r"],
+    ["a line separator", "\u2028"],
+    ["a paragraph separator", "\u2029"],
+    ["CRLF", "\r\n"],
+  ])("ends statements at %s", (_name, eol) => {
+    expectSameProgram(
+      ["let a = 1, b = 2, c = 3", "a = b", "c", "log.push(a, c)"].join(eol),
+    );
+    expectSameProgram(
+      ["const z = 5", "log.push((() => { return", "-z })())"].join(eol),
+    );
+    expectSameProgram(["let a = 1 // one", "log.push(a)"].join(eol));
+    expectSameProgram(
+      ["let b = 1, a = [1]", "b", "++a[0]", "log.push(a)"].join(eol),
+    );
+  });
+
+  it("keeps a line separator inside a string", () => {
+    const source = "const s = 'a\u2028b'\nlog.push(s.length)";
+    expect(expectSameProgram(source)).toContain("'a\u2028b'");
+  });
+});
+
 describe("minifyJs – a block comment that spans lines is a line break", () => {
   // ECMAScript reads a multi-line comment holding a line terminator as a line terminator.
   it.each([
@@ -1359,7 +1385,7 @@ describe("minifyJs – a block comment that spans lines is a line break", () => 
     ],
     [
       "a comment with a line separator",
-      "let a = 1, b = 2, c = 3\na = b /* */ c\nlog.push(a, c)",
+      "let a = 1, b = 2, c = 3\na = b /*\u2028*/ c\nlog.push(a, c)",
     ],
   ])("ends the statement at a comment %s", (_name, source) => {
     expectSameProgram(source);
