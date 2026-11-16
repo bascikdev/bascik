@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   addBuildScriptStats,
   createBuildScriptStats,
+  failedPageBuildScriptStats,
   formatBuildScriptSummary,
   formatPageBuildScriptStats,
+  recordFailedPageBuildScriptStats,
 } from "./build-script-stats.ts";
 
 describe("build-script-stats", () => {
@@ -42,5 +44,25 @@ describe("build-script-stats", () => {
     expect(formatBuildScriptSummary({ ran: 1, cached: 2, childMs: 30 })).toBe(
       " (1 build script ran, 2 from cache)",
     );
+  });
+});
+
+// A failed page returns no result, so its error carries its counts.
+describe("failed page counts", () => {
+  it("are read back from the error they were recorded for, and only that one", () => {
+    const error = new Error("bad page script");
+    const stats = { ran: 1, cached: 2, childMs: 30 };
+    recordFailedPageBuildScriptStats(error, stats);
+    expect(failedPageBuildScriptStats(error)).toBe(stats);
+    expect(failedPageBuildScriptStats(new Error("other"))).toBeUndefined();
+  });
+
+  // Misuse: a page that throws a value that is not an object.
+  it("are dropped, not thrown over, for a thrown string or undefined", () => {
+    expect(() =>
+      recordFailedPageBuildScriptStats("bad", createBuildScriptStats()),
+    ).not.toThrow();
+    expect(failedPageBuildScriptStats("bad")).toBeUndefined();
+    expect(failedPageBuildScriptStats(undefined)).toBeUndefined();
   });
 });

@@ -6,6 +6,7 @@ import {
   fromPageWorkerFailure,
   toPageWorkerFailure,
 } from "./page-worker-errors.ts";
+import { recordFailedPageBuildScriptStats } from "./build-script-stats.ts";
 
 const PAGE = "/site/src/pages/index.html";
 const buildError = () =>
@@ -146,6 +147,29 @@ describe("every error shape a page worker can throw (R2-03)", () => {
     (cyclic as { cause?: unknown }).cause = cyclic;
     expect(fromPageWorkerFailure(PAGE, acrossThreads(cyclic))?.message).toBe(
       "loop",
+    );
+  });
+});
+
+// The counts cross the thread boundary as data, like the location.
+describe("a failed page's build-script counts", () => {
+  it("travel in the failure when any script ran or was cached, and not otherwise", () => {
+    const counted = new Error("bad page script");
+    recordFailedPageBuildScriptStats(counted, {
+      ran: 1,
+      cached: 0,
+      childMs: 5,
+    });
+    expect(toPageWorkerFailure(counted).buildScripts).toEqual({
+      ran: 1,
+      cached: 0,
+      childMs: 5,
+    });
+    const none = new Error("no scripts");
+    recordFailedPageBuildScriptStats(none, { ran: 0, cached: 0, childMs: 0 });
+    expect(toPageWorkerFailure(none).buildScripts).toBeUndefined();
+    expect(structuredClone(toPageWorkerFailure(counted))).toEqual(
+      toPageWorkerFailure(counted),
     );
   });
 });
