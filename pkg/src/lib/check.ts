@@ -971,7 +971,15 @@ const checkProjectFiles = async (options: {
         locations,
       });
     }
-    if (!matchedDuplicate && !matchedIdClassCollision && !located) {
+    if (error instanceof UnreadableFolderError) {
+      // Located at the folder, as for a pages folder, not at the config.
+      items.push({
+        category: "component-list",
+        severity: "error",
+        message: message.replace(/^\[bascik\] error: /, ""),
+        locations: [{ filePath: error.folder }],
+      });
+    } else if (!matchedDuplicate && !matchedIdClassCollision && !located) {
       items.push({
         category: "component-list",
         severity: "error",
