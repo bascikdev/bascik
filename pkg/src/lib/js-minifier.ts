@@ -91,6 +91,13 @@ type Segment = {
    */
   contextualKeywordEnds?: Set<number>;
   /**
+   * Offsets in `text` of the last character of a property name spelled like a keyword that
+   * whitespace or a line break separates from its `.` (`o. return`, `o.\nnew`). The line-end
+   * keyword rules read the text, where `.` right before the word marks a property; here it
+   * does not, so the scanner says the word is a name.
+   */
+  propertyKeywordEnds?: Set<number>;
+  /**
    * Offsets in `text` of the last character of a `let` at the start of a statement (or of a
    * `for` header), where it declares when a name, `[` or `{` follows. Anywhere else, and before
    * anything else, a `let` is a variable name in a classic script (`x = let\nfoo()`).
@@ -216,6 +223,13 @@ const EXPRESSION_CONTINUING_KEYWORDS = new Set(
  */
 const LINE_END_CONTINUING_KEYWORD =
   /(?:^|(?![\w$\\]|[^\x00-\x7f\s])[^.#])(?:else|do|try|finally|in|instanceof|typeof|void|delete|new|case|extends|default|export|import|var|let|const|function|class|for)\s*$/;
+
+/**
+ * The words the line-end keyword rules (`LINE_END_CONTINUING_KEYWORD`,
+ * `RESTRICTED_PRODUCTION_END`, `CONTEXTUAL_OPERATOR_END`) look for.
+ */
+const LINE_END_KEYWORD_SPELLING =
+  /^(?:return|throw|yield|await|debugger|break|continue|else|do|try|finally|in|instanceof|typeof|void|delete|new|case|extends|default|export|import|var|let|const|function|class|for)$/;
 
 /** A line ending in the word `let` (not `x.let` or `#let`). */
 const LINE_END_LET = /(?:^|(?![\w$\\]|[^\x00-\x7f\s])[^.#])let$/;
@@ -681,6 +695,7 @@ const scanSegments = (js: string): Segment[] => {
   // Offset in `codeAccum` of the `]` that last closed a computed key, or -1.
   let lastComputedKeyCloseOffset = -1;
   let contextualKeywordEnds: Set<number> | undefined;
+  let propertyKeywordEnds: Set<number> | undefined;
   let letKeywordEnds: Set<number> | undefined;
   // The word being read starts a statement (or a `for` header), where `let` can declare.
   let wordAtStatementStart = false;
@@ -880,12 +895,14 @@ const scanSegments = (js: string): Segment[] => {
         integerBeforeDotLines,
         moduleFromBreaks,
         contextualKeywordEnds,
+        propertyKeywordEnds,
         letKeywordEnds,
         ...(continuesClause ? { continuesClause } : {}),
       });
       codeAccum = "";
     }
     contextualKeywordEnds = undefined;
+    propertyKeywordEnds = undefined;
     letKeywordEnds = undefined;
     lastComputedKeyCloseOffset = -1;
     continuesClause = false;
@@ -1117,6 +1134,18 @@ const scanSegments = (js: string): Segment[] => {
       ) {
         (memberKeywordNameEnds ??= new Set()).add(lastSigOffset);
       }
+    }
+    if (
+      wordIsProperty &&
+      isWordChar(lastRaw) &&
+      sigOffsetBeforeWord !== -1 &&
+      codeAccum[sigOffsetBeforeWord] === "." &&
+      // `...typeof x` spreads an operand.
+      codeAccum[sigOffsetBeforeWord - 1] !== "." &&
+      LINE_END_KEYWORD_SPELLING.test(wordRun)
+    ) {
+      // `o. return\n(1)`, `o.\nnew\nfoo()`: a property, though no `.` is right before it.
+      (propertyKeywordEnds ??= new Set()).add(lastSigOffset);
     }
     if (!wordIsProperty && !memberWordEnded && isWordChar(lastRaw)) {
       // A word just ended. `x.class` and `p.catch(f)` are properties, not keywords, and a
@@ -1958,6 +1987,9 @@ export const minifyJs = (js: string): string => {
 
       // Statements ending in value tokens or return/break/continue/throw require ; before next statement
       // `5.` ends a number: a value, though a line-end `.` otherwise takes a property next.
+      // `o. return`, `o.\nnew`: a property spelled like a keyword, not the keyword.
+      const propertyKeywordEnd =
+        seg.propertyKeywordEnds?.has(prevLineEnd) === true;
       const numberDotEnd = seg.numberDotEnds?.has(prevLineEnd) === true;
       if (numberDotEnd || isWordChar(lastChar) || /[)\]'"`]/.test(lastChar)) {
         // Do NOT insert semicolon if line ends with an open control flow / operator
@@ -1979,6 +2011,7 @@ export const minifyJs = (js: string): string => {
           seg.memberModifierEnds?.has(prevLineEnd) === true ||
           seg.contextualKeywordEnds?.has(prevLineEnd) === true ||
           (seg.memberKeywordNameEnds?.has(prevLineEnd) !== true &&
+            !propertyKeywordEnd &&
             LINE_END_CONTINUING_KEYWORD.test(ptTail) &&
             // `x = let\nfoo()`: a `let` that does not declare is a variable name.
             (!LINE_END_LET.test(ptTail) ||
@@ -2008,7 +2041,8 @@ export const minifyJs = (js: string): string => {
                 line,
               ) ||
               ((firstChar === "(" || firstChar === "[") &&
-                !RESTRICTED_PRODUCTION_END.test(prevLine));
+                (propertyKeywordEnd ||
+                  !RESTRICTED_PRODUCTION_END.test(prevLine)));
 
         if (
           !endsWithOpenControl &&
@@ -2017,6 +2051,7 @@ export const minifyJs = (js: string): string => {
         ) {
           needsSemicolon = true;
         } else if (
+          !propertyKeywordEnd &&
           RESTRICTED_PRODUCTION_END.test(prevLine) &&
           !/^[;,:)\]}]/.test(line)
         ) {
@@ -2071,7 +2106,9 @@ export const minifyJs = (js: string): string => {
       // `await\na`, `yield\n(a)`: the line break stays as written, unless the next line
       // starts with punctuation that no operand can start with, which reads the same joined.
       const keepLineBreak =
-        CONTEXTUAL_OPERATOR_END.test(prevLine) && !/^[;,:)\]}]/.test(line);
+        !propertyKeywordEnd &&
+        CONTEXTUAL_OPERATOR_END.test(prevLine) &&
+        !/^[;,:)\]}]/.test(line);
 
       prevLineEnd = lineEnd;
       prevLine = line;
