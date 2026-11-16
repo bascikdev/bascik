@@ -562,6 +562,17 @@ const scanSegments = (js: string): Segment[] => {
   const nesting = (): number =>
     parenIsControlHeader.length + bracketDepth + braceKind.length;
 
+  /** Directly in an object literal, where a word is a key: not inside one of its values. */
+  const atObjectMemberLevel = (): boolean => {
+    const top = braceKind.length - 1;
+    return (
+      top !== -1 &&
+      braceKind[top] === BRACE_OBJECT &&
+      braceParenDepth[top] === parenIsControlHeader.length &&
+      braceBracketDepth[top] === bracketDepth
+    );
+  };
+
   /** Directly in the innermost open declaration: not inside one of its initializers. */
   const atDeclarationLevel = (): boolean => {
     const top = declarationParenDepth.length - 1;
@@ -887,7 +898,8 @@ const scanSegments = (js: string): Segment[] => {
       if (wordIsBindingName && atDeclarationLevel()) {
         (bareBindingEnds ??= new Set()).add(lastSigOffset);
       }
-      if (DECLARATION_KEYWORDS.has(wordRun)) {
+      if (DECLARATION_KEYWORDS.has(wordRun) && !atObjectMemberLevel()) {
+        // `{ const: v, deprecated }` names a key, not a declaration.
         declarationParenDepth.push(parenIsControlHeader.length);
         declarationBracketDepth.push(bracketDepth);
         declarationBraceDepth.push(braceKind.length);
