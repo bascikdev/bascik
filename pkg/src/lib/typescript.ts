@@ -31,6 +31,7 @@ import { Script } from "node:vm";
 import { Worker } from "node:worker_threads";
 import { stripTypeScriptTypes } from "node:module";
 import { availableParallelism } from "node:os";
+import { avoidWasmWrapperRace } from "./wasm-code-gc.ts";
 import { BascikConfig } from "./config.ts";
 import {
   ANY_DIRECTIVE_ATTR_NAME,
@@ -463,6 +464,8 @@ const getSharedChecker = (): SharedChecker | undefined => {
   if (sharedChecker) return sharedChecker;
   if (sharedCheckerBroken) return undefined;
   let worker: Worker;
+  // The checker is a second isolate next to this thread's type stripping.
+  avoidWasmWrapperRace();
   try {
     worker = new Worker(
       CHECKER_PRELUDE +

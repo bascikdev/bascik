@@ -1,4 +1,5 @@
 import { Worker } from "node:worker_threads";
+import { avoidWasmWrapperRace } from "./wasm-code-gc.ts";
 
 /**
  * A task the worker itself reported as failed (`{ ok: false, error }`). A
@@ -119,29 +120,33 @@ export class WorkerPool<Task, Result> {
    *
    * `readySignal`: the worker script posts `{ ready: true }` once its module
    * graph has finished evaluating, and the pool never terminates a worker
-   * before that (or before `READY_GRACE_MS`). Node 24 can abort the whole
-   * process ("Check failed: (location_) != nullptr") when a worker is
-   * terminated while it is still evaluating ES modules with top-level await,
-   * and a pool that is started early and trimmed, or torn down after a
-   * failure, can otherwise stop workers that are still loading.
+   * before that (or before `READY_GRACE_MS`). Node 24 aborts the whole
+   * process ("Check failed: (location_) != nullptr", in
+   * `SourceTextModule::AsyncModuleExecutionFulfilled`) when a worker is
+   * terminated while V8 is running a module that waited for a dependency's
+   * top-level await, and a pool that is started early and trimmed, or torn
+   * down after a failure, can otherwise stop workers that are still loading.
+   * The grace period bounds the wait for a worker stuck loading; terminating
+   * one at that deadline still aborts if it was in fact busy evaluating (a
+   * Linux x64 run under emulation, where eight workers took over 10 s to
+   * load, aborted exactly so), so the deadline is for a stuck worker, not a
+   * slow one.
    *
    * `stopSignal`: the worker script ends itself (lets its event loop drain)
    * when it receives `{ stop: true }`, and the pool stops a worker by posting
    * that and waiting for its `exit`, terminating it only when it has not
    * exited after `STOP_GRACE_MS`. With `readySignal` too, the stop message
    * goes once the worker has loaded, and a worker that has not loaded by
-   * the ready deadline is terminated without it. An external `worker.terminate()` stops
-   * the thread wherever it is, and V8 can abort the whole process when that
-   * lands while the worker is still allocating code: CI saw "Check failed:
-   * jit_page.has_value()" (SIGTRAP) on Node 24.22.1 when a page worker was
-   * terminated right after it loaded. Node 24's V8 (13.6) has a race between
-   * terminated worker threads and wasm code GC freeing a shared import
-   * wrapper twice (nodejs/node#66366 and #64500, fixed upstream in V8
-   * 9b8ca54d5a and 68210d500a, backport nodejs/node#66376 still open). Page
-   * workers run wasm without asking for it: Node strips the types of every
-   * `.ts` module they load (a `bascik.config.ts`, a TypeScript helper,
-   * Bascik's own source in tests) with Amaro, which is swc compiled to wasm.
-   * A worker that ends itself between tasks is never interrupted that way.
+   * the ready deadline is terminated without it. A worker that ends itself
+   * between tasks is never interrupted in the middle of module evaluation or
+   * a build script.
+   *
+   * Neither option prevents the abort CI kept seeing on Node 24 ("Check
+   * failed: jit_page.has_value()", SIGTRAP): that is V8 13.6 freeing a
+   * shared wasm import wrapper twice when one thread tiers it up while the
+   * last thread that used it is torn down, however that thread stops
+   * (`wasm-code-gc.ts`). The pool turns off wasm code GC before its first
+   * worker starts, which closes it.
    */
   constructor(
     workerScript: string,
@@ -162,6 +167,8 @@ export class WorkerPool<Task, Result> {
     this.#initData = initData;
     this.#consecutiveStartupFailures = 0;
     this.#capacity = size;
+    // Before any worker exists: every thread of the process uses the flag.
+    avoidWasmWrapperRace();
     for (let i = 0; i < size; i++) {
       this.#spawn();
     }

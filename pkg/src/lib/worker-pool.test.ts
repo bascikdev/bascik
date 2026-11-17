@@ -41,6 +41,12 @@ vi.mock("node:worker_threads", () => ({
   Worker: WorkerMock,
 }));
 
+const { avoidWasmWrapperRace } = vi.hoisted(() => ({
+  avoidWasmWrapperRace: vi.fn(() => true),
+}));
+
+vi.mock("./wasm-code-gc.ts", () => ({ avoidWasmWrapperRace }));
+
 const makePool = (size = 2) =>
   new WorkerPool<string, string>("/fake/worker.js", size, { init: true });
 
@@ -743,6 +749,53 @@ describe("WorkerPool", () => {
   // nullptr") when a worker is terminated while it is still evaluating an
   // ES module graph with top-level await, which the page worker's is. A pool
   // whose workers announce when they have loaded never stops one before.
+  // Node 24's V8 frees a shared wasm import wrapper twice when one thread
+  // tiers it up while the last thread using it is torn down, however that
+  // thread stops ("Check failed: jit_page.has_value()"). The pool turns off
+  // wasm code GC before its first worker exists (`wasm-code-gc.ts`).
+  describe("wasm code GC", () => {
+    it("is turned off before the first worker starts", () => {
+      let workersAtCall = -1;
+      avoidWasmWrapperRace.mockImplementationOnce(() => {
+        workersAtCall = WorkerMock.mock.calls.length;
+        return true;
+      });
+      makePool(2);
+      expect(avoidWasmWrapperRace).toHaveBeenCalledTimes(1);
+      expect(workersAtCall).toBe(0);
+      expect(WorkerMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("is turned off for every pool kind, with or without the stop options", () => {
+      new WorkerPool("/fake/worker.js", 1, {});
+      new WorkerPool("/fake/worker.js", 1, {}, { readySignal: true });
+      new WorkerPool("/fake/worker.js", 1, {}, { stopSignal: true });
+      expect(avoidWasmWrapperRace).toHaveBeenCalledTimes(3);
+    });
+
+    it("still starts every worker where nothing had to change (another V8, or the user asked for wasm code GC)", async () => {
+      avoidWasmWrapperRace.mockImplementationOnce(() => false);
+      const pool = makePool(2);
+      expect(pool.size).toBe(2);
+      const task = pool.run("t1");
+      const busy = workers.find((w) =>
+        w.postMessage.mock.calls.some(([message]) => message === "t1"),
+      );
+      expect(busy).toBeDefined();
+      completeWith(busy!, "r1");
+      await expect(task).resolves.toBe("r1");
+      await pool.terminate();
+    });
+
+    it("is not asked again for replacements and growth, which start after it", () => {
+      const pool = makePool(1);
+      workers[0].emit("exit", 1);
+      pool.grow(3);
+      expect(WorkerMock).toHaveBeenCalledTimes(4);
+      expect(avoidWasmWrapperRace).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("readySignal", () => {
     const makeReadyPool = (size = 2) =>
       new WorkerPool<string, string>(
