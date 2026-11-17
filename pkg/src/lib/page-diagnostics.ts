@@ -156,6 +156,16 @@ export const unprintedBuildFailureMessage = (error: unknown): string | null => {
       ...details,
     ].join("\n");
   }
+  // Several failures joined by `runTranspile` (a parallel exec script and a
+  // routes script failing in the same build): the joined message holds
+  // every child's text, so one self-printed child would hide the others.
+  // Each child is judged on its own.
+  if (error instanceof AggregateError) {
+    const unprinted = error.errors
+      .map((child) => unprintedBuildFailureMessage(child))
+      .filter((message): message is string => message !== null);
+    return unprinted.length > 0 ? unprinted.join("\n") : null;
+  }
   const message = error instanceof Error ? error.message : String(error);
   return printedItself(message) ? null : message;
 };

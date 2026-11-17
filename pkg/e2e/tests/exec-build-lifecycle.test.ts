@@ -105,3 +105,62 @@ for (const workers of [false, true]) {
     });
   }
 }
+
+test("a failing parallel script is still reported when a routes script fails in the same build", async () => {
+  // The two failures are joined into one AggregateError. The routes error
+  // prints itself; the exec error under the default 'error' policy does
+  // not, so the CLI must print it rather than treat the whole join as
+  // already printed.
+  const root = await mkdtemp(join(tmpdir(), "bascik-exec-build-joined-"));
+  try {
+    await mkdir(join(root, "src/pages/blog"), { recursive: true });
+    await mkdir(join(root, "src/components"), { recursive: true });
+    await writeFile(
+      join(root, "bascik.config.ts"),
+      `export default {
+        generate: { sitemap: false, robots: false, manifest: false },
+        pipeline: { exec: [{ script: 'gen.mjs', phase: 'parallel', timeout: 5000 }] },
+      };`,
+    );
+    await writeFile(
+      join(root, ".env"),
+      "BASCIK_SITE_URL=https://example.com\n",
+    );
+    await writeFile(
+      join(root, "gen.mjs"),
+      `await new Promise((r) => setTimeout(r, 500)); process.exit(3);`,
+    );
+    await writeFile(
+      join(root, "src/pages/index.html"),
+      `<!DOCTYPE html><html lang="en"><head><title>Home</title></head><body><p>home</p></body></html>`,
+    );
+    // Fails after the exec script, so both are pending when the build joins.
+    await writeFile(
+      join(root, "src/pages/blog/[slug].html"),
+      `<!DOCTYPE html><html lang="en"><head><title>Post</title></head><body>
+      <script data-bascik-routes>export default async () => { await new Promise((r) => setTimeout(r, 1500)); throw new Error('no posts found'); };</script>
+      <p>post</p></body></html>`,
+    );
+    const result = await new Promise<{ code: number | null; stderr: string }>(
+      (resolve, reject) => {
+        const child = spawn(process.execPath, [entry, "--build"], {
+          cwd: root,
+          stdio: ["ignore", "ignore", "pipe"],
+        });
+        let stderr = "";
+        child.stderr.on("data", (chunk) => {
+          stderr += stripVTControlCharacters(chunk.toString("utf8"));
+        });
+        child.on("error", reject);
+        child.on("exit", (code) => resolve({ code, stderr }));
+      },
+    );
+    expect(result.code, result.stderr).toBe(1);
+    expect(result.stderr).toContain("no posts found");
+    expect(result.stderr).toContain('exec "gen.mjs" exited with code 3');
+    // Each is printed once.
+    expect(result.stderr.split("no posts found").length - 1).toBe(1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

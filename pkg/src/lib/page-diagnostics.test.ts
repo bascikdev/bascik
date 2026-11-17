@@ -55,6 +55,50 @@ describe("unprintedBuildFailureMessage", () => {
     expect(message).not.toMatch(/script error|boom/);
   });
 
+  it("keeps an exec failure joined with a self-printed routes failure", () => {
+    const execFailure = new Error(
+      '[bascik] exec "scripts/gen.mjs" exited with code 1',
+    );
+    const routesFailure = new Error(
+      '[bascik] routes script error in "src/pages/blog/[slug].html":\nError: no posts',
+    );
+    const joined = new AggregateError(
+      [execFailure, routesFailure],
+      [execFailure.message, routesFailure.message].join("\n"),
+    );
+    expect(unprintedBuildFailureMessage(joined)).toBe(execFailure.message);
+  });
+
+  it("judges each failure of a joined aggregate, page summaries included", () => {
+    const joined = new AggregateError(
+      [
+        new Error('[bascik] exec "scripts/a.mjs" exited with code 2'),
+        new PageProcessingAggregateError([buildScriptError, unreadablePage]),
+      ],
+      "joined",
+    );
+    const message = unprintedBuildFailureMessage(joined);
+    expect(message).toMatch(
+      /^\[bascik\] exec "scripts\/a\.mjs" exited with code 2\n/,
+    );
+    expect(message).toMatch(
+      /Build failed with 2 page errors \(1 printed above\)/,
+    );
+    expect(message).toMatch(/EACCES/);
+    expect(message).not.toMatch(/script error|boom/);
+  });
+
+  it("prints nothing for a joined aggregate whose failures all printed themselves", () => {
+    const joined = new AggregateError(
+      [
+        new Error("[bascik] build script error:\nError: boom"),
+        new Error("[bascik] routes script error:\nError: no posts"),
+      ],
+      "joined",
+    );
+    expect(unprintedBuildFailureMessage(joined)).toBeNull();
+  });
+
   it("skips a plain error that printed itself and prints any other", () => {
     expect(
       unprintedBuildFailureMessage(
