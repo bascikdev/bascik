@@ -55,31 +55,73 @@ const userChoseWasmCodeGc = (
   return chosen;
 };
 
+/**
+ * Node 26's V8 (14) on arm64 can kill the process with SIGILL when several
+ * threads run the same wasm at once (nodejs/node#67467). A wasm-to-JS
+ * import wrapper is shared by every thread and recompiled ("tiered up")
+ * after `--wasm-wrapper-tiering-budget` calls (1000); a thread that jumps
+ * into the new code while another thread is still publishing it executes
+ * stale instructions. Page workers that each strip a lot of TypeScript
+ * (Amaro is wasm) cross that budget at about the same time: four workers
+ * stripping 12,000 times each crashed 9 of 400 runs, and 300 strips each
+ * 6 of 800. About 1,400 real `bascik --build` and dev runs never crashed,
+ * but a large TypeScript-heavy site is in the same range. Holding wrapper
+ * tier-up off stopped it (0 of 400), and stripping a 26 KB file took no
+ * measurably longer. Not seen on x64 or on Node 24.
+ */
+export const hasWasmWrapperTierUpRace = (
+  v8Version: string,
+  arch: string,
+): boolean => Number.parseInt(v8Version, 10) === 14 && arch === "arm64";
+
+/** Far more calls than any build makes, so wrappers never tier up. */
+export const WRAPPER_TIERING_BUDGET_FLAG =
+  "--wasm-wrapper-tiering-budget=1000000000";
+
+/** The user set the wrapper tier-up budget themselves. */
+const userSetWrapperTieringBudget = (
+  execArgv: readonly string[],
+  nodeOptions: string,
+): boolean =>
+  [...nodeOptions.split(/\s+/), ...execArgv].some((arg) =>
+    arg.replaceAll("_", "-").startsWith("--wasm-wrapper-tiering-budget"),
+  );
+
 let applied = false;
 
 /**
- * Turn off wasm code GC for this process when its V8 has the wrapper race,
- * before Bascik starts a worker thread. Does nothing on other V8 versions,
- * when the user passed `--wasm-code-gc` themselves, or after the first call.
- * Reports whether it turned the flag off now.
+ * Before Bascik starts a worker thread, set the V8 flag that closes this
+ * process's wasm wrapper race: on V8 13 (Node 24), turn off wasm code GC,
+ * unless the user passed `--wasm-code-gc`; on V8 14 (Node 26) on arm64,
+ * hold wrapper tier-up off, unless the user set
+ * `--wasm-wrapper-tiering-budget`. Does nothing elsewhere, or after the
+ * first call. Reports whether it set a flag now.
  */
 export const avoidWasmWrapperRace = ({
   v8Version = process.versions.v8,
+  arch = process.arch,
   execArgv = process.execArgv,
   nodeOptions = process.env.NODE_OPTIONS ?? "",
   setFlags = setFlagsFromString,
 }: {
   v8Version?: string;
+  arch?: string;
   execArgv?: readonly string[];
   nodeOptions?: string;
   setFlags?: (flags: string) => void;
 } = {}): boolean => {
   if (applied) return false;
   applied = true;
-  if (!hasWasmWrapperRace(v8Version)) return false;
-  if (userChoseWasmCodeGc(execArgv, nodeOptions)) return false;
+  let flag: string | undefined;
+  if (hasWasmWrapperRace(v8Version)) {
+    if (!userChoseWasmCodeGc(execArgv, nodeOptions)) flag = "--no-wasm-code-gc";
+  } else if (hasWasmWrapperTierUpRace(v8Version, arch)) {
+    if (!userSetWrapperTieringBudget(execArgv, nodeOptions))
+      flag = WRAPPER_TIERING_BUDGET_FLAG;
+  }
+  if (!flag) return false;
   try {
-    setFlags("--no-wasm-code-gc");
+    setFlags(flag);
     return true;
   } catch {
     // An embedder that froze V8's flags: nothing else to do.
