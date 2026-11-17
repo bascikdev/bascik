@@ -248,7 +248,11 @@ describe("page worker shutdown during startup (real worker)", () => {
     expect({ code, signal }, output).toEqual({ code: 0, signal: null });
     expect(output).toContain("survived");
     expect(output).not.toContain("Fatal error");
-  }, 120_000);
+    // 41 rounds of eight workers that each load the compiler from source:
+    // 29 s on the CI runner, but 66 to 130 s on an 8-core Mac under heavy
+    // load, and up to 225 s with six copies running at once. The sweep of
+    // delays is the regression check, so the budget grows instead.
+  }, 300_000);
 });
 
 // A worker that type-strips TypeScript (Amaro, swc compiled to wasm) for each
