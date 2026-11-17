@@ -423,6 +423,66 @@ describe("early page worker pool (real build)", () => {
     expect(of(events, "exit")).toHaveLength(spawns.length);
   }, 40_000);
 
+  it("waits for a worker whose config loads for longer than the ready grace instead of terminating it mid-evaluation", async () => {
+    // Every page worker loads the user's config through Bascik's own
+    // top-level await (`userConfig.ts`). A config that works past
+    // READY_GRACE_MS (10 s) at load time keeps the worker evaluating a module
+    // whose dependency had a top-level await, and a terminate() or a process
+    // exit then aborts Node 24 ("Check failed: (location_) != nullptr") and
+    // Node 26 ("Check failed: !is_null()") every time. The routes script
+    // finds no routes, so the early pool is trimmed while all its workers are
+    // still loading. The work is in workers only, to keep the test short.
+    const fixture = await makeFixture("slow-config", {
+      "index.html": () => slowPage("home", 0),
+      "about.html": () => slowPage("about", 0),
+      "blog/[slug].html": (log) =>
+        routesPage(log, { sleepMs: 300, routes: [] }),
+    });
+    await rm(join(fixture.root, "bascik.config.js"));
+    await writeFixtureFile(
+      fixture.root,
+      "src/lib/books-data.ts",
+      `import { readFile } from "node:fs/promises";\nexport const raw: string = await readFile(new URL(import.meta.url), "utf8");\n`,
+    );
+    await writeFixtureFile(
+      fixture.root,
+      "bascik.config.ts",
+      `import { isMainThread } from "node:worker_threads";
+import { raw } from "./src/lib/books-data.ts";
+let n: number = 0;
+if (!isMainThread) {
+  const end = Date.now() + 11_500;
+  while (Date.now() < end) n += raw.length;
+}
+export default {
+  directory: { components: ["src/components"] },
+  pipeline: { workers: true },
+  generate: { manifest: true, cspHashes: true, sitemap: false, robots: false },
+  minify: { identifiers: false },
+};
+`,
+    );
+    const run = await runBuild(fixture);
+    expect(run.output).not.toContain("Check failed");
+    expect({ code: run.code, signal: run.signal }, run.output).toEqual({
+      code: 0,
+      signal: null,
+    });
+    expect(run.output).toContain("A page worker is still loading after 10 s");
+    const events = readTimeline(fixture.log);
+    const spawns = of(events, "spawn");
+    expect(spawns.length).toBeGreaterThan(0);
+    expect(of(events, "exit")).toHaveLength(spawns.length);
+    for (const worker of spawns) {
+      const find = (kind: string) =>
+        events.find((e) => e.kind === kind && e.id === worker.id);
+      expect(find("ready"), `worker ${worker.id} ready`).toBeDefined();
+      expect(find("exit")!.at).toBeGreaterThanOrEqual(find("ready")!.at);
+    }
+    for (const page of ["index.html", "about.html"])
+      expect(existsSync(join(fixture.root, "dist", page)), page).toBe(true);
+  }, 60_000);
+
   it("stops every worker, after it loads, before exiting on a static asset copy failure", async () => {
     // The asset copy runs next to page processing and the CLI exits as soon
     // as it fails; exiting while a worker is still loading can abort Node 24.

@@ -24,9 +24,11 @@ import { setFlagsFromString } from "node:v8";
  * twice. V8 reads the flag each time code becomes dead, so turning it off
  * at run time works, and it applies to every thread of the process. The
  * cost is that dead wasm code (a wrapper nothing uses, baseline code
- * replaced by optimized code) stays allocated until its module is freed.
- * Peak memory did not change measurably in a stress run of 200 worker
- * threads stripping TypeScript.
+ * replaced by optimized code) stays allocated until its module is freed:
+ * a `bascik --build` of a 25-page site with eight page workers peaked
+ * about 16 MB (2 to 3 %) higher, in every one of 16 paired runs, and the
+ * extra memory is not given back. It does not grow: starting and
+ * terminating four type-stripping workers 240 times kept memory level.
  */
 
 /** V8 versions with the wrapper race: 13.x, which only Node 24 ships among

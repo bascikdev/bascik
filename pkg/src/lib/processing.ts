@@ -140,7 +140,7 @@ import type {
   RouteEntry,
   TranspilePageResult,
 } from "./types.ts";
-import { WorkerPool } from "./worker-pool.ts";
+import { READY_GRACE_MS, WorkerPool } from "./worker-pool.ts";
 import { registerExitStopper } from "./exit-stoppers.ts";
 
 import {
@@ -989,10 +989,16 @@ const startPagePool = (pageList: string[], maxWorkers: number): PagePool => {
       // The pool can now be trimmed or torn down while workers are still
       // loading the compiler; it must wait until each has loaded first.
       readySignal: true,
-      // And then ask each to end itself instead of terminating it: an
-      // external terminate that lands while V8 allocates code can abort
-      // Node 24 (`stopSignal` in `WorkerPool`).
+      // And then ask each to end itself instead of terminating it, so no
+      // worker is cut off in the middle of a build script (`stopSignal` in
+      // `WorkerPool`).
       stopSignal: true,
+      // A worker still loading 10 s in is waited for, never terminated
+      // mid-evaluation (that aborts Node); say why the run is waiting.
+      onSlowLoad: () =>
+        console.warn(
+          `[bascik] warning: A page worker is still loading after ${READY_GRACE_MS / 1000} s (usually bascik.config.ts or a module it imports doing work at load time). Waiting for it to finish before stopping it, because stopping a worker in the middle of loading crashes Node.`,
+        ),
     },
   );
 };

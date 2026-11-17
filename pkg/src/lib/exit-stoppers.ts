@@ -24,11 +24,14 @@ export type ExitStopper = () => Promise<void> | null;
 const stoppers = new Set<ExitStopper>();
 
 /**
- * The longest any exit waits for its stoppers. The page pool waits up to
- * 10 s for a loading worker, then up to 3 s for it to end itself on the stop
- * message (`READY_GRACE_MS` and `STOP_GRACE_MS` in `worker-pool.ts`) before
- * terminating it anyway; past that, a stuck worker must not keep a crashed
- * or interrupted process alive.
+ * The longest any exit waits for its stoppers. The page pool waits for a
+ * loading worker for as long as it is evaluating (terminating it then aborts
+ * Node), terminates one that has been waiting rather than evaluating past
+ * its 10 s ready grace, and gives a loaded worker up to 3 s to end itself
+ * on the stop message (`READY_GRACE_MS` and `STOP_GRACE_MS` in
+ * `worker-pool.ts`); past this bound, a worker must not keep a crashed or
+ * interrupted process alive, so a worker still evaluating its config 13 s
+ * into the exit is the one case left that can abort.
  */
 export const STOP_BEFORE_EXIT_TIMEOUT_MS = 13_000;
 
