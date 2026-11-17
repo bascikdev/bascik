@@ -301,7 +301,10 @@ console.log("survived");
 // (`--wasm-wrapper-tiering-budget=1000000000`) or on Node 24.21. No real use
 // of Bascik on Node 26 hit it (0 of 860 `bascik --build` runs of 30 to 300
 // TypeScript pages, 0 of 200 dev servers stopped with Ctrl+C while starting,
-// 0 of 40 runs of the startup loop above), so Bascik sets no flag for it.
+// 0 of 40 runs of the startup loop above), but a large TypeScript-heavy site
+// is in range, so `wasm-code-gc.ts` sets that budget on V8 14 on arm64
+// (`WorkerPool`'s own pools: 6 of 608 crashes without it, 0 of 608 with it).
+// CI has no arm64 runner; the unit tests in `wasm-code-gc.test.ts` cover it.
 describe.runIf(Number.parseInt(process.versions.v8, 10) === 13)(
   "wasm code GC while worker threads stop (real workers, Node 24)",
   () => {

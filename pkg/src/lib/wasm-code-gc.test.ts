@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   avoidWasmWrapperRace,
   hasWasmWrapperRace,
+  hasWasmWrapperTierUpRace,
   resetWasmWrapperRaceForTests,
+  WRAPPER_TIERING_BUDGET_FLAG,
 } from "./wasm-code-gc.ts";
 
 beforeEach(() => resetWasmWrapperRaceForTests());
@@ -10,6 +12,7 @@ beforeEach(() => resetWasmWrapperRaceForTests());
 const run = (
   options: {
     v8Version?: string;
+    arch?: string;
     execArgv?: string[];
     nodeOptions?: string;
     setFlags?: (flags: string) => void;
@@ -18,6 +21,7 @@ const run = (
   const setFlags = vi.fn(options.setFlags ?? (() => {}));
   const changed = avoidWasmWrapperRace({
     v8Version: "13.6.233.17-node.53",
+    arch: "x64",
     execArgv: [],
     nodeOptions: "",
     ...options,
@@ -118,15 +122,91 @@ describe("avoidWasmWrapperRace", () => {
     expect(changed).toBe(false);
   });
 
-  it("defaults to this process's V8, arguments and NODE_OPTIONS", () => {
+  it("defaults to this process's V8, architecture, arguments and NODE_OPTIONS", () => {
     const setFlags = vi.fn();
     avoidWasmWrapperRace({ setFlags });
-    expect(setFlags.mock.calls.length).toBe(
-      hasWasmWrapperRace(process.versions.v8) &&
-        !process.execArgv.includes("--wasm-code-gc") &&
-        !(process.env.NODE_OPTIONS ?? "").includes("--wasm-code-gc")
-        ? 1
-        : 0,
+    const userArgs = [
+      ...process.execArgv,
+      ...(process.env.NODE_OPTIONS ?? "").split(/\s+/),
+    ].join(" ");
+    const expected = hasWasmWrapperRace(process.versions.v8)
+      ? !userArgs.includes("--wasm-code-gc")
+      : hasWasmWrapperTierUpRace(process.versions.v8, process.arch) &&
+        !userArgs.includes("--wasm-wrapper-tiering-budget");
+    expect(setFlags.mock.calls.length).toBe(expected ? 1 : 0);
+  });
+});
+
+describe("hasWasmWrapperTierUpRace", () => {
+  it.each([
+    ["14.6.202.34-node.40", "arm64", true],
+    ["14.1.146.11-node.18", "arm64", true],
+    ["14.6.202.34-node.40", "x64", false],
+    ["13.6.233.17-node.53", "arm64", false],
+    ["15.0.1", "arm64", false],
+    ["", "arm64", false],
+  ])("%s on %s -> %s", (version, arch, expected) => {
+    expect(hasWasmWrapperTierUpRace(version, arch)).toBe(expected);
+  });
+});
+
+describe("avoidWasmWrapperRace on Node 26 (V8 14) on arm64", () => {
+  const node26 = { v8Version: "14.6.202.34-node.40", arch: "arm64" };
+
+  it("holds wasm wrapper tier-up off, and leaves wasm code GC on", () => {
+    const { changed, setFlags } = run(node26);
+    expect(changed).toBe(true);
+    expect(setFlags).toHaveBeenCalledExactlyOnceWith(
+      WRAPPER_TIERING_BUDGET_FLAG,
     );
+  });
+
+  it("sets it once per process", () => {
+    run(node26);
+    const second = run(node26);
+    expect(second.changed).toBe(false);
+    expect(second.setFlags).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["execArgv", { execArgv: ["--wasm-wrapper-tiering-budget=50"] }],
+    [
+      "execArgv, underscore spelling",
+      { execArgv: ["--wasm_wrapper_tiering_budget=50"] },
+    ],
+    [
+      "NODE_OPTIONS",
+      {
+        nodeOptions:
+          "--max-old-space-size=4096 --wasm-wrapper-tiering-budget=50",
+      },
+    ],
+  ])("respects a budget the user set in %s", (_where, options) => {
+    const { changed, setFlags } = run({ ...node26, ...options });
+    expect(changed).toBe(false);
+    expect(setFlags).not.toHaveBeenCalled();
+  });
+
+  it("is not stopped by the user's --wasm-code-gc, which is the Node 24 guard's flag", () => {
+    const { setFlags } = run({ ...node26, execArgv: ["--wasm-code-gc"] });
+    expect(setFlags).toHaveBeenCalledExactlyOnceWith(
+      WRAPPER_TIERING_BUDGET_FLAG,
+    );
+  });
+
+  it("never throws when V8 refuses the flag", () => {
+    const { changed } = run({
+      ...node26,
+      setFlags: () => {
+        throw new Error("flags frozen");
+      },
+    });
+    expect(changed).toBe(false);
+  });
+
+  it("leaves Node 26 on x64 alone", () => {
+    const { changed, setFlags } = run({ ...node26, arch: "x64" });
+    expect(changed).toBe(false);
+    expect(setFlags).not.toHaveBeenCalled();
   });
 });
