@@ -44,9 +44,13 @@ const userChoseWasmCodeGc = (
 ): boolean => {
   let chosen = false;
   for (const arg of [...nodeOptions.split(/\s+/), ...execArgv]) {
+    // Node accepts a V8 boolean flag as `--x`, `--no-x` or `--nox`, with `-`
+    // and `_` interchangeable (it rejects `--x=true` and `--x=false`).
     const flag = arg.replaceAll("_", "-");
     if (flag === "--wasm-code-gc") chosen = true;
-    else if (flag === "--no-wasm-code-gc") chosen = false;
+    else if (flag === "--no-wasm-code-gc" || flag === "--nowasm-code-gc") {
+      chosen = false;
+    }
   }
   return chosen;
 };

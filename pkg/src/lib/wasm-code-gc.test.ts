@@ -93,6 +93,14 @@ describe("avoidWasmWrapperRace", () => {
     expect(changed).toBe(true);
   });
 
+  it("reads V8's --nowasm-code-gc spelling as turning it off", () => {
+    const { changed } = run({
+      nodeOptions: "--wasm-code-gc",
+      execArgv: ["--nowasm_code_gc"],
+    });
+    expect(changed).toBe(true);
+  });
+
   it("ignores flags that only look similar", () => {
     const { changed } = run({
       execArgv: ["--stress-wasm-code-gc", "--trace-wasm-code-gc"],
