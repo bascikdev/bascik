@@ -89,16 +89,67 @@ describe("stopBeforeExit", () => {
     await expect(stopBeforeExit()).resolves.toBeUndefined();
   });
 
-  it("gives up after the timeout when a stopper never settles", async () => {
+  it("has no deadline: a stopper still running an hour in is still waited for", async () => {
     vi.useFakeTimers();
-    const { stopBeforeExit, registerExitStopper, STOP_BEFORE_EXIT_TIMEOUT_MS } =
-      await load();
-    registerExitStopper(() => new Promise<void>(() => {}));
+    const { stopBeforeExit, registerExitStopper } = await load();
+    const loading = deferred();
+    registerExitStopper(() => loading.promise, { teardownOnly: true });
     let settled = false;
     void stopBeforeExit()!.then(() => (settled = true));
-    await vi.advanceTimersByTimeAsync(STOP_BEFORE_EXIT_TIMEOUT_MS - 1);
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    expect(settled).toBe(false);
+    loading.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+  });
+
+  it("for a signal's exit, waits for the teardown-only stoppers only briefly, and for the others fully", async () => {
+    vi.useFakeTimers();
+    const {
+      stopBeforeExit,
+      registerExitStopper,
+      SIGNAL_EXIT_TEARDOWN_WAIT_MS,
+    } = await load();
+    const exec = deferred();
+    const poolStop = vi.fn(() => new Promise<void>(() => {}));
+    registerExitStopper(() => exec.promise);
+    registerExitStopper(poolStop, { teardownOnly: true });
+    let settled = false;
+    void stopBeforeExit({ signal: "SIGINT" })!.then(() => (settled = true));
+    expect(poolStop).toHaveBeenCalledTimes(1);
+    // The exec children are waited for however long they take.
+    await vi.advanceTimersByTimeAsync(SIGNAL_EXIT_TEARDOWN_WAIT_MS * 5);
+    expect(settled).toBe(false);
+    exec.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+  });
+
+  it("for a signal's exit, gives up on a loading worker after SIGNAL_EXIT_TEARDOWN_WAIT_MS", async () => {
+    vi.useFakeTimers();
+    const {
+      stopBeforeExit,
+      registerExitStopper,
+      SIGNAL_EXIT_TEARDOWN_WAIT_MS,
+    } = await load();
+    registerExitStopper(() => new Promise<void>(() => {}), {
+      teardownOnly: true,
+    });
+    let settled = false;
+    void stopBeforeExit({ signal: "SIGTERM" })!.then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(SIGNAL_EXIT_TEARDOWN_WAIT_MS - 1);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
+  });
+
+  it("for a signal's exit, settles as soon as a quick teardown stop finishes", async () => {
+    vi.useFakeTimers();
+    const { stopBeforeExit, registerExitStopper } = await load();
+    registerExitStopper(() => Promise.resolve(), { teardownOnly: true });
+    let settled = false;
+    void stopBeforeExit({ signal: "SIGINT" })!.then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(0);
     expect(settled).toBe(true);
   });
 
@@ -356,5 +407,134 @@ describe("exitOnSignalsAfterStopping", () => {
     expect(server).toHaveBeenCalledTimes(1);
     expect(stop).not.toHaveBeenCalled();
     expect(kill).not.toHaveBeenCalled();
+  });
+});
+
+describe("endProcess", () => {
+  let kill: ReturnType<typeof vi.spyOn>;
+  let exit: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+    exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+  });
+
+  afterEach(() => {
+    kill.mockRestore();
+    exit.mockRestore();
+  });
+
+  it("exits with the code when nothing is stopping", async () => {
+    const { endProcess } = await load();
+    endProcess(0, "SIGINT");
+    expect(exit).toHaveBeenCalledWith(0);
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it("ends by the signal, with no listener left, while a page worker is still loading", async () => {
+    const { endProcess, registerExitStopper, stopBeforeExit } = await load();
+    const loading = deferred();
+    registerExitStopper(() => loading.promise, { teardownOnly: true });
+    process.on("SIGINT", () => {});
+    void stopBeforeExit({ signal: "SIGINT" });
+    endProcess(0, "SIGINT");
+    expect(exit).not.toHaveBeenCalled();
+    expect(kill).toHaveBeenCalledWith(process.pid, "SIGINT");
+    expect(process.listenerCount("SIGINT")).toBe(0);
+  });
+
+  it("exits with the code once the loading worker's stop has finished", async () => {
+    const { endProcess, registerExitStopper, stopBeforeExit } = await load();
+    const loading = deferred();
+    registerExitStopper(() => loading.promise, { teardownOnly: true });
+    void stopBeforeExit({ signal: "SIGTERM" });
+    loading.resolve();
+    await flush();
+    endProcess(1, "SIGTERM");
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it("without a signal (a crash, a failed build) never sends one, even while a worker loads", async () => {
+    const { endProcess, registerExitStopper, stopBeforeExit } = await load();
+    registerExitStopper(() => new Promise<void>(() => {}), {
+      teardownOnly: true,
+    });
+    void stopBeforeExit();
+    endProcess(1);
+    expect(kill).not.toHaveBeenCalled();
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it("counts a rejected or thrown teardown stop as finished", async () => {
+    const { endProcess, registerExitStopper, stopBeforeExit } = await load();
+    registerExitStopper(() => Promise.reject(new Error("terminate failed")), {
+      teardownOnly: true,
+    });
+    registerExitStopper(
+      () => {
+        throw new Error("stopper threw");
+      },
+      { teardownOnly: true },
+    );
+    await stopBeforeExit({ signal: "SIGINT" });
+    await flush();
+    endProcess(0, "SIGINT");
+    expect(kill).not.toHaveBeenCalled();
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+});
+
+describe("exitAfterStopping's wait notice", () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutWrite: typeof process.stdout.write;
+
+  beforeEach(() => {
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    stdoutWrite = process.stdout.write;
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+    process.stdout.write = stdoutWrite;
+  });
+
+  it("says once, on stderr, that it waits for a loading page worker and that Ctrl+C quits", async () => {
+    vi.useFakeTimers();
+    const { exitAfterStopping, registerExitStopper, EXIT_WAIT_NOTICE_MS } =
+      await load();
+    const loading = deferred();
+    registerExitStopper(() => loading.promise, { teardownOnly: true });
+    const exit = vi.fn();
+    exitAfterStopping(1, exit);
+    await vi.advanceTimersByTimeAsync(EXIT_WAIT_NOTICE_MS - 1);
+    expect(errorSpy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(String(errorSpy.mock.calls[0][0])).toMatch(
+      /Waiting for a page worker to finish loading.*Press Ctrl\+C to quit now/,
+    );
+    await vi.advanceTimersByTimeAsync(EXIT_WAIT_NOTICE_MS * 10);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    loading.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it("says nothing when the stop finishes in time, or only exec scripts are left", async () => {
+    vi.useFakeTimers();
+    const { exitAfterStopping, registerExitStopper, EXIT_WAIT_NOTICE_MS } =
+      await load();
+    const exec = deferred();
+    registerExitStopper(() => exec.promise);
+    const exit = vi.fn();
+    exitAfterStopping(1, exit);
+    await vi.advanceTimersByTimeAsync(EXIT_WAIT_NOTICE_MS * 2);
+    expect(errorSpy).not.toHaveBeenCalled();
+    exec.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(exit).toHaveBeenCalledWith(1);
   });
 });

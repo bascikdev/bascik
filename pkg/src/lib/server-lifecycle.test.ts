@@ -139,12 +139,12 @@ describe("executeGracefulShutdown", () => {
     expect(mockServer.closeIdleConnections).toHaveBeenCalled();
     expect(mockOnShutdown).toHaveBeenCalled();
     expect(mockServer.closeAllConnections).not.toHaveBeenCalled();
-    expect(mockRunShutdownHandlers).toHaveBeenCalled();
+    expect(mockRunShutdownHandlers).toHaveBeenCalledWith({ signal: "SIGTERM" });
     expect(mockServer.close).toHaveBeenCalled();
 
     // Await promise microtasks
     await Promise.resolve();
-    expect(mockExit).toHaveBeenCalledWith(0);
+    expect(mockExit).toHaveBeenCalledWith(0, "SIGTERM");
   });
 
   it("waits for both server close and async shutdown handlers before exiting", async () => {
@@ -179,7 +179,7 @@ describe("executeGracefulShutdown", () => {
     resolveHandlers();
     await Promise.resolve();
     await Promise.resolve();
-    expect(mockExit).toHaveBeenCalledWith(0);
+    expect(mockExit).toHaveBeenCalledWith(0, "SIGTERM");
   });
 
   it("exits with code 1 if shutdown handlers reject", async () => {
@@ -202,7 +202,7 @@ describe("executeGracefulShutdown", () => {
     shutdown("SIGTERM");
     await Promise.resolve();
     await Promise.resolve();
-    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockExit).toHaveBeenCalledWith(1, "SIGTERM");
   });
 
   it("invokes onForceClose and closeAllConnections only when drain timeout expires", () => {
@@ -228,7 +228,7 @@ describe("executeGracefulShutdown", () => {
     vi.advanceTimersByTime(5000);
     expect(mockServer.closeAllConnections).toHaveBeenCalled();
     expect(mockOnForceClose).toHaveBeenCalled();
-    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockExit).toHaveBeenCalledWith(1, "SIGTERM");
   });
 
   it("is idempotent on repeated invocations (e.g. SIGTERM followed by SIGINT)", () => {
@@ -273,7 +273,7 @@ describe("executeGracefulShutdown", () => {
     vi.advanceTimersByTime(1000);
     closeCallback?.();
     await Promise.resolve();
-    expect(mockExit).toHaveBeenCalledWith(0);
+    expect(mockExit).toHaveBeenCalledWith(0, "SIGTERM");
 
     // Advance past drainTimeout: force-exit must not fire
     vi.advanceTimersByTime(10000);
@@ -298,7 +298,7 @@ describe("executeGracefulShutdown", () => {
     expect(mockExit).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(1);
-    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockExit).toHaveBeenCalledWith(1, "SIGTERM");
   });
 
   it("shutdown-handler rejection does not prevent server.close or force-exit fail-safe", () => {
@@ -321,7 +321,7 @@ describe("executeGracefulShutdown", () => {
     expect(mockServer.close).toHaveBeenCalled();
 
     vi.advanceTimersByTime(3000);
-    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockExit).toHaveBeenCalledWith(1, "SIGTERM");
   });
 
   it("late close after force-exit timeout does not double-exit", () => {
@@ -343,7 +343,7 @@ describe("executeGracefulShutdown", () => {
 
     // Advance past deadline -> exits with 1
     vi.advanceTimersByTime(5000);
-    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockExit).toHaveBeenCalledWith(1, "SIGTERM");
 
     // Late server close fires
     closeCallback?.();

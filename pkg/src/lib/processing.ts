@@ -1112,13 +1112,16 @@ export const stopPagePools = async (
 // The running phase's jobs are abandoned, not failed: the process is exiting
 // for its own reason (a crash, a Ctrl-C), and a block of "terminated" page
 // errors reported while it waits would bury that reason and blame the pages.
-registerExitStopper(() =>
-  pagePoolPhases.size === 0 && stoppingPagePools.size === 0
-    ? null
-    : Promise.all([
-        stopPagePools({ abandon: true }),
-        ...stoppingPagePools,
-      ]).then(() => {}),
+// Teardown only: a process that ends by a signal needs no page pool stopped.
+registerExitStopper(
+  () =>
+    pagePoolPhases.size === 0 && stoppingPagePools.size === 0
+      ? null
+      : Promise.all([
+          stopPagePools({ abandon: true }),
+          ...stoppingPagePools,
+        ]).then(() => {}),
+  { teardownOnly: true },
 );
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {

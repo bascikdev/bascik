@@ -21,51 +21,111 @@ import os from "node:os";
  */
 export type ExitStopper = () => Promise<void> | null;
 
-const stoppers = new Set<ExitStopper>();
+/**
+ * `teardownOnly`: the stopper exists only so that `process.exit()` does not
+ * abort Node (the page worker pools: Node aborts when the process exits, or
+ * a worker is terminated, while a worker is still evaluating a module that
+ * waited for a top-level await). A process that ends by a signal's default
+ * action runs no exit teardown, so a signal exit does not wait for these
+ * (`endProcess`); every other stopper (the `pipeline.exec` children) is
+ * waited for on every exit, or the process would leave it running.
+ */
+interface StopperOptions {
+  teardownOnly?: boolean;
+}
+
+const stoppers = new Map<ExitStopper, StopperOptions>();
+
+/** Teardown-only stops started and not yet finished. */
+let teardownStopsPending = 0;
+
+export const registerExitStopper = (
+  stopper: ExitStopper,
+  options: StopperOptions = {},
+): void => {
+  stoppers.set(stopper, options);
+};
 
 /**
- * The longest any exit waits for its stoppers. The page pool waits for a
- * loading worker for as long as it is evaluating (terminating it then aborts
- * Node), terminates one that has been waiting rather than evaluating past
- * its 10 s ready grace, and gives a loaded worker up to 3 s to end itself
- * on the stop message (`READY_GRACE_MS` and `STOP_GRACE_MS` in
- * `worker-pool.ts`); past this bound, a worker must not keep a crashed or
- * interrupted process alive, so a worker still evaluating its config 13 s
- * into the exit is the one case left that can abort.
+ * How long a signal's exit waits for the page pools before it ends by the
+ * signal instead. Workers that are loaded stop in milliseconds, and most
+ * finish loading within this, so a Ctrl-C usually still exits 0.
  */
-export const STOP_BEFORE_EXIT_TIMEOUT_MS = 13_000;
+export const SIGNAL_EXIT_TEARDOWN_WAIT_MS = 1_000;
 
-export const registerExitStopper = (stopper: ExitStopper): void => {
-  stoppers.add(stopper);
+/** `settled`, or `SIGNAL_EXIT_TEARDOWN_WAIT_MS`, whichever comes first. */
+const briefly = (settled: Promise<void>): Promise<void> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const waited = new Promise<void>((resolveWait) => {
+    timer = setTimeout(resolveWait, SIGNAL_EXIT_TEARDOWN_WAIT_MS);
+  });
+  return Promise.race([settled, waited]).finally(() => clearTimeout(timer));
 };
 
 /**
  * Run every registered stopper. Returns `null` when none had anything to
  * stop; otherwise a promise that never rejects and settles once all have
- * finished, or after `timeoutMs`, whichever comes first.
+ * finished. There is deliberately no deadline: the page pools bound their
+ * own stop (a stuck worker is terminated, a loaded one gets 3 s) except for
+ * a worker still evaluating, and exiting then is exactly what aborts Node.
+ * A Ctrl-C during the wait ends the process at once instead
+ * (`exitAfterStopping`, `endProcess`).
+ *
+ * `signal`: the exit is a signal's (a server's graceful shutdown). The
+ * teardown-only stoppers still start, but the returned promise waits for
+ * them only up to `SIGNAL_EXIT_TEARDOWN_WAIT_MS`, so a Ctrl-C stays
+ * responsive; end with `endProcess(code, signal)`, which ends by the signal
+ * while a teardown-only stop is still running.
  */
 export const stopBeforeExit = (
-  timeoutMs: number = STOP_BEFORE_EXIT_TIMEOUT_MS,
+  options: { signal?: NodeJS.Signals } = {},
 ): Promise<void> | null => {
-  const pending: Promise<void>[] = [];
-  for (const stop of stoppers) {
+  const awaited: Promise<void>[] = [];
+  let started = 0;
+  for (const [stop, { teardownOnly }] of stoppers) {
     let result: Promise<void> | null;
     try {
       result = stop();
     } catch {
       continue;
     }
-    if (result) pending.push(Promise.resolve(result).catch(() => {}));
+    if (!result) continue;
+    started++;
+    const settled = Promise.resolve(result).catch(() => {});
+    if (teardownOnly) {
+      teardownStopsPending++;
+      void settled.then(() => {
+        teardownStopsPending--;
+      });
+      if (options.signal) {
+        awaited.push(briefly(settled));
+        continue;
+      }
+    }
+    awaited.push(settled);
   }
-  if (pending.length === 0) return null;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<void>((resolveDeadline) => {
-    timer = setTimeout(resolveDeadline, timeoutMs);
-  });
-  return Promise.race([Promise.all(pending).then(() => {}), deadline]).finally(
-    () => clearTimeout(timer),
-  );
+  if (started === 0) return null;
+  return Promise.all(awaited).then(() => {});
 };
+
+/**
+ * End the process with `code`, or, when the exit is a signal's and a
+ * teardown-only stop (a page worker still loading) is still running, by
+ * that signal's default action: `process.exit()` would abort Node then,
+ * while a death by signal runs no exit teardown and is immediate. The shell
+ * then sees the signal's status (130 for SIGINT) rather than `code`.
+ */
+export const endProcess = (code: number, signal?: NodeJS.Signals): void => {
+  if (signal && teardownStopsPending > 0) {
+    releaseSignals();
+    process.kill(process.pid, signal);
+    return;
+  }
+  process.exit(code);
+};
+
+/** How long an exit waits for its stoppers before it says what it waits for. */
+export const EXIT_WAIT_NOTICE_MS = 3_000;
 
 let exiting = false;
 let shuttingDown = false;
@@ -117,9 +177,10 @@ const quietStdout = (): (() => void) => {
 };
 
 /**
- * Exit with `code` once the stoppers have finished (bounded by
- * `STOP_BEFORE_EXIT_TIMEOUT_MS`). With nothing to stop it exits at once, as
- * `process.exit` would.
+ * Exit with `code` once the stoppers have finished. With nothing to stop it
+ * exits at once, as `process.exit` would. When a page worker is still
+ * loading `EXIT_WAIT_NOTICE_MS` in, it says so on stderr, once, and that a
+ * Ctrl-C quits at once.
  *
  * While it waits, `process.exitCode` already holds `code`, so the process
  * fails even if it ends some other way, and SIGINT / SIGTERM have no
@@ -143,7 +204,15 @@ export const exitAfterStopping = (
   exiting = true;
   releaseSignals();
   const restoreStdout = code === 0 ? () => {} : quietStdout();
+  const notice = setTimeout(() => {
+    if (teardownStopsPending > 0)
+      console.error(
+        "[bascik] Waiting for a page worker to finish loading before exiting (stopping a worker while it loads crashes Node). Press Ctrl+C to quit now.",
+      );
+  }, EXIT_WAIT_NOTICE_MS);
+  notice.unref();
   void pending.then(() => {
+    clearTimeout(notice);
     exiting = false;
     restoreStdout();
     exit(code);

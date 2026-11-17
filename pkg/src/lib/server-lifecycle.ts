@@ -4,6 +4,7 @@ import {
   type TimeoutHandle,
 } from "./clock.ts";
 import { runShutdownHandlers } from "./events.ts";
+import { endProcess } from "./exit-stoppers.ts";
 import {
   DEFAULT_HTTP_TIMEOUTS,
   defaultHeadersTimeout,
@@ -61,8 +62,12 @@ export interface GracefulShutdownOptions {
   drainTimeout?: number;
   onShutdown?: () => void | Promise<void>;
   onForceClose?: () => void;
-  runShutdownHandlers?: () => Promise<void>;
-  exit?: (code: number) => void;
+  /** `signal`: the one that started the shutdown, so the page worker pools
+   * are not waited for (`runShutdownHandlers`). */
+  runShutdownHandlers?: (options: { signal?: NodeJS.Signals }) => Promise<void>;
+  /** Ends the process; by default `endProcess`, which ends by `signal`
+   * instead of `process.exit` while a page worker is still loading. */
+  exit?: (code: number, signal?: NodeJS.Signals) => void;
   clock?: FrameworkClock;
 }
 
@@ -74,9 +79,13 @@ export const createGracefulShutdownHandler = (
   let forceExitTimer: TimeoutHandle | null = null;
   const clock = options.clock ?? nativeClock;
   const drainTimeout = options.drainTimeout ?? DEFAULT_DRAIN_TIMEOUT_MS;
-  const exitFn = options.exit ?? ((code: number) => process.exit(code));
+  const exitFn =
+    options.exit ??
+    ((code: number, signal?: NodeJS.Signals) => endProcess(code, signal));
   const shutdownHandlersRunner =
     options.runShutdownHandlers ?? runShutdownHandlers;
+
+  let shutdownSignal: NodeJS.Signals | undefined;
 
   const performExit = (code: number) => {
     if (exitSettled) return;
@@ -85,12 +94,13 @@ export const createGracefulShutdownHandler = (
       clock.clearTimeout(forceExitTimer);
       forceExitTimer = null;
     }
-    exitFn(code);
+    exitFn(code, shutdownSignal);
   };
 
   return (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    shutdownSignal = signal as NodeJS.Signals;
     setServerHealthState("draining");
     console.log(`\nReceived ${signal}, shutting down gracefully…`);
 
@@ -160,7 +170,9 @@ export const createGracefulShutdownHandler = (
 
     let handlersPromise: Promise<void>;
     try {
-      handlersPromise = Promise.resolve(shutdownHandlersRunner());
+      handlersPromise = Promise.resolve(
+        shutdownHandlersRunner({ signal: shutdownSignal }),
+      );
     } catch (err) {
       handlersPromise = Promise.reject(err);
     }
