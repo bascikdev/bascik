@@ -193,10 +193,14 @@ const groupAlive = (pid: number) => {
 // single failing run. A TypeScript config matters: importing it is part of
 // what the worker still awaits while it loads.
 // The pool is configured as `processAllPages` configures it: it also asks
-// each worker to end itself (`stopSignal`), because a `worker.terminate()`
-// right after a worker has loaded, while V8 is still allocating code, aborted
-// this loop on CI ("Check failed: jit_page.has_value()", SIGTRAP, Node
-// 24.22.1).
+// each worker to end itself (`stopSignal`). This loop also aborted on CI's
+// Linux x64 runners, Node 24.21 and 24.22, with "Check failed:
+// jit_page.has_value()" (SIGTRAP): V8 13.6 freeing a shared wasm import
+// wrapper twice (`Runtime_TierUpWasmToJSWrapper` -> `WasmImportWrapperCache::Free`)
+// while workers that type-strip `.ts` with Amaro tear down, whichever way
+// they stop. The pool turns off wasm code GC for that (`wasm-code-gc.ts`);
+// the next test checks it deterministically, since this loop hit it in only
+// a few percent of CI runs.
 const stopDuringStartupScript = (poolModule: string, workerScript: string) => `
 import { WorkerPool } from ${JSON.stringify(poolModule)};
 for (let delay = 0; delay <= 400; delay += 10) {
@@ -246,6 +250,89 @@ describe("page worker shutdown during startup (real worker)", () => {
     expect(output).not.toContain("Fatal error");
   }, 120_000);
 });
+
+// A worker that type-strips TypeScript (Amaro, swc compiled to wasm) for each
+// task, as a page worker does for a `.ts` config, helper or script block.
+const stripWorkerSource = `
+import { parentPort } from "node:worker_threads";
+import { stripTypeScriptTypes } from "node:module";
+parentPort.on("message", (count) => {
+  for (let i = 0; i < count; i++)
+    stripTypeScriptTypes("const n: number = " + i + "; export type T = string;");
+  parentPort.postMessage({ ok: true, result: count });
+});
+`;
+
+// Workers come and go while others strip types, and V8 is told to run a wasm
+// code GC whenever any wasm code dies (`--stress-wasm-code-gc`): without the
+// pool's flag the worker isolates take part in many of them (each one a chance
+// of the double free on Node 24); with it, in none on V8 13.
+const wasmCodeGcScript = (poolModule: string, workerScript: string) => `
+import { setFlagsFromString } from "node:v8";
+import { stripTypeScriptTypes } from "node:module";
+// Set here, not on the command line: a worker thread rejects V8 flags in the
+// execArgv it inherits. Both are read each time wasm code dies.
+setFlagsFromString("--stress-wasm-code-gc");
+setFlagsFromString("--trace-wasm-code-gc");
+const { WorkerPool } = await import(${JSON.stringify(poolModule)});
+for (let round = 0; round < 6; round++) {
+  const pool = new WorkerPool(${JSON.stringify(workerScript)}, 3, {});
+  stripTypeScriptTypes("const main: number = " + round + ";");
+  await Promise.all([pool.run(2000), pool.run(2000), pool.run(2000)]);
+  void pool.shrink(1);
+  await pool.run(2000);
+  await pool.terminate();
+}
+console.log("survived");
+`;
+
+// Only V8 13 (Node 24) has the race, and only there does the pool change the
+// flag. Elsewhere this stress loop proves nothing about Bascik, and Node
+// 26.13 on macOS arm64 crashed in it (SIGILL in wasm code, about one run in
+// ten, with or without wasm code GC), which is not Bascik's to work around.
+describe.runIf(Number.parseInt(process.versions.v8, 10) === 13)(
+  "wasm code GC while worker threads stop (real workers, Node 24)",
+  () => {
+    it("is off for the whole process once a pool starts", async () => {
+      const fixture = await makeFixture("wasm-code-gc", {});
+      const lib = resolve(dirname(fileURLToPath(import.meta.url)), "lib");
+      const workerScript = join(fixture.root, "strip-worker.mjs");
+      await writeFixtureFile(
+        fixture.root,
+        "strip-worker.mjs",
+        stripWorkerSource,
+      );
+      await writeFixtureFile(
+        fixture.root,
+        "wasm-code-gc.mjs",
+        wasmCodeGcScript(join(lib, "worker-pool.ts"), workerScript),
+      );
+      const child = spawn(
+        process.execPath,
+        ["--no-warnings", join(fixture.root, "wasm-code-gc.mjs")],
+        { cwd: fixture.root, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      let output = "";
+      child.stdout.on("data", (chunk) => (output += chunk));
+      child.stderr.on("data", (chunk) => (output += chunk));
+      const [code, signal] = await new Promise<[number | null, string | null]>(
+        (resolveRun) =>
+          child.once("close", (exitCode, exitSignal) =>
+            resolveRun([exitCode, exitSignal]),
+          ),
+      );
+      const tail = output.split("\n").slice(-40).join("\n");
+      expect({ code, signal }, tail).toEqual({ code: 0, signal: null });
+      expect(output).toContain("survived");
+      // Loading `worker-pool.ts` strips its types on the main thread before
+      // any pool exists, so a GC there is expected; a worker isolate taking
+      // part in one means wasm code GC was still on while workers ran.
+      const codeGcs =
+        output.match(/\[wasm-gc\] Isolate [1-9]\d* reporting/g)?.length ?? 0;
+      expect(codeGcs, tail).toBe(0);
+    }, 120_000);
+  },
+);
 
 describe("early page worker pool (real build)", () => {
   it("starts page workers while a routes script is still running", async () => {
@@ -335,6 +422,66 @@ describe("early page worker pool (real build)", () => {
     }
     expect(of(events, "exit")).toHaveLength(spawns.length);
   }, 40_000);
+
+  it("waits for a worker whose config loads for longer than the ready grace instead of terminating it mid-evaluation", async () => {
+    // Every page worker loads the user's config through Bascik's own
+    // top-level await (`userConfig.ts`). A config that works past
+    // READY_GRACE_MS (10 s) at load time keeps the worker evaluating a module
+    // whose dependency had a top-level await, and a terminate() or a process
+    // exit then aborts Node 24 ("Check failed: (location_) != nullptr") and
+    // Node 26 ("Check failed: !is_null()") every time. The routes script
+    // finds no routes, so the early pool is trimmed while all its workers are
+    // still loading. The work is in workers only, to keep the test short.
+    const fixture = await makeFixture("slow-config", {
+      "index.html": () => slowPage("home", 0),
+      "about.html": () => slowPage("about", 0),
+      "blog/[slug].html": (log) =>
+        routesPage(log, { sleepMs: 300, routes: [] }),
+    });
+    await rm(join(fixture.root, "bascik.config.js"));
+    await writeFixtureFile(
+      fixture.root,
+      "src/lib/books-data.ts",
+      `import { readFile } from "node:fs/promises";\nexport const raw: string = await readFile(new URL(import.meta.url), "utf8");\n`,
+    );
+    await writeFixtureFile(
+      fixture.root,
+      "bascik.config.ts",
+      `import { isMainThread } from "node:worker_threads";
+import { raw } from "./src/lib/books-data.ts";
+let n: number = 0;
+if (!isMainThread) {
+  const end = Date.now() + 11_500;
+  while (Date.now() < end) n += raw.length;
+}
+export default {
+  directory: { components: ["src/components"] },
+  pipeline: { workers: true },
+  generate: { manifest: true, cspHashes: true, sitemap: false, robots: false },
+  minify: { identifiers: false },
+};
+`,
+    );
+    const run = await runBuild(fixture);
+    expect(run.output).not.toContain("Check failed");
+    expect({ code: run.code, signal: run.signal }, run.output).toEqual({
+      code: 0,
+      signal: null,
+    });
+    expect(run.output).toContain("A page worker is still loading after 10 s");
+    const events = readTimeline(fixture.log);
+    const spawns = of(events, "spawn");
+    expect(spawns.length).toBeGreaterThan(0);
+    expect(of(events, "exit")).toHaveLength(spawns.length);
+    for (const worker of spawns) {
+      const find = (kind: string) =>
+        events.find((e) => e.kind === kind && e.id === worker.id);
+      expect(find("ready"), `worker ${worker.id} ready`).toBeDefined();
+      expect(find("exit")!.at).toBeGreaterThanOrEqual(find("ready")!.at);
+    }
+    for (const page of ["index.html", "about.html"])
+      expect(existsSync(join(fixture.root, "dist", page)), page).toBe(true);
+  }, 60_000);
 
   it("stops every worker, after it loads, before exiting on a static asset copy failure", async () => {
     // The asset copy runs next to page processing and the CLI exits as soon
