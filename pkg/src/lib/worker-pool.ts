@@ -1,5 +1,6 @@
-import { Worker } from "node:worker_threads";
+import type { Worker } from "node:worker_threads";
 import { avoidWasmWrapperRace } from "./wasm-code-gc.ts";
+import { startWorker } from "./worker-exec-argv.ts";
 
 /**
  * A task the worker itself reported as failed (`{ ok: false, error }`). A
@@ -92,6 +93,15 @@ const MAX_STARTUP_ATTEMPTS = 4;
 const NO_VIABLE_REQUEST =
   "WorkerPool has no viable workers: worker startup failed repeatedly; check the worker module";
 
+/** The no-viable-workers error, naming why the last worker could not even
+ * be constructed when that is known (a bad path, a rejected Node flag). */
+const noViableWorkers = (lastStartupError: string | undefined): Error =>
+  new Error(
+    lastStartupError
+      ? `${NO_VIABLE_REQUEST} (last error: ${lastStartupError})`
+      : NO_VIABLE_REQUEST,
+  );
+
 const TIMED_OUT = Symbol("timed out");
 
 /**
@@ -175,6 +185,8 @@ export class WorkerPool<Task, Result> {
   #abandoned = false;
   #capacityExhausted = false;
   #consecutiveStartupFailures: number;
+  /** Why the last `new Worker` threw, for the no-viable-workers error. */
+  #lastStartupError: string | undefined;
   /** Most workers the pool keeps, set by `shrink` and `grow`. A replacement
    * for a crashed worker restores capacity only up to it. */
   #capacity: number;
@@ -249,6 +261,7 @@ export class WorkerPool<Task, Result> {
     this.#workerScript = workerScript;
     this.#initData = initData;
     this.#consecutiveStartupFailures = 0;
+    this.#lastStartupError = undefined;
     this.#capacity = size;
     // Before any worker exists: every thread of the process uses the flag.
     avoidWasmWrapperRace();
@@ -261,12 +274,10 @@ export class WorkerPool<Task, Result> {
     if (this.#terminated || this.#capacityExhausted) return;
     let worker: Worker;
     try {
-      const execArgv = process.execArgv.filter(
-        (arg) => !arg.startsWith("--input-type"),
-      );
-      worker = new Worker(this.#workerScript, {
+      // This thread's Node options, `--max-old-space-size` and loaders
+      // included, minus `--input-type` (see worker-exec-argv.ts).
+      worker = startWorker(this.#workerScript, {
         workerData: this.#initData,
-        execArgv,
         // Only passed when asked for. Omitting it keeps the default: a copy of this thread's environment.
         ...(this.#env ? { env: this.#env } : {}),
         // Appended to the worker's own process.argv, which starts without this thread's arguments.
@@ -275,6 +286,8 @@ export class WorkerPool<Task, Result> {
     } catch (error) {
       // Constructor failure (missing/unloadable module). Treat as a startup
       // failure so a broken worker never triggers an endless respawn loop.
+      this.#lastStartupError =
+        error instanceof Error ? error.message : String(error);
       this.#noteStartupFailure();
       return;
     }
@@ -344,6 +357,7 @@ export class WorkerPool<Task, Result> {
       // retirement replaced unconditionally.
       slot.completedAny = true;
       this.#consecutiveStartupFailures = 0;
+      this.#lastStartupError = undefined;
       if (message.ok) job.resolve(message.result);
       else job.reject(new WorkerTaskError(message.error, message.detail));
     }
@@ -369,6 +383,7 @@ export class WorkerPool<Task, Result> {
     slot.pending = null;
     slot.completedAny = true;
     this.#consecutiveStartupFailures = 0;
+    this.#lastStartupError = undefined;
     job.reject(
       new Error(
         `Worker result could not be received (it did not survive the thread boundary): ${error?.message ?? String(error)}`,
@@ -423,6 +438,7 @@ export class WorkerPool<Task, Result> {
     if (this.#slots.length >= this.#capacity) return;
     if (slot.completedAny) {
       this.#consecutiveStartupFailures = 0;
+      this.#lastStartupError = undefined;
       this.#spawn();
     } else {
       this.#noteStartupFailure();
@@ -436,7 +452,7 @@ export class WorkerPool<Task, Result> {
     this.#consecutiveStartupFailures += 1;
     if (this.#consecutiveStartupFailures >= MAX_STARTUP_ATTEMPTS) {
       this.#capacityExhausted = true;
-      this.#settleAllQueued(new Error(NO_VIABLE_REQUEST));
+      this.#settleAllQueued(noViableWorkers(this.#lastStartupError));
     } else {
       this.#spawn();
     }
@@ -619,7 +635,7 @@ export class WorkerPool<Task, Result> {
         return;
       }
       if (this.#capacityExhausted) {
-        reject(new Error(NO_VIABLE_REQUEST));
+        reject(noViableWorkers(this.#lastStartupError));
         return;
       }
       this.#queue.push({ task, resolve, reject });
