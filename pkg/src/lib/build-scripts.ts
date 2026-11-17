@@ -1163,7 +1163,8 @@ export const executeBuildScripts = async (
   if (stats) {
     stats.cached +=
       tasks.filter((task) => !task.settled).length - uncachedTasks.length;
-    stats.ran += uncachedTasks.length;
+    // `ran` is counted per script as it starts, below: a failure under the
+    // "error" policy ends the loop, and the scripts after it never run.
   }
 
   if (uncachedTasks.length > 0) {
@@ -1202,85 +1203,91 @@ export const executeBuildScripts = async (
     // The loop is timed as a whole: the page's own clock is paused for this
     // await, so this is the only place the child time is seen.
     const childrenStarted = performance.now();
-    for (const task of uncachedTasks) {
-      const taskSourceUrlComment =
-        task.moduleSourcePath !== "unknown"
-          ? `\n//# sourceURL=${task.moduleSourcePath}`
-          : "";
-      const taskEnv = {
-        ...extraEnv,
-        BASCIK_SOURCE_FILE: task.sourceFile,
-      };
-      try {
-        await writeFile(
-          task.tmpPath,
-          task.preparedScript + taskSourceUrlComment,
-          "utf8",
-        );
-        const { result, stdout, stderr, readsPageContext } =
-          await runDirectiveHandler<string>(task.tmpPath, "build", {
-            extraEnv: taskEnv,
-          });
-        echoScriptOutput({ stdout, stderr });
-        const output = result;
-        if (task.cacheKey !== null)
-          await writeScriptCache(
-            cacheDir,
-            task.cacheKey,
-            output,
-            readsPageContext,
+    try {
+      for (const task of uncachedTasks) {
+        const taskSourceUrlComment =
+          task.moduleSourcePath !== "unknown"
+            ? `\n//# sourceURL=${task.moduleSourcePath}`
+            : "";
+        const taskEnv = {
+          ...extraEnv,
+          BASCIK_SOURCE_FILE: task.sourceFile,
+        };
+        try {
+          await writeFile(
+            task.tmpPath,
+            task.preparedScript + taskSourceUrlComment,
+            "utf8",
           );
-        // A run that never looked at its page produced what every page gets.
-        if (task.sharedKey !== null && !readsPageContext)
-          await writeScriptCache(cacheDir, task.sharedKey, output, false);
-        task.output = output;
-        task.readsPageContext = readsPageContext;
-      } catch (err: any) {
-        // The script's own output, printed once. Its error report is the message below.
-        echoScriptOutput({ stdout: err?.stdout, stderr: err?.stderr });
-        if (options?.emptyPageContext && err?.readsPageContext === true) {
-          // The script needs a page and was given none. Its component is
-          // refused through onReadsPageContext; the pages that use it run the
-          // script with their own context and report a real failure there.
+          if (stats) stats.ran++;
+          const { result, stdout, stderr, readsPageContext } =
+            await runDirectiveHandler<string>(task.tmpPath, "build", {
+              extraEnv: taskEnv,
+            });
+          echoScriptOutput({ stdout, stderr });
+          const output = result;
+          if (task.cacheKey !== null)
+            await writeScriptCache(
+              cacheDir,
+              task.cacheKey,
+              output,
+              readsPageContext,
+            );
+          // A run that never looked at its page produced what every page gets.
+          if (task.sharedKey !== null && !readsPageContext)
+            await writeScriptCache(cacheDir, task.sharedKey, output, false);
+          task.output = output;
+          task.readsPageContext = readsPageContext;
+        } catch (err: any) {
+          // The script's own output, printed once. Its error report is the message below.
+          echoScriptOutput({ stdout: err?.stdout, stderr: err?.stderr });
+          if (options?.emptyPageContext && err?.readsPageContext === true) {
+            // The script needs a page and was given none. Its component is
+            // refused through onReadsPageContext; the pages that use it run the
+            // script with their own context and report a real failure there.
+            dropUnmemoizedDependencyLists(task.cacheKey, task.sharedKey);
+            task.output = "";
+            task.readsPageContext = true;
+            continue;
+          }
+          const msg = err instanceof Error ? err.message : String(err);
+          const { location } = task;
+          let errorMsg = `[bascik] build script error`;
+          // The module is padded to the file's own lines, so only the temp path needs renaming,
+          // and columns after a rewritten import on the same line need putting back.
+          const moduleReferences = [
+            task.tmpPath,
+            pathToFileURL(task.tmpPath).href,
+            task.moduleSourcePath,
+          ];
+          const remapped = remapRewrittenColumns(
+            msg,
+            moduleReferences,
+            task.specifierEdits,
+          );
+          const cleanedMsg = cleanStackTrace(
+            remapped,
+            task.tmpPath,
+            task.moduleSourcePath,
+            1,
+          );
+          if (location) {
+            errorMsg += ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`;
+          }
+          // Nothing was memoized for either key; drop their pending dependency
+          // lists so a failing script cannot accumulate index state across edits.
           dropUnmemoizedDependencyLists(task.cacheKey, task.sharedKey);
+          reportBuildScriptFailure(errorMsg, cleanedMsg, location);
           task.output = "";
-          task.readsPageContext = true;
-          continue;
+        } finally {
+          await unlink(task.tmpPath).catch(() => {});
         }
-        const msg = err instanceof Error ? err.message : String(err);
-        const { location } = task;
-        let errorMsg = `[bascik] build script error`;
-        // The module is padded to the file's own lines, so only the temp path needs renaming,
-        // and columns after a rewritten import on the same line need putting back.
-        const moduleReferences = [
-          task.tmpPath,
-          pathToFileURL(task.tmpPath).href,
-          task.moduleSourcePath,
-        ];
-        const remapped = remapRewrittenColumns(
-          msg,
-          moduleReferences,
-          task.specifierEdits,
-        );
-        const cleanedMsg = cleanStackTrace(
-          remapped,
-          task.tmpPath,
-          task.moduleSourcePath,
-          1,
-        );
-        if (location) {
-          errorMsg += ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`;
-        }
-        // Nothing was memoized for either key; drop their pending dependency
-        // lists so a failing script cannot accumulate index state across edits.
-        dropUnmemoizedDependencyLists(task.cacheKey, task.sharedKey);
-        reportBuildScriptFailure(errorMsg, cleanedMsg, location);
-        task.output = "";
-      } finally {
-        await unlink(task.tmpPath).catch(() => {});
       }
+    } finally {
+      // Also when a failure ends the loop: the failed page's summary still
+      // counts the time its scripts took (`recordFailedPageBuildScriptStats`).
+      if (stats) stats.childMs += performance.now() - childrenStarted;
     }
-    if (stats) stats.childMs += performance.now() - childrenStarted;
   }
 
   // A key computed here but never memoized (a shared key whose run read its

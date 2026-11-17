@@ -392,6 +392,46 @@ describe("executeBuildScripts", () => {
     expect(warm).toEqual({ ran: 0, cached: 3, childMs: 0 });
   });
 
+  it("counts only the scripts that started when the first one fails under the 'error' policy", async () => {
+    // The first script fails and ends the page; the two after it never run.
+    rejectWith("first script exploded");
+    const html =
+      "<script data-bascik-build>a()</script>" +
+      "<script data-bascik-build>b()</script>" +
+      "<script data-bascik-build>c()</script>";
+    const stats = { ran: 0, cached: 0, childMs: 0 };
+    await expect(
+      executeBuildScripts(html, "src/pages/fails-first.html", null, { stats }),
+    ).rejects.toThrow();
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+    expect(stats.ran).toBe(1);
+    expect(stats.cached).toBe(0);
+    // The failed script's time is still charged to the page.
+    expect(stats.childMs).toBeGreaterThan(0);
+  });
+
+  it("counts every script that ran when a failure is tolerated under 'warn'", async () => {
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "warn",
+    };
+    rejectWith("tolerated failure");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const html =
+        "<script data-bascik-build>a()</script>" +
+        "<script data-bascik-build>b()</script>";
+      const stats = { ran: 0, cached: 0, childMs: 0 };
+      await executeBuildScripts(html, "src/pages/warns.html", null, { stats });
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+      expect(stats.ran).toBe(2);
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
+  });
+
   it("replaces a data-bascik-build script tag with handler returned markup", async () => {
     resolveWith("<h1>Generated heading</h1>\n");
     const html =
