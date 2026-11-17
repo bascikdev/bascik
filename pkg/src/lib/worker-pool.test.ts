@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { WorkerPool, WorkerTaskError } from "./worker-pool.ts";
+import { resetWorkerExecArgvForTests } from "./worker-exec-argv.ts";
 
 interface FakeWorker {
   emit: (event: string, ...args: unknown[]) => boolean;
@@ -10,7 +11,7 @@ interface FakeWorker {
   performance: { eventLoopUtilization: ReturnType<typeof vi.fn> };
 }
 
-const { workers, WorkerMock } = vi.hoisted(() => {
+const { workers, WorkerMock, spawnFake } = vi.hoisted(() => {
   // Minimal EventEmitter stand-in (the real node:events import is not
   // available inside vi.hoisted factories).
   class FakeWorkerImpl {
@@ -37,12 +38,18 @@ const { workers, WorkerMock } = vi.hoisted(() => {
     }
   }
   const workers: FakeWorkerImpl[] = [];
-  const WorkerMock = vi.fn(function (this: FakeWorkerImpl) {
+  const spawnFake = () => {
     const w = new FakeWorkerImpl();
     workers.push(w);
     return w;
+  };
+  const WorkerMock = vi.fn(function (
+    this: FakeWorkerImpl,
+    ..._args: unknown[]
+  ) {
+    return spawnFake();
   });
-  return { workers, WorkerMock };
+  return { workers, WorkerMock, spawnFake };
 });
 
 vi.mock("node:worker_threads", () => ({
@@ -71,6 +78,7 @@ const failWith = (worker: FakeWorker, error: string) => {
 beforeEach(() => {
   workers.length = 0;
   WorkerMock.mockClear();
+  resetWorkerExecArgvForTests();
 });
 
 describe("WorkerPool", () => {
@@ -341,6 +349,89 @@ describe("WorkerPool", () => {
       // New callers settle promptly with a useful error instead of hanging.
       await expect(pool.run("forever")).rejects.toThrow(/no viable workers/);
       await pool.terminate();
+    });
+
+    describe("Node flags this thread was started with", () => {
+      const realExecArgv = process.execArgv;
+      afterEach(() => {
+        process.execArgv = realExecArgv;
+        WorkerMock.mockImplementation(function () {
+          return spawnFake();
+        });
+      });
+
+      /** `new Worker` refusing per-process flags, as Node does. */
+      const refusePerProcessFlags = () =>
+        WorkerMock.mockImplementation(function (
+          this: unknown,
+          ...args: unknown[]
+        ) {
+          const options = args[1] as { execArgv?: string[] };
+          const bad = (options.execArgv ?? []).filter((arg) =>
+            /^--(max-old-space-size|stack-size)=/.test(arg),
+          );
+          if (bad.length > 0) {
+            throw Object.assign(
+              new TypeError(
+                `Initiated Worker with invalid execArgv flags: ${bad.join(", ")}`,
+              ),
+              { code: "ERR_WORKER_INVALID_EXEC_ARGV" },
+            );
+          }
+          return spawnFake();
+        });
+
+      it("starts workers without --input-type and the flags Node refuses, keeping the rest", async () => {
+        process.execArgv = [
+          "--max-old-space-size=4096",
+          "--import=./preload.mjs",
+          "--stack-size=900",
+          "--input-type=module",
+          "--conditions=dev",
+        ];
+        refusePerProcessFlags();
+        const pool = makePool(2);
+        // One refused attempt, then both workers start from the remembered list.
+        expect(WorkerMock).toHaveBeenCalledTimes(3);
+        expect(workers).toHaveLength(2);
+        for (const call of WorkerMock.mock.calls.slice(1)) {
+          expect((call as unknown[])[1]).toMatchObject({
+            execArgv: ["--import=./preload.mjs", "--conditions=dev"],
+          });
+        }
+        const done = pool.run("task-a");
+        const busy = workers.find((w) => w.postMessage.mock.calls.length > 0);
+        completeWith(busy!, "ok");
+        await expect(done).resolves.toBe("ok");
+        await pool.terminate();
+      });
+
+      it("names the constructor error when no worker can start at all", async () => {
+        WorkerMock.mockImplementation(function () {
+          throw new Error("Cannot find module '/fake/worker.js'");
+        });
+        const pool = makePool(1);
+        expect(WorkerMock).toHaveBeenCalledTimes(4);
+        await expect(pool.run("t")).rejects.toThrow(
+          "no viable workers: worker startup failed repeatedly; check the worker module (last error: Cannot find module '/fake/worker.js')",
+        );
+        await pool.terminate();
+      });
+
+      it("does not name a constructor error after a worker has since run a task", async () => {
+        WorkerMock.mockImplementationOnce(function () {
+          throw new Error("transient");
+        });
+        const pool = makePool(1);
+        const first = pool.run("t1");
+        completeWith(workers[0], "r1");
+        await expect(first).resolves.toBe("r1");
+        for (let i = 0; i < 5; i++) workers[workers.length - 1].emit("exit", 1);
+        const error = await pool.run("t2").catch((e: Error) => e);
+        expect(String(error)).toMatch(/no viable workers/);
+        expect(String(error)).not.toContain("transient");
+        await pool.terminate();
+      });
     });
 
     it("does not duplicate idle entries for a worker that reports message then exit", async () => {
