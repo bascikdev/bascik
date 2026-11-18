@@ -167,7 +167,7 @@ __metadata:
   resolution: "@bascik/adapter-cloudflare@workspace:adapters/cloudflare"
   dependencies:
     "@bascik/bascik": "npm:^1.0.0"
-    "@playwright/test": "npm:^1.64.1"
+    "@playwright/test": "npm:^1.65.0"
     "@types/node": "npm:^24.19.1"
     "@vitest/coverage-v8": "npm:^5.1.0"
     esbuild: "npm:^0.28.2"
@@ -175,9 +175,9 @@ __metadata:
     miniflare: "npm:4.20260730.0"
     smol-toml: "npm:^1.9.1"
     typescript: "npm:^7.0.2"
-    vite: "npm:^8.3.5"
+    vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
-    wrangler: "npm:^4.157.0"
+    wrangler: "npm:^4.160.0"
   peerDependencies:
     "@bascik/bascik": ^1.0.0
   languageName: unknown
@@ -188,14 +188,14 @@ __metadata:
   resolution: "@bascik/adapter-netlify@workspace:adapters/netlify"
   dependencies:
     "@bascik/bascik": "npm:^1.0.0"
-    "@netlify/functions": "npm:^6.1.0"
-    "@playwright/test": "npm:^1.64.1"
+    "@netlify/functions": "npm:^6.1.1"
+    "@playwright/test": "npm:^1.65.0"
     "@types/node": "npm:^24.19.1"
     "@vitest/coverage-v8": "npm:^5.1.0"
     esbuild: "npm:^0.28.2"
-    netlify-cli: "npm:^27.16.2"
+    netlify-cli: "npm:^27.17.0"
     typescript: "npm:^7.0.2"
-    vite: "npm:^8.3.5"
+    vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
   peerDependencies:
     "@bascik/bascik": ^1.0.0
@@ -210,8 +210,8 @@ __metadata:
   dependencies:
     0x: "npm:^6.0.0"
     "@mdn/browser-compat-data": "npm:^8.1.8"
-    "@playwright/test": "npm:^1.64.1"
-    "@swc/core": "npm:^1.16.21"
+    "@playwright/test": "npm:^1.65.0"
+    "@swc/core": "npm:^1.16.22"
     "@types/css-tree": "npm:^3.2.0"
     "@types/node": "npm:^24.19.1"
     "@vitest/coverage-v8": "npm:^5.1.0"
@@ -231,7 +231,7 @@ __metadata:
     postcss: "npm:^8.5.32"
     typescript: "npm:^7.0.2"
     typescript-6: "npm:typescript@^6.0.3"
-    vite: "npm:^8.3.5"
+    vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
     web-features: "npm:^3.45.0"
     webidl2: "npm:^24.5.0"
@@ -258,7 +258,7 @@ __metadata:
     "@vitest/coverage-v8": "npm:^5.1.0"
     typescript: "npm:^7.0.2"
     typescript-6: "npm:typescript@^6.0.3"
-    vite: "npm:^8.3.5"
+    vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
     vscode-languageserver: "npm:^11.0.0"
     vscode-languageserver-textdocument: "npm:^1.0.16"
@@ -515,9 +515,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@cloudflare/workerd-darwin-64@npm:1.20261103.1":
-  version: 1.20261103.1
-  resolution: "@cloudflare/workerd-darwin-64@npm:1.20261103.1"
+"@cloudflare/workerd-darwin-64@npm:1.20261110.1":
+  version: 1.20261110.1
+  resolution: "@cloudflare/workerd-darwin-64@npm:1.20261110.1"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
@@ -529,9 +529,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@cloudflare/workerd-darwin-arm64@npm:1.20261103.1":
-  version: 1.20261103.1
-  resolution: "@cloudflare/workerd-darwin-arm64@npm:1.20261103.1"
+"@cloudflare/workerd-darwin-arm64@npm:1.20261110.1":
+  version: 1.20261110.1
+  resolution: "@cloudflare/workerd-darwin-arm64@npm:1.20261110.1"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
@@ -543,9 +543,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@cloudflare/workerd-linux-64@npm:1.20261103.1":
-  version: 1.20261103.1
-  resolution: "@cloudflare/workerd-linux-64@npm:1.20261103.1"
+"@cloudflare/workerd-linux-64@npm:1.20261110.1":
+  version: 1.20261110.1
+  resolution: "@cloudflare/workerd-linux-64@npm:1.20261110.1"
   conditions: os=linux & cpu=x64
   languageName: node
   linkType: hard
@@ -557,9 +557,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@cloudflare/workerd-linux-arm64@npm:1.20261103.1":
-  version: 1.20261103.1
-  resolution: "@cloudflare/workerd-linux-arm64@npm:1.20261103.1"
+"@cloudflare/workerd-linux-arm64@npm:1.20261110.1":
+  version: 1.20261110.1
+  resolution: "@cloudflare/workerd-linux-arm64@npm:1.20261110.1"
   conditions: os=linux & cpu=arm64
   languageName: node
   linkType: hard
@@ -571,17 +571,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@cloudflare/workerd-windows-64@npm:1.20261103.1":
-  version: 1.20261103.1
-  resolution: "@cloudflare/workerd-windows-64@npm:1.20261103.1"
+"@cloudflare/workerd-windows-64@npm:1.20261110.1":
+  version: 1.20261110.1
+  resolution: "@cloudflare/workerd-windows-64@npm:1.20261110.1"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
-"@cloudflare/workers-types@npm:^5.20261104.1":
-  version: 5.20261104.1
-  resolution: "@cloudflare/workers-types@npm:5.20261104.1"
-  checksum: 10c0/e1c464d172953aa0d70b6ec69b085013ef7109145f6d07a5f77c807965695a897e771b4fd137a1a0b085c0f8f0540cb2e9ab599da65401772ed67da3d775f550
+"@cloudflare/workers-types@npm:^5.20261110.1":
+  version: 5.20261110.1
+  resolution: "@cloudflare/workers-types@npm:5.20261110.1"
+  checksum: 10c0/dfec8e4650893921ac10fb4edd5424bf363f4f32b1d72a6e707731dd720c6ad0b8ab250d25f479f275f1e9619a7a120937317dfd0513169f5a3108d2d2377766
   languageName: node
   linkType: hard
 
@@ -1856,7 +1856,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@netlify/api@npm:^15.1.5, @netlify/api@npm:^15.1.6":
+"@netlify/api@npm:^15.1.6":
   version: 15.1.6
   resolution: "@netlify/api@npm:15.1.6"
   dependencies:
@@ -1916,14 +1916,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@netlify/build@npm:^37.7.2":
-  version: 37.7.3
-  resolution: "@netlify/build@npm:37.7.3"
+"@netlify/build@npm:^37.7.6":
+  version: 37.7.6
+  resolution: "@netlify/build@npm:37.7.6"
   dependencies:
     "@bugsnag/js": "npm:^9.0.0"
     "@netlify/blobs": "npm:^11.0.3"
-    "@netlify/cache-utils": "npm:^7.1.2"
-    "@netlify/config": "npm:^25.5.2"
+    "@netlify/cache-utils": "npm:^7.1.3"
+    "@netlify/config": "npm:^25.6.2"
     "@netlify/edge-bundler": "npm:16.2.0"
     "@netlify/functions-utils": "npm:^7.1.22"
     "@netlify/git-utils": "npm:^7.1.1"
@@ -1969,17 +1969,16 @@ __metadata:
       optional: true
   bin:
     netlify-build: bin.js
-  checksum: 10c0/fad2e63e22a2a60625c2fd6144f38482b6ddea195fc98a89daa5f80ab1a4916e936cc09b05bba18a5c1f509dca7685d20514e7fc82cfe2cd16096eb760946b35
+  checksum: 10c0/c8217f45b16ee8ad273f7e414cc6118f3e82d6837a0f6376920e15f5a3941d2c0dc5d62a431e1513edf35f1aca44679264fbf33dcc3f3586915da0a973c28303
   languageName: node
   linkType: hard
 
-"@netlify/cache-utils@npm:^7.1.2":
-  version: 7.1.2
-  resolution: "@netlify/cache-utils@npm:7.1.2"
+"@netlify/cache-utils@npm:^7.1.3":
+  version: 7.1.3
+  resolution: "@netlify/cache-utils@npm:7.1.3"
   dependencies:
-    get-stream: "npm:^9.0.0"
     junk: "npm:^4.0.0"
-  checksum: 10c0/056ce2fcd84f4cd3db9aadcdbfd94f0d3bf99423cb602cc5b8fe9df0ba99c6fb2eade0262627387595d06b6ce1f2edeebc3aa984937fc65928e74c67029e6799
+  checksum: 10c0/4ea5dafbdeea43150d5ca67ccad49566f529d648ae20468a1596274d6077d1bd24d279fa14f5b120de3716cf13ce894efaac61041391bbdb002f4e4418e8565e
   languageName: node
   linkType: hard
 
@@ -1992,12 +1991,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@netlify/cache@npm:4.2.0":
-  version: 4.2.0
-  resolution: "@netlify/cache@npm:4.2.0"
+"@netlify/cache@npm:4.2.1":
+  version: 4.2.1
+  resolution: "@netlify/cache@npm:4.2.1"
   dependencies:
-    "@netlify/runtime-utils": "npm:3.0.0"
-  checksum: 10c0/f8d6a2960fd434eb15b61d2a06538465966ed45a87591fc68975b30b68d486ecf4f30c085ca7a751fa16904986266925f9d4eb2062e086348ae6b53a8293623e
+    "@netlify/runtime-utils": "npm:3.0.1"
+  checksum: 10c0/aba17ae06ab8d6cc4933fba0c53889f405a2ca99b24089e7736f87e88636fe1a5fda5b855fe83cbbb793149aa58ea27396a9b90cd3abcb65448457ee469cc94c
   languageName: node
   linkType: hard
 
@@ -2035,27 +2034,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@netlify/config@npm:^25.5.1, @netlify/config@npm:^25.5.2":
-  version: 25.5.2
-  resolution: "@netlify/config@npm:25.5.2"
+"@netlify/config@npm:^25.6.2":
+  version: 25.6.2
+  resolution: "@netlify/config@npm:25.6.2"
   dependencies:
     "@netlify/api": "npm:^15.1.6"
     "@netlify/headers-parser": "npm:^10.1.1"
     "@netlify/redirect-parser": "npm:^16.1.1"
-    chalk: "npm:^6.0.0"
     cron-parser: "npm:^5.0.0"
     deepmerge: "npm:^4.2.2"
     dot-prop: "npm:^9.0.0"
     execa: "npm:^8.0.0"
     fast-safe-stringify: "npm:^2.0.7"
     figures: "npm:^6.0.0"
-    filter-obj: "npm:^6.0.0"
     find-up: "npm:^7.0.0"
     indent-string: "npm:^5.0.0"
-    is-plain-obj: "npm:^4.0.0"
-    map-obj: "npm:^5.0.0"
-    p-locate: "npm:^6.0.0"
-    path-type: "npm:^6.0.0"
     read-package-up: "npm:^11.0.0"
     smol-toml: "npm:^1.5.2"
     tomlify-j0.4: "npm:^3.0.0"
@@ -2065,7 +2058,7 @@ __metadata:
     zod: "npm:^4.0.5"
   bin:
     netlify-config: bin.js
-  checksum: 10c0/b55d49e3ae4c1de5fa5af2795edb8c6030c88c0ef4c09de7de6a75f85ad534e1185ef73e16967e52e680093aa8ae515509beef621758495ea57c18dbfdf0035e
+  checksum: 10c0/031d4b7d7a9c811521a6c1306bccf68bd5ebde9d6140cada8e247491c5722eaffad3239128b73614e93d9bed8c803d33a57b64ea7bc6cd0366f5d527a8ada42b
   languageName: node
   linkType: hard
 
@@ -2243,13 +2236,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@netlify/functions@npm:^6.1.0":
-  version: 6.1.0
-  resolution: "@netlify/functions@npm:6.1.0"
+"@netlify/functions@npm:^6.1.1":
+  version: 6.1.1
+  resolution: "@netlify/functions@npm:6.1.1"
   dependencies:
-    "@netlify/cache": "npm:4.2.0"
-    "@netlify/types": "npm:3.3.0"
-  checksum: 10c0/fac8596fcfa93e6f41d3765faef36003e9ea1fd061d555f62fc12a42d989c9ac4400baaf4edce0366ec65cc1356824b32f26d0d5af201758c826ab422eef8e5e
+    "@netlify/cache": "npm:4.2.1"
+    "@netlify/types": "npm:3.3.1"
+  checksum: 10c0/743125ef1671c3ff8b623e8d1b528cdad1dde05af4d853ddec42a48c4f1c27b7c5d7836de30e3f19d8f58e1230ca68f903a8546690f9d7463e7651e6b1ac957a
   languageName: node
   linkType: hard
 
@@ -2541,6 +2534,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@netlify/runtime-utils@npm:3.0.1":
+  version: 3.0.1
+  resolution: "@netlify/runtime-utils@npm:3.0.1"
+  checksum: 10c0/9f59525396325887e4517a1e1eeff2f0a92f2351ae62c6049cee20fe061df34cbb2ff68e0d3ed8e855d139c497ea241e07639d4033f35e0e602f3459791a67e3
+  languageName: node
+  linkType: hard
+
 "@netlify/runtime@npm:5.0.11":
   version: 5.0.11
   resolution: "@netlify/runtime@npm:5.0.11"
@@ -2595,6 +2595,13 @@ __metadata:
   version: 3.3.0
   resolution: "@netlify/types@npm:3.3.0"
   checksum: 10c0/764b409de459e77f24b03bee53a488109b9a4268b04fd2ba3f7e8c407b1ffc1cdc2711947e560886485c7ef15ef9515241dddc1ede48c0f11f18899170b2d122
+  languageName: node
+  linkType: hard
+
+"@netlify/types@npm:3.3.1":
+  version: 3.3.1
+  resolution: "@netlify/types@npm:3.3.1"
+  checksum: 10c0/4b75a787f8e2c01e2a6de6e4a3e7a637c022b16cb0921e4c9fa910948a7e6e5a7719bd0b50cf65dbff35ed95d5a8e0405e26481cb897f97285530843c30d4133
   languageName: node
   linkType: hard
 
@@ -2989,14 +2996,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@playwright/test@npm:^1.64.1":
-  version: 1.64.1
-  resolution: "@playwright/test@npm:1.64.1"
+"@playwright/test@npm:^1.65.0":
+  version: 1.65.0
+  resolution: "@playwright/test@npm:1.65.0"
   dependencies:
-    playwright: "npm:1.64.1"
+    playwright: "npm:1.65.0"
   bin:
     playwright: cli.js
-  checksum: 10c0/0a1a853d76d6c532cafaf0366a5448584b766737ebd39bbd23dc0580f3d3b6ef4c833082af47a792e7fc2501f444debdfaad37a87a76cc5b195f3803fc80ea3c
+  checksum: 10c0/137a641e1be8035686a165e69d86d242ee7ed5cbe71e5230f9195cb6e65be37a66ba697f16919b508d04c4d682fd4e167d1a755b64ceb545afac780de72b594b
   languageName: node
   linkType: hard
 
@@ -3188,107 +3195,107 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rolldown/binding-android-arm-eabi@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-android-arm-eabi@npm:1.2.16"
+"@rolldown/binding-android-arm-eabi@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-android-arm-eabi@npm:1.2.18"
   conditions: os=android & cpu=arm
   languageName: node
   linkType: hard
 
-"@rolldown/binding-android-arm64@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-android-arm64@npm:1.2.16"
+"@rolldown/binding-android-arm64@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-android-arm64@npm:1.2.18"
   conditions: os=android & cpu=arm64
   languageName: node
   linkType: hard
 
-"@rolldown/binding-darwin-arm64@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-darwin-arm64@npm:1.2.16"
+"@rolldown/binding-darwin-arm64@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-darwin-arm64@npm:1.2.18"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"@rolldown/binding-darwin-x64@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-darwin-x64@npm:1.2.16"
+"@rolldown/binding-darwin-x64@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-darwin-x64@npm:1.2.18"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"@rolldown/binding-freebsd-x64@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-freebsd-x64@npm:1.2.16"
+"@rolldown/binding-freebsd-x64@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-freebsd-x64@npm:1.2.18"
   conditions: os=freebsd & cpu=x64
   languageName: node
   linkType: hard
 
-"@rolldown/binding-linux-arm-gnueabihf@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-linux-arm-gnueabihf@npm:1.2.16"
+"@rolldown/binding-linux-arm-gnueabihf@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-linux-arm-gnueabihf@npm:1.2.18"
   conditions: os=linux & cpu=arm
   languageName: node
   linkType: hard
 
-"@rolldown/binding-linux-arm64-gnu@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-linux-arm64-gnu@npm:1.2.16"
+"@rolldown/binding-linux-arm64-gnu@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-linux-arm64-gnu@npm:1.2.18"
   conditions: os=linux & cpu=arm64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@rolldown/binding-linux-arm64-musl@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-linux-arm64-musl@npm:1.2.16"
+"@rolldown/binding-linux-arm64-musl@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-linux-arm64-musl@npm:1.2.18"
   conditions: os=linux & cpu=arm64 & libc=musl
   languageName: node
   linkType: hard
 
-"@rolldown/binding-linux-ppc64-gnu@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-linux-ppc64-gnu@npm:1.2.16"
+"@rolldown/binding-linux-ppc64-gnu@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-linux-ppc64-gnu@npm:1.2.18"
   conditions: os=linux & cpu=ppc64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@rolldown/binding-linux-s390x-gnu@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-linux-s390x-gnu@npm:1.2.16"
+"@rolldown/binding-linux-s390x-gnu@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-linux-s390x-gnu@npm:1.2.18"
   conditions: os=linux & cpu=s390x & libc=glibc
   languageName: node
   linkType: hard
 
-"@rolldown/binding-linux-x64-gnu@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-linux-x64-gnu@npm:1.2.16"
+"@rolldown/binding-linux-x64-gnu@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-linux-x64-gnu@npm:1.2.18"
   conditions: os=linux & cpu=x64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@rolldown/binding-linux-x64-musl@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-linux-x64-musl@npm:1.2.16"
+"@rolldown/binding-linux-x64-musl@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-linux-x64-musl@npm:1.2.18"
   conditions: os=linux & cpu=x64 & libc=musl
   languageName: node
   linkType: hard
 
-"@rolldown/binding-openharmony-arm64@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-openharmony-arm64@npm:1.2.16"
+"@rolldown/binding-openharmony-arm64@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-openharmony-arm64@npm:1.2.18"
   conditions: os=openharmony & cpu=arm64
   languageName: node
   linkType: hard
 
-"@rolldown/binding-win32-arm64-msvc@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-win32-arm64-msvc@npm:1.2.16"
+"@rolldown/binding-win32-arm64-msvc@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-win32-arm64-msvc@npm:1.2.18"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-"@rolldown/binding-win32-x64-msvc@npm:1.2.16":
-  version: 1.2.16
-  resolution: "@rolldown/binding-win32-x64-msvc@npm:1.2.16"
+"@rolldown/binding-win32-x64-msvc@npm:1.2.18":
+  version: 1.2.18
+  resolution: "@rolldown/binding-win32-x64-msvc@npm:1.2.18"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
@@ -3313,13 +3320,6 @@ __metadata:
     rollup:
       optional: true
   checksum: 10c0/c65d8ca919416be0eae8147474118d2bcf7408d39c90dedc09d2fe1a5e8336ea592f06bd526d40febf62bc1ca5cfb93c275d0ebe8014b0e1a4917ef2213ffb6d
-  languageName: node
-  linkType: hard
-
-"@sec-ant/readable-stream@npm:^0.4.1":
-  version: 0.4.1
-  resolution: "@sec-ant/readable-stream@npm:0.4.1"
-  checksum: 10c0/64e9e9cf161e848067a5bf60cdc04d18495dc28bb63a8d9f8993e4dd99b91ad34e4b563c85de17d91ffb177ec17a0664991d2e115f6543e73236a906068987af
   languageName: node
   linkType: hard
 
@@ -3460,106 +3460,106 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@swc/core-darwin-arm64@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-darwin-arm64@npm:1.16.21"
+"@swc/core-darwin-arm64@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-darwin-arm64@npm:1.16.22"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"@swc/core-darwin-x64@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-darwin-x64@npm:1.16.21"
+"@swc/core-darwin-x64@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-darwin-x64@npm:1.16.22"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"@swc/core-linux-arm-gnueabihf@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-linux-arm-gnueabihf@npm:1.16.21"
+"@swc/core-linux-arm-gnueabihf@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-linux-arm-gnueabihf@npm:1.16.22"
   conditions: os=linux & cpu=arm
   languageName: node
   linkType: hard
 
-"@swc/core-linux-arm64-gnu@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-linux-arm64-gnu@npm:1.16.21"
+"@swc/core-linux-arm64-gnu@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-linux-arm64-gnu@npm:1.16.22"
   conditions: os=linux & cpu=arm64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@swc/core-linux-arm64-musl@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-linux-arm64-musl@npm:1.16.21"
+"@swc/core-linux-arm64-musl@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-linux-arm64-musl@npm:1.16.22"
   conditions: os=linux & cpu=arm64 & libc=musl
   languageName: node
   linkType: hard
 
-"@swc/core-linux-ppc64-gnu@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-linux-ppc64-gnu@npm:1.16.21"
+"@swc/core-linux-ppc64-gnu@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-linux-ppc64-gnu@npm:1.16.22"
   conditions: os=linux & cpu=ppc64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@swc/core-linux-s390x-gnu@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-linux-s390x-gnu@npm:1.16.21"
+"@swc/core-linux-s390x-gnu@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-linux-s390x-gnu@npm:1.16.22"
   conditions: os=linux & cpu=s390x & libc=glibc
   languageName: node
   linkType: hard
 
-"@swc/core-linux-x64-gnu@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-linux-x64-gnu@npm:1.16.21"
+"@swc/core-linux-x64-gnu@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-linux-x64-gnu@npm:1.16.22"
   conditions: os=linux & cpu=x64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@swc/core-linux-x64-musl@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-linux-x64-musl@npm:1.16.21"
+"@swc/core-linux-x64-musl@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-linux-x64-musl@npm:1.16.22"
   conditions: os=linux & cpu=x64 & libc=musl
   languageName: node
   linkType: hard
 
-"@swc/core-win32-arm64-msvc@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-win32-arm64-msvc@npm:1.16.21"
+"@swc/core-win32-arm64-msvc@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-win32-arm64-msvc@npm:1.16.22"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-"@swc/core-win32-ia32-msvc@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-win32-ia32-msvc@npm:1.16.21"
+"@swc/core-win32-ia32-msvc@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-win32-ia32-msvc@npm:1.16.22"
   conditions: os=win32 & cpu=ia32
   languageName: node
   linkType: hard
 
-"@swc/core-win32-x64-msvc@npm:1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core-win32-x64-msvc@npm:1.16.21"
+"@swc/core-win32-x64-msvc@npm:1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core-win32-x64-msvc@npm:1.16.22"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
-"@swc/core@npm:^1.16.21":
-  version: 1.16.21
-  resolution: "@swc/core@npm:1.16.21"
+"@swc/core@npm:^1.16.22":
+  version: 1.16.22
+  resolution: "@swc/core@npm:1.16.22"
   dependencies:
-    "@swc/core-darwin-arm64": "npm:1.16.21"
-    "@swc/core-darwin-x64": "npm:1.16.21"
-    "@swc/core-linux-arm-gnueabihf": "npm:1.16.21"
-    "@swc/core-linux-arm64-gnu": "npm:1.16.21"
-    "@swc/core-linux-arm64-musl": "npm:1.16.21"
-    "@swc/core-linux-ppc64-gnu": "npm:1.16.21"
-    "@swc/core-linux-s390x-gnu": "npm:1.16.21"
-    "@swc/core-linux-x64-gnu": "npm:1.16.21"
-    "@swc/core-linux-x64-musl": "npm:1.16.21"
-    "@swc/core-win32-arm64-msvc": "npm:1.16.21"
-    "@swc/core-win32-ia32-msvc": "npm:1.16.21"
-    "@swc/core-win32-x64-msvc": "npm:1.16.21"
+    "@swc/core-darwin-arm64": "npm:1.16.22"
+    "@swc/core-darwin-x64": "npm:1.16.22"
+    "@swc/core-linux-arm-gnueabihf": "npm:1.16.22"
+    "@swc/core-linux-arm64-gnu": "npm:1.16.22"
+    "@swc/core-linux-arm64-musl": "npm:1.16.22"
+    "@swc/core-linux-ppc64-gnu": "npm:1.16.22"
+    "@swc/core-linux-s390x-gnu": "npm:1.16.22"
+    "@swc/core-linux-x64-gnu": "npm:1.16.22"
+    "@swc/core-linux-x64-musl": "npm:1.16.22"
+    "@swc/core-win32-arm64-msvc": "npm:1.16.22"
+    "@swc/core-win32-ia32-msvc": "npm:1.16.22"
+    "@swc/core-win32-x64-msvc": "npm:1.16.22"
     "@swc/counter": "npm:^0.1.3"
     "@swc/types": "npm:^0.1.28"
   peerDependencies:
@@ -3592,7 +3592,7 @@ __metadata:
   peerDependenciesMeta:
     "@swc/helpers":
       optional: true
-  checksum: 10c0/d5f464c58da55e9ab14d3bea298b5509e52c237ed5873ec8631d3a5d05bce70b9f41cb62ba2a2585e6eef32da4e7e304169e856de049d5c9b96a3e0e3cc93e39
+  checksum: 10c0/1fecb6764b2b9ad3b5e5ce14fcc78ba8eb6226ef23e51df28f485f3ca207d9587732a61a4a4ec3c439e3fe80955128d9d4780f1976757b7d05f40d803f106781
   languageName: node
   linkType: hard
 
@@ -4337,10 +4337,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@zachleat/heading-anchors@npm:^1.0.5":
-  version: 1.0.5
-  resolution: "@zachleat/heading-anchors@npm:1.0.5"
-  checksum: 10c0/8727d9fd939773fcb9af0b97524fb66963cb91d7230a16a132dd79e9c410052d286730505ed7e05230c30ad092434faa6981bce9bc9a207e4cb933aea2f83739
+"@zachleat/heading-anchors@npm:^1.1.0":
+  version: 1.1.0
+  resolution: "@zachleat/heading-anchors@npm:1.1.0"
+  checksum: 10c0/cd5c88e8b29fbc3af546ca464cb92a2eb232951c68ae7d4df7bcca2fc6ad55da8ee7b7877530ec8ec0f7bdadf8f2d8acbe5e8e14846a93d1000ce3db7791ec56
   languageName: node
   linkType: hard
 
@@ -5176,7 +5176,7 @@ __metadata:
   dependencies:
     "@bascik/bascik": "workspace:*"
     "@lhci/cli": "npm:^0.16.0"
-    "@playwright/test": "npm:^1.64.1"
+    "@playwright/test": "npm:^1.65.0"
     "@resvg/resvg-js": "npm:^2.6.2"
     "@types/canvas-confetti": "npm:^1.9.0"
     "@types/ejs": "npm:^3.1.5"
@@ -5184,7 +5184,7 @@ __metadata:
     "@types/nunjucks": "npm:^3.2.6"
     "@vitest/coverage-v8": "npm:^5.1.0"
     "@xterm/headless": "npm:^6.0.0"
-    "@zachleat/heading-anchors": "npm:^1.0.5"
+    "@zachleat/heading-anchors": "npm:^1.1.0"
     axe-core: "npm:^4.14.0"
     canvas-confetti: "npm:^1.9.4"
     ejs: "npm:^7.0.2"
@@ -5198,9 +5198,9 @@ __metadata:
     parse5: "npm:^8.1.0"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
-    vite: "npm:^8.3.5"
+    vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
-    wrangler: "npm:^4.157.0"
+    wrangler: "npm:^4.160.0"
   dependenciesMeta:
     node-pty:
       built: false
@@ -5213,7 +5213,7 @@ __metadata:
   dependencies:
     "@bascik/adapter-netlify": "workspace:*"
     "@bascik/bascik": "workspace:*"
-    "@netlify/functions": "npm:^6.1.0"
+    "@netlify/functions": "npm:^6.1.1"
   languageName: unknown
   linkType: soft
 
@@ -5223,8 +5223,8 @@ __metadata:
   dependencies:
     "@bascik/adapter-cloudflare": "workspace:*"
     "@bascik/bascik": "workspace:*"
-    "@cloudflare/workers-types": "npm:^5.20261104.1"
-    "@playwright/test": "npm:^1.64.1"
+    "@cloudflare/workers-types": "npm:^5.20261110.1"
+    "@playwright/test": "npm:^1.65.0"
     "@types/node": "npm:^24.19.1"
     esbuild: "npm:^0.28.2"
     miniflare: "npm:4.20260730.0"
@@ -5232,9 +5232,9 @@ __metadata:
     prettier: "npm:3.9.10"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
-    vite: "npm:^8.3.5"
+    vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
-    wrangler: "npm:^4.157.0"
+    wrangler: "npm:^4.160.0"
   languageName: unknown
   linkType: soft
 
@@ -5242,13 +5242,13 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "bascik-skills-tests@workspace:skills-tests"
   dependencies:
-    "@playwright/test": "npm:^1.64.1"
+    "@playwright/test": "npm:^1.65.0"
     "@types/node": "npm:^24.19.1"
     "@vitest/coverage-v8": "npm:^5.1.0"
     marked: "npm:^18.1.3"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
-    vite: "npm:^8.3.5"
+    vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
   languageName: unknown
   linkType: soft
@@ -5268,7 +5268,7 @@ __metadata:
     tm-grammars: "npm:1.32.22"
     typescript: "npm:^7.0.2"
     typescript-6: "npm:typescript@^6.0.3"
-    vite: "npm:^8.3.5"
+    vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
     vscode-languageclient: "npm:^11.0.0"
     vscode-oniguruma: "npm:2.0.1"
@@ -6797,7 +6797,7 @@ __metadata:
     "@vitest/coverage-v8": "npm:^5.1.0"
     miniflare: "npm:4.20260730.0"
     typescript: "npm:^7.0.2"
-    vite: "npm:^8.3.5"
+    vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
   bin:
     create-bascik: dist/index.js
@@ -9550,16 +9550,6 @@ __metadata:
   version: 8.0.1
   resolution: "get-stream@npm:8.0.1"
   checksum: 10c0/5c2181e98202b9dae0bb4a849979291043e5892eb40312b47f0c22b9414fc9b28a3b6063d2375705eb24abc41ecf97894d9a51f64ff021511b504477b27b4290
-  languageName: node
-  linkType: hard
-
-"get-stream@npm:^9.0.0":
-  version: 9.0.1
-  resolution: "get-stream@npm:9.0.1"
-  dependencies:
-    "@sec-ant/readable-stream": "npm:^0.4.1"
-    is-stream: "npm:^4.0.1"
-  checksum: 10c0/d70e73857f2eea1826ac570c3a912757dcfbe8a718a033fa0c23e12ac8e7d633195b01710e0559af574cbb5af101009b42df7b6f6b29ceec8dbdf7291931b948
   languageName: node
   linkType: hard
 
@@ -12388,17 +12378,22 @@ __metadata:
   languageName: node
   linkType: hard
 
-"miniflare@npm:5.20261103.0-beta":
-  version: 5.20261103.0-beta
-  resolution: "miniflare@npm:5.20261103.0-beta"
+"miniflare@npm:5.20261110.0-beta":
+  version: 5.20261110.0-beta
+  resolution: "miniflare@npm:5.20261110.0-beta"
   dependencies:
     "@cspotcode/source-map-support": "npm:0.8.1"
     sharp: "npm:0.35.5"
     undici: "npm:7.30.1"
-    workerd: "npm:1.20261103.1"
+    workerd: "npm:1.20261110.1"
     ws: "npm:8.21.0"
     youch: "npm:4.1.0-beta.10"
-  checksum: 10c0/dca45acdcab40aeccc2bcb19d427b7b3bf91709facd952dd21fd9c7e6f27cb3054ca33e88504451ee304141ad867caf7ff93686d3cc005fe51b31d2ced7eb3fe
+  peerDependencies:
+    kerberos: ^2.0.0
+  peerDependenciesMeta:
+    kerberos:
+      optional: true
+  checksum: 10c0/1b580859c52df1db9bc2c9846208aff732674dc69b17a7aac6d0a76c1c570af9feb95c3bad5e61eca84a840520da7ae25d5f7a8828716bcda949fcc2ec6b9fd1
   languageName: node
   linkType: hard
 
@@ -12931,18 +12926,18 @@ __metadata:
   languageName: node
   linkType: hard
 
-"netlify-cli@npm:^27.16.2":
-  version: 27.16.2
-  resolution: "netlify-cli@npm:27.16.2"
+"netlify-cli@npm:^27.17.0":
+  version: 27.17.0
+  resolution: "netlify-cli@npm:27.17.0"
   dependencies:
     "@fastify/static": "npm:^10.0.0"
     "@inquirer/prompts": "npm:^8.7.2"
     "@netlify/ai": "npm:^1.0.2"
-    "@netlify/api": "npm:^15.1.5"
+    "@netlify/api": "npm:^15.1.6"
     "@netlify/blobs": "npm:^11.1.7"
-    "@netlify/build": "npm:^37.7.2"
+    "@netlify/build": "npm:^37.7.6"
     "@netlify/build-info": "npm:^11.3.1"
-    "@netlify/config": "npm:^25.5.1"
+    "@netlify/config": "npm:^25.6.2"
     "@netlify/dev": "npm:^5.1.12"
     "@netlify/dev-utils": "npm:^6.0.4"
     "@netlify/edge-bundler": "npm:^16.2.0"
@@ -13032,7 +13027,7 @@ __metadata:
   bin:
     netlify: bin/run.js
     ntl: bin/run.js
-  checksum: 10c0/4f64e920104757c234b98a4272febc47fe4c10a7dcfd28b33f95b417907d0025f07399e00e0f2cb6fc874d8fac7e38c7123fe05c253da4fac9bbc864e1d5a3a2
+  checksum: 10c0/8079a2df5c7bd86fda70378e3397288c857f39f310db2b81e9a217ac3a06ca353c601359004c6d7aeb3f21526ae3cbd8d54c65e549d7baef03f2c069b4f0bed1
   languageName: node
   linkType: hard
 
@@ -14268,23 +14263,23 @@ __metadata:
   languageName: node
   linkType: hard
 
-"playwright-core@npm:1.64.1":
-  version: 1.64.1
-  resolution: "playwright-core@npm:1.64.1"
+"playwright-core@npm:1.65.0":
+  version: 1.65.0
+  resolution: "playwright-core@npm:1.65.0"
   bin:
     playwright-core: cli.js
-  checksum: 10c0/91c4f5ed1cff4b0e18b6ac62f66770f5f1b6c204d4aebd6a321c07466dca18a70822ac692597c6059705a703f9768097ac551df179fb49294d639509148e04f3
+  checksum: 10c0/ed905c6fc2457a725c3fdb3ad4500f43c7a1bb2c6e4e8c708e1e314930c7dce446a5756ad073425bf3c6e3ca975e5a35fb0221118e2d51ef7b4b6c6d13d0644c
   languageName: node
   linkType: hard
 
-"playwright@npm:1.64.1":
-  version: 1.64.1
-  resolution: "playwright@npm:1.64.1"
+"playwright@npm:1.65.0":
+  version: 1.65.0
+  resolution: "playwright@npm:1.65.0"
   dependencies:
-    playwright-core: "npm:1.64.1"
+    playwright-core: "npm:1.65.0"
   bin:
     playwright: cli.js
-  checksum: 10c0/edf52d0a79feca37bf383e841a467aa68750684128218eac560063991c9e4b615a94901f580cd8a088bb05fd53008ab4a0e5e8d976067698b60ae5d1de2459f3
+  checksum: 10c0/a7d71f3ca5bcad0531b5f3c39ae1a9be0da8e74be6fee8510d99b9f5fc07fd5b3d889aa4ca487c70ca29aba8625f74e3c2c7473b4c8a784dc14fefff80474ac3
   languageName: node
   linkType: hard
 
@@ -14350,7 +14345,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"postcss@npm:^8.5.30, postcss@npm:^8.5.32":
+"postcss@npm:^8.5.32":
   version: 8.5.32
   resolution: "postcss@npm:8.5.32"
   dependencies:
@@ -15310,26 +15305,26 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rolldown@npm:~1.2.14":
-  version: 1.2.16
-  resolution: "rolldown@npm:1.2.16"
+"rolldown@npm:~1.2.18":
+  version: 1.2.18
+  resolution: "rolldown@npm:1.2.18"
   dependencies:
     "@oxc-project/types": "npm:=0.156.0"
-    "@rolldown/binding-android-arm-eabi": "npm:1.2.16"
-    "@rolldown/binding-android-arm64": "npm:1.2.16"
-    "@rolldown/binding-darwin-arm64": "npm:1.2.16"
-    "@rolldown/binding-darwin-x64": "npm:1.2.16"
-    "@rolldown/binding-freebsd-x64": "npm:1.2.16"
-    "@rolldown/binding-linux-arm-gnueabihf": "npm:1.2.16"
-    "@rolldown/binding-linux-arm64-gnu": "npm:1.2.16"
-    "@rolldown/binding-linux-arm64-musl": "npm:1.2.16"
-    "@rolldown/binding-linux-ppc64-gnu": "npm:1.2.16"
-    "@rolldown/binding-linux-s390x-gnu": "npm:1.2.16"
-    "@rolldown/binding-linux-x64-gnu": "npm:1.2.16"
-    "@rolldown/binding-linux-x64-musl": "npm:1.2.16"
-    "@rolldown/binding-openharmony-arm64": "npm:1.2.16"
-    "@rolldown/binding-win32-arm64-msvc": "npm:1.2.16"
-    "@rolldown/binding-win32-x64-msvc": "npm:1.2.16"
+    "@rolldown/binding-android-arm-eabi": "npm:1.2.18"
+    "@rolldown/binding-android-arm64": "npm:1.2.18"
+    "@rolldown/binding-darwin-arm64": "npm:1.2.18"
+    "@rolldown/binding-darwin-x64": "npm:1.2.18"
+    "@rolldown/binding-freebsd-x64": "npm:1.2.18"
+    "@rolldown/binding-linux-arm-gnueabihf": "npm:1.2.18"
+    "@rolldown/binding-linux-arm64-gnu": "npm:1.2.18"
+    "@rolldown/binding-linux-arm64-musl": "npm:1.2.18"
+    "@rolldown/binding-linux-ppc64-gnu": "npm:1.2.18"
+    "@rolldown/binding-linux-s390x-gnu": "npm:1.2.18"
+    "@rolldown/binding-linux-x64-gnu": "npm:1.2.18"
+    "@rolldown/binding-linux-x64-musl": "npm:1.2.18"
+    "@rolldown/binding-openharmony-arm64": "npm:1.2.18"
+    "@rolldown/binding-win32-arm64-msvc": "npm:1.2.18"
+    "@rolldown/binding-win32-x64-msvc": "npm:1.2.18"
     "@rolldown/pluginutils": "npm:^1.0.0"
   dependenciesMeta:
     "@rolldown/binding-android-arm-eabi":
@@ -15364,7 +15359,7 @@ __metadata:
       optional: true
   bin:
     rolldown: ./bin/cli.mjs
-  checksum: 10c0/ba57365e9a4dbba9fbc41c5a0180baaaca47a24e47a57e2d24e02b064195c33e289c2c4bd67db0d2b78f42dce3df5466d9c9176babc05f3f465e7e0eae733b39
+  checksum: 10c0/7b84dcb9d1946d7c76a7b18dd95b6d35c7e6c965d3f70ffee586d46a744debaf483ffce2dd241d3f411fde2bac925f2549499548fc1b52a8bfa0ce0fcf55bb4f
   languageName: node
   linkType: hard
 
@@ -17955,15 +17950,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vite@npm:^8.3.5":
-  version: 8.3.5
-  resolution: "vite@npm:8.3.5"
+"vite@npm:^8.3.8":
+  version: 8.3.8
+  resolution: "vite@npm:8.3.8"
   dependencies:
     fsevents: "npm:~2.3.3"
     lightningcss: "npm:^1.33.0"
     picomatch: "npm:^4.0.7"
-    postcss: "npm:^8.5.30"
-    rolldown: "npm:~1.2.14"
+    postcss: "npm:^8.5.32"
+    rolldown: "npm:~1.2.18"
     tinyglobby: "npm:^0.2.17"
   peerDependencies:
     "@types/node": ^20.19.0 || >=22.12.0
@@ -18008,7 +18003,7 @@ __metadata:
       optional: true
   bin:
     vite: bin/vite.js
-  checksum: 10c0/33991600925b6717429c14a2c2907554aed077489ee6ff7815f9f49d5de559f5173ccb0472f2b3f9eef2a49e2e014f6cb624db8d4adebb37baad3a8cbc15065a
+  checksum: 10c0/21bf5b04159214fbc9f42e297afd26398a3630704959f85290e8b8eb9cac49be20a6a37a5765bfdb997b606c21ccba99f991671f81c5da5a590ae5cedad3e127
   languageName: node
   linkType: hard
 
@@ -18461,15 +18456,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"workerd@npm:1.20261103.1":
-  version: 1.20261103.1
-  resolution: "workerd@npm:1.20261103.1"
+"workerd@npm:1.20261110.1":
+  version: 1.20261110.1
+  resolution: "workerd@npm:1.20261110.1"
   dependencies:
-    "@cloudflare/workerd-darwin-64": "npm:1.20261103.1"
-    "@cloudflare/workerd-darwin-arm64": "npm:1.20261103.1"
-    "@cloudflare/workerd-linux-64": "npm:1.20261103.1"
-    "@cloudflare/workerd-linux-arm64": "npm:1.20261103.1"
-    "@cloudflare/workerd-windows-64": "npm:1.20261103.1"
+    "@cloudflare/workerd-darwin-64": "npm:1.20261110.1"
+    "@cloudflare/workerd-darwin-arm64": "npm:1.20261110.1"
+    "@cloudflare/workerd-linux-64": "npm:1.20261110.1"
+    "@cloudflare/workerd-linux-arm64": "npm:1.20261110.1"
+    "@cloudflare/workerd-windows-64": "npm:1.20261110.1"
   dependenciesMeta:
     "@cloudflare/workerd-darwin-64":
       optional: true
@@ -18483,7 +18478,7 @@ __metadata:
       optional: true
   bin:
     workerd: bin/workerd
-  checksum: 10c0/216ee268892a058c756b81c2faa372ec1673ab20d6853e26b2d92668640b06611382fc91e4e2bd9200ee7f4d1d2f4b8c65be01958b76d97882362db0a2bb69d0
+  checksum: 10c0/e5d94e3ee0ace8b6f5748afdfe0a57868149cfed8185111441992b127ce0ebad730e971feaf22a7f2d3ebf9c46c997b03307017e04db4c9adcefbf18e7c40947
   languageName: node
   linkType: hard
 
@@ -18494,9 +18489,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"wrangler@npm:^4.157.0":
-  version: 4.157.0
-  resolution: "wrangler@npm:4.157.0"
+"wrangler@npm:^4.160.0":
+  version: 4.160.0
+  resolution: "wrangler@npm:4.160.0"
   dependencies:
     "@cloudflare/kv-asset-handler": "npm:0.5.0"
     "@cloudflare/unenv-preset": "npm:2.16.2"
@@ -18504,12 +18499,12 @@ __metadata:
     blake3-wasm: "npm:2.1.5"
     esbuild: "npm:0.28.2"
     fsevents: "npm:2.3.3"
-    miniflare: "npm:5.20261103.0-beta"
+    miniflare: "npm:5.20261110.0-beta"
     path-to-regexp: "npm:6.3.0"
     unenv: "npm:2.0.0-rc.24"
-    workerd: "npm:1.20261103.1"
+    workerd: "npm:1.20261110.1"
   peerDependencies:
-    "@cloudflare/workers-types": ^5.20261103.1
+    "@cloudflare/workers-types": ^5.20261110.1
   dependenciesMeta:
     fsevents:
       optional: true
@@ -18520,7 +18515,7 @@ __metadata:
     cf-wrangler: bin/cf-wrangler.js
     wrangler: bin/wrangler.js
     wrangler2: bin/wrangler.js
-  checksum: 10c0/62b1d35d6ac1040d8cdc51214dfbf7386e90ff7de4c94e2f0154e1c125dcfa33122ca9084529ac6e467d4050ff3589006efc07f0b8eed0e8910556213b958460
+  checksum: 10c0/aee97899b265c19c8ee8de32c8bada16554cf5babd1f63a6bf930048c7f8312105bbfc1f161978d258f5ec93b27a79ca4aac6be7dd4c7f6ab7b40ac0f806c409
   languageName: node
   linkType: hard
 

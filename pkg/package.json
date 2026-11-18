@@ -79,8 +79,8 @@
   "devDependencies": {
     "0x": "^6.0.0",
     "@mdn/browser-compat-data": "^8.1.8",
-    "@playwright/test": "^1.64.1",
-    "@swc/core": "^1.16.21",
+    "@playwright/test": "^1.65.0",
+    "@swc/core": "^1.16.22",
     "@types/css-tree": "^3.2.0",
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.1.0",
@@ -98,7 +98,7 @@
     "postcss": "^8.5.32",
     "typescript": "^7.0.2",
     "typescript-6": "npm:typescript@^6.0.3",
-    "vite": "^8.3.5",
+    "vite": "^8.3.8",
     "vitest": "^5.1.0",
     "web-features": "^3.45.0",
     "webidl2": "^24.5.0"
