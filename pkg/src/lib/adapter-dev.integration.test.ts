@@ -39,7 +39,12 @@ const waitFor = async (assertion: () => Promise<void>): Promise<void> => {
   }
 };
 
-it.each(["SIGINT", "runtime"] as const)(
+const shutdownModes: ("SIGINT" | "runtime" | "repeated SIGINT during boot")[] =
+  ["SIGINT", "runtime"];
+if (process.platform !== "win32")
+  shutdownModes.push("repeated SIGINT during boot");
+
+it.each(shutdownModes)(
   "rebuilds, recovers, and shuts down without a retry error on %s",
   async (shutdown) => {
     root = await mkdtemp(join(tmpdir(), "bascik-adapter-dev-"));
@@ -79,7 +84,13 @@ export default {
     );
     await writeFile(
       join(root, "runtime.mjs"),
-      `
+      shutdown === "repeated SIGINT during boot"
+        ? `
+process.on("SIGTERM", () => console.log("runtime stopping"));
+setInterval(() => {}, 1000);
+console.log("runtime started: " + process.pid);
+`
+        : `
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 if (process.stdin.isTTY) throw new Error("Managed runtime must not inherit terminal input");
@@ -140,6 +151,36 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
       log += chunk;
     });
     const url = `http://127.0.0.1:${port}`;
+    if (shutdown === "repeated SIGINT during boot") {
+      await waitFor(async () => {
+        expect(log).toMatch(/runtime started: \d+/);
+      });
+      const runtimePid = Number(/runtime started: (\d+)/.exec(log)![1]);
+      try {
+        const exited = once(child, "exit", {
+          signal: AbortSignal.timeout(10_000),
+        });
+        child.kill("SIGINT");
+        await waitFor(async () => {
+          expect(log).toContain("runtime stopping");
+        });
+        child.kill("SIGINT");
+        expect(await exited).toEqual([0, null]);
+        await waitFor(async () => {
+          expect(() => process.kill(runtimePid, 0)).toThrow(
+            expect.objectContaining({ code: "ESRCH" }),
+          );
+          await expect(fetch(url)).rejects.toThrow();
+        });
+      } finally {
+        try {
+          process.kill(runtimePid, "SIGKILL");
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        }
+      }
+      return;
+    }
     await waitFor(async () => {
       const response = await fetch(url);
       expect(response.status).toBe(200);
