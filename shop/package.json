@@ -20,17 +20,17 @@
     "@bascik/bascik": "workspace:*"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261104.1",
-    "@playwright/test": "^1.64.1",
+    "@cloudflare/workers-types": "^5.20261110.1",
+    "@playwright/test": "^1.65.0",
     "@types/node": "^24.19.1",
     "esbuild": "^0.28.2",
     "miniflare": "4.20260730.0",
-    "parse5": "^8.1.0",
+    "parse5": "^8.1.1",
     "prettier": "3.9.10",
     "sharp": "^0.35.5",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5",
+    "vite": "^8.3.8",
     "vitest": "^5.1.0",
-    "wrangler": "^4.157.0"
+    "wrangler": "^4.160.0"
   }
 }
