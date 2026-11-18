@@ -9,6 +9,12 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
+## [Unreleased]
+
+### Fixed
+
+- Ctrl+C during `bascik --target netlify` could return you to the shell while Netlify Dev kept booting and listening in the background. The shared adapter launcher now keeps handling repeated interrupts, including those forwarded by npm, until it has stopped its child processes. No change is needed in your project. See [Adapter Development Mode](https://bascik.dev/internals/server#adapter-development-mode-bascik-target).
+
 ## [1.0.1] - 2026-11-16
 
 ### Added

@@ -249,6 +249,7 @@ export const startAdapterDev = async (
   let dirty = false;
   let debounce: ReturnType<typeof setTimeout> | undefined;
   let runtime: ChildProcess | undefined;
+  let stoppingRuntime: Promise<void> | undefined;
   let builder: ChildProcess | undefined;
   let watcher: import("chokidar").FSWatcher | undefined;
   const clients = new Set<ServerResponse>();
@@ -391,17 +392,38 @@ export const startAdapterDev = async (
       else client.write(": heartbeat\n\n");
     }
   }, 20_000);
-  const close = async () => {
-    if (closing) return;
+  const stopRuntime = () => {
+    if (stoppingRuntime) return stoppingRuntime;
+    const child = runtime;
+    runtime = undefined;
+    stoppingRuntime = stopAdapterChild(child).finally(() => {
+      stoppingRuntime = undefined;
+    });
+    return stoppingRuntime;
+  };
+  let closingPromise: Promise<void> | undefined;
+  const close = () => {
+    if (closingPromise) return closingPromise;
     closing = true;
     clearInterval(heartbeat);
     clearTimeout(debounce);
-    for (const signal of STOP_SIGNALS) process.off(signal, onSignal);
-    await watcher?.close();
-    await Promise.all([stopAdapterChild(builder), stopAdapterChild(runtime)]);
     for (const client of clients) client.end();
+    const serverClosed = new Promise<void>((done) =>
+      server.close(() => done()),
+    );
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    closingPromise = Promise.allSettled([
+      watcher?.close(),
+      stopAdapterChild(builder),
+      stopRuntime(),
+      serverClosed,
+    ]).then((results) => {
+      for (const signal of STOP_SIGNALS) process.off(signal, onSignal);
+      for (const result of results) {
+        if (result.status === "rejected") throw result.reason;
+      }
+    });
+    return closingPromise;
   };
   const onSignal = () => {
     void close().catch(report);
@@ -418,11 +440,9 @@ export const startAdapterDev = async (
     buildError = undefined;
     runtimeReady = false;
     broadcast();
-    const prior = runtime;
-    runtime = undefined;
-    await stopAdapterChild(prior);
-    if (closing) return;
     try {
+      await stopRuntime();
+      if (closing) return;
       const cli = fileURLToPath(
         new URL(
           import.meta.url.endsWith(".ts") ? "../index.ts" : "../index.js",
@@ -545,10 +565,10 @@ export const startAdapterDev = async (
         `[bascik] ${adapter.name} dev ready: ${origin} (watching for changes)`,
       );
     } catch (error) {
-      const failedRuntime = runtime;
-      runtime = undefined;
-      await stopAdapterChild(failedRuntime);
-      if (!closing) report(error);
+      if (!closing) {
+        await stopRuntime();
+        if (!closing) report(error);
+      }
     }
   };
   const drain = async () => {
@@ -575,8 +595,6 @@ export const startAdapterDev = async (
       report(error);
       void close();
     });
-    for (const signal of STOP_SIGNALS) process.once(signal, onSignal);
-    registerExitStopper(() => (closing ? null : close()));
     const { watch } = await import("chokidar");
     watcher = watch(location.roots, {
       ignoreInitial: true,
@@ -605,6 +623,10 @@ export const startAdapterDev = async (
       void close();
     });
     await once(watcher, "ready");
+    // npm may forward a signal the terminal already delivered to Bascik.
+    // Keep handling signals until detached children have stopped.
+    for (const signal of STOP_SIGNALS) process.on(signal, onSignal);
+    registerExitStopper(close);
     running = drain();
     await running;
     running = undefined;
