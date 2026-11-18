@@ -15,6 +15,10 @@ it is not `@bascik/bascik`.
 
 - `@bascik/language-server` 1.1.0 and the VS Code extension 1.0.1 (the editor and the per-file checks of `bascik --check`) have a new rule, `throw-non-error`. In every directive script, API route and module they run in Node, a `throw`, a `Promise.reject()` or a Promise executor's `reject()` whose value can never be an `Error` is a warning on that value: `throw "Book not found"`, `throw null`, `throw { status: 404 }`, `Promise.reject()`, `reject("timeout")`. Only an `Error` carries a stack trace, so for such a value Bascik's runtime report could name only the line the script starts on. It is the same idea as ESLint's `no-throw-literal` and `prefer-promise-reject-errors`, read from the code alone: a name, a call, `new`, a member or `await` could hold an `Error` and is never reported. On a string or template literal, the editor's quick fix **Wrap in new Error(...)** keeps the text; `bascik --check --fix` does not apply it. Silence it with `// bascik-ignore throw-non-error` or `disabledRules`. See [Linter](https://bascik.dev/tools/linter#throw-non-error).
 
+### Changed
+
+- `@bascik/bascik` now requires `parse5` 8.1.1, which Bascik parses pages and components with. That release fixes security issues in the HTML parser, among them crashes from a few bytes of input and parse times that grew quadratically with deeply nested or attribute-heavy markup. Updating `@bascik/bascik` installs it; no change is needed in your project.
+
 ### Fixed
 
 - On Node 26 on Apple silicon and other arm64 machines, `bascik --build` and the dev server with `pipeline.workers` could, rarely, end with `SIGILL` (`zsh: illegal hardware instruction`, exit code 132) when several page workers stripped TypeScript at the same moment: a bug in Node's V8 (nodejs/node#67467). Bascik now sets V8's `--wasm-wrapper-tiering-budget` so that code path is never taken; it makes no measurable difference to build time. You keep your own value if you set that flag.
