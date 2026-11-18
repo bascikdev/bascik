@@ -227,7 +227,7 @@ __metadata:
     dependency-cruiser: "npm:^18.7.2"
     esbuild: "npm:^0.28.2"
     fast-check: "npm:^4.10.2"
-    parse5: "npm:^8.1.0"
+    parse5: "npm:^8.1.1"
     postcss: "npm:^8.5.32"
     typescript: "npm:^7.0.2"
     typescript-6: "npm:typescript@^6.0.3"
@@ -5191,11 +5191,11 @@ __metadata:
     esbuild: "npm:^0.28.2"
     handlebars: "npm:^4.7.10"
     lighthouse: "npm:^13.6.0"
-    marked: "npm:^18.1.3"
+    marked: "npm:^18.2.0"
     node-pty: "npm:^1.1.0"
     nunjucks: "npm:^3.2.4"
     opentype.js: "npm:^2.0.0"
-    parse5: "npm:^8.1.0"
+    parse5: "npm:^8.1.1"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.5"
@@ -5228,7 +5228,7 @@ __metadata:
     "@types/node": "npm:^24.19.1"
     esbuild: "npm:^0.28.2"
     miniflare: "npm:4.20260730.0"
-    parse5: "npm:^8.1.0"
+    parse5: "npm:^8.1.1"
     prettier: "npm:3.9.10"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
@@ -5245,7 +5245,7 @@ __metadata:
     "@playwright/test": "npm:^1.64.1"
     "@types/node": "npm:^24.19.1"
     "@vitest/coverage-v8": "npm:^5.1.0"
-    marked: "npm:^18.1.3"
+    marked: "npm:^18.2.0"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.5"
@@ -12107,12 +12107,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"marked@npm:^18.1.3":
-  version: 18.1.3
-  resolution: "marked@npm:18.1.3"
+"marked@npm:^18.2.0":
+  version: 18.2.0
+  resolution: "marked@npm:18.2.0"
   bin:
     marked: bin/marked.js
-  checksum: 10c0/13e72a88c479f388f8c476f8fd50498740097f239091fcfc57d477ac1732c72c70261170029ef6f5029f48cda68663a4d2cd892041f588d95daf52caca02e1a2
+  checksum: 10c0/7766e5564cc6dbe3e8d6ee0091f3a4656002dd993817e68c5510e2ff1fa1d6456c9bcd18af1a4a5e8ea87382832a07026c109ab333913f125d51c93f29ba9017
   languageName: node
   linkType: hard
 
@@ -13947,12 +13947,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"parse5@npm:^8.1.0":
-  version: 8.1.0
-  resolution: "parse5@npm:8.1.0"
+"parse5@npm:^8.1.1":
+  version: 8.1.1
+  resolution: "parse5@npm:8.1.1"
   dependencies:
     entities: "npm:^9.0.0"
-  checksum: 10c0/2b00189fbeb73a47422bed831b970502258a44dc53134c0db8e2d3114cec0766fea5346dbb61aff94978c6bf666e5243bc5bcb2279b680f130f8de98cd28ac18
+  checksum: 10c0/b0c248e09baf90ad137ccc3542ecb6d942b6b98e38cd693da20b392d6d440ac4475dbf97fa58eecd01bbaadba39b738d88c6dfce5d8ae2681ef561e0481e69a7
   languageName: node
   linkType: hard
 
