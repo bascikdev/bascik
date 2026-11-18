@@ -79,6 +79,7 @@ When no site URL is configured, adapter development uses the local proxy origin 
 Bare `bascik` keeps its existing in-memory authoring path. `bascik --build --target ...` remains a one-shot production build with no watcher, proxy, or live-reload injection. Direct Wrangler and Netlify previews of that output remain production acceptance paths.
 
 Platform child processes inherit terminal output, but not input: Bascik owns the development session and Ctrl+C shutdown. Platform-specific interactive exit hotkeys are disabled.
+On shutdown, the adapter launcher stops the active build and runtime alongside the watcher and proxy. Repeated Ctrl+C presses, including interrupts forwarded by npm, wait for that same shutdown instead of leaving a detached runtime running.
 If the platform runtime exits successfully, the development session closes without a retry error. Unexpected unsuccessful runtime exits are reported and can be retried by saving a source file.
 
 ## Development Server Mode (`bascik`)
