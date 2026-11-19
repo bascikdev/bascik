@@ -173,7 +173,7 @@ The features section: a heading and a grid with one card per entry in features.t
   border: 1px solid var(--border);
   border-radius: 18px;
   padding: 24px;
-  box-shadow: var(--sheen), 0 16px 36px -24px rgb(36 53 89 / 32%);
+  box-shadow: var(--sheen), var(--shadow);
 }
 .title { font-size: 1rem; color: var(--text); margin-bottom: 6px; }
 .text  { font-size: 0.9rem; margin-bottom: 0; }
@@ -772,7 +772,7 @@ The testimonials section: a heading and one figure per entry in quotes.ts, print
   background: var(--surface) var(--panel);
   border: 1px solid var(--border);
   border-radius: 18px;
-  box-shadow: var(--sheen), 0 16px 36px -24px rgb(36 53 89 / 32%);
+  box-shadow: var(--sheen), var(--shadow);
 }
 .words { margin: 0; flex: 1; }
 .words p { margin: 0; color: var(--text); }
