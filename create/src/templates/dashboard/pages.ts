@@ -20,23 +20,22 @@ export const PAGE_FILES: TemplateFile[] = [
   /* light-dark() picks the first value in light mode and the second in dark mode, following color-scheme. */
   color-scheme: light dark;
 
-  --color-bg: light-dark(#e9edf3, #11151c);
-  --color-surface: light-dark(#f8fafd, #222833);
-  --color-surface-top: light-dark(#ffffff, #363e4c);
-  --color-elevated: light-dark(#f0f3f8, #282f3b);
-  --color-text: light-dark(#293247, #edf0f7);
-  --color-muted: light-dark(#616c80, #b3bbcb);
-  --color-border: light-dark(#d6deea, #404957);
-  --color-accent: light-dark(#475cbd, #b1bfff);
-  --color-accent-contrast: light-dark(#ffffff, #202b4a);
-  --color-accent-wash: light-dark(#edf0fc, #30394f);
-  --surface-panel: linear-gradient(155deg, var(--color-surface-top), var(--color-surface) 72%);
-  --surface-sheen: inset 0 1px 0 light-dark(rgb(255 255 255 / 90%), rgb(255 255 255 / 15%));
-  --surface-shadow: 0 24px 48px -16px light-dark(rgb(36 53 89 / 24%), rgb(0 0 0 / 55%)),
-    0 6px 12px -4px light-dark(rgb(36 53 89 / 12%), rgb(0 0 0 / 30%));
-  --color-up: light-dark(#17693a, #7ddc9f);
-  --color-down: light-dark(#b42318, #ff9a8f);
-  --color-warn: light-dark(#7a4f00, #f2c66d);
+  --color-bg: light-dark(#f2f5f3, #111816);
+  --color-surface: light-dark(#ffffff, #19211e);
+  --color-surface-top: var(--color-surface);
+  --color-elevated: light-dark(#e9efec, #222c28);
+  --color-text: light-dark(#192822, #edf4f0);
+  --color-muted: light-dark(#5c6e65, #a9b8b0);
+  --color-border: light-dark(#d8e2dc, #34443c);
+  --color-accent: light-dark(#28634d, #8bd1ac);
+  --color-accent-contrast: light-dark(#ffffff, #13251b);
+  --color-accent-wash: light-dark(#e8f1eb, #25382e);
+  --surface-panel: none;
+  --surface-sheen: none;
+  --surface-shadow: none;
+  --color-up: light-dark(#176a43, #81d1a2);
+  --color-down: light-dark(#aa413d, #f19b8f);
+  --color-warn: light-dark(#7a5a18, #e5bf6c);
 
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -47,9 +46,9 @@ export const PAGE_FILES: TemplateFile[] = [
   --space-4: 1.5rem;
   --space-5: 2.5rem;
 
-  --radius: 1.25rem;
-  --control-radius: 0.625rem;
-  --sidebar-width: 14rem;
+  --radius: 0.75rem;
+  --control-radius: 0.45rem;
+  --sidebar-width: 15rem;
 }
 
 /* Explicit choices from the theme toggle. Without data-theme the operating system setting applies. */
@@ -100,9 +99,9 @@ main {
   grid-area: main;
   display: grid;
   align-content: start;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  max-width: 82rem;
+  gap: var(--space-3);
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  max-width: 96rem;
   min-width: 0;
   width: 100%;
 }
@@ -119,7 +118,7 @@ main {
   }
 
   main {
-    padding: var(--space-3);
+    padding: 1.25rem 1rem 2rem;
   }
 }
 
@@ -132,11 +131,13 @@ h3 {
 }
 
 h1 {
-  font-size: 1.75rem;
+  font-size: clamp(1.55rem, 2.2vw, 2rem);
+  letter-spacing: -0.035em;
 }
 
 h2 {
   font-size: 1.15rem;
+  letter-spacing: -0.015em;
 }
 
 h3 {
@@ -169,11 +170,10 @@ code {
 .card {
   display: grid;
   gap: var(--space-3);
-  padding: var(--space-3);
+  padding: clamp(1rem, 2vw, 1.5rem);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  background: var(--color-surface) var(--surface-panel);
-  box-shadow: var(--surface-sheen), var(--surface-shadow);
+  background: var(--color-surface);
 }
 
 /* Two cards, one above the other, and side by side when the window has room for both. */
@@ -203,8 +203,7 @@ code {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--control-radius);
-  background: var(--color-surface) var(--surface-panel);
-  box-shadow: var(--surface-sheen), 0 5px 12px -8px rgb(36 53 89 / 40%);
+  background: var(--color-surface);
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -223,7 +222,6 @@ code {
 .button-primary:not(:disabled):hover {
   background: var(--color-accent);
   color: var(--color-accent-contrast);
-  filter: brightness(1.06);
 }
 
 .button-primary {
@@ -240,6 +238,29 @@ code {
   background: var(--color-bg);
   color: inherit;
   font: inherit;
+}
+
+/* Pausing transitions while the theme changes prevents a flash across surfaces. */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes content-enter {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  main { animation: content-enter 220ms ease-out both; }
+  button { transition: transform 150ms ease-out; }
+  button:active:not(:disabled) { transform: scale(0.97); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  main { animation: none; }
+  button { transition: none; }
 }
 
 /* ── Tables printed by src/lib/order-table.ts and src/lib/charts.ts ── */
@@ -275,8 +296,9 @@ code {
 
 .data-table thead th {
   color: var(--color-muted);
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
   white-space: nowrap;
 }
 

@@ -158,6 +158,79 @@ test.describe("App shell", () => {
     await expect(page.getByTestId("app-sidebar-links")).toBeVisible();
   });
 
+  test("keeps the main content padded and clear of the sidebar across breakpoint edges", async ({
+    page,
+  }) => {
+    for (const width of [375, 767, 768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/");
+      const main = page.getByTestId("overview-main");
+      const sidebar = page.getByTestId("app-sidebar");
+      const measurements = await main.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const bounds = element.getBoundingClientRect();
+        return {
+          paddingLeft: Number.parseFloat(style.paddingLeft),
+          paddingTop: Number.parseFloat(style.paddingTop),
+          left: bounds.left,
+          scrollWidth: document.documentElement.scrollWidth,
+        };
+      });
+
+      expect(measurements.paddingLeft).toBeGreaterThanOrEqual(16);
+      expect(measurements.paddingTop).toBeGreaterThanOrEqual(16);
+      expect(measurements.scrollWidth).toBeLessThanOrEqual(width);
+      if (width >= 768) {
+        const sidebarBounds = await sidebar.boundingBox();
+        expect(sidebarBounds).not.toBeNull();
+        expect(sidebarBounds!.x + sidebarBounds!.width).toBeLessThanOrEqual(
+          measurements.left + 1,
+        );
+      }
+    }
+  });
+
+  test("uses brief motion by default and removes it for reduced-motion preferences", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/");
+    await expect
+      .poll(() =>
+        page
+          .getByTestId("overview-main")
+          .evaluate((element) => getComputedStyle(element).animationName),
+      )
+      .toBe("content-enter");
+    const toggle = page.getByTestId("theme-toggle");
+    await expect(toggle).toHaveCSS(
+      "transition-duration",
+      "0.15s",
+    );
+    const toggleBounds = await toggle.boundingBox();
+    expect(toggleBounds).not.toBeNull();
+    await page.mouse.move(
+      toggleBounds!.x + toggleBounds!.width / 2,
+      toggleBounds!.y + toggleBounds!.height / 2,
+    );
+    await page.mouse.down();
+    await expect(toggle).toHaveCSS(
+      "transform",
+      "matrix(0.97, 0, 0, 0.97, 0, 0)",
+    );
+    await page.mouse.up();
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(page.getByTestId("overview-main")).toHaveCSS(
+      "animation-name",
+      "none",
+    );
+    await expect(page.getByTestId("theme-toggle")).toHaveCSS(
+      "transition-duration",
+      "0s",
+    );
+  });
+
   test("theme toggle switches the theme and keeps it across a reload", async ({
     page,
   }) => {
@@ -362,7 +435,9 @@ test.describe("Titles", () => {
     );
     await expect(detail).toContainText("by Hurley Haywood");
     await expect(detail.getByRole("img")).toBeVisible();
-    await detail.getByRole("rowheader").first()).toHaveText(/^IMSA-\\d+$/);
+    await expect(detail.getByRole("rowheader").first()).toHaveText(
+      /^IMSA-\\d+$/,
+    );
 
     await detail.getByRole("link", { name: "All titles" }).click();
     await expect(page).toHaveURL("/titles");
@@ -371,7 +446,7 @@ test.describe("Titles", () => {
   test("shows written empty states for a title with no orders", async ({
     page,
   }) => {
-    await page.goto("/titles/harbor-songs-for-late-arrivals");
+    await page.goto("/titles/porsche-718-rs-laguna");
     const detail = page.getByTestId("title-detail");
     await expect(detail.getByTestId("status-badge")).toHaveText("Preorder");
     await expect(detail).toContainText("No copies sold in the last 8 weeks.");

@@ -245,6 +245,32 @@ describe("dashboard template", () => {
     for (const name of ["shop", "charts", "order-table", "site"])
       expect(files.has(`src/lib/${name}.test.ts`), name).toBe(true);
   });
+
+  it("uses a restrained data-product visual system with room around the content", () => {
+    const styles = file("src/pages/css/styles.css");
+    const tile = file("src/components/stat-tile/stat-tile.html");
+
+    expect(styles).toContain("--color-accent:");
+    expect(styles).toContain("--sidebar-width: 15rem;");
+    expect(styles).toMatch(/main\s*\{[^}]*padding:\s*clamp\(/s);
+    expect(styles).not.toContain("linear-gradient(");
+    expect(tile).toContain("border-radius: var(--control-radius)");
+    expect(tile).not.toContain("box-shadow:");
+  });
+
+  it("uses brief transform-only motion, respects reduced motion and pauses for theme changes", () => {
+    const styles = file("src/pages/css/styles.css");
+    const theme = file("src/components/theme-toggle/theme-toggle.html");
+
+    expect(styles).toContain("150ms ease-out");
+    expect(styles).toContain("scale(0.97)");
+    expect(styles).toMatch(
+      /from\s*\{[^}]*opacity:\s*0[^}]*transform:\s*scale\(0\.97\)/s,
+    );
+    expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(styles).toContain(".theme-switching *");
+    expect(theme).toContain('root.classList.add("theme-switching")');
+  });
 });
 
 // ─── The site's name ──────────────────────────────────────────────────────────

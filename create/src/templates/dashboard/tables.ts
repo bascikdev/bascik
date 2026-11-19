@@ -1086,7 +1086,7 @@ describe("titleDetail", () => {
   });
 
   it("shows written empty states for a title nobody has ordered", () => {
-    const markup = String(titleDetail("harbor-songs-for-late-arrivals"));
+    const markup = String(titleDetail("porsche-718-rs-laguna"));
     expect(markup).not.toContain("<svg");
     expect(markup).toContain("No copies sold in the last 8 weeks.");
     expect(markup).toContain("No orders include this title yet.");

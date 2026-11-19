@@ -695,7 +695,7 @@ describe("reading the data", () => {
   });
 
   it("counts a title's weekly units, with zeros for a title nobody ordered", () => {
-    const weeks = weeklyUnits("harbor-songs-for-late-arrivals");
+    const weeks = weeklyUnits("porsche-718-rs-laguna");
     expect(weeks).toHaveLength(8);
     expect(weeks.every((week) => week.units === 0)).toBe(true);
   });

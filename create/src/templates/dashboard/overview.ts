@@ -23,30 +23,32 @@ One figure: its name, its value, and how it changed. The change is written in wo
 <style>
   .tile {
     display: grid;
-    gap: var(--space-1);
-    padding: var(--space-3);
+    gap: var(--space-2);
+    min-height: 8.5rem;
+    padding: var(--space-3) var(--space-4);
     border: 1px solid var(--color-border);
-    border-radius: 1rem;
-    background: var(--color-surface) var(--surface-panel);
-    box-shadow: var(--surface-sheen), 0 16px 36px -24px light-dark(rgb(36 53 89 / 32%), rgb(0 0 0 / 45%));
+    border-radius: var(--control-radius);
+    background: var(--color-surface);
+    align-content: start;
   }
 
   .label {
     color: var(--color-muted);
-    font-size: 0.875rem;
-    font-weight: 600;
+    font-size: 0.8125rem;
+    font-weight: 650;
   }
 
   .value {
-    font-size: 1.75rem;
-    font-weight: 700;
+    font-size: clamp(1.5rem, 2.4vw, 2rem);
+    font-weight: 650;
     font-variant-numeric: tabular-nums;
+    letter-spacing: -0.035em;
     line-height: 1.2;
   }
 
   .change {
     color: var(--color-muted);
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
   }
 
   .tile[data-trend="up"] .change {

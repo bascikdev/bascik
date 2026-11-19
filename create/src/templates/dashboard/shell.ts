@@ -171,7 +171,9 @@ A button that switches between light and dark themes and remembers the choice. N
 
   toggle.addEventListener("click", () => {
     const next = current() === "dark" ? "light" : "dark";
+    root.classList.add("theme-switching");
     root.setAttribute("data-theme", next);
+    requestAnimationFrame(() => root.classList.remove("theme-switching"));
     try {
       localStorage.setItem("theme", next);
     } catch {
@@ -241,10 +243,10 @@ The top bar of every page: the skip link, the site's name, and the theme toggle.
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-4);
+    min-height: 4rem;
+    padding: var(--space-2) clamp(1rem, 3vw, 2rem);
     border-bottom: 1px solid var(--color-border);
-    background: var(--color-surface) var(--surface-panel);
-    box-shadow: var(--surface-sheen), 0 12px 28px -24px light-dark(rgb(36 53 89 / 42%), rgb(0 0 0 / 60%));
+    background: var(--color-surface);
   }
 
   .skip-link {
@@ -277,7 +279,10 @@ The top bar of every page: the skip link, the site's name, and the theme toggle.
   .area {
     margin-inline-end: auto;
     color: var(--color-muted);
-    font-size: 0.875rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   @media (max-width: 47.99rem) {
@@ -297,7 +302,7 @@ The top bar of every page: the skip link, the site's name, and the theme toggle.
       export default () => html\`\${SITE_NAME}\`;
     </script>
   </a>
-  <span class="area">Back office</span>
+  <span class="area">Operations</span>
   <theme-toggle />
 </header>
 `,
@@ -347,9 +352,9 @@ The sidebar navigation. It marks the link to the page being built with aria-curr
 -->
 <style>
   .sidebar {
-    padding: var(--space-3);
+    padding: var(--space-4) var(--space-3);
     border-inline-end: 1px solid var(--color-border);
-    background: var(--color-surface) var(--surface-panel);
+    background: var(--color-bg);
   }
 
   .toggle {
@@ -377,17 +382,18 @@ The sidebar navigation. It marks the link to the page being built with aria-curr
     border-inline-start: 3px solid transparent;
     border-radius: var(--radius);
     color: inherit;
+    font-size: 0.9375rem;
     text-decoration: none;
   }
 
   .link:hover {
-    background: var(--color-bg);
+    background: var(--color-accent-wash);
   }
 
   /* The current page: a bar and bold text, not only a color. */
   .link[aria-current="page"] {
     border-inline-start-color: var(--color-accent);
-    background: var(--color-bg);
+    background: var(--color-accent-wash);
     font-weight: 700;
   }
 
