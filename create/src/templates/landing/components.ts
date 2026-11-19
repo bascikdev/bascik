@@ -44,8 +44,8 @@ The questions section: a heading and one <details> per entry in faqs.ts, printed
   <div class="container">
     <section-head
       data-bascik-prop-label="FAQ"
-      data-bascik-prop-title="Questions readers ask"
-      data-bascik-prop-text="The short answers. Write to us if yours is not here."
+      data-bascik-prop-title="A few things teams ask"
+      data-bascik-prop-text="The practical details, without the fine-print maze."
     />
     <div class="list">
       <script data-bascik-build-once type="text/typescript">
@@ -109,29 +109,29 @@ export interface Faq {
 
 export const faqs: readonly Faq[] = [
   {
-    question: "When does my box ship?",
+    question: "Can clients see the project too?",
     answer:
-      "Boxes go out on the 1st of each month and arrive by the 5th in most places.",
+      "Yes. Invite clients to the project space so briefs, updates, and approvals stay together.",
   },
   {
-    question: "Can I skip a month or cancel?",
+    question: "Do I need to change how my studio works?",
     answer:
-      "Yes. Skip or cancel from your account before the 25th and you are not charged for the next box.",
+      "No. Start with one project, bring in the people involved, and shape the workspace around your process.",
   },
   {
-    question: "What if I have already read the book?",
+    question: "Can I move an existing project into Fieldnote?",
     answer:
-      "Tell us within a week and we will send a different pick at no charge. Keep the first one or pass it on.",
+      "You can add the brief, files, milestones, and open decisions yourself. We keep the starting point simple.",
   },
   {
-    question: "Do you ship outside the United States?",
+    question: "What happens after I request early access?",
     answer:
-      "Not yet. Join the waitlist and we will write to you when that changes.",
+      "We will send one note when access opens. Your address is not used for a newsletter.",
   },
   {
-    question: "Can I give a subscription as a gift?",
+    question: "Can a small team use it?",
     answer:
-      "Yes. Choose three, six, or twelve months and we include a card with your message in the first box.",
+      "That is who we are building it for: independent teams that need a clear place for client work, not another layer of process.",
   },
 ];
 
@@ -169,11 +169,9 @@ The features section: a heading and a grid with one card per entry in features.t
 }
 
 .feature {
-  background: var(--surface) var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 24px;
-  box-shadow: var(--sheen), var(--shadow);
+  min-height: 100%;
+  padding: 20px 4px 8px;
+  border-top: 1px solid var(--border);
 }
 .title { font-size: 1rem; color: var(--text); margin-bottom: 6px; }
 .text  { font-size: 0.9rem; margin-bottom: 0; }
@@ -182,8 +180,8 @@ The features section: a heading and a grid with one card per entry in features.t
   <div class="container">
     <section-head
       data-bascik-prop-label="Features"
-      data-bascik-prop-title="A book box that respects your time"
-      data-bascik-prop-text="Everything in the box is there to help you read one good book, not to fill a shelf."
+      data-bascik-prop-title="Everything in its place. Nothing in your way."
+      data-bascik-prop-text="A thoughtful project space keeps the important details close and the busywork quiet."
     />
     <ul class="grid" role="list">
       <script data-bascik-build-once type="text/typescript">
@@ -244,28 +242,28 @@ export interface Feature {
 
 export const features: readonly Feature[] = [
   {
-    title: "Chosen by a bookseller",
-    text: "Every pick is read cover to cover by someone at the shop before it goes in a box. No algorithm, no bestseller list.",
+    title: "A brief everyone can find",
+    text: "Keep the goals, references, scope, and decisions together instead of scattered across old threads.",
   },
   {
-    title: "A letter with every book",
-    text: "One page on why this book, what to notice, and what to read next if you love it.",
+    title: "Feedback with its context",
+    text: "Gather notes where the work lives, so the next round starts with a clear point of view.",
   },
   {
-    title: "A reading group that fits your month",
-    text: "Join the online discussion on the last Sunday, or read at your own pace and catch the notes.",
+    title: "A steady view of what is next",
+    text: "See owners, milestones, and open questions without turning your day into another status meeting.",
   },
   {
-    title: "Skip a month anytime",
-    text: "Going away, or behind on your pile? Skip a box in two clicks and pay nothing for it.",
+    title: "A calm place for client work",
+    text: "Give collaborators one simple home for updates, links, files, and approvals.",
   },
   {
-    title: "Signed when we can",
-    text: "About one box in four comes with a bookplate signed by the author.",
+    title: "Small details that save a handoff",
+    text: "Make the next action visible, from the first conversation to the final delivery.",
   },
   {
-    title: "Plastic-free packing",
-    text: "Boxes are recycled card and paper tape, sized to fit a mailbox.",
+    title: "Your process stays yours",
+    text: "Start with a lightweight structure and adjust the project space to fit each kind of work.",
   },
 ];
 
@@ -288,39 +286,151 @@ export function featureCards(items: readonly Feature[]): SafeHtml {
 
 /** `src/components/home-hero/home-hero.html` */
 export const HOME_HERO_HTML = `<!-- @bascik
-The top of the home page: the page's one h1, the pitch, the primary call to action, and a drawing of a stack of books. The drawing is inline SVG, colored from the design tokens in src/pages/css/styles.css.
+The home page's one h1, a focused product promise, and a CSS-built preview of a calm project workspace.
 -->
 <style>
-figure { margin: 44px 0 0; }
-figcaption { margin-top: 16px; font-size: 0.95rem; color: var(--text-muted); }
-cite { color: var(--text); }
-
-.art { display: block; width: min(260px, 70%); height: auto; margin: 0 auto; }
-.book-low  { fill: var(--elevated); stroke: var(--border-hover); }
-.book-mid  { fill: var(--accent); }
-.book-top  { fill: var(--surface); stroke: var(--accent); }
-.page-edge { fill: var(--text); opacity: 0.85; }
-.ribbon    { fill: var(--accent); }
+.hero { padding: clamp(72px, 10vw, 128px) 0 clamp(80px, 10vw, 136px); }
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+  align-items: center;
+  gap: clamp(36px, 7vw, 92px);
+  max-width: 1240px;
+}
+.copy { max-width: 560px; }
+.eyebrow {
+  margin-bottom: 20px;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+h1 { max-width: 11ch; font-size: clamp(3rem, 6.7vw, 5.5rem); margin-bottom: 24px; }
+h1 span { color: var(--accent); }
+.lede { max-width: 48ch; font-size: clamp(1.05rem, 1.6vw, 1.2rem); margin-bottom: 30px; }
+.hero-actions { gap: 12px; }
+.reassurance { margin: 18px 0 0; font-size: 0.84rem; }
+.preview {
+  min-width: 0;
+  margin: 0;
+  padding: clamp(12px, 2.2vw, 24px);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 28px 80px -58px rgb(22 37 74 / 48%);
+}
+.window { overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.window-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+.window-bar::after { content: "FIELDNOTE / STUDIO"; margin-left: auto; letter-spacing: 0.08em; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-hover); }
+.workspace { display: grid; grid-template-columns: minmax(92px, 0.3fr) minmax(0, 1fr); min-height: 350px; }
+.sidebar { padding: 24px 12px; border-right: 1px solid var(--border); background: var(--surface); }
+.mark { margin: 0 0 24px 8px; color: var(--text); font-size: 0.78rem; font-weight: 700; }
+.side-link { margin: 0 0 7px; padding: 7px 8px; border-radius: 6px; color: var(--text-muted); font-size: 0.7rem; }
+.side-link.current { background: var(--accent-dim); color: var(--accent); }
+.workspace-main { min-width: 0; padding: clamp(18px, 3vw, 34px); }
+.workspace-head { display: flex; justify-content: space-between; gap: 16px; align-items: start; margin-bottom: 24px; }
+.workspace-head p { margin: 0; font-size: 0.68rem; }
+.workspace-head strong { display: block; margin-top: 4px; color: var(--text); font-size: 1.12rem; }
+.avatar-stack { display: flex; padding-top: 4px; }
+.avatar { width: 25px; height: 25px; margin-left: -6px; border: 2px solid var(--bg); border-radius: 50%; background: #e8ad9a; }
+.avatar:nth-child(2) { background: #a7b9a2; }
+.avatar:nth-child(3) { background: #b4bde0; }
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.metric { min-width: 0; padding: 13px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.metric span { display: block; color: var(--text-muted); font-size: 0.62rem; }
+.metric strong { display: block; margin-top: 5px; color: var(--text); font-size: 1.08rem; }
+.project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 13px 0;
+  border-top: 1px solid var(--border);
+}
+.project-row strong { color: var(--text); font-size: 0.72rem; }
+.project-row span { color: var(--text-muted); font-size: 0.62rem; }
+.progress { grid-column: 1 / -1; height: 4px; margin-top: 5px; border-radius: 4px; background: var(--elevated); }
+.progress span { display: block; width: 68%; height: 100%; border-radius: inherit; background: var(--accent); }
+.preview-caption { margin: 14px 2px 0; color: var(--text-muted); font-size: 0.76rem; }
+@media (max-width: 820px) {
+  .layout { grid-template-columns: 1fr; gap: 42px; }
+  .copy { max-width: 680px; }
+  h1 { max-width: 13ch; }
+  .preview { width: 100%; }
+}
+@media (max-width: 520px) {
+  .hero { padding-top: 64px; }
+  .workspace { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .workspace-main { padding: 18px 14px; }
+  .metric { padding: 10px 8px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .copy { animation: settle-in 620ms ease-out both; }
+  .preview { animation: settle-in 720ms 90ms ease-out both; }
+  @keyframes settle-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .copy, .preview { animation: none; }
+}
 </style>
 <section class="hero" data-testid="home-hero">
-  <div class="container">
-    <h1>One good book a month, <span>chosen by a bookseller</span></h1>
-    <p>A real person at an independent bookshop reads widely, picks one book for you, and writes you a letter about why. You just read.</p>
-    <div class="hero-actions">
-      <a href="#signup" class="btn btn-primary" data-testid="home-hero-cta">Join the waitlist</a>
-      <a href="#how-it-works" class="btn btn-ghost" data-testid="home-hero-how">See how it works</a>
+  <div class="container layout">
+    <div class="copy">
+      <p class="eyebrow">A calmer space for client work</p>
+      <h1>Make room for <span>the work that matters.</span></h1>
+      <p class="lede">Bring your brief, feedback, and next steps into one considered workspace, made for small creative teams.</p>
+      <div class="hero-actions">
+        <a href="#signup" class="btn btn-primary" data-testid="home-hero-cta">Request early access</a>
+        <a href="#how-it-works" class="btn btn-ghost" data-testid="home-hero-how">See how it works</a>
+      </div>
+      <p class="reassurance">A little more clarity. A lot less chasing.</p>
     </div>
-    <figure>
-      <svg class="art" viewBox="0 0 240 120" role="img" aria-label="A stack of three books with a ribbon bookmark hanging from the middle one">
-        <rect class="book-low" x="20" y="80" width="200" height="30" rx="4" />
-        <rect class="page-edge" x="196" y="85" width="18" height="20" rx="2" />
-        <rect class="book-mid" x="36" y="46" width="176" height="30" rx="4" />
-        <rect class="page-edge" x="42" y="51" width="18" height="20" rx="2" />
-        <path class="ribbon" d="M150 76v24l-7-6-7 6V76z" />
-        <rect class="book-top" x="28" y="12" width="184" height="30" rx="4" />
-        <rect class="page-edge" x="188" y="17" width="18" height="20" rx="2" />
-      </svg>
-      <figcaption>In the first box: <cite>The Salt Orchard</cite> by Marta Varga.</figcaption>
+    <figure class="preview" data-testid="home-hero-preview" aria-label="A preview of the Fieldnote project workspace">
+      <div class="window" aria-hidden="true">
+        <div class="window-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="workspace">
+          <aside class="sidebar" data-testid="home-hero-sidebar">
+            <p class="mark">Fieldnote</p>
+            <p class="side-link current">Overview</p>
+            <p class="side-link">Projects</p>
+            <p class="side-link">Feedback</p>
+            <p class="side-link">Files</p>
+          </aside>
+          <div class="workspace-main">
+            <div class="workspace-head">
+              <p>MONDAY, MAY 18<strong>Project overview</strong></p>
+              <div class="avatar-stack"><span class="avatar"></span><span class="avatar"></span><span class="avatar"></span></div>
+            </div>
+            <div class="summary">
+              <div class="metric"><span>In motion</span><strong>04</strong></div>
+              <div class="metric"><span>Needs a look</span><strong>02</strong></div>
+              <div class="metric"><span>Coming up</span><strong>03</strong></div>
+            </div>
+            <p class="eyebrow">Next up</p>
+            <div class="project-row"><strong>Juniper identity</strong><span>Today</span><span>Direction review</span><span>Studio + client</span><div class="progress"><span></span></div></div>
+            <div class="project-row"><strong>Sunday journal</strong><span>Thu</span><span>Final artwork</span><span>Studio</span><div class="progress"><span></span></div></div>
+            <div class="project-row"><strong>Field guide</strong><span>Fri</span><span>Share first round</span><span>Studio + client</span><div class="progress"><span></span></div></div>
+          </div>
+        </div>
+      </div>
+      <figcaption class="preview-caption">A shared space for projects, feedback, and clear next steps.</figcaption>
     </figure>
   </div>
 </section>
@@ -340,10 +450,12 @@ describe('home-hero component', () => {
     expect(html).toMatch(/<a href="#signup"[^>]*data-testid="home-hero-cta"/);
   });
 
-  it('gives its drawing a text alternative and loads no image file', async () => {
+  it('gives the CSS-built product preview an accessible label', async () => {
     const html = await readFile(path, 'utf8');
-    expect(html).toMatch(/<svg[^>]*role="img"[^>]*aria-label="[^"]+"/);
-    expect(html).not.toContain('<img');
+    expect(html).toMatch(/<figure[^>]*data-testid="home-hero-preview"[^>]*aria-label="[^"]+"/);
+    expect(html).toContain("Project overview");
+    expect(html).toContain("Next up");
+    expect(html).toContain('aria-hidden="true"');
   });
 });
 `;
@@ -384,8 +496,8 @@ The "how it works" section: a heading and an ordered list with one step per entr
   <div class="container">
     <section-head
       data-bascik-prop-label="How it works"
-      data-bascik-prop-title="From our shelves to your door"
-      data-bascik-prop-text="Four steps, and only the first one asks anything of you."
+      data-bascik-prop-title="From first brief to final handoff"
+      data-bascik-prop-text="A light structure keeps the important pieces connected as the work moves."
     />
     <ol class="steps" role="list">
       <script data-bascik-build-once type="text/typescript">
@@ -445,20 +557,20 @@ export interface Step {
 
 export const steps: readonly Step[] = [
   {
-    title: "Tell us what you read",
-    text: "Pick the genres you love and the ones you avoid. It takes about a minute.",
+    title: "Set up the project",
+    text: "Bring in the brief, references, goals, and the people who need to be in the loop.",
   },
   {
-    title: "We choose your book",
-    text: "A bookseller matches you with one new release or overlooked gem each month.",
+    title: "Make the next step clear",
+    text: "Keep owners, milestones, and open decisions visible without adding a heavy process.",
   },
   {
-    title: "It arrives by the 5th",
-    text: "Your box lands in the first week of the month, with the letter tucked inside the cover.",
+    title: "Gather feedback in context",
+    text: "Share a focused update and keep comments beside the work they are about.",
   },
   {
-    title: "Talk it over",
-    text: "Meet the other readers online at the end of the month, or just enjoy the book.",
+    title: "Deliver with confidence",
+    text: "Leave a clear record of what is approved, what is next, and where the final files live.",
   },
 ];
 
@@ -492,7 +604,7 @@ export interface Plan {
   period: string;
   /** One sentence on who the plan is for. */
   blurb: string;
-  /** What is in the box, one line each. */
+  /** What the plan includes, one line each. */
   includes: readonly string[];
   /** Marks the plan to draw the eye to. Give it to one plan. */
   featured?: boolean;
@@ -500,39 +612,39 @@ export interface Plan {
 
 export const plans: readonly Plan[] = [
   {
-    name: "Paperback",
-    price: "$18",
+    name: "Solo",
+    price: "$12",
     period: "per month",
-    blurb: "For readers who like a book that fits in a coat pocket.",
+    blurb: "For an independent creative building a clear, repeatable rhythm.",
     includes: [
-      "One paperback each month",
-      "The bookseller's letter",
-      "Skip any month",
+      "Up to 3 active projects",
+      "Briefs, files, and decisions",
+      "One collaborator per project",
     ],
   },
   {
-    name: "Hardcover",
-    price: "$29",
+    name: "Studio",
+    price: "$28",
     period: "per month",
-    blurb: "New releases in their first printing, plus the reading group.",
+    blurb: "For a small team balancing several client relationships.",
     includes: [
-      "One hardcover each month",
-      "The bookseller's letter",
-      "The monthly reading group",
-      "Skip any month",
+      "Unlimited active projects",
+      "Shared feedback and approvals",
+      "Invite clients to a project",
+      "A clear team overview",
     ],
     featured: true,
   },
   {
-    name: "Book Club",
-    price: "$120",
+    name: "Collective",
+    price: "$68",
     period: "per month",
-    blurb: "Five copies of the same book, for a group that reads together.",
+    blurb: "For a growing practice with more people in the work.",
     includes: [
-      "Five copies of one book",
-      "Questions to start the conversation",
-      "A video hello from the bookseller",
-      "Skip any month",
+      "Everything in Studio",
+      "Flexible team roles",
+      "Shared project templates",
+      "Priority onboarding",
     ],
   },
 ];
@@ -588,21 +700,21 @@ The pricing section: a heading and one card per entry in plans.ts, printed at bu
   flex-direction: column;
   gap: 12px;
   padding: 28px 24px;
-  background: var(--surface) var(--panel);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
-  box-shadow: var(--sheen), var(--shadow);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
 }
 .plan[data-featured="true"] {
   border-color: var(--accent);
-  box-shadow: var(--sheen), 0 0 0 1px var(--accent-dim), var(--shadow);
+  box-shadow: 0 0 0 1px var(--accent-dim), var(--shadow);
 }
 
 .badge {
   align-self: flex-start;
   margin: 0;
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: var(--accent-dim);
   color: var(--accent);
   font-size: 0.72rem;
@@ -628,8 +740,8 @@ The pricing section: a heading and one card per entry in plans.ts, printed at bu
   <div class="container">
     <section-head
       data-bascik-prop-label="Pricing"
-      data-bascik-prop-title="Pick the box that fits your shelf"
-      data-bascik-prop-text="Every plan includes shipping. Skip a month or cancel whenever you like."
+      data-bascik-prop-title="Room to work at your own pace"
+      data-bascik-prop-text="Example plans for a solo practice, a small studio, or a growing collective."
     />
     <div class="grid">
       <script data-bascik-build-once type="text/typescript">
@@ -715,21 +827,21 @@ export interface Quote {
 export const quotes: readonly Quote[] = [
   {
     words:
-      "I had stopped finishing books. Four boxes in, I have finished four.",
-    name: "Odalys Brenner",
-    about: "Reads on the 7:40 train",
+      "I want to spend more time making the work and less time finding the latest version.",
+    name: "Studio lead",
+    about: "Illustrative perspective",
   },
   {
     words:
-      "The letter is the best part. It is like a friend pressing a book into your hands.",
-    name: "Tobias Ekwueme",
-    about: "Has kept every letter",
+      "A client should be able to see what is happening without asking for another update.",
+    name: "Creative partner",
+    about: "Illustrative perspective",
   },
   {
     words:
-      "Our whole book club switched over. We argue less about what to read and more about the book.",
-    name: "Marguerite Solano",
-    about: "Runs a book club of nine",
+      "The handoff is part of the craft. It should feel as considered as the final piece.",
+    name: "Independent maker",
+    about: "Illustrative perspective",
   },
 ];
 
@@ -768,11 +880,8 @@ The testimonials section: a heading and one figure per entry in quotes.ts, print
   flex-direction: column;
   gap: 16px;
   margin: 0;
-  padding: 24px;
-  background: var(--surface) var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: var(--sheen), var(--shadow);
+  padding: 20px 4px;
+  border-top: 1px solid var(--border);
 }
 .words { margin: 0; flex: 1; }
 .words p { margin: 0; color: var(--text); }
@@ -784,9 +893,9 @@ The testimonials section: a heading and one figure per entry in quotes.ts, print
 <section class="section" data-testid="reader-quotes">
   <div class="container">
     <section-head
-      data-bascik-prop-label="Readers"
-      data-bascik-prop-title="What early readers say"
-      data-bascik-prop-text="Forty readers tried the box over the winter. Here is what three of them wrote back."
+      data-bascik-prop-label="Studio notes"
+      data-bascik-prop-title="Built around the moments between the big ones"
+      data-bascik-prop-text="These illustrative perspectives are the small frictions we want Fieldnote to make easier."
     />
     <div class="grid">
       <script data-bascik-build-once type="text/typescript">
@@ -921,8 +1030,8 @@ The head tags every page shares: charset, viewport, icons, and the global styles
 -->
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#e9edf3" />
-<meta name="theme-color" content="#11151c" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#f6f7fb" />
+<meta name="theme-color" content="#151a26" media="(prefers-color-scheme: dark)" />
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
@@ -1010,7 +1119,7 @@ ${SITE_HEADER_CSS}
         <li><a href="/#how-it-works" data-testid="site-header-how-it-works">How it works</a></li>
         <li><a href="/#pricing" data-testid="site-header-pricing">Pricing</a></li>
         <li><a href="/#faq" data-testid="site-header-faq">FAQ</a></li>
-        <li><a href="/#signup" class="cta" data-testid="site-header-signup">Join the waitlist</a></li>
+        <li><a href="/#signup" class="cta" data-testid="site-header-signup">Request access</a></li>
       </ul>
     </nav>
   </div>
@@ -1142,9 +1251,9 @@ The sign-up section: a heading and the waitlist form. Its script checks the emai
 <section class="section" data-testid="waitlist-signup">
   <div class="container">
     <section-head
-      data-bascik-prop-label="Waitlist"
-      data-bascik-prop-title="Be first in line for the first box"
-      data-bascik-prop-text="Boxes start shipping this spring. Leave your email and we will write once, when sign-ups open."
+      data-bascik-prop-label="Early access"
+      data-bascik-prop-title="Give your next project a clearer home"
+      data-bascik-prop-text="Leave your email and we will send one note when Fieldnote is ready to try."
     />
     <form id="form" class="form" data-testid="waitlist-signup-form">
       <div class="field">
@@ -1156,7 +1265,7 @@ The sign-up section: a heading and the waitlist form. Its script checks the emai
         <input type="text" id="name" name="name" autocomplete="given-name" maxlength="80" data-testid="waitlist-signup-name" />
       </div>
       <p id="problem" class="error" role="alert" data-testid="waitlist-signup-error" hidden></p>
-      <button id="submit" type="submit" class="btn btn-primary" data-testid="waitlist-signup-submit">Join the waitlist</button>
+      <button id="submit" type="submit" class="btn btn-primary" data-testid="waitlist-signup-submit">Request early access</button>
       <p id="status" class="status" role="status" data-testid="waitlist-signup-status"></p>
       <noscript><p class="status">This form needs JavaScript to send.</p></noscript>
     </form>

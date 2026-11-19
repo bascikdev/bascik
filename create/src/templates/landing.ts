@@ -1,10 +1,9 @@
 /**
  * @module templates/landing
  *
- * The `landing` template: a one-page product landing page for an invented
- * monthly book box. The home page is a list of section components (hero,
- * features, steps, testimonials, pricing, questions, sign-up form); a privacy
- * placeholder and a 404 page sit beside it.
+ * The `landing` template: a SaaS product landing page with an editorial hero,
+ * an in-page product preview, product details, pricing, questions, and an
+ * early-access form; a privacy placeholder and a 404 page sit beside it.
  *
  * Three things differ from the default template:
  *

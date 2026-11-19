@@ -34,7 +34,7 @@ import { LANDING_TEMPLATE } from "./landing.ts";
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 /** The template's files by path, as text. */
-const filesFor = (siteName = "Book Box", adapter?: Adapter) =>
+const filesFor = (siteName = "Fieldnote", adapter?: Adapter) =>
   new Map(
     LANDING_TEMPLATE.files({ siteName, adapter }).map(([path, data]) => [
       path,
@@ -68,6 +68,27 @@ describe("landing template", () => {
     );
     expect(LANDING_TEMPLATE.dependencies).toBeUndefined();
     expect(LANDING_TEMPLATE.devDependencies).toBeUndefined();
+  });
+
+  it("presents a coherent software product with an accessible workspace preview", () => {
+    const files = filesFor("Fieldnote");
+    const hero = files.get("src/components/home-hero/home-hero.html")!;
+    const all = [...files.values()].join("\n");
+
+    expect(hero).toContain("A calmer space for client work");
+    expect(hero).toContain('data-testid="home-hero-preview"');
+    expect(hero).toContain("Project overview");
+    expect(hero).toContain("Next up");
+    expect(all).toContain("the work that matters.");
+    expect(all).toContain(
+      "A shared space for projects, feedback, and clear next steps.",
+    );
+    expect(all).not.toMatch(
+      /bookseller|book box|reading group|bookplate|shelf/i,
+    );
+    expect(files.get("src/pages/css/styles.css")).toContain(
+      "--landing-accent: #4263d8",
+    );
   });
 
   it("writes the home page, a privacy page, a 404 page, and a test beside every component", () => {
@@ -187,7 +208,7 @@ describe("landing template", () => {
   });
 
   it("gives every component root and interactive part a data-testid", () => {
-    const files = filesFor("Book Box", "cloudflare");
+    const files = filesFor("Fieldnote", "cloudflare");
     for (const [path, text] of files) {
       const name = /^src\/components\/([^/]+)\/\1\.html$/.exec(path)?.[1];
       // site-head is head tags only: it has no root element to name.
@@ -206,7 +227,7 @@ describe("landing template", () => {
 
   it("writes every script in TypeScript, and no JavaScript file", () => {
     for (const adapter of VARIANTS) {
-      const files = filesFor("Book Box", adapter);
+      const files = filesFor("Fieldnote", adapter);
       for (const [path, text] of files) {
         expect(path).not.toMatch(/\.(?:js|mjs|cjs)$/);
         if (!path.endsWith(".html")) continue;
@@ -246,9 +267,9 @@ describe("landing template", () => {
     ).toHaveLength(1);
   });
 
-  it("uses no image file and nothing from the network: the drawing is inline SVG with a text alternative", () => {
+  it("uses no image file or network asset for its product preview", () => {
     for (const adapter of VARIANTS) {
-      for (const [path, text] of filesFor("Book Box", adapter)) {
+      for (const [path, text] of filesFor("Fieldnote", adapter)) {
         // The generated tests name these in their own misuse cases.
         if (!/\.(?:test|spec)\.ts$/.test(path))
           expect(text, path).not.toMatch(
@@ -265,7 +286,11 @@ describe("landing template", () => {
       }
     }
     const hero = filesFor().get("src/components/home-hero/home-hero.html")!;
-    expect(hero).toMatch(/<svg[^>]*role="img"[^>]*aria-label="[^"]{10,}"/);
+    expect(hero).toMatch(
+      /<figure[^>]*data-testid="home-hero-preview"[^>]*aria-label="[^"]{10,}"/,
+    );
+    expect(hero).toContain("Project overview");
+    expect(hero).toContain("Next up");
   });
 
   it("labels the sign-up form's controls and keeps the browser's own validation for when the script does not run", () => {
@@ -286,7 +311,7 @@ describe("landing template", () => {
 
 describe("landing template: with and without an adapter", () => {
   it("without an adapter has no API route, no form action, and no request from the form's script", () => {
-    const files = filesFor("Book Box");
+    const files = filesFor("Fieldnote");
     expect(
       [...files.keys()].filter((path) => path.startsWith("src/api/")),
     ).toEqual([]);
@@ -303,7 +328,7 @@ describe("landing template: with and without an adapter", () => {
   it.each(ADAPTERS)(
     "with the %s adapter posts the form as JSON to a route that validates it again, and tests both",
     (adapter) => {
-      const files = filesFor("Book Box", adapter);
+      const files = filesFor("Fieldnote", adapter);
       const form = files.get(
         "src/components/waitlist-signup/waitlist-signup.html",
       )!;
@@ -324,14 +349,14 @@ describe("landing template: with and without an adapter", () => {
   );
 
   it("differs between adapters in nothing: the host is chosen by the build target, not by the pages", () => {
-    expect([...filesFor("Book Box", "cloudflare")]).toEqual([
-      ...filesFor("Book Box", "netlify"),
+    expect([...filesFor("Fieldnote", "cloudflare")]).toEqual([
+      ...filesFor("Fieldnote", "netlify"),
     ]);
   });
 
   it("leaves no placeholder from this module's own templating in any file", () => {
     for (const adapter of VARIANTS)
-      for (const [path, text] of filesFor("Book Box", adapter)) {
+      for (const [path, text] of filesFor("Fieldnote", adapter)) {
         expect(text, path).not.toMatch(/@@|\[object /);
         expect(text.endsWith("\n"), `${path} ends with a newline`).toBe(true);
       }
@@ -403,7 +428,7 @@ describe("landing template: site name", () => {
         `name: ${JSON.stringify(name)},`,
       );
       // Everything else is the same whatever the name is.
-      const plain = filesFor("Book Box");
+      const plain = filesFor("Fieldnote");
       for (const [path, text] of files)
         if (path !== "src/lib/site.ts")
           expect(text, path).toBe(plain.get(path));
@@ -470,7 +495,7 @@ describe("landing template: site name", () => {
 describe("landing template: data", () => {
   let root: string;
   beforeAll(async () => {
-    root = await writeProject("Book Box");
+    root = await writeProject("Fieldnote");
   });
 
   const RENDERERS = [

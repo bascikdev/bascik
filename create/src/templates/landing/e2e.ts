@@ -49,6 +49,17 @@ test.describe('Landing page E2E tests', () => {
     await expect(page.getByTestId('waitlist-signup-form')).toBeInViewport();
   });
 
+  test('the product preview is visible and readable on a phone', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/');
+    const preview = page.getByTestId('home-hero-preview');
+    await expect(preview).toBeVisible();
+    await expect(preview).toContainText('Project overview');
+    await expect(preview).toContainText('Next up');
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
   test('header links land on their sections', async ({ page }) => {
     await page.goto('/');
     const sections = {
@@ -78,14 +89,14 @@ test.describe('Landing page E2E tests', () => {
     const plans = page.getByTestId('pricing-plans-plan');
     await expect(plans).toHaveCount(3);
     await expect(plans.filter({ hasText: 'Most popular' })).toHaveCount(1);
-    await plans.filter({ hasText: 'Paperback' }).getByTestId('pricing-plans-choose').click();
+    await plans.filter({ hasText: 'Choose Studio' }).getByTestId('pricing-plans-choose').click();
     await expect(page).toHaveURL('/#signup');
   });
 
   test('a question opens and closes, and leaves the others closed', async ({ page }) => {
     await page.goto('/');
-    const item = page.getByTestId('faq-list-item').filter({ hasText: 'When does my box ship?' });
-    const other = page.getByTestId('faq-list-item').filter({ hasText: 'Can I skip a month or cancel?' });
+    const item = page.getByTestId('faq-list-item').filter({ hasText: 'Can clients see the project too?' });
+    const other = page.getByTestId('faq-list-item').filter({ hasText: 'Do I need to change how my studio works?' });
     const answer = item.getByTestId('faq-list-answer');
 
     await expect(answer).toBeHidden();
@@ -99,7 +110,7 @@ test.describe('Landing page E2E tests', () => {
 
   test('a question opens from the keyboard', async ({ page }) => {
     await page.goto('/');
-    const item = page.getByTestId('faq-list-item').filter({ hasText: 'When does my box ship?' });
+    const item = page.getByTestId('faq-list-item').filter({ hasText: 'Can clients see the project too?' });
     await item.getByTestId('faq-list-question').focus();
     await page.keyboard.press('Enter');
     await expect(item.getByTestId('faq-list-answer')).toBeVisible();

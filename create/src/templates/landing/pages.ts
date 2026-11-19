@@ -302,13 +302,13 @@ export const siteModule = (siteName: string): string =>
 import { html, type SafeHtml } from "@bascik/bascik/html";
 
 export const site = {
-  /** The name of the site and of the product it sells. */
+  /** The name of the site and the product. */
   name: ${JSON.stringify(siteName)},
   /** Follows the name in the home page's title. */
-  tagline: "One good book a month",
+  tagline: "A calmer space for client work",
   /** The home page's description, for search results and link previews. */
   description:
-    "A monthly book box from an independent bookshop: one book chosen by a bookseller, a letter about why, and a reading group to talk it over.",
+    "A thoughtful project workspace for independent creative teams to bring their briefs, feedback, files, and next steps together.",
 } as const;
 
 /** The name as markup, for the header and the footer. html escapes it. */
@@ -342,7 +342,7 @@ export const NOT_FOUND_HTML = `<!doctype html>
     <div class="container section not-found">
       <p class="not-found-code">404</p>
       <h1>Page not found</h1>
-      <p class="not-found-text">That page is not on our shelves.</p>
+      <p class="not-found-text">This page is not here, but your next project can be.</p>
       <a href="/" class="btn btn-primary" data-testid="not-found-home">Back to the home page</a>
     </div>
   </main>
@@ -354,9 +354,37 @@ export const NOT_FOUND_HTML = `<!doctype html>
 /** `src/pages/css/styles.css` */
 export const LANDING_STYLES_CSS = `${STYLES_CSS}
 /* ── Landing page ── */
-/* A link to a section lands below the sticky header, not under it. */
-main > section[id] { scroll-margin-top: 72px; }
+:root {
+  --landing-accent: #4263d8;
+  --bg: light-dark(#f6f7fb, #151a26);
+  --surface: light-dark(#fff, #202736);
+  --surface-top: light-dark(#fff, #293244);
+  --elevated: light-dark(#eef1f7, #252e40);
+  --border: light-dark(#dce2ed, #3c465b);
+  --border-hover: light-dark(#aab6cb, #65718c);
+  --accent: light-dark(var(--landing-accent), #a8b8ff);
+  --accent-hover: light-dark(#344fb7, #c0cbff);
+  --accent-dim: light-dark(#e9edff, #2b3450);
+  --on-accent: #fff;
+  --error: light-dark(#a83d42, #ffaaa8);
+  --text: light-dark(#172139, #eff2f8);
+  --text-muted: light-dark(#5d6880, #b6bfd0);
+  --shadow: 0 24px 60px -46px rgb(22 37 74 / 34%);
+  --r: 12px;
+  --r-sm: 8px;
+}
 
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  line-height: 1.65;
+}
+
+h1, h2, h3 { letter-spacing: -0.045em; }
+.section { padding-top: clamp(64px, 8vw, 104px); padding-bottom: clamp(64px, 8vw, 104px); }
+main > section.section:nth-of-type(even) { background: var(--surface); }
+main > section[id] { scroll-margin-top: 84px; }
+
+/* A link to a section lands below the sticky header, not under it. */
 a:focus-visible,
 summary:focus-visible,
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -415,7 +443,7 @@ export const PRIVACY_HTML = `<!doctype html>
     export default () =>
       seo({
         title: "Privacy",
-        description: "What the waitlist form collects, why we keep it, and how to have it removed.",
+        description: "What the early access form collects, why we keep it, and how to have it removed.",
       });
   </script>
 </head>
@@ -424,13 +452,13 @@ export const PRIVACY_HTML = `<!doctype html>
   <main id="main" data-testid="privacy-main">
     <div class="container section prose">
       <h1>Privacy</h1>
-      <p class="page-intro">This page is a placeholder. Replace it with your own policy before you collect anything.</p>
+      <p class="page-intro">This page is a placeholder. Replace it with your own policy before collecting information.</p>
       <h2>What we collect</h2>
-      <p>The waitlist form asks for an email address and, if you like, a first name. Nothing else is collected, and this site sets no cookies.</p>
+      <p>The early access form asks for an email address and, if you like, a first name. Nothing else is collected, and this site sets no cookies.</p>
       <h2>Why we keep it</h2>
-      <p>To write to you once, when sign-ups open. We do not sell or share the list.</p>
+      <p>To write to you once, when early access opens. We do not sell or share the list.</p>
       <h2>How to be removed</h2>
-      <p>Reply to any email from us and we will delete your address. You can <a href="/#signup">join again</a> whenever you like.</p>
+      <p>Reply to any email from us and we will delete your address. You can <a href="/#signup">request access</a> again whenever you like.</p>
     </div>
   </main>
   <site-footer />
