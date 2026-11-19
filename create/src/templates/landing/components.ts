@@ -169,11 +169,11 @@ The features section: a heading and a grid with one card per entry in features.t
 }
 
 .feature {
-  background: var(--elevated);
+  background: var(--surface) var(--panel);
   border: 1px solid var(--border);
-  border-top: 2px solid var(--accent);
-  border-radius: var(--r);
+  border-radius: 18px;
   padding: 24px;
+  box-shadow: var(--sheen), 0 16px 36px -24px rgb(36 53 89 / 32%);
 }
 .title { font-size: 1rem; color: var(--text); margin-bottom: 6px; }
 .text  { font-size: 0.9rem; margin-bottom: 0; }
@@ -588,13 +588,14 @@ The pricing section: a heading and one card per entry in plans.ts, printed at bu
   flex-direction: column;
   gap: 12px;
   padding: 28px 24px;
-  background: var(--elevated);
+  background: var(--surface) var(--panel);
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: 20px;
+  box-shadow: var(--sheen), var(--shadow);
 }
 .plan[data-featured="true"] {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent-dim);
+  box-shadow: var(--sheen), 0 0 0 1px var(--accent-dim), var(--shadow);
 }
 
 .badge {
@@ -768,9 +769,10 @@ The testimonials section: a heading and one figure per entry in quotes.ts, print
   gap: 16px;
   margin: 0;
   padding: 24px;
-  background: var(--elevated);
+  background: var(--surface) var(--panel);
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: 18px;
+  box-shadow: var(--sheen), 0 16px 36px -24px rgb(36 53 89 / 32%);
 }
 .words { margin: 0; flex: 1; }
 .words p { margin: 0; color: var(--text); }
@@ -919,7 +921,8 @@ The head tags every page shares: charset, viewport, icons, and the global styles
 -->
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#18191b" />
+<meta name="theme-color" content="#e9edf3" />
+<meta name="theme-color" content="#11151c" media="(prefers-color-scheme: dark)" />
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
@@ -1130,9 +1133,9 @@ The sign-up section: a heading and the waitlist form. Its script checks the emai
   font-size: 1rem;
 }
 .field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.field input[aria-invalid="true"] { border-color: #ff8f8f; }
+.field input[aria-invalid="true"] { border-color: var(--error); }
 
-.error  { margin: 0 0 16px; color: #ff8f8f; }
+.error  { margin: 0 0 16px; color: var(--error); }
 .status { margin: 16px 0 0; color: var(--accent); }
 .status:empty { display: none; }
 </style>
