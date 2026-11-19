@@ -413,6 +413,7 @@ export const STYLES_CSS = `/* ── Design system ── */
   --accent-hover: light-dark(#394da9, #c8d2ff);
   --accent-dim:   light-dark(#edf0fc, #30394f);
   --on-accent:    light-dark(#fff, #202b4a);
+  --error:        light-dark(#a32e42, #ffabb7);
   --text:         light-dark(#293247, #edf0f7);
   --text-muted:   light-dark(#616c80, #b3bbcb);
   --in-oklab: ;
@@ -436,6 +437,7 @@ body {
   line-height: 1.7;
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -568,6 +570,7 @@ export const APPLE_TOUCH_ICON_PNG_B64 = `iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA
 /** Head component: charset, viewport, favicon, CSS link. */
 export const SITE_META_HTML = `<meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light dark" />
 <meta name="description" content="A fast, modern website built with Bascik." />
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
@@ -953,6 +956,7 @@ describe('site-meta component', () => {
     const html = await readFile(path, 'utf8');
     expect(html).toContain('charset="UTF-8"');
     expect(html).toContain('name="viewport"');
+    expect(html).toContain('<meta name="color-scheme" content="light dark"');
     expect(html).toContain('name="description"');
     expect(html).toContain('favicon.ico');
     expect(html).toContain('favicon-32x32.png');
