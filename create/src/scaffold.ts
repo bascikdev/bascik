@@ -338,7 +338,8 @@ test.describe('Starter App E2E Tests', () => {
         await page.goto('/');
         const card = page.getByTestId('feature-zero-runtime');
         await expect(card).toBeVisible();
-        expect(await card.evaluate((element) => getComputedStyle(element).backgroundImage)).not.toBe('none');
+        expect(await card.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+        expect(await card.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe('1px');
         expect(await card.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe('none');
         expect(await page.locator('body').evaluate((element) => element.scrollWidth <= innerWidth)).toBe(true);
       }
@@ -408,30 +409,29 @@ export const STYLES_CSS = `/* ── Design system ── */
 
 :root {
   color-scheme: light dark;
-  --bg:           light-dark(#e9edf3, #11151c);
-  --surface:      light-dark(#f8fafd, #222833);
-  --surface-top:  light-dark(#fff, #363e4c);
-  --elevated:     light-dark(#f0f3f8, #282f3b);
-  --border:       light-dark(#d6deea, #404957);
-  --border-hover: light-dark(#aab7dd, #7a8dbb);
-  --accent:       light-dark(#475cbd, #b1bfff);
-  --accent-hover: light-dark(#394da9, #c8d2ff);
-  --accent-dim:   light-dark(#edf0fc, #30394f);
-  --on-accent:    light-dark(#fff, #202b4a);
-  --error:        light-dark(#a32e42, #ffabb7);
-  --text:         light-dark(#293247, #edf0f7);
-  --text-muted:   light-dark(#616c80, #b3bbcb);
-  --in-oklab: ;
-  --panel: linear-gradient(155deg var(--in-oklab), var(--surface-top), var(--surface) 72%);
-  --sheen: inset 0 1px 0 light-dark(rgb(255 255 255 / 100%), rgb(255 255 255 / 15%));
-  --shadow: 0 24px 48px -16px light-dark(rgb(36 53 89 / 24%), rgb(0 0 0 / 55%)),
-    0 6px 12px -4px light-dark(rgb(36 53 89 / 12%), rgb(0 0 0 / 30%));
+  --bg:           light-dark(#f4f2eb, #141712);
+  --surface:      light-dark(#fffefa, #1d211b);
+  --surface-top:  light-dark(#fff, #262b24);
+  --elevated:     light-dark(#ebe8df, #252a23);
+  --border:       light-dark(#d8d4c9, #3c4439);
+  --border-hover: light-dark(#9ca391, #788873);
+  --accent:       light-dark(#42664d, #a4c99e);
+  --accent-hover: light-dark(#35563f, #b8d7b2);
+  --accent-dim:   light-dark(#e7eee5, #263128);
+  --on-accent:    light-dark(#fffefa, #172018);
+  --error:        light-dark(#a33b32, #ffaaa0);
+  --text:         light-dark(#252820, #edf1e8);
+  --text-muted:   light-dark(#66695f, #b5bdb1);
+  --panel: none;
+  --sheen: none;
+  --shadow: 0 18px 40px -32px light-dark(rgb(35 43 34 / 32%), rgb(0 0 0 / 48%));
   --mono:         'SF Mono','Fira Code',Menlo,monospace;
-  --r:            22px;
-  --r-sm:         10px;
+  --r:            16px;
+  --r-sm:         8px;
 }
-@supports (background: linear-gradient(in oklab, #fff, #000)) {
-  :root { --in-oklab: in oklab; }
+
+@supports (interpolate-size: allow-keywords) {
+  :root { interpolate-size: allow-keywords; }
 }
 
 body {
@@ -451,13 +451,13 @@ main { flex: 1; }
 
 /* ── Layout ── */
 .container { max-width: 1200px; margin: 0 auto; padding: 0 28px; }
-.section    { padding: 72px 0; }
+.section    { padding: 76px 0; }
 .section + .section { border-top: 1px solid var(--border); }
 
 /* ── Typography ── */
-h1, h2, h3, h4 { margin-top: 0; line-height: 1.25; font-weight: 650; letter-spacing: -0.025em; }
-h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin-bottom: 16px; }
-h2 { font-size: clamp(1.4rem, 3vw, 2rem);  margin-bottom: 12px; }
+h1, h2, h3, h4 { margin-top: 0; line-height: 1.2; font-weight: 650; letter-spacing: -0.035em; }
+h1 { font-size: clamp(2.4rem, 6vw, 4.5rem); margin-bottom: 18px; }
+h2 { font-size: clamp(1.5rem, 3vw, 2.2rem); margin-bottom: 14px; }
 h3 { font-size: 1.05rem; margin-bottom: 6px; }
 p  { margin-top: 0; color: var(--text-muted); }
 
@@ -479,56 +479,58 @@ code {
 /* ── Buttons ── */
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
-  min-height: 44px; padding: 10px 22px; border: 1px solid transparent; border-radius: var(--r-sm);
+  min-height: 44px; padding: 10px 20px; border: 1px solid transparent; border-radius: var(--r-sm);
   font-size: 0.9rem; font-weight: 600; cursor: pointer;
   text-decoration: none; line-height: 1.3;
 }
-.btn-primary { background: var(--accent); color: var(--on-accent, #18191b); }
-.btn-ghost   { background: var(--surface) var(--panel); color: var(--text); border-color: var(--border); }
+.btn-primary { background: var(--accent); color: var(--on-accent); }
+.btn-ghost   { background: var(--surface); color: var(--text); border-color: var(--border); }
 @media (hover: hover) {
-  .btn-primary:hover { background: var(--accent-hover, var(--accent)); color: var(--on-accent, #18191b); }
+  .btn-primary:hover { background: var(--accent-hover, var(--accent)); color: var(--on-accent); }
   .btn-ghost:hover   { border-color: var(--accent); color: var(--accent); }
 }
 
 /* ── Cards ── */
 .card {
-  background: var(--surface) var(--panel); border: 1px solid var(--border);
+  background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r); padding: 24px;
-  box-shadow: var(--sheen), var(--shadow);
+  box-shadow: var(--shadow);
 }
 .card:hover { border-color: var(--border-hover); }
 .card h3 { margin-top: 0; }
 .card p  { margin-bottom: 0; }
 
 /* ── Grid ── */
-.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 20px; }
-.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 20px; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 24px; }
 
 /* ── Callout ── */
 .callout {
   background: var(--accent-dim); border: 1px solid var(--border);
-  border-radius: var(--r); padding: 16px 20px; margin: 20px 0;
+  border-radius: var(--r); padding: 18px 22px; margin: 24px 0;
 }
 .callout p { color: var(--text); margin: 0; }
 
 /* ── Hero ── */
-.hero { padding: 96px 0 72px; text-align: center; }
+.hero { padding: 112px 0 88px; text-align: left; }
+.hero > .container { max-width: 920px; }
 .hero h1 span { color: var(--accent); }
-.hero > .container > p { font-size: 1.1rem; max-width: 520px; margin: 0 auto 36px; }
-.hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.hero > .container > p { font-size: 1.15rem; max-width: 58ch; margin: 0 0 32px; }
+.hero-actions { display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap; }
 
 /* ── Utilities ── */
 .text-accent  { color: var(--accent); }
 .text-muted   { color: var(--text-muted); }
 .section-label {
   font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .1em; color: var(--accent); margin-bottom: 8px;
+  letter-spacing: .12em; color: var(--accent); margin-bottom: 10px;
 }
 .page-intro { font-size: 1.05rem; color: var(--text-muted); max-width: 600px; margin-bottom: 40px; }
 .mt-28 { margin-top: 28px; }
 .mt-32 { margin-top: 32px; }
 .mt-40 { margin-top: 40px; }
 .counter-row { display: flex; gap: 48px; flex-wrap: wrap; margin-top: 24px; }
+.theme-switching * { transition: none !important; }
 
 /* ── 404 ── */
 .not-found { text-align: center; }
@@ -544,25 +546,27 @@ code {
 
 /* ── Responsive ── */
 @media (max-width: 640px) {
-  .section { padding: 48px 0; }
-  .hero    { padding: 64px 0 48px; }
-  .container { padding: 0 16px; }
+  .section { padding: 52px 0; }
+  .hero    { padding: 72px 0 56px; }
+  .container { padding: 0 18px; }
+  .grid-2, .grid-3 { gap: 18px; }
 }
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
-  a, button, .card {
-    transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
-  }
+  a, button, .card { transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease; }
+  button, .btn { transition: scale 150ms ease-out; }
+  button:active, .btn:active { scale: 0.97; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
 }
 `;
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
 export const FAVICON_SVG = `<svg viewBox="0 0 32 32" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
-  <polygon points="9,2 30,2 23,30 2,30" fill="#d3ff8d" />
-  <rect x="15" y="9" width="2" height="14" rx="1" fill="#0e0f10">
-    <animate attributeName="opacity" values="0.9;0.9;0;0" keyTimes="0;0.49;0.5;1" dur="1.1s" repeatCount="indefinite" />
-  </rect>
+  <polygon points="9,2 30,2 23,30 2,30" fill="#42664d" />
+  <rect x="15" y="9" width="2" height="14" rx="1" fill="#fffefa" />
 </svg>
 `;
 
@@ -774,14 +778,14 @@ ${SITE_FOOTER_CSS}</style>
 `;
 
 export const FEATURE_CARD_CSS = `article {
-  background: var(--surface) var(--panel);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r);
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: var(--sheen), var(--shadow);
+  box-shadow: var(--shadow);
 }
 article:hover {
   border-color: var(--border-hover);
