@@ -952,8 +952,19 @@ describe("contact-form component", () => {
 `;
 
 export const PROJECT_CARD_HTML = `<style>
-  article { display: flex; flex-direction: column; gap: 14px; height: 100%; }
-  .visual { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 6px; background: var(--elevated); }
+  article {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    height: 100%;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--surface) var(--panel);
+    box-shadow: var(--sheen), 0 18px 38px -26px rgb(36 53 89 / 38%);
+  }
+  .visual { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 12px; background: var(--elevated); }
   .visual[data-accent="amber"] { background: #9a5a18; }
   .visual[data-accent="tide"] { background: #2a6584; }
   .visual[data-accent="moss"] { background: #4f6b3a; }
@@ -1032,8 +1043,8 @@ describe("featured-projects component", () => {
 `;
 
 export const PROJECT_DETAIL_HTML = `<style>
-  .detail { display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr); gap: 48px; align-items: start; }
-  .visual { aspect-ratio: 4 / 5; border-radius: 6px; background: var(--elevated); }
+  .detail { display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr); gap: 48px; align-items: start; padding: clamp(20px, 4vw, 36px); border: 1px solid var(--border); border-radius: 22px; background: var(--surface) var(--panel); box-shadow: var(--sheen), var(--shadow); }
+  .visual { aspect-ratio: 4 / 5; border-radius: 14px; background: var(--elevated); }
   .visual[data-accent="amber"] { background: #9a5a18; }
   .visual[data-accent="tide"] { background: #2a6584; }
   .visual[data-accent="moss"] { background: #4f6b3a; }
