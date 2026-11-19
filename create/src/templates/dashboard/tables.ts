@@ -536,10 +536,10 @@ const row = (
 });
 
 const ROWS: RowData[] = [
-  row("BK-1002", "2026-10-02", "Noor Haddad", 4200, "Shipped"),
-  row("BK-1010", "2026-10-09", "avery stone", 1650, "Paid"),
-  row("BK-1001", "2026-10-02", "Jun Tanaka", 990, "Refunded"),
-  row("BK-1003", "2026-10-05", "Avery Stone", 10000, "Shipped"),
+  row("IMSA-1002", "2026-10-02", "Hurley Haywood", 4200, "Shipped"),
+  row("IMSA-1010", "2026-10-09", "jordan taylor", 1650, "Paid"),
+  row("IMSA-1001", "2026-10-02", "Paul Newman", 990, "Refunded"),
+  row("IMSA-1003", "2026-10-05", "Ross Bentley", 10000, "Shipped"),
 ];
 
 const state = (changes: Partial<TableState> = {}): TableState => ({
@@ -623,52 +623,52 @@ describe("sortableHead", () => {
 describe("compareRows", () => {
   it("sorts each column both ways", () => {
     expect(ordersOf({ key: "total", direction: "ascending" })).toEqual([
-      "BK-1001",
-      "BK-1010",
-      "BK-1002",
-      "BK-1003",
+      "IMSA-1001",
+      "IMSA-1010",
+      "IMSA-1002",
+      "IMSA-1003",
     ]);
     expect(ordersOf({ key: "total", direction: "descending" })).toEqual([
-      "BK-1003",
-      "BK-1002",
-      "BK-1010",
-      "BK-1001",
+      "IMSA-1003",
+      "IMSA-1002",
+      "IMSA-1010",
+      "IMSA-1001",
     ]);
     expect(ordersOf({ key: "order", direction: "ascending" })).toEqual([
-      "BK-1001",
-      "BK-1002",
-      "BK-1003",
-      "BK-1010",
+      "IMSA-1001",
+      "IMSA-1002",
+      "IMSA-1003",
+      "IMSA-1010",
     ]);
     expect(ordersOf({ key: "status", direction: "ascending" })[0]).toBe(
-      "BK-1010",
+      "IMSA-1010",
     );
   });
 
   it("sorts a total as a number, not as text", () => {
     // As text "10000" would come before "990".
     expect(ordersOf({ key: "total", direction: "ascending" })[0]).toBe(
-      "BK-1001",
+      "IMSA-1001",
     );
   });
 
   it("breaks a tie by order number, in the direction of the sort", () => {
     expect(
       ordersOf({ key: "date", direction: "ascending" }).slice(0, 2),
-    ).toEqual(["BK-1001", "BK-1002"]);
+    ).toEqual(["IMSA-1001", "IMSA-1002"]);
     expect(
       ordersOf({ key: "date", direction: "descending" }).slice(-2),
-    ).toEqual(["BK-1002", "BK-1001"]);
+    ).toEqual(["IMSA-1002", "IMSA-1001"]);
   });
 
   it("ignores letter case in names", () => {
     expect(
       ordersOf({ key: "customer", direction: "ascending" }).slice(0, 2),
-    ).toEqual(["BK-1003", "BK-1010"]);
+    ).toEqual(["IMSA-1003", "IMSA-1010"]);
   });
 
   it("misuse: a total that is not a number sorts as zero and never breaks the order", () => {
-    const rows = [row("BK-2", "2026-10-01", "A", Number.NaN, "Paid"), ROWS[0]];
+    const rows = [row("IMSA-2", "2026-10-01", "A", Number.NaN, "Paid"), ROWS[0]];
     expect(compareRows(rows[0], rows[1], "total", "ascending")).toBeLessThan(0);
     expect(
       Number.isNaN(compareRows(rows[0], rows[0], "total", "ascending")),
@@ -689,10 +689,10 @@ describe("nextDirection", () => {
 
 describe("matches", () => {
   it("filters by text without regard to case or surrounding spaces, and by status", () => {
-    expect(ordersOf({ query: "  AVERY " })).toEqual(["BK-1010", "BK-1003"]);
-    expect(ordersOf({ status: "Shipped" })).toEqual(["BK-1003", "BK-1002"]);
-    expect(ordersOf({ query: "avery", status: "Shipped" })).toEqual([
-      "BK-1003",
+    expect(ordersOf({ query: "  JORDAN " })).toEqual(["IMSA-1010"]);
+    expect(ordersOf({ status: "Shipped" })).toEqual(["IMSA-1003", "IMSA-1002"]);
+    expect(ordersOf({ query: "ross", status: "Shipped" })).toEqual([
+      "IMSA-1003",
     ]);
     expect(matches(ROWS[0], "", "")).toBe(true);
   });
@@ -705,7 +705,7 @@ describe("matches", () => {
 
 describe("paging", () => {
   const many = Array.from({ length: 23 }, (_, index) =>
-    row(\`BK-\${2000 + index}\`, "2026-10-01", "Avery Stone", index, "Paid"),
+    row(\`IMSA-\${2000 + index}\`, "2026-10-01", "Jordan Taylor", index, "Paid"),
   );
 
   it("counts pages, with one page for an empty table", () => {
@@ -733,7 +733,7 @@ describe("paging", () => {
     expect(viewOf(many, state({ page: 99 })).page).toBe(3);
     expect(viewOf(many, state({ page: Number.NaN })).page).toBe(1);
     // Filtering down to fewer pages brings the page back in range.
-    expect(viewOf(many, state({ page: 3, query: "bk-2001" })).page).toBe(1);
+    expect(viewOf(many, state({ page: 3, query: "imsa-2001" })).page).toBe(1);
   });
 
   it("says which rows are shown, and that a filter is on", () => {
@@ -744,7 +744,7 @@ describe("paging", () => {
       "Showing 21 to 23 of 23 orders",
     );
     expect(
-      summaryOf(viewOf(many, state({ query: "bk-200" })), many.length),
+      summaryOf(viewOf(many, state({ query: "imsa-200" })), many.length),
     ).toBe("Showing 1 to 10 of 10 orders (filtered from 23)");
     expect(
       summaryOf(viewOf(many, state({ query: "nothing" })), many.length),

@@ -85,6 +85,12 @@ export const DASHBOARD_TEMPLATE: StarterTemplate = {
   name: "dashboard",
   summary:
     "A dashboard: stat tiles, SVG charts, a sortable data table, and a settings page",
+  scripts: {
+    "db:seed": "node scripts/seed-database.ts",
+    predev: "npm run db:seed",
+    prebuild: "npm run db:seed",
+  },
+  gitignoreEntries: ["data/racing.db"],
   directories: dashboardDirectories,
   files: dashboardFiles,
 };

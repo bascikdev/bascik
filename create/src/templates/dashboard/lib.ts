@@ -27,6 +27,275 @@ export default defineConfig({
   ],
 
   [
+    "data/racing.sql",
+    `PRAGMA foreign_keys = ON;
+
+DROP TABLE IF EXISTS order_lines;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS customers;
+DROP TABLE IF EXISTS cars;
+
+CREATE TABLE cars (
+  slug TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  author TEXT NOT NULL,
+  price_cents INTEGER NOT NULL,
+  stock INTEGER NOT NULL,
+  preorder INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE customers (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL
+);
+
+CREATE TABLE orders (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL,
+  customer TEXT NOT NULL,
+  total_cents INTEGER NOT NULL,
+  status TEXT NOT NULL
+);
+
+CREATE TABLE order_lines (
+  order_id TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  quantity INTEGER NOT NULL,
+  FOREIGN KEY(order_id) REFERENCES orders(id),
+  FOREIGN KEY(slug) REFERENCES cars(slug)
+);
+
+INSERT INTO cars (slug, title, author, price_cents, stock, preorder) VALUES
+  ('porsche-917k', 'Porsche 917K', 'Hurley Haywood', 189900, 42, 0),
+  ('porsche-935-moby-dick', 'Porsche 935 Moby Dick', 'Jacky Ickx', 245000, 6, 0),
+  ('porsche-962c', 'Porsche 962C', 'Vern Schuppan', 320000, 17, 0),
+  ('porsche-963', 'Porsche 963', 'Jordan Taylor', 165000, 58, 0),
+  ('porsche-911-carrera-rsr', 'Porsche 911 Carrera RSR', 'Paul Newman', 210000, 3, 0),
+  ('porsche-911-rsr', 'Porsche 911 RSR', 'Ross Bentley', 149900, 25, 0),
+  ('porsche-356a', 'Porsche 356A', 'Stirling Moss', 279900, 11, 0),
+  ('porsche-906', 'Porsche 906 Carrera 6', 'Jo Siffert', 349500, 8, 0),
+  ('porsche-908', 'Porsche 908', 'Brian Redman', 197500, 31, 0),
+  ('porsche-910', 'Porsche 910', 'Rolf Stommelen', 225000, 14, 0),
+  ('porsche-718-rsk', 'Porsche 718 RSK', 'Hans Herrmann', 129900, 64, 0),
+  ('porsche-718-rs-laguna', 'Porsche 718 RS Laguna Seca', 'Jean Behra', 260000, 0, 1);
+
+INSERT INTO customers (id, name) VALUES
+  (1, 'Hurley Haywood'),
+  (2, 'Paul Newman'),
+  (3, 'Jordan Taylor'),
+  (4, 'Ross Bentley'),
+  (5, 'Jacky Ickx'),
+  (6, 'Brian Redman'),
+  (7, 'Jo Siffert'),
+  (8, 'Hans Herrmann'),
+  (9, 'Vern Schuppan'),
+  (10, 'Rolf Stommelen'),
+  (11, 'Stirling Moss'),
+  (12, 'Jean Behra');
+
+WITH RECURSIVE seq(i) AS (
+  VALUES(1)
+  UNION ALL
+  SELECT i + 1 FROM seq WHERE i < 160
+)
+INSERT INTO orders (id, date, customer, total_cents, status)
+SELECT
+  'IMSA-' || (1000 + i),
+  date('2026-10-31', '-' || CASE WHEN i <= 80 THEN (i - 1) % 30 ELSE 30 + ((i - 81) % 30) END || ' days'),
+  (SELECT name FROM customers WHERE id = ((i - 1) % 12) + 1),
+  0,
+  CASE
+    WHEN (i - 1) % 60 = 0 THEN 'Paid'
+    WHEN (i - 1) % 60 <= 2 AND i % 2 = 0 THEN 'Processing'
+    WHEN i % 17 = 0 THEN 'Refunded'
+    ELSE 'Shipped'
+  END
+FROM seq;
+
+WITH RECURSIVE seq(i) AS (
+  VALUES(1)
+  UNION ALL
+  SELECT i + 1 FROM seq WHERE i < 160
+)
+INSERT INTO order_lines (order_id, slug, quantity)
+SELECT 'IMSA-' || (1000 + i),
+       (SELECT slug FROM cars WHERE cars.rowid = ((i * 7) % 11) + 1),
+       1 + (i % 2)
+FROM seq;
+
+INSERT INTO order_lines (order_id, slug, quantity)
+SELECT 'IMSA-' || (1000 + i),
+       (SELECT slug FROM cars WHERE cars.rowid = ((i * 5) % 11) + 1),
+       1
+FROM (WITH RECURSIVE seq(i) AS (VALUES(1) UNION ALL SELECT i + 1 FROM seq WHERE i < 160) SELECT i FROM seq)
+WHERE i % 5 = 0;
+
+UPDATE orders
+SET total_cents = (
+  SELECT COALESCE(SUM(cars.price_cents * order_lines.quantity), 0)
+  FROM order_lines
+  JOIN cars ON cars.slug = order_lines.slug
+  WHERE order_lines.order_id = orders.id
+);
+`,
+  ],
+
+  [
+    "scripts/seed-database.ts",
+    `import { readFile } from "node:fs/promises";
+import { rm } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
+
+const databasePath = new URL("../data/racing.db", import.meta.url);
+const sqlPath = new URL("../data/racing.sql", import.meta.url);
+
+await rm(databasePath, { recursive: true, force: true }).catch((error) => {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+});
+
+const database = new DatabaseSync(databasePath);
+try {
+  database.exec(await readFile(sqlPath, "utf8"));
+  console.log("Seeded data/racing.db");
+} finally {
+  database.close();
+}
+`,
+  ],
+
+  [
+    "src/lib/racing-db.ts",
+    `export interface RacingTitle {
+  slug: string;
+  title: string;
+  author: string;
+  priceCents: number;
+  stock: number;
+  preorder?: boolean;
+}
+
+export interface RacingOrder {
+  id: string;
+  date: string;
+  customer: string;
+  lines: { slug: string; quantity: number }[];
+  totalCents: number;
+  status: "Paid" | "Processing" | "Shipped" | "Refunded";
+}
+
+const FALLBACK_TITLES: readonly RacingTitle[] = [
+  { slug: "porsche-917k", title: "Porsche 917K", author: "Hurley Haywood", priceCents: 189900, stock: 42 },
+  { slug: "porsche-935-moby-dick", title: "Porsche 935 Moby Dick", author: "Jacky Ickx", priceCents: 245000, stock: 6 },
+  { slug: "porsche-962c", title: "Porsche 962C", author: "Vern Schuppan", priceCents: 320000, stock: 17 },
+  { slug: "porsche-963", title: "Porsche 963", author: "Jordan Taylor", priceCents: 165000, stock: 58 },
+  { slug: "porsche-911-carrera-rsr", title: "Porsche 911 Carrera RSR", author: "Paul Newman", priceCents: 210000, stock: 3 },
+  { slug: "porsche-911-rsr", title: "Porsche 911 RSR", author: "Ross Bentley", priceCents: 149900, stock: 25 },
+  { slug: "porsche-356a", title: "Porsche 356A", author: "Stirling Moss", priceCents: 279900, stock: 11 },
+  { slug: "porsche-906", title: "Porsche 906 Carrera 6", author: "Jo Siffert", priceCents: 349500, stock: 8 },
+  { slug: "porsche-908", title: "Porsche 908", author: "Brian Redman", priceCents: 197500, stock: 31 },
+  { slug: "porsche-910", title: "Porsche 910", author: "Rolf Stommelen", priceCents: 225000, stock: 14 },
+  { slug: "porsche-718-rsk", title: "Porsche 718 RSK", author: "Hans Herrmann", priceCents: 129900, stock: 64 },
+  { slug: "porsche-718-rs-laguna", title: "Porsche 718 RS Laguna Seca", author: "Jean Behra", priceCents: 260000, stock: 0, preorder: true },
+];
+
+const CUSTOMERS = [
+  "Hurley Haywood", "Paul Newman", "Jordan Taylor", "Ross Bentley",
+  "Jacky Ickx", "Brian Redman", "Jo Siffert", "Hans Herrmann",
+  "Vern Schuppan", "Rolf Stommelen", "Stirling Moss", "Jean Behra",
+];
+
+const addDays = (date: string, offset: number): string =>
+  new Date(Date.parse(date + "T00:00:00Z") - offset * 86_400_000).toISOString().slice(0, 10);
+
+const FALLBACK_ORDERS: readonly RacingOrder[] = Array.from({ length: 160 }, (_, index) => {
+  const i = index + 1;
+  const offset = i <= 80 ? (i - 1) % 30 : 30 + ((i - 81) % 30);
+  const age = offset;
+  const status = age === 0
+    ? "Paid"
+    : age <= 2 && i % 2 === 0
+      ? "Processing"
+      : i % 17 === 0
+        ? "Refunded"
+        : "Shipped";
+  const title = FALLBACK_TITLES[(i * 7) % 11];
+  const quantity = 1 + (i % 2);
+  const lines = [{ slug: title.slug, quantity }];
+  if (i % 5 === 0) {
+    const second = FALLBACK_TITLES[(i * 5) % 11];
+    lines.push({ slug: second.slug, quantity: 1 });
+  }
+  return {
+    id: "IMSA-" + (1000 + i),
+    date: addDays("2026-10-31", offset),
+    customer: CUSTOMERS[(i - 1) % CUSTOMERS.length],
+    lines,
+    totalCents: lines.reduce((sum, line) => {
+      const car = FALLBACK_TITLES.find((candidate) => candidate.slug === line.slug);
+      return sum + (car?.priceCents ?? 0) * line.quantity;
+    }, 0),
+    status,
+  };
+}).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+
+interface SqliteModule {
+  DatabaseSync: new (path: URL) => {
+    exec(sql: string): unknown;
+    prepare(sql: string): {
+      all(...params: unknown[]): unknown[];
+    };
+    close(): void;
+  };
+}
+
+let TITLES_RESULT: readonly RacingTitle[] = FALLBACK_TITLES;
+let ORDERS_RESULT: readonly RacingOrder[] = FALLBACK_ORDERS;
+
+try {
+  if (typeof process !== "undefined" && typeof process.getBuiltinModule === "function") {
+    const sqlite = process.getBuiltinModule("node:sqlite") as SqliteModule | undefined;
+    if (sqlite?.DatabaseSync) {
+      const databaseUrl = new URL("../../data/racing.db", import.meta.url);
+      const sqlUrl = new URL("../../data/racing.sql", import.meta.url);
+      const fs = process.getBuiltinModule("node:fs") as {
+        existsSync(path: URL): boolean;
+        readFileSync(path: URL, encoding: "utf8"): string;
+      };
+      if (!fs.existsSync(databaseUrl)) {
+        const seedDatabase = new sqlite.DatabaseSync(databaseUrl);
+        try {
+          seedDatabase.exec(fs.readFileSync(sqlUrl, "utf8"));
+        } finally {
+          seedDatabase.close();
+        }
+      }
+      const database = new sqlite.DatabaseSync(databaseUrl);
+      try {
+        TITLES_RESULT = (database.prepare("SELECT slug, title, author, price_cents AS priceCents, stock, preorder FROM cars ORDER BY rowid").all() as Array<RacingTitle & { preorder: number }>).map((row) => ({ ...row, preorder: row.preorder === 1 }));
+        ORDERS_RESULT = (database.prepare("SELECT id, date, customer, status FROM orders ORDER BY date DESC, id DESC").all() as Array<Omit<RacingOrder, "lines" | "totalCents">>).map((order) => {
+          const lines = database.prepare("SELECT slug, quantity FROM order_lines WHERE order_id = ? ORDER BY slug").all(order.id) as { slug: string; quantity: number }[];
+          const totalCents = lines.reduce((sum, line) => {
+            const title = TITLES_RESULT.find((candidate) => candidate.slug === line.slug);
+            return sum + (title?.priceCents ?? 0) * line.quantity;
+          }, 0);
+          return { ...order, lines, totalCents };
+        });
+      } finally {
+        database.close();
+      }
+    }
+  }
+} catch {
+  TITLES_RESULT = FALLBACK_TITLES;
+  ORDERS_RESULT = FALLBACK_ORDERS;
+}
+
+export const TITLES: readonly RacingTitle[] = TITLES_RESULT;
+export const ORDERS: readonly RacingOrder[] = ORDERS_RESULT;
+`,
+  ],
+
+  [
     "src/lib/shop.ts",
     `/**
  * The bookshop's data: titles, and the orders placed for them.
@@ -36,6 +305,8 @@ export default defineConfig({
  * today. To show real data, replace \`ORDERS\` and \`TITLES\` with what your
  * database or API returns and keep the functions below.
  */
+
+import { ORDERS as DATABASE_ORDERS, TITLES as DATABASE_TITLES } from "./racing-db.ts";
 
 export interface Title {
   /** The URL segment of the title's page: /titles/<slug>. */
@@ -79,108 +350,7 @@ export const PERIOD_DAYS = 30;
 /** At or below this many copies a title is low on stock. */
 export const LOW_STOCK = 8;
 
-export const TITLES: readonly Title[] = [
-  {
-    slug: "the-lighthouse-ledger",
-    title: "The Lighthouse Ledger",
-    author: "Mara Ellison",
-    priceCents: 1899,
-    stock: 42,
-  },
-  {
-    slug: "salt-cedar-and-smoke",
-    title: "Salt, Cedar, and Smoke",
-    author: "Tobias Wren",
-    priceCents: 2450,
-    stock: 6,
-  },
-  {
-    slug: "a-field-guide-to-quiet-rivers",
-    title: "A Field Guide to Quiet Rivers",
-    author: "Irene Calloway",
-    priceCents: 3200,
-    stock: 17,
-  },
-  {
-    slug: "twelve-ways-to-fold-a-map",
-    title: "Twelve Ways to Fold a Map",
-    author: "Hoang Minh Chau",
-    priceCents: 1650,
-    stock: 58,
-  },
-  {
-    slug: "the-orchard-at-half-past-nine",
-    title: "The Orchard at Half Past Nine",
-    author: "Mara Ellison",
-    priceCents: 2100,
-    stock: 3,
-  },
-  {
-    slug: "small-engines-of-kindness",
-    title: "Small Engines of Kindness",
-    author: "Priya Raman",
-    priceCents: 1499,
-    stock: 25,
-  },
-  {
-    slug: "letters-to-a-winter-garden",
-    title: "Letters to a Winter Garden",
-    author: "Irene Calloway",
-    priceCents: 2799,
-    stock: 11,
-  },
-  {
-    slug: "the-night-bakers-almanac",
-    title: "The Night Baker's Almanac",
-    author: "Tobias Wren",
-    priceCents: 3495,
-    stock: 8,
-  },
-  {
-    slug: "how-to-borrow-a-mountain",
-    title: "How to Borrow a Mountain",
-    author: "Lena Abara",
-    priceCents: 1975,
-    stock: 31,
-  },
-  {
-    slug: "beneath-the-understory",
-    title: "Beneath the Understory",
-    author: "Priya Raman",
-    priceCents: 2250,
-    stock: 14,
-  },
-  {
-    slug: "the-tin-kite-society",
-    title: "The Tin Kite Society",
-    author: "Lena Abara",
-    priceCents: 1299,
-    stock: 64,
-  },
-  {
-    slug: "harbor-songs-for-late-arrivals",
-    title: "Harbor Songs for Late Arrivals",
-    author: "Hoang Minh Chau",
-    priceCents: 2600,
-    stock: 0,
-    preorder: true,
-  },
-];
-
-const CUSTOMERS: readonly string[] = [
-  "Avery Stone",
-  "Noor Haddad",
-  "Jun Tanaka",
-  "Sofia Marin",
-  "Elias Brandt",
-  "Camille Roy",
-  "Dara Osei",
-  "Mateo Silva",
-  "Greta Lind",
-  "Rohan Mehta",
-  "Yuki Arai",
-  "Hana Kovac",
-];
+// Racing inventory and entries are loaded from data/racing.db through racing-db.ts.
 
 /** Orders per weekday, Sunday first: the shop is busier at the weekend. */
 const WEEKDAY_ORDERS: readonly number[] = [3, 1, 2, 2, 2, 3, 3];
@@ -241,49 +411,17 @@ const statusFor = (age: number, random: () => number): OrderStatus => {
  * arguments always return the same orders.
  */
 export function generateOrders(
-  seed = 20261031,
+  _seed = 20261031,
   days = PERIOD_DAYS * 2,
   end = PERIOD_END,
 ): Order[] {
-  const random = seededRandom(seed);
-  const onSale = TITLES.filter((title) => !title.preorder);
-  const orders: Order[] = [];
-  let number = 1000;
-  for (const date of datesEnding(end, days)) {
-    const weekday = new Date(toTime(date)).getUTCDay();
-    const count = WEEKDAY_ORDERS[weekday] + Math.floor(random() * 2);
-    const age = Math.round((toTime(end) - toTime(date)) / DAY_MS);
-    for (let index = 0; index < count; index++) {
-      const lines: OrderLine[] = [];
-      const lineCount = 1 + Math.floor(random() * 3);
-      while (lines.length < lineCount) {
-        // Squaring the roll favors the first titles, so some sell better than others.
-        const title = onSale[Math.floor(random() ** 2 * onSale.length)];
-        if (lines.some((line) => line.slug === title.slug)) continue;
-        lines.push({
-          slug: title.slug,
-          quantity: 1 + Math.floor(random() * 2),
-        });
-      }
-      number += 1;
-      orders.push({
-        id: \`BK-\${number}\`,
-        date,
-        customer: pick(CUSTOMERS, random),
-        lines,
-        totalCents: lines.reduce(
-          (sum, line) => sum + titleNamed(line.slug).priceCents * line.quantity,
-          0,
-        ),
-        status: statusFor(age, random),
-      });
-    }
-  }
-  return orders.reverse();
+  const from = addDays(end, 1 - days);
+  return ORDERS.filter((order) => order.date >= from && order.date <= end);
 }
 
 /** Every order of the last two periods, newest first. */
-export const ORDERS: readonly Order[] = generateOrders();
+export const TITLES: readonly Title[] = DATABASE_TITLES as readonly Title[];
+export const ORDERS: readonly Order[] = DATABASE_ORDERS as readonly Order[];
 
 // ─── Reading the data ─────────────────────────────────────────────────────────
 
@@ -496,7 +634,7 @@ describe("the seeded generator", () => {
     expect(ORDERS.length).toBeGreaterThan(50);
     expect(new Set(ORDERS.map((order) => order.id)).size).toBe(ORDERS.length);
     for (const order of ORDERS) {
-      expect(order.id).toMatch(/^BK-\\d+$/);
+      expect(order.id).toMatch(/^IMSA-\\d+$/);
       expect(order.date >= first && order.date <= PERIOD_END).toBe(true);
       expect(ORDER_STATUSES).toContain(order.status);
       expect(order.lines.length).toBeGreaterThan(0);
@@ -1157,7 +1295,7 @@ import { orderRows, orderTable } from "./order-table.ts";
 import { ORDERS, type Order } from "./shop.ts";
 
 const order: Order = {
-  id: "BK-1",
+  id: "IMSA-1001",
   date: "2026-10-31",
   customer: 'Tom & "Ann" <b>',
   lines: [

@@ -84,6 +84,8 @@ export interface StarterTemplate {
   /** Packages the site imports beyond the starter's own, such as a Markdown parser. */
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  scripts?: Record<string, string>;
+  gitignoreEntries?: readonly string[];
 }
 
 // ─── Root files ───────────────────────────────────────────────────────────────
@@ -98,7 +100,10 @@ const NETLIFY_CLI_VERSION = "^27.16.2";
 export const PACKAGE_JSON = (
   name: string,
   adapter?: Adapter,
-  extra: Pick<StarterTemplate, "dependencies" | "devDependencies"> = {},
+  extra: Pick<
+    StarterTemplate,
+    "dependencies" | "devDependencies" | "scripts"
+  > = {},
 ): string => {
   const cloudflare = adapter === "cloudflare";
   const netlify = adapter === "netlify";
@@ -133,6 +138,7 @@ export const PACKAGE_JSON = (
             deploy: "npx --yes netlify-cli deploy --build --prod",
           }),
           lint: "bascik --check",
+          ...extra.scripts,
           test: "vitest run",
           "test:watch": "vitest",
           "test:coverage": "vitest run --coverage",
@@ -1388,11 +1394,16 @@ const sharedFiles = (
   ["vite.config.ts", VITE_CONFIG],
   [
     ".gitignore",
-    adapter === "cloudflare"
-      ? CLOUDFLARE_GITIGNORE
-      : adapter === "netlify"
-        ? NETLIFY_GITIGNORE
-        : GITIGNORE,
+    (() => {
+      const base =
+        adapter === "cloudflare"
+          ? CLOUDFLARE_GITIGNORE
+          : adapter === "netlify"
+            ? NETLIFY_GITIGNORE
+            : GITIGNORE;
+      const entries = template.gitignoreEntries ?? [];
+      return entries.length > 0 ? `${base}${entries.join("\n")}\n` : base;
+    })(),
   ],
   ...(adapter === "netlify"
     ? ([["netlify.toml", NETLIFY_TOML]] as TemplateFile[])

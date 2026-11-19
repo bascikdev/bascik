@@ -3,7 +3,13 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ADAPTERS, SITE_HEADER_CSS, type TemplateFile } from "../scaffold.js";
+import {
+  ADAPTERS,
+  GITIGNORE,
+  PACKAGE_JSON,
+  SITE_HEADER_CSS,
+  type TemplateFile,
+} from "../scaffold.js";
 import { TEMPLATES, templateNamed } from "../templates.js";
 import { DASHBOARD_TEMPLATE, siteModule } from "./dashboard.js";
 
@@ -110,7 +116,8 @@ async function loadProject(
   context: Context,
 ): Promise<GeneratedModules> {
   for (const [path, data] of DASHBOARD_TEMPLATE.files(context)) {
-    if (!/^src\/.*\.ts$/.test(path) || path.endsWith(".test.ts")) continue;
+    if (!/^src\/.*\.ts$/.test(path) && !/^data\/.*\.sql$/.test(path)) continue;
+    if (path.endsWith(".test.ts")) continue;
     const target = join(root, ...path.split("/"));
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, data);
@@ -131,7 +138,7 @@ async function loadProject(
 }
 
 /** A name with every character HTML, a template literal and a string literal treat specially. */
-const HOSTILE_NAME = `Tom & "Ann's" <b>Books</b> \`\${x}\` \\ </script> `;
+const HOSTILE_NAME = `Tom & "Ann's" <b>Books</b> \`\${x}\` \\ </script>`;
 
 let project: GeneratedModules;
 let hostile: GeneratedModules;
@@ -183,6 +190,21 @@ describe("dashboard template", () => {
           name.startsWith("node:"),
         name,
       ).toBe(true);
+  });
+
+  it("writes the racing SQLite seed system and package hooks", () => {
+    expect(files.has("data/racing.sql"), "SQL seed").toBe(true);
+    expect(files.has("scripts/seed-database.ts"), "seed script").toBe(true);
+    expect(files.has("src/lib/racing-db.ts"), "SQLite reader").toBe(true);
+
+    const pkg = JSON.parse(
+      PACKAGE_JSON("my-dashboard", undefined, DASHBOARD_TEMPLATE),
+    );
+    expect(pkg.scripts["db:seed"]).toBe("node scripts/seed-database.ts");
+    expect(pkg.scripts.predev).toBe("npm run db:seed");
+    expect(pkg.scripts.prebuild).toBe("npm run db:seed");
+
+    expect(GITIGNORE).not.toContain("data/racing.db");
   });
 
   it("writes the overview, the orders, titles and settings pages, a page per title, and a 404", () => {
@@ -482,28 +504,33 @@ describe("what runs where", () => {
 // ─── The data generator ───────────────────────────────────────────────────────
 
 describe("the generated data module", () => {
-  it("is deterministic: the same orders on every call and in every project", () => {
+  it("is deterministic: the same SQLite orders on every call and in every project", () => {
     const { shop } = project;
     expect(shop.generateOrders()).toEqual(shop.generateOrders());
     expect(shop.generateOrders()).toEqual([...shop.ORDERS]);
     expect(hostile.shop.ORDERS).toEqual(shop.ORDERS);
-    expect(shop.generateOrders(1)).not.toEqual(shop.generateOrders(2));
   });
 
   it("gives the numbers the pages are written around", () => {
     const { shop } = project;
     // Pinned, so a change to the generator or the seed shows up here.
     expect(shop.PERIOD_END).toBe("2026-10-31");
-    expect(shop.ORDERS).toHaveLength(159);
+    expect(shop.ORDERS).toHaveLength(160);
     expect(shop.currentOrders()).toHaveLength(80);
-    expect(shop.ORDERS[0].id).toBe("BK-1159");
+    expect(shop.ORDERS[0].id).toBe("IMSA-1061");
     expect(shop.ORDERS[0].date).toBe("2026-10-31");
   });
 
-  it("uses books and authors, with one title on preorder for the empty states", () => {
+  it("uses Porsche, IMSA, WEC, and racing references, with one car on preorder", () => {
     const { shop } = project;
     expect(shop.TITLES).toHaveLength(12);
     expect(shop.TITLES.filter((title) => title.preorder)).toHaveLength(1);
+    expect(shop.TITLES.map((title) => title.title).join(" ")).toMatch(
+      /Porsche 917|Porsche 935|Porsche 962|Porsche 963/,
+    );
+    expect(shop.ORDERS[0].customer).toMatch(
+      /Hurley Haywood|Jordan Taylor|Ross Bentley|Paul Newman/,
+    );
     const ordered = new Set(
       shop.ORDERS.flatMap((order) => order.lines.map((line) => line.slug)),
     );

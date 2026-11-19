@@ -19,7 +19,7 @@ Shared head markup for every page: charset, viewport, the saved theme, the globa
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta
   name="description"
-  content="Sales, orders, and stock for the bookshop's back office."
+  content="Race entries, car inventory, and sales for a Porsche motorsport back office."
 />
 <!-- A back office is not for search results. Remove this line for a public site. -->
 <meta name="robots" content="noindex" />

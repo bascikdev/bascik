@@ -352,17 +352,17 @@ test.describe("Titles", () => {
         .first(),
     ).toBeVisible();
 
-    await table.getByRole("link", { name: "The Lighthouse Ledger" }).click();
-    await expect(page).toHaveURL("/titles/the-lighthouse-ledger");
-    await expect(page).toHaveTitle(/^The Lighthouse Ledger - /);
+    await table.getByRole("link", { name: "Porsche 917K" }).click();
+    await expect(page).toHaveURL("/titles/porsche-917k");
+    await expect(page).toHaveTitle(/^Porsche 917K - /);
 
     const detail = page.getByTestId("title-detail");
     await expect(detail.getByRole("heading", { level: 1 })).toHaveText(
-      "The Lighthouse Ledger",
+      "Porsche 917K",
     );
-    await expect(detail).toContainText("by Mara Ellison");
+    await expect(detail).toContainText("by Hurley Haywood");
     await expect(detail.getByRole("img")).toBeVisible();
-    await expect(detail.getByRole("rowheader").first()).toHaveText(/^BK-\\d+$/);
+    await detail.getByRole("rowheader").first()).toHaveText(/^IMSA-\\d+$/);
 
     await detail.getByRole("link", { name: "All titles" }).click();
     await expect(page).toHaveURL("/titles");
@@ -416,7 +416,7 @@ test.describe("Settings form", () => {
     await expect(page.getByTestId("settings-form-demo-note")).toContainText(
       "saved in this browser only",
     );
-    await page.getByLabel("Shop name").fill("Second Story Books");
+    await page.getByLabel("Shop name").fill("Porsche Racing Team");
     await page.getByLabel("Low stock threshold").fill("12");
     await page.getByLabel("Currency").selectOption("EUR");
     await page.getByLabel("Email a weekly sales digest").uncheck();
@@ -429,7 +429,7 @@ test.describe("Settings form", () => {
 
     await page.reload();
     await expect(page.getByLabel("Shop name")).toHaveValue(
-      "Second Story Books",
+      "Porsche Racing Team",
     );
     await expect(page.getByLabel("Low stock threshold")).toHaveValue("12");
     await expect(page.getByLabel("Currency")).toHaveValue("EUR");
@@ -438,7 +438,7 @@ test.describe("Settings form", () => {
     ).not.toBeChecked();
 
     await page.getByTestId("settings-form-reset").click();
-    await expect(page.getByLabel("Shop name")).toHaveValue("Corner Bookshop");
+    await expect(page.getByLabel("Shop name")).toHaveValue("Porsche Motorsport");
     await expect(saved).toHaveText("Defaults restored.");
   });
 
@@ -456,7 +456,7 @@ test.describe("Settings form", () => {
     await expect(problem).toBeVisible();
     await expect(problem).toHaveAttribute("role", "alert");
     await expect(problem).toContainText("could not be read");
-    await expect(page.getByLabel("Shop name")).toHaveValue("Corner Bookshop");
+    await expect(page.getByLabel("Shop name")).toHaveValue("Porsche Motorsport");
 
     // Saving replaces the broken value and clears the error.
     await page.getByTestId("settings-form-save").click();

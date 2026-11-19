@@ -149,6 +149,27 @@ describe("dashboard template, built and served", () => {
 
   it("a plain --build is a complete dashboard, with the live tile left as a build-time snapshot", async () => {
     const project = await scaffoldDashboard();
+    expect(await readFile(join(project, "data/racing.sql"), "utf8")).toContain(
+      "Porsche 917K",
+    );
+    expect(
+      await readFile(join(project, "scripts/seed-database.ts"), "utf8"),
+    ).toContain("DatabaseSync");
+    expect(
+      await readFile(join(project, "src/lib/racing-db.ts"), "utf8"),
+    ).toContain("node:sqlite");
+    expect(await readFile(join(project, ".gitignore"), "utf8")).toContain(
+      "data/racing.db",
+    );
+    const packageJson = JSON.parse(
+      await readFile(join(project, "package.json"), "utf8"),
+    );
+    expect(packageJson.scripts["db:seed"]).toBe(
+      "node scripts/seed-database.ts",
+    );
+    expect(packageJson.scripts.predev).toBe("npm run db:seed");
+    expect(packageJson.scripts.prebuild).toBe("npm run db:seed");
+
     const output = await build(project);
     expect(output).toContain("Build complete");
     const dist = join(project, "dist");
@@ -163,8 +184,8 @@ describe("dashboard template, built and served", () => {
         "orders.html",
         "settings.html",
         "titles.html",
-        join("titles", "the-lighthouse-ledger.html"),
-        join("titles", "harbor-songs-for-late-arrivals.html"),
+        join("titles", "porsche-917k.html"),
+        join("titles", "porsche-718-rs-laguna.html"),
       ]),
     );
     expect(pages.filter((path) => path.startsWith("titles"))).toHaveLength(13);
@@ -201,13 +222,13 @@ describe("dashboard template, built and served", () => {
     expect(liveTileIn(overview)).toBeNull();
 
     const orders = await readFile(join(dist, "orders.html"), "utf8");
-    expect(orders.match(/<tr\b[^>]*data-order="BK-\d+"/g)).toHaveLength(80);
+    expect(orders.match(/<tr\b[^>]*data-order="IMSA-\d+"/g)).toHaveLength(80);
     expect(orders).toMatch(
       /<caption>\s*Orders from the last 30 days\s*<\/caption>/,
     );
 
     const preorder = await readFile(
-      join(dist, "titles", "harbor-songs-for-late-arrivals.html"),
+      join(dist, "titles", "porsche-718-rs-laguna.html"),
       "utf8",
     );
     expect(preorder).toContain("No copies sold in the last 8 weeks.");
@@ -285,7 +306,7 @@ describe("dashboard template, built and served", () => {
       expectLiveOverview(await overview.text());
       const orders = await worker.dispatchFetch("http://localhost/orders");
       expect(orders.status).toBe(200);
-      expect(await orders.text()).toContain('data-order="BK-1159"');
+      expect(await orders.text()).toContain('data-order="IMSA-1061"');
     } finally {
       await worker.dispose();
     }

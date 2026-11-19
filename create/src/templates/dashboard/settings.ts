@@ -278,7 +278,7 @@ export interface Saved {
 export const STORAGE_KEY = "dashboard-settings";
 export const CURRENCIES: readonly string[] = ["USD", "CAD", "EUR", "GBP"];
 export const DEFAULT_SETTINGS: Settings = {
-  shopName: "Corner Bookshop",
+  shopName: "Porsche Motorsport",
   email: "orders@example.com",
   lowStock: 8,
   currency: "USD",
@@ -468,7 +468,7 @@ import {
 } from "./settings-form.ts";
 
 const input = (changes: Partial<SettingsInput> = {}): SettingsInput => ({
-  shopName: "Corner Bookshop",
+  shopName: "Porsche Motorsport",
   email: "orders@example.com",
   lowStock: "8",
   currency: "USD",
@@ -521,11 +521,11 @@ describe("validateSettings", () => {
   it("returns trimmed settings when every field is valid", () => {
     expect(
       validateSettings(
-        input({ shopName: "  Corner Bookshop ", lowStock: " 12 " }),
+        input({ shopName: "  Porsche Motorsport ", lowStock: " 12 " }),
       ),
     ).toEqual({
       settings: {
-        shopName: "Corner Bookshop",
+        shopName: "Porsche Motorsport",
         email: "orders@example.com",
         lowStock: 12,
         currency: "USD",
