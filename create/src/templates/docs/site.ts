@@ -801,41 +801,72 @@ ${DOCS_TOC_CSS}</style>
 <script src="docs-toc.ts"></script>
 `;
 
-export const DOCS_TOC_SCRIPT_TS = `const toc = document.getElementById("toc") as HTMLElement;
-const links = Array.from(toc.getElementsByTagName("a"));
-const article = document.getElementsByTagName("article").item(0) as HTMLElement;
-const sectionIds = new Set(links.map((link) => link.hash.slice(1)));
-const headings = Array.from(article.querySelectorAll("h2, h3")).filter((heading) =>
-  sectionIds.has(heading.id),
-);
+export const DOCS_TOC_SCRIPT_TS = `const toc = document.getElementById("toc");
+const sections = Array.from(toc?.getElementsByTagName("a") ?? []).flatMap((link) => {
+  const id = link.hash.slice(1);
+  // These IDs belong to the Markdown, not this component.
+  // bascik-ignore js-dynamic-id-lookup
+  const heading = document.getElementById(id);
+  return heading ? [{ link, heading }] : [];
+});
+let currentLink: HTMLAnchorElement | undefined;
 
-const setCurrent = (id: string): void => {
-  for (const link of links) link.removeAttribute("aria-current");
-  links
-    .find((link) => link.hash.slice(1) === id)
-    ?.setAttribute("aria-current", "location");
+const setCurrent = (link: HTMLAnchorElement): void => {
+  if (currentLink === link) return;
+  currentLink?.removeAttribute("aria-current");
+  link.setAttribute("aria-current", "location");
+  currentLink = link;
 };
 
-const updateFromHash = (): void => {
-  const id = window.location.hash.slice(1);
-  if (id && headings.some((heading) => heading.id === id)) setCurrent(id);
+const updateCurrent = (): void => {
+  const first = sections[0];
+  const scrolling = document.scrollingElement;
+  if (!first || !scrolling) return;
+
+  const tolerance = 4;
+  const offset = parseFloat(getComputedStyle(first.heading).scrollMarginTop);
+  const maxScroll = scrolling.scrollHeight - scrolling.clientHeight;
+  const scrollTop = scrolling.scrollTop;
+  const target = sections.find(({ link }) => link.hash === window.location.hash);
+
+  // Different fragments can land at the same scroll limit. Honor the URL
+  // while the viewport is still at the native destination for that anchor.
+  if (target) {
+    const top = target.heading.getBoundingClientRect().top + scrollTop - offset;
+    const destination = Math.max(0, Math.min(top, maxScroll));
+    if (Math.abs(scrollTop - destination) <= tolerance) {
+      setCurrent(target.link);
+      return;
+    }
+  }
+
+  let current = first;
+  if (maxScroll > 0 && maxScroll - scrollTop <= 1) {
+    current = sections[sections.length - 1];
+  } else if (maxScroll > 0) {
+    for (const section of sections) {
+      if (section.heading.getBoundingClientRect().top > offset + tolerance) break;
+      current = section;
+    }
+  }
+  setCurrent(current.link);
 };
 
-if (headings.length > 0) setCurrent(headings[0].id);
-updateFromHash();
-window.addEventListener("hashchange", updateFromHash);
-
-if (typeof IntersectionObserver !== "undefined") {
-  const observer = new IntersectionObserver(
-    (entries) => {
-      const current = entries
-        .filter((entry) => entry.isIntersecting)
-        .sort((left, right) => left.boundingClientRect.top - right.boundingClientRect.top)[0];
-      if (current) setCurrent((current.target as HTMLElement).id);
-    },
-    { rootMargin: "-100px 0px -70% 0px", threshold: 0 },
-  );
-  headings.forEach((heading) => observer.observe(heading));
+if (sections.length > 0) {
+  let pending = false;
+  const scheduleUpdate = (): void => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      updateCurrent();
+    });
+  };
+  window.addEventListener("scroll", scheduleUpdate, { passive: true });
+  window.addEventListener("resize", scheduleUpdate);
+  window.addEventListener("hashchange", scheduleUpdate);
+  window.addEventListener("pageshow", scheduleUpdate);
+  updateCurrent();
 }
 `;
 
@@ -848,7 +879,7 @@ describe('docs-toc component', () => {
 
   it('is an aside holding a labeled nav', async () => {
     const html = await readFile(path, 'utf8');
-    expect(html).toContain('<aside class="toc" data-testid="docs-toc">');
+    expect(html).toMatch(/<aside [^>]*data-testid="docs-toc"/);
     expect(html).toContain('<nav aria-label="On this page" data-testid="docs-toc-nav">');
   });
 
@@ -859,13 +890,9 @@ describe('docs-toc component', () => {
     expect(html).not.toContain('raw(');
   });
 
-  it('ships a keyboard-friendly scroll spy that marks the active section', async () => {
+  it('loads the scroll spy without replacing native fragment links', async () => {
     const html = await readFile(path, 'utf8');
-    const script = await readFile(join(process.cwd(), 'src/components/docs-toc/docs-toc.ts'), 'utf8');
     expect(html).toContain('<script src="docs-toc.ts"></script>');
-    expect(script).toContain('new IntersectionObserver');
-    expect(script).toContain('setAttribute("aria-current", "location")');
-    expect(script).toContain('window.addEventListener("hashchange", updateFromHash)');
   });
 });
 `;
@@ -1172,6 +1199,43 @@ test.describe('Docs site', () => {
     await expect(page).toHaveURL('/docs/getting-started#start-the-dev-server');
     await expect(article.getByRole('heading', { name: 'Start the dev server' })).toBeInViewport();
     await expect(activeSection).toHaveAttribute('aria-current', 'location');
+  });
+
+  test('the table of contents preserves anchors that cannot reach the reading line', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/docs/navigation-and-search');
+    const toc = page.getByTestId('docs-toc-nav');
+    const article = page.getByTestId('docs-article');
+    const lastSection = toc.getByRole('link', { name: 'Table of contents' });
+
+    await page.keyboard.press('End');
+    await expect(toc.locator('[aria-current="location"]')).toHaveText('Table of contents');
+    await page.keyboard.press('Home');
+    await expect(toc.locator('[aria-current="location"]')).toHaveText('Sidebar');
+
+    await lastSection.click();
+    await expect(page).toHaveURL('/docs/navigation-and-search#table-of-contents');
+    const heading = article.getByRole('heading', { name: 'Table of contents' });
+    await expect(heading).toBeInViewport();
+    expect(await heading.evaluate((element) =>
+      element.getBoundingClientRect().top - parseFloat(getComputedStyle(element).scrollMarginTop)
+    )).toBeGreaterThan(4);
+    await expect(toc.locator('[aria-current="location"]')).toHaveText('Table of contents');
+
+    await page.goto('/docs/getting-started');
+    await page.goto('/docs/navigation-and-search#open-search');
+    await expect(toc.locator('[aria-current="location"]')).toHaveText('Open search');
+  });
+
+  test('the table of contents starts at the first section when the whole page fits', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1600 });
+    await page.goto('/docs/navigation-and-search');
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(1600);
+    const current = page.getByTestId('docs-toc-nav').locator('[aria-current="location"]');
+    await expect(current).toHaveText('Sidebar');
+
+    await page.getByRole('link', { name: 'Table of contents', exact: true }).click();
+    await expect(current).toHaveText('Table of contents');
   });
 
   test('previous and next follow the sidebar order', async ({ page }) => {

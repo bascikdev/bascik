@@ -44,7 +44,7 @@ These are different design systems, not a checklist to force onto every branch. 
 ## Docs-template behavior
 
 - Search is a native `<dialog>` with a visible close control, an accessible name, a build-time index, and a `Ctrl+K` / `Cmd+K` shortcut. The index searches page titles, descriptions, and headings. Results remain ordinary links.
-- The table of contents links to preserved Markdown heading IDs. `IntersectionObserver` updates the visible current link and its `aria-current`; fragment links work without JavaScript.
+- The table of contents links to preserved Markdown heading IDs. The highlight follows the reading position, selects the last section at the bottom, and respects a fragment when the browser cannot scroll its heading any further. Fragment links work without JavaScript.
 - The sidebar marks the current page and remains usable without JavaScript. At small widths, a labeled button progressively enhances it into a collapsible navigation.
 - Use native `<dialog>` behavior for focus, Escape, and the top layer. Do not rebuild those browser features with a custom overlay or focus trap.
 
