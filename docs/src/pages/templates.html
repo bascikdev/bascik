@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build type="text/typescript">
+      import { canonical } from "@/lib/canonical.ts";
+      export default () => canonical();
+    </script>
+    <script data-bascik-build type="text/typescript">
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default () => openGraph();
+    </script>
+    <script data-bascik-build type="text/typescript">
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default () => breadcrumbLd();
+    </script>
+    <meta
+      name="description"
+      content="Compare all Create Bascik templates, browse live starter sites, and find the command to scaffold the one you want."
+    />
+    <title>Create Bascik Templates</title>
+  </head>
+  <body>
+    <docs-nav />
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build type="text/typescript">
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default () => renderSectionLabel("/templates");
+          </script>
+          <script data-bascik-build type="text/typescript">
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default () =>
+              renderMdRange("./content/templates.md", { to: "Default" });
+          </script>
+          <showcase-grid>
+            <script data-bascik-build type="text/typescript">
+              import { renderTemplateGallery } from "@/lib/template-gallery.ts";
+              export default () => renderTemplateGallery();
+            </script>
+          </showcase-grid>
+          <script data-bascik-build type="text/typescript">
+            import { renderMdRange } from "@/lib/md-renderer.ts";
+            export default () =>
+              renderMdRange("./content/templates.md", {
+                from: "Make a template your own",
+              });
+          </script>
+          <docs-pagination />
+        </main>
+      </div>
+    </div>
+    <docs-footer />
+  </body>
+</html>
