@@ -303,9 +303,27 @@ test.describe('Starter App E2E Tests', () => {
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(menu).toBeVisible();
 
+    await page.getByTestId('site-header-about').focus();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(toggle).toBeFocused();
+
+    await toggle.click();
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(menu).toBeHidden();
+  });
+
+  test('mobile navigation still works without JavaScript', async ({ browser, baseURL }) => {
+    const page = await browser.newPage({ baseURL, javaScriptEnabled: false, viewport: { width: 375, height: 667 } });
+    try {
+      await page.goto('/');
+      await expect(page.getByTestId('site-header-nav-toggle')).toBeHidden();
+      await page.getByTestId('site-header-about').click();
+      await expect(page).toHaveURL('/about');
+    } finally {
+      await page.close();
+    }
   });
 
   test('contact form answers a submit without leaving the page', async ({ page }) => {
@@ -668,9 +686,12 @@ nav {
 
 @media (max-width: 640px) {
   .container { padding: 0 16px; }
-  .toggle { display: flex; }
+  nav { min-height: 60px; height: auto; gap: 8px; flex-wrap: wrap; }
+  .toggle:not([hidden]) { display: flex; }
 
-  .menu {
+  .menu { flex-wrap: wrap; }
+
+  .toggle:not([hidden]) + .menu {
     display: none;
     position: absolute;
     top: 60px;
@@ -682,9 +703,13 @@ nav {
     border-bottom: 1px solid var(--border);
     padding: 8px 16px;
   }
-  .menu.is-open { display: flex; }
-  .menu li { width: 100%; }
-  .menu a { padding: 10px 4px; }
+  .toggle:not([hidden]) + .menu.is-open { display: flex; }
+  .toggle:not([hidden]) + .menu a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 8px;
+  }
 }
 `;
 
@@ -696,7 +721,7 @@ ${SITE_HEADER_CSS}</style>
   <div class="container">
     <nav aria-label="Main" data-testid="site-header-nav">
       <a href="/" class="logo" data-bascik-prop-brand data-testid="site-header-logo">My Site</a>
-      <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle">
+      <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
         <span></span><span></span><span></span>
       </button>
       <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
@@ -710,11 +735,19 @@ ${SITE_HEADER_CSS}</style>
 <script type="text/typescript">
   const toggle = document.getElementById('nav-toggle') as HTMLButtonElement;
   const menu = document.getElementById('nav-menu') as HTMLUListElement;
+  const setOpen = (open: boolean): void => {
+    toggle.setAttribute('aria-expanded', String(open));
+    menu.classList.toggle('is-open', open);
+  };
   toggle.addEventListener('click', (): void => {
-    const open = toggle.getAttribute('aria-expanded') === 'true';
-    toggle.setAttribute('aria-expanded', String(!open));
-    menu.classList.toggle('is-open');
+    setOpen(toggle.getAttribute('aria-expanded') !== 'true');
   });
+  toggle.parentElement?.addEventListener('keydown', (event): void => {
+    if (event.key !== 'Escape' || toggle.getAttribute('aria-expanded') !== 'true' || toggle.getClientRects().length === 0) return;
+    setOpen(false);
+    toggle.focus();
+  });
+  toggle.hidden = false;
 </script>
 `;
 

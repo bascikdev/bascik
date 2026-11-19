@@ -2,6 +2,8 @@
 
 This is the visual contract for the templates shipped by `create-bascik`. Read it before changing `src/scaffold.ts` or `src/templates/`. The templates share accessible foundations, not one visual skin. Each should look designed for its job rather than like a recolored admin theme.
 
+Use `bascik-ui` to set the visual direction and `bascik-ux` to review the interactions. The [visual design guide](https://bascik.dev/how-to/visual-design) explains both.
+
 ## Shared principles
 
 - Use semantic HTML and CSS first. Keep native links, buttons, forms, tables, figures, and disclosure elements. Add JavaScript only where HTML and CSS do not provide the needed behavior.
