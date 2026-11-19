@@ -14,7 +14,7 @@ it is not `@bascik/bascik`.
 ### Added
 
 - `create-bascik` 1.1.0: `--adapter <name>` adds a deploy adapter to the starter (`cloudflare`, `netlify`, or `none`), as in `npm create bascik my-site -- --adapter cloudflare`. `--template cloudflare` and `--template netlify` still work and mean the same thing; naming two different adapters with the two flags is an error. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
-- `create-bascik` 1.1.0: `--template reports` scaffolds a reporting site. Each JSON file in `data/reports/` is one period (the demo data is four months of fictional racing reports) and becomes a report page with a summary, charts drawn as inline SVG at build time, data tables, and notes. The site also has a list of reports, a page that compares the periods, a CSV download per report written by a post-build script, and print styles with a "Print or save as PDF" button. Run `npm create bascik my-reports -- --template reports`. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
+- `create-bascik` 1.1.0: `--template reports` scaffolds a reporting site with summaries, inline SVG charts, comparison tables, CSV downloads, and print styles. Bascik server scripts read the seeded SQLite database on Node or Cloudflare D1 when deployed with the `DB` binding. The Netlify variant renders reports at build time. Run `npm create bascik my-reports -- --template reports` and see the generated `REPORTS.md` for setup.
 
 ### Changed
 

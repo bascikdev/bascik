@@ -8,22 +8,26 @@
 import type { TemplateFile } from "../../scaffold.js";
 
 /** `bascik.config.ts` */
-const BASCIK_CONFIG_TS = `import { defineConfig } from "@bascik/bascik/config";
+const BASCIK_CONFIG_TS = (
+  staticReports: boolean,
+) => `import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
   pipeline: {
     // Rebuild pages in dev when a data file or a shared helper changes.
-    watchPaths: ["data/", "src/lib/"],
+    watchPaths: ["data/reports/", "src/lib/"],
     exec: [
       // Writes a CSV file per report into the build output, after the pages are built.
       {
         script: "scripts/write-csv.ts",
         phase: "post",
-        watch: ["data/", "src/lib/"],
+        watch: ["data/reports/", "src/lib/"],
       },
     ],
   },
-  scripts: {
+${
+  staticReports
+    ? `  scripts: {
     cache: {
       // These two components list the data folder. The build script cache keys on files a script names, so it
       // cannot see a new or edited data file: keep them out of it. The report pages need no entry, because each
@@ -33,7 +37,9 @@ export default defineConfig({
         "src/components/period-comparison/**",
       ],
     },
-  },
+  },\n`
+    : ""
+}\
 });
 `;
 
@@ -41,7 +47,7 @@ export default defineConfig({
 const WRITE_CSV_TS = `// scripts/write-csv.ts: write the CSV downloads into the build output: reports/<period>.csv for each report and
 // reports/all.csv for all of them. bascik.config.ts runs it as a post-phase exec script, after the pages exist:
 //
-//   pipeline: { exec: [{ script: "scripts/write-csv.ts", phase: "post", watch: ["data/", "src/lib/"] }] }
+//   pipeline: { exec: [{ script: "scripts/write-csv.ts", phase: "post", watch: ["data/reports/", "src/lib/"] }] }
 //
 // Exec scripts are plain Node modules, so they import helpers with relative paths (the @/ alias only works inside
 // <script> tags), and they write to BASCIK_OUT_DIR, never into src/.
@@ -68,7 +74,9 @@ console.log(\`[csv] wrote \${files.length} files to reports/\`);
 `;
 
 /** `e2e/app.spec.ts` */
-const APP_SPEC_TS = `import { readFile } from "node:fs/promises";
+const APP_SPEC_TS = (
+  staticReports: boolean,
+) => `import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 
 // These tests read the racing data in data/reports/ (July to October 2026). When you replace the data, change the
@@ -76,6 +84,22 @@ import { test, expect } from "@playwright/test";
 const MONEY = /\\$[\\d,]+\\.\\d{2}/;
 
 test.describe("Reports site", () => {
+${
+  staticReports
+    ? ""
+    : `
+  test("report HTML is rendered by the server, while the CSV stays a download", async ({ request }) => {
+    for (const path of ["/", "/compare", "/reports/2026-08"]) {
+      const response = await request.get(path);
+      expect(response.status()).toBe(200);
+      expect(response.headers()["cache-control"]).toContain("no-store");
+    }
+    const csv = await request.get("/reports/2026-08.csv");
+    expect(csv.status()).toBe(200);
+    expect(await csv.text()).toContain("period,title,author,format,channel,units,revenue");
+  });`
+}
+
   test("home lists the reports newest first with their headline figures", async ({
     page,
   }) => {
@@ -1433,9 +1457,7 @@ const REPORTS_PERIOD_HTML = `<!doctype html>
 <html lang="en">
   <head>
     <site-meta />
-    <!-- One page per data file, at /reports/<period>. The routes script reads every report once and hands each page
-       its own report, the one before it, and the revenue of the periods so far. The components below read that
-       from the route, so nothing here is passed down by hand. -->
+    <!-- The fixture lists the /reports/<period> URLs and supplies their build-time metadata. -->
     <script data-bascik-routes type="text/typescript">
       import { loadReports, reportRoutes } from "@/lib/reports.ts";
       export default async () =>
@@ -1537,10 +1559,52 @@ const PAGE_404_HTML = `<!doctype html>
 `;
 
 /** The pages and the project files around them. */
-export const SITE_FILES: TemplateFile[] = [
-  ["bascik.config.ts", BASCIK_CONFIG_TS],
+const REPORTS_MD = `# Report data and deployment
+
+Edit \`data/reports/*.json\`. These files are the only report fixture: they list
+the build-time URLs, supply the CSV downloads, and seed both databases. Keep one
+file per period; rebuild when you add or remove a period so links, metadata and
+CSV downloads change together.
+
+## Local Node
+
+\`npm run dev\`, \`npm run build\` and \`npm run e2e\` seed \`data/racing.db\` first.
+Run \`npm run db:seed\` again after editing the fixture during development, or
+before using the Bascik CLI directly. Serve a production build with
+\`npx bascik --server\` from the project root. Do not publish the database as
+an asset. Visitors only read it, and only the seed command writes it.
+
+The Netlify variant renders reports at build time from the same JSON and does
+not require a database in its deployed function.
+
+## Cloudflare Workers
+
+Configure a D1 binding named \`DB\` in the project-root \`wrangler.jsonc\`. Use the
+database name and ID provided for the environment by your deployment setup:
+
+\`\`\`jsonc
+{
+  "d1_databases": [
+    { "binding": "DB", "database_name": "YOUR_DATABASE_NAME", "database_id": "YOUR_DATABASE_ID" }
+  ]
+}
+\`\`\`
+
+In CI, build for Cloudflare and generate the SQL snapshot by capturing stdout
+from \`node scripts/seed-database.ts --sql\` in a temporary SQL file. Apply it
+**only to the dedicated reports database** before deploying the Worker, for
+example with \`wrangler d1 execute DB --remote --file <sql-file> --config dist/.bascik/cloudflare/wrangler.jsonc\`.
+The SQL creates the schema and replaces the report snapshot. Use \`--local\`
+instead of \`--remote\` to seed a local Wrangler preview. Use the same config
+and persistence location for the seed and preview. No request seeds or migrates
+a database, and a missing D1 binding does not fall back to local SQLite.
+`;
+
+export const siteFiles = (staticReports: boolean): TemplateFile[] => [
+  ["REPORTS.md", REPORTS_MD],
+  ["bascik.config.ts", BASCIK_CONFIG_TS(staticReports)],
   ["scripts/write-csv.ts", WRITE_CSV_TS],
-  ["e2e/app.spec.ts", APP_SPEC_TS],
+  ["e2e/app.spec.ts", APP_SPEC_TS(staticReports)],
   ["src/pages/css/styles.css", CSS_STYLES_CSS],
   ["src/pages/index.html", INDEX_HTML],
   ["src/pages/reports/[period].html", REPORTS_PERIOD_HTML],

@@ -4,13 +4,13 @@
  * The `reports` template: a reporting site. Each JSON file in `data/reports/`
  * is one period (the demo data is four months of fictional Bascik endurance racing) and
  * becomes one report page through a dynamic route, with an executive summary,
- * charts drawn as inline SVG at build time, data tables and notes. A home page
+ * inline SVG charts, data tables and notes. A home page
  * lists the reports, a comparison page adds them up, a post-phase exec script
  * writes a CSV file per report into the build output, and the stylesheet
  * prints a report as a document.
  *
- * The site is static, so an adapter changes nothing here: `scaffold` adds the
- * `/api/hello` route and the host's scripts as it does for every template.
+ * The report bodies render from SQLite on Node and D1 on Cloudflare. The
+ * Netlify variant stays static; all variants build their URLs and CSVs from JSON.
  *
  * The site's files are text in `reports/lib.ts`, `reports/components.ts` and
  * `reports/site.ts`; the demo data is built by `reports/data.ts`.
@@ -21,7 +21,7 @@ import type {
   TemplateContext,
   TemplateFile,
 } from "../scaffold.js";
-import { COMPONENT_FILES } from "./reports/components.js";
+import { componentFiles } from "./reports/components.js";
 import {
   DATA_FILES,
   RACING_DB_TS,
@@ -31,7 +31,7 @@ import {
 } from "./reports/data.js";
 import { SITE_META_HTML_WITHOUT_DESCRIPTION } from "./reports/derived.js";
 import { LIB_FILES } from "./reports/lib.js";
-import { SITE_FILES } from "./reports/site.js";
+import { siteFiles } from "./reports/site.js";
 
 /**
  * `src/lib/site.ts`: the one place the site name is written. It is a JSON
@@ -49,7 +49,10 @@ export const siteName: string = ${JSON.stringify(siteName)};
 export const REPORTS_DIR = "data/reports";
 `;
 
-const reportsFiles = ({ siteName }: TemplateContext): TemplateFile[] => [
+const reportsFiles = ({
+  siteName,
+  adapter,
+}: TemplateContext): TemplateFile[] => [
   ["data/racing.sql", RACING_SQL],
   ["scripts/seed-database.ts", SEED_DATABASE_TS],
   ["src/lib/racing-db.ts", RACING_DB_TS],
@@ -61,8 +64,8 @@ const reportsFiles = ({ siteName }: TemplateContext): TemplateFile[] => [
     "src/components/site-meta/site-meta.html",
     SITE_META_HTML_WITHOUT_DESCRIPTION,
   ],
-  ...COMPONENT_FILES,
-  ...SITE_FILES,
+  ...componentFiles(adapter === "netlify"),
+  ...siteFiles(adapter === "netlify"),
 ];
 
 /** Every folder a file of the template sits in. */
@@ -81,6 +84,7 @@ export const REPORTS_TEMPLATE: StarterTemplate = {
     "db:seed": "node scripts/seed-database.ts",
     predev: "npm run db:seed",
     prebuild: "npm run db:seed",
+    pree2e: "npm run db:seed",
   },
   summary:
     "A reporting site: dated reports from data files, SVG charts, CSV downloads, and print styles",

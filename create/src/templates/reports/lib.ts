@@ -1100,7 +1100,7 @@ describe("report routes", () => {
 /** `src/lib/reports.ts` */
 const REPORTS_TS = `// src/lib/reports.ts: the one place that reads, checks, sorts and adds up the report data.
 //
-// Every page, component and the CSV script call loadReports(), so they always agree. A period is one JSON file in
+// The build and seed scripts call loadReports(), so URLs, downloads and the database use one fixture. A period is one JSON file in
 // data/reports/ (any file name ending in .json), for example data/reports/2026-07.json:
 //
 //   {

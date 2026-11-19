@@ -9,6 +9,41 @@
 import type { TemplateFile } from "../../scaffold.js";
 import { SKIP_LINK_CSS } from "./derived.js";
 
+// Netlify keeps the static report pages: its function has no D1 binding or
+// persistent SQLite file. Both variants use the same render helpers.
+const reportDataScript = (render: string, staticReports: boolean): string => {
+  const all = render === "reportList" || render === "comparison";
+  const notes = render === "notes";
+  const directive = staticReports ? (all ? "build-once" : "build") : "server";
+  const loader = staticReports
+    ? all
+      ? "loadReports"
+      : "reportRoute"
+    : all
+      ? "readReports"
+      : "requestReport";
+  const module = staticReports ? "reports" : "racing-db";
+  const input = staticReports
+    ? all
+      ? "await loadReports()"
+      : "reportRoute(process.env.BASCIK_ROUTE)"
+    : all
+      ? "await readReports(context)"
+      : "await requestReport(request, context)";
+  const args = staticReports
+    ? ""
+    : `${all ? "_request" : "request"}: Request, context: ReportContext`;
+  const href = staticReports
+    ? "pageUrl()"
+    : "new URL(new URL(request.url).pathname, request.url).href";
+  return `<script data-bascik-${directive} type="text/typescript">
+    import { ${loader}${staticReports ? "" : ", type ReportContext"} } from "@/lib/${module}.ts";
+    ${notes && staticReports ? 'import { pageUrl } from "@/lib/seo.ts";\n    ' : ""}import { ${render} } from "./render.ts";
+    export default ${!staticReports || all ? "async " : ""}(${args}) =>
+      ${render}(${notes ? `(${input}).report, ${href}` : input});
+  </script>`;
+};
+
 const CHART_EXPLORER_HTML = `<!-- @bascik
 An SVG and its data table, with lightweight linked inspection. The complete chart and table work without scripts.
 -->
@@ -106,18 +141,15 @@ it("keeps the SVG and table in a semantic figure with inspection hidden until en
 `;
 
 /** `src/components/period-comparison/period-comparison.html` */
-const PERIOD_COMPARISON_PERIOD_COMPARISON_HTML = `<!-- @bascik
+const PERIOD_COMPARISON_PERIOD_COMPARISON_HTML = (
+  staticReports: boolean,
+) => `<!-- @bascik
 Every period side by side: totals, a chart and a table of revenue per period with the change from one to the next,
 and sales by title, author, format and channel over all periods.
-Like <report-list>, it reads the whole data folder, so bascik.config.ts keeps it out of the build script cache.
 -->
 <section data-testid="period-comparison">
   <h2>All periods together</h2>
-  <script data-bascik-build-once type="text/typescript">
-    import { loadReports } from "@/lib/reports.ts";
-    import { comparison } from "./render.ts";
-    export default async () => comparison(await loadReports());
-  </script>
+  ${reportDataScript("comparison", staticReports)}
 </section>
 `;
 
@@ -132,14 +164,11 @@ const html = flat(
 );
 
 describe("period-comparison component", () => {
-  it("is a section with a heading whose content is built once, from every report", () => {
+  it("is a section that renders every report", () => {
     expect(html).toMatch(
       /<section data-testid="period-comparison">\\s*<h2>All periods together<\\/h2>/,
     );
-    expect(html).toContain(
-      '<script data-bascik-build-once type="text/typescript">',
-    );
-    expect(html).toContain("comparison(await loadReports())");
+    expect(html).toMatch(/comparison\\(await (readReports|loadReports)\\(/);
   });
 });
 
@@ -445,18 +474,16 @@ export function charts({ report, trend }: ReportRoute): SafeHtml {
 `;
 
 /** `src/components/report-charts/report-charts.html` */
-const REPORT_CHARTS_REPORT_CHARTS_HTML = `<!-- @bascik
+const REPORT_CHARTS_REPORT_CHARTS_HTML = (
+  staticReports: boolean,
+) => `<!-- @bascik
 The charts of a report: revenue over the periods so far, by format and by channel. Each is an inline SVG drawn at
-build time, in a <figure> with a caption and a table of the same figures.
-Only for src/pages/reports/[period].html: it reads the report from the route.
+render time, in a <figure> with a caption and a table of the same figures.
+Only for src/pages/reports/[period].html.
 -->
 <section class="chart-grid" data-testid="report-charts">
   <h2>Charts</h2>
-  <script data-bascik-build type="text/typescript">
-    import { reportRoute } from "@/lib/reports.ts";
-    import { charts } from "./render.ts";
-    export default () => charts(reportRoute(process.env.BASCIK_ROUTE));
-  </script>
+  ${reportDataScript("charts", staticReports)}
 </section>
 `;
 
@@ -483,7 +510,7 @@ describe("report-charts component", () => {
     expect(html).toMatch(
       /<section class="chart-grid" data-testid="report-charts">\\s*<h2>Charts<\\/h2>/,
     );
-    expect(html).toContain("charts(reportRoute(process.env.BASCIK_ROUTE))");
+    expect(html).toMatch(/charts\\((await requestReport|reportRoute)\\(/);
   });
 });
 
@@ -590,18 +617,12 @@ export function reportList(reports: readonly Report[]): SafeHtml {
 `;
 
 /** `src/components/report-list/report-list.html` */
-const REPORT_LIST_REPORT_LIST_HTML = `<!-- @bascik
+const REPORT_LIST_REPORT_LIST_HTML = (staticReports: boolean) => `<!-- @bascik
 Every report, newest first, with its headline figures and a link to its page.
-The list is the same on every page, so its script is data-bascik-build-once. It reads a folder, which the build
-script cache cannot see: bascik.config.ts keeps this component out of the cache so a new data file shows up.
 -->
 <section data-testid="report-list">
   <h2>All reports</h2>
-  <script data-bascik-build-once type="text/typescript">
-    import { loadReports } from "@/lib/reports.ts";
-    import { reportList } from "./render.ts";
-    export default async () => reportList(await loadReports());
-  </script>
+  ${reportDataScript("reportList", staticReports)}
 </section>
 `;
 
@@ -616,12 +637,9 @@ const html = flat(
 );
 
 describe("report-list component", () => {
-  it("is a section whose list is built once, from every report", () => {
+  it("is a section that lists every report", () => {
     expect(html).toContain('<section data-testid="report-list">');
-    expect(html).toContain(
-      '<script data-bascik-build-once type="text/typescript">',
-    );
-    expect(html).toContain("reportList(await loadReports())");
+    expect(html).toMatch(/reportList\\(await (readReports|loadReports)\\(/);
   });
 });
 
@@ -684,16 +702,14 @@ export function masthead({ report }: ReportRoute): SafeHtml {
 `;
 
 /** `src/components/report-masthead/report-masthead.html` */
-const REPORT_MASTHEAD_REPORT_MASTHEAD_HTML = `<!-- @bascik
+const REPORT_MASTHEAD_REPORT_MASTHEAD_HTML = (
+  staticReports: boolean,
+) => `<!-- @bascik
 The top of a report page: the period as the page's <h1>, with the print button and the CSV download.
 Only for src/pages/reports/[period].html: it reads the report from the route.
 -->
 <header class="masthead" data-testid="report-masthead">
-  <script data-bascik-build type="text/typescript">
-    import { reportRoute } from "@/lib/reports.ts";
-    import { masthead } from "./render.ts";
-    export default () => masthead(reportRoute(process.env.BASCIK_ROUTE));
-  </script>
+  ${reportDataScript("masthead", staticReports)}
 </header>
 `;
 
@@ -712,7 +728,7 @@ describe("report-masthead component", () => {
     expect(html).toContain(
       '<header class="masthead" data-testid="report-masthead">',
     );
-    expect(html).toContain("masthead(reportRoute(process.env.BASCIK_ROUTE))");
+    expect(html).toMatch(/masthead\\((await requestReport|reportRoute)\\(/);
   });
 });
 
@@ -760,7 +776,7 @@ export function notes(report: Report, url: string | undefined): SafeHtml {
 `;
 
 /** `src/components/report-notes/report-notes.html` */
-const REPORT_NOTES_REPORT_NOTES_HTML = `<!-- @bascik
+const REPORT_NOTES_REPORT_NOTES_HTML = (staticReports: boolean) => `<!-- @bascik
 The notes of a report: the period's own notes from its data file, the report's permanent link, and how the figures
 are calculated. Only for src/pages/reports/[period].html: it reads the report from the route.
 -->
@@ -789,13 +805,7 @@ are calculated. Only for src/pages/reports/[period].html: it reads the report fr
 </style>
 <section data-testid="report-notes">
   <h2>Notes and methodology</h2>
-  <script data-bascik-build type="text/typescript">
-    import { reportRoute } from "@/lib/reports.ts";
-    import { pageUrl } from "@/lib/seo.ts";
-    import { notes } from "./render.ts";
-    export default () =>
-      notes(reportRoute(process.env.BASCIK_ROUTE).report, pageUrl());
-  </script>
+  ${reportDataScript("notes", staticReports)}
   <h3>How the figures are calculated</h3>
   <ul>
     <li>
@@ -830,9 +840,7 @@ describe("report-notes component", () => {
     expect(html).toMatch(
       /<section data-testid="report-notes">\\s*<h2>Notes and methodology<\\/h2>/,
     );
-    expect(html).toContain(
-      "notes(reportRoute(process.env.BASCIK_ROUTE).report, pageUrl())",
-    );
+    expect(html).toMatch(/notes\\(\\((await requestReport|reportRoute)\\(/);
     expect(html).toContain("<h3>How the figures are calculated</h3>");
     expect(html).toContain("whole cents");
   });
@@ -901,7 +909,7 @@ export function pager({ previous, nextPeriod }: ReportRoute): SafeHtml {
 `;
 
 /** `src/components/report-pager/report-pager.html` */
-const REPORT_PAGER_REPORT_PAGER_HTML = `<!-- @bascik
+const REPORT_PAGER_REPORT_PAGER_HTML = (staticReports: boolean) => `<!-- @bascik
 Links to the report before and after this one. Only for src/pages/reports/[period].html: it reads the neighbors
 from the route.
 -->
@@ -923,11 +931,7 @@ from the route.
   }
 </style>
 <nav class="pager" aria-label="Other reports" data-testid="report-pager">
-  <script data-bascik-build type="text/typescript">
-    import { reportRoute } from "@/lib/reports.ts";
-    import { pager } from "./render.ts";
-    export default () => pager(reportRoute(process.env.BASCIK_ROUTE));
-  </script>
+  ${reportDataScript("pager", staticReports)}
 </nav>
 `;
 
@@ -946,7 +950,7 @@ describe("report-pager component", () => {
     expect(html).toContain(
       '<nav class="pager" aria-label="Other reports" data-testid="report-pager">',
     );
-    expect(html).toContain("pager(reportRoute(process.env.BASCIK_ROUTE))");
+    expect(html).toMatch(/pager\\((await requestReport|reportRoute)\\(/);
   });
 
   it("is left out of a printed report", () => {
@@ -1014,17 +1018,15 @@ export function summary({ report, previous }: ReportRoute): SafeHtml {
 `;
 
 /** `src/components/report-summary/report-summary.html` */
-const REPORT_SUMMARY_REPORT_SUMMARY_HTML = `<!-- @bascik
+const REPORT_SUMMARY_REPORT_SUMMARY_HTML = (
+  staticReports: boolean,
+) => `<!-- @bascik
 The executive summary of a report: one paragraph and the headline figures, each with its change against the
 previous period in words. Only for src/pages/reports/[period].html: it reads the report from the route.
 -->
 <section data-testid="report-summary">
   <h2>Summary</h2>
-  <script data-bascik-build type="text/typescript">
-    import { reportRoute } from "@/lib/reports.ts";
-    import { summary } from "./render.ts";
-    export default () => summary(reportRoute(process.env.BASCIK_ROUTE));
-  </script>
+  ${reportDataScript("summary", staticReports)}
 </section>
 `;
 
@@ -1050,7 +1052,7 @@ describe("report-summary component", () => {
     expect(html).toMatch(
       /<section data-testid="report-summary">\\s*<h2>Summary<\\/h2>/,
     );
-    expect(html).toContain("summary(reportRoute(process.env.BASCIK_ROUTE))");
+    expect(html).toMatch(/summary\\((await requestReport|reportRoute)\\(/);
   });
 });
 
@@ -1160,18 +1162,16 @@ export function tables({ report }: ReportRoute): SafeHtml {
 `;
 
 /** `src/components/report-tables/report-tables.html` */
-const REPORT_TABLES_REPORT_TABLES_HTML = `<!-- @bascik
+const REPORT_TABLES_REPORT_TABLES_HTML = (
+  staticReports: boolean,
+) => `<!-- @bascik
 The detailed tables of a report: sales by title, by author, and every line of the data file. Each has a caption,
 scoped headers, right-aligned numbers and a total row.
 Only for src/pages/reports/[period].html: it reads the report from the route.
 -->
 <section data-testid="report-tables">
   <h2>Detailed tables</h2>
-  <script data-bascik-build type="text/typescript">
-    import { reportRoute } from "@/lib/reports.ts";
-    import { tables } from "./render.ts";
-    export default () => tables(reportRoute(process.env.BASCIK_ROUTE));
-  </script>
+  ${reportDataScript("tables", staticReports)}
 </section>
 `;
 
@@ -1197,7 +1197,7 @@ describe("report-tables component", () => {
     expect(html).toMatch(
       /<section data-testid="report-tables">\\s*<h2>Detailed tables<\\/h2>/,
     );
-    expect(html).toContain("tables(reportRoute(process.env.BASCIK_ROUTE))");
+    expect(html).toMatch(/tables\\((await requestReport|reportRoute)\\(/);
   });
 });
 
@@ -1515,7 +1515,7 @@ describe("site-meta component", () => {
 `;
 
 /** Everything under `src/components/` except `site-meta/site-meta.html`. */
-export const COMPONENT_FILES: TemplateFile[] = [
+export const componentFiles = (staticReports: boolean): TemplateFile[] => [
   ["src/components/chart-explorer/chart-explorer.html", CHART_EXPLORER_HTML],
   ["src/components/chart-explorer/chart-explorer.ts", CHART_EXPLORER_TS],
   [
@@ -1524,7 +1524,7 @@ export const COMPONENT_FILES: TemplateFile[] = [
   ],
   [
     "src/components/period-comparison/period-comparison.html",
-    PERIOD_COMPARISON_PERIOD_COMPARISON_HTML,
+    PERIOD_COMPARISON_PERIOD_COMPARISON_HTML(staticReports),
   ],
   [
     "src/components/period-comparison/period-comparison.test.ts",
@@ -1542,14 +1542,17 @@ export const COMPONENT_FILES: TemplateFile[] = [
   ["src/components/report-charts/render.ts", REPORT_CHARTS_RENDER_TS],
   [
     "src/components/report-charts/report-charts.html",
-    REPORT_CHARTS_REPORT_CHARTS_HTML,
+    REPORT_CHARTS_REPORT_CHARTS_HTML(staticReports),
   ],
   [
     "src/components/report-charts/report-charts.test.ts",
     REPORT_CHARTS_REPORT_CHARTS_TEST_TS,
   ],
   ["src/components/report-list/render.ts", REPORT_LIST_RENDER_TS],
-  ["src/components/report-list/report-list.html", REPORT_LIST_REPORT_LIST_HTML],
+  [
+    "src/components/report-list/report-list.html",
+    REPORT_LIST_REPORT_LIST_HTML(staticReports),
+  ],
   [
     "src/components/report-list/report-list.test.ts",
     REPORT_LIST_REPORT_LIST_TEST_TS,
@@ -1557,7 +1560,7 @@ export const COMPONENT_FILES: TemplateFile[] = [
   ["src/components/report-masthead/render.ts", REPORT_MASTHEAD_RENDER_TS],
   [
     "src/components/report-masthead/report-masthead.html",
-    REPORT_MASTHEAD_REPORT_MASTHEAD_HTML,
+    REPORT_MASTHEAD_REPORT_MASTHEAD_HTML(staticReports),
   ],
   [
     "src/components/report-masthead/report-masthead.test.ts",
@@ -1566,7 +1569,7 @@ export const COMPONENT_FILES: TemplateFile[] = [
   ["src/components/report-notes/render.ts", REPORT_NOTES_RENDER_TS],
   [
     "src/components/report-notes/report-notes.html",
-    REPORT_NOTES_REPORT_NOTES_HTML,
+    REPORT_NOTES_REPORT_NOTES_HTML(staticReports),
   ],
   [
     "src/components/report-notes/report-notes.test.ts",
@@ -1575,7 +1578,7 @@ export const COMPONENT_FILES: TemplateFile[] = [
   ["src/components/report-pager/render.ts", REPORT_PAGER_RENDER_TS],
   [
     "src/components/report-pager/report-pager.html",
-    REPORT_PAGER_REPORT_PAGER_HTML,
+    REPORT_PAGER_REPORT_PAGER_HTML(staticReports),
   ],
   [
     "src/components/report-pager/report-pager.test.ts",
@@ -1584,7 +1587,7 @@ export const COMPONENT_FILES: TemplateFile[] = [
   ["src/components/report-summary/render.ts", REPORT_SUMMARY_RENDER_TS],
   [
     "src/components/report-summary/report-summary.html",
-    REPORT_SUMMARY_REPORT_SUMMARY_HTML,
+    REPORT_SUMMARY_REPORT_SUMMARY_HTML(staticReports),
   ],
   [
     "src/components/report-summary/report-summary.test.ts",
@@ -1593,7 +1596,7 @@ export const COMPONENT_FILES: TemplateFile[] = [
   ["src/components/report-tables/render.ts", REPORT_TABLES_RENDER_TS],
   [
     "src/components/report-tables/report-tables.html",
-    REPORT_TABLES_REPORT_TABLES_HTML,
+    REPORT_TABLES_REPORT_TABLES_HTML(staticReports),
   ],
   [
     "src/components/report-tables/report-tables.test.ts",

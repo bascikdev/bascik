@@ -217,85 +217,151 @@ export const DATA_FILES: [path: string, data: string][] = PERIODS.map(
   ],
 );
 
-export const GITIGNORE = `data/racing.db\n`;
-
-export const RACING_SQL = `CREATE TABLE IF NOT EXISTS racing_entries (
-  id INTEGER PRIMARY KEY,
-  period TEXT NOT NULL,
-  car TEXT NOT NULL,
-  driver TEXT NOT NULL,
-  circuit TEXT NOT NULL,
-  racing_class TEXT NOT NULL,
-  laps INTEGER NOT NULL,
-  points_cents INTEGER NOT NULL
+export const RACING_SQL = `CREATE TABLE IF NOT EXISTS racing_reports (
+  period TEXT PRIMARY KEY NOT NULL,
+  payload TEXT NOT NULL CHECK (json_valid(payload))
 );
-
-DELETE FROM racing_entries;
-
-INSERT INTO racing_entries (period, car, driver, circuit, racing_class, laps, points_cents) VALUES
-  ('2026-07', 'Bascik Prototype 17', 'Bascik Racing', 'Daytona', 'Vintage', 48, 2800),
-  ('2026-07', 'Bascik GT 35, Long Tail', 'Bascik Racing', 'Sebring', 'GTP', 38, 1700),
-  ('2026-08', 'Bascik Prototype 62', 'Bascik Racing', 'Watkins Glen', 'GTP', 31, 1700),
-  ('2026-09', 'Bascik Prototype 63', 'Bascik Racing', 'Laguna Seca', 'LMDh', 34, 2800),
-  ('2026-10', 'Bascik Touring 11', 'Bascik Racing', 'Le Mans', 'GT3', 22, 999),
-  ('2026-10', 'Bascik Prototype 63', 'Bascik Racing', 'Spa', 'LMDh', 40, 2800);
 `;
 
-export const RACING_DB_TS = `import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+export const RACING_DB_TS = `import { reportRoutes, TREND_PERIODS, type Report, type ReportRoute } from "./reports.ts";
 
-export interface RacingDatabase {
-  db: DatabaseSync;
-  path: string;
+interface ReportRow {
+  period: string;
+  payload: string;
 }
 
-export function openRacingDatabase(): RacingDatabase {
-  const path = join(process.cwd(), "data", "racing.db");
-  mkdirSync(dirname(path), { recursive: true });
-  return { db: new DatabaseSync(path), path };
+interface D1Database {
+  prepare(query: string): {
+    bind(...values: (string | number)[]): {
+      all<T>(): Promise<{ results: T[] }>;
+    };
+  };
+}
+
+export interface ReportContext {
+  platform?: { name: string; env?: Record<string, unknown> };
+}
+
+const ALL_REPORTS = "SELECT period, payload FROM racing_reports ORDER BY period";
+
+// Read the requested period, just enough history for the trend, and the next
+// period for the pager. The outer ORDER BY is also the order reportRoutes expects.
+const DETAIL = \`WITH history AS (
+  SELECT period, payload FROM racing_reports WHERE period <= ?
+  ORDER BY period DESC LIMIT ?
+), next_report AS (
+  SELECT period, payload FROM racing_reports WHERE period > ?
+  ORDER BY period LIMIT 1
+)
+SELECT period, payload FROM history
+UNION ALL SELECT period, payload FROM next_report
+ORDER BY period\`;
+
+export async function readReports(
+  context: ReportContext,
+  period?: string,
+  path = "data/racing.db",
+): Promise<Report[]> {
+  const query = period === undefined ? ALL_REPORTS : DETAIL;
+  const values = period === undefined ? [] : [period, TREND_PERIODS, period];
+  let rows: ReportRow[];
+  if (context.platform?.name === "cloudflare") {
+    const db = context.platform.env?.DB as D1Database | undefined;
+    if (!db) throw new Error("Missing Cloudflare D1 binding DB. See REPORTS.md.");
+    const statement = db.prepare(query);
+    ({ results: rows } = await statement.bind(...values).all<ReportRow>());
+  } else {
+    // Load the native module only on Node. A static node:sqlite import would
+    // reach the Worker bundle even though Cloudflare only uses its D1 binding.
+    const { DatabaseSync } = process.getBuiltinModule("node:sqlite") as typeof import("node:sqlite");
+    const db = new DatabaseSync(path, { readOnly: true });
+    try {
+      rows = db.prepare(query).all(...values) as unknown as ReportRow[];
+    } finally {
+      db.close();
+    }
+  }
+  return rows.map(({ period, payload }) => {
+    const { notes, sales } = JSON.parse(payload) as Pick<Report, "notes" | "sales">;
+    return { period, notes, sales };
+  });
+}
+
+// All six blocks on a report page get the same Request. Share the in-flight
+// query within that request only; never cache data across visitors.
+const requests = new WeakMap<Request, Promise<ReportRoute>>();
+
+export function requestReport(request: Request, context: ReportContext): Promise<ReportRoute> {
+  let route = requests.get(request);
+  if (!route) {
+    const path = new URL(request.url).pathname;
+    const period = /(?:^|\\/)(\\d{4}-(?:0[1-9]|1[0-2]))(?:\\.html)?\\/?$/.exec(decodeURIComponent(path))?.[1];
+    if (!period) throw new Error("Invalid report period in request path");
+    route = readReports(context, period).then((reports) => {
+      const current = reportRoutes(reports).find(({ report }) => report.period === period);
+      if (!current) throw new Error("The requested report is missing from the database. See REPORTS.md.");
+      return current;
+    });
+    requests.set(request, route);
+  }
+  return route;
 }
 `;
 
-export const RACING_DB_TEST_TS = `import { mkdtempSync, rmSync } from "node:fs";
+export const RACING_DB_TEST_TS = `import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { openRacingDatabase } from "./racing-db.ts";
+import { describe, expect, it } from "vitest";
+import { readReports } from "./racing-db.ts";
 
-let root: string | undefined;
-const previousCwd = process.cwd();
+describe("report database", () => {
+  it("does not create a database at request time", async () => {
+    const root = mkdtempSync(join(tmpdir(), "reports-read-only-"));
+    const path = join(root, "racing.db");
+    try {
+      await expect(readReports({}, undefined, path)).rejects.toThrow();
+      expect(existsSync(path)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
-afterEach(() => {
-  process.chdir(previousCwd);
-  if (root) rmSync(root, { recursive: true, force: true });
-  root = undefined;
-});
-
-describe("openRacingDatabase", () => {
-  it("opens a database below the project data folder", () => {
-    root = mkdtempSync(join(tmpdir(), "bascik-racing-db-"));
-    process.chdir(root);
-    const { db, path } = openRacingDatabase();
-    expect(path).toBe(join(root, "data", "racing.db"));
-    expect(db.prepare("SELECT 1 AS ok").get()).toEqual({ ok: 1 });
-    db.close();
+  it("requires the D1 binding on Cloudflare rather than falling back to SQLite", async () => {
+    await expect(readReports({ platform: { name: "cloudflare" } })).rejects.toThrow(/DB/);
   });
 });
 `;
 
-export const SEED_DATABASE_TS = `// DatabaseSync is provided by ../src/lib/racing-db.ts through Node 24 node:sqlite.
+export const SEED_DATABASE_TS = `// Rebuild the demo snapshot from the same JSON that supplies the routes and CSVs.
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { openRacingDatabase } from "../src/lib/racing-db.ts";
+import { DatabaseSync } from "node:sqlite";
+import { loadReports } from "../src/lib/reports.ts";
 
-const sql = await readFile(join(process.cwd(), "data", "racing.sql"), "utf8");
-const { db, path } = openRacingDatabase();
-try {
-  db.exec(sql);
-  const count = db.prepare("SELECT COUNT(*) AS count FROM racing_entries").get() as { count: number };
-  console.log(\`Seeded \${count.count} racing entries in \${path}\`);
-} finally {
-  db.close();
+const [schema, reports] = await Promise.all([
+  readFile("data/racing.sql", "utf8"),
+  loadReports(),
+]);
+const clear = "DELETE FROM racing_reports;";
+const insert = "INSERT INTO racing_reports (period, payload) VALUES";
+const rows = reports.map(({ period, notes, sales }) => [period, JSON.stringify({ notes, sales })]);
+
+if (process.argv.includes("--sql")) {
+  // Wrangler accepts a SQL file, not live SQLite bind parameters. These are
+  // validated fixture strings, not request data. SQLite doubles apostrophes.
+  const literal = (text: string) => "'" + text.replaceAll("'", "''") + "'";
+  process.stdout.write(schema + clear + "\\n" + rows.map((row) =>
+    insert + " (" + row.map(literal).join(", ") + ");\\n"
+  ).join(""));
+} else {
+  const db = new DatabaseSync("data/racing.db");
+  try {
+    db.exec(\`BEGIN; \${schema} \${clear}\`);
+    const statement = db.prepare(insert + " (?, ?)");
+    for (const row of rows) statement.run(...row);
+    db.exec("COMMIT");
+    console.log(\`Seeded \${rows.length} reports in data/racing.db\`);
+  } finally {
+    db.close();
+  }
 }
 `;

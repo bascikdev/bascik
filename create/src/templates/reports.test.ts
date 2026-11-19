@@ -13,15 +13,18 @@ import {
   mkdir,
   mkdtemp,
   realpath,
+  readFile,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ADAPTERS, GITIGNORE, SITE_HEADER_CSS } from "../scaffold.js";
+import { ADAPTERS, GITIGNORE, scaffold, SITE_HEADER_CSS } from "../scaffold.js";
 import { templateNamed, TEMPLATES } from "../templates.js";
 import { REPORTS_TEMPLATE, siteModule } from "./reports.js";
 import { DATA_FILES, DEMO_PERIODS, demoSales } from "./reports/data.js";
@@ -110,20 +113,35 @@ describe("reports template", () => {
       "db:seed": "node scripts/seed-database.ts",
       predev: "npm run db:seed",
       prebuild: "npm run db:seed",
+      pree2e: "npm run db:seed",
     });
     expect(file("scripts/seed-database.ts")).toContain("DatabaseSync");
     expect(file("src/lib/racing-db.ts")).toContain("node:sqlite");
-    expect(file("data/racing.sql")).toContain("Bascik Prototype 17");
+    expect(file("data/racing.sql")).toContain(
+      "CREATE TABLE IF NOT EXISTS racing_reports",
+    );
+    expect(file("data/racing.sql")).not.toContain("INSERT");
     expect(file("data/racing.sql")).not.toMatch(
       /Porsche|Hurley Haywood|Paul Newman|Jordan Taylor|Ross Bentley|Martini Racing/,
     );
     expect(GITIGNORE).toContain("data/racing.db");
   });
 
-  it("writes the same static site with or without an adapter", () => {
-    const plain = filesOf();
-    for (const adapter of ADAPTERS)
-      expect(filesOf("My Reports", adapter)).toEqual(plain);
+  it("renders reports on Node and Cloudflare and keeps the Netlify variant static", () => {
+    for (const component of [
+      "report-list",
+      "period-comparison",
+      "report-summary",
+    ]) {
+      const path = `src/components/${component}/${component}.html`;
+      for (const adapter of [undefined, "cloudflare"] as const)
+        expect(file(path, filesOf("My Reports", adapter))).toContain(
+          "data-bascik-server",
+        );
+      expect(file(path, filesOf("My Reports", "netlify"))).toContain(
+        "data-bascik-build",
+      );
+    }
   });
 
   it("gives every component a test, and every module that builds markup or figures a test", () => {
@@ -293,7 +311,7 @@ describe("reports template build wiring", () => {
   it("writes the CSV files into the build output from a post-phase exec script", () => {
     const config = file("bascik.config.ts");
     expect(config).toMatch(
-      /script: "scripts\/write-csv\.ts",\s*phase: "post",\s*watch: \["data\/", "src\/lib\/"\]/,
+      /script: "scripts\/write-csv\.ts",\s*phase: "post",\s*watch: \["data\/reports\/", "src\/lib\/"\]/,
     );
     const script = file("scripts/write-csv.ts");
     expect(script).toContain('process.env.BASCIK_OUT_DIR ?? "dist"');
@@ -302,12 +320,16 @@ describe("reports template build wiring", () => {
   });
 
   it("watches the data folder and keeps the two components that list it out of the build script cache", () => {
-    const config = file("bascik.config.ts");
-    expect(config).toContain('watchPaths: ["data/", "src/lib/"]');
+    const netlify = filesOf("My Reports", "netlify");
+    const config = file("bascik.config.ts", netlify);
+    expect(config).toContain('watchPaths: ["data/reports/", "src/lib/"]');
     for (const component of ["report-list", "period-comparison"]) {
       expect(config).toContain(`"src/components/${component}/**"`);
-      expect(file(`src/components/${component}/${component}.html`)).toContain(
-        "await loadReports()",
+      expect(
+        file(`src/components/${component}/${component}.html`, netlify),
+      ).toContain("await loadReports()");
+      expect(file("bascik.config.ts")).not.toContain(
+        `"src/components/${component}/**"`,
       );
     }
     expect(config).not.toContain("siteUrl");
@@ -414,6 +436,129 @@ describe("reports template demo data", () => {
     );
   });
 });
+
+it("renders the Cloudflare bundle using a local D1 binding, without a local SQLite file", async () => {
+  const parent = await realpath(
+    await mkdtemp(join(tmpdir(), "bascik-reports-d1-")),
+  );
+  try {
+    const root = join(parent, "reports-worker");
+    await scaffold("reports-worker", parent, {
+      template: REPORTS_TEMPLATE,
+      adapter: "cloudflare",
+    });
+    const scope = join(root, "node_modules", "@bascik");
+    await mkdir(scope, { recursive: true });
+    await symlink(join(REPO_ROOT, "pkg"), join(scope, "bascik"), "dir");
+    await symlink(
+      join(REPO_ROOT, "adapters/cloudflare"),
+      join(scope, "adapter-cloudflare"),
+      "dir",
+    );
+    execFileSync(
+      process.execPath,
+      [
+        join(REPO_ROOT, "pkg/bin/bascik.js"),
+        "--build",
+        "--target",
+        "cloudflare",
+      ],
+      {
+        cwd: root,
+        env: { ...process.env, BASCIK_SITE_URL: "https://example.com" },
+      },
+    );
+    const dir = join(root, "dist/.bascik/cloudflare");
+    const { compatibility_date, compatibility_flags, assets } = JSON.parse(
+      await readFile(join(dir, "wrangler.jsonc"), "utf8"),
+    );
+    const snapshot = execFileSync(
+      process.execPath,
+      ["scripts/seed-database.ts", "--sql"],
+      {
+        cwd: root,
+        encoding: "utf8",
+      },
+    );
+    // Test-only bootstrap. The generated worker itself contains no setup route.
+    const setup = join(dir, "local-test.js");
+    await writeFile(
+      setup,
+      `import worker from "./worker.js";
+      export default {
+        async fetch(request, env, ctx) {
+          if (new URL(request.url).pathname === "/__test_setup" && request.method === "POST") {
+            const statements = await request.json();
+            await env.DB.batch(statements.map((sql) => env.DB.prepare(sql)));
+            return new Response(null, { status: 204 });
+          }
+          return worker.fetch(request, env, ctx);
+        },
+      };`,
+    );
+    const { Miniflare } = await import("miniflare");
+    const worker = new Miniflare({
+      modules: true,
+      modulesRoot: dir,
+      modulesRules: [{ type: "ESModule", include: ["**/*.js"] }],
+      scriptPath: setup,
+      cf: false,
+      compatibilityDate: compatibility_date,
+      compatibilityFlags: compatibility_flags,
+      d1Databases: { DB: "reports-local" },
+      assets: {
+        directory: join(dir, "public"),
+        binding: "ASSETS",
+        routerConfig: {
+          has_user_worker: true,
+          invoke_user_worker_ahead_of_assets: false,
+          static_routing: {
+            user_worker: [...assets.run_worker_first, "/__test_setup"],
+          },
+        },
+      },
+    });
+    try {
+      const url = await worker.ready;
+      const request = (path: string, init?: RequestInit) =>
+        fetch(new URL(path, url), {
+          ...init,
+          signal: AbortSignal.timeout(10_000),
+        });
+      const seed = await request("/__test_setup", {
+        method: "POST",
+        body: JSON.stringify([
+          ...snapshot
+            .trim()
+            .split(/;\n|;$/)
+            .filter((sql) => sql.trim()),
+          `UPDATE racing_reports SET payload = json_set(payload, '$.notes[0]', 'D1-only note') WHERE period = '2026-08'`,
+        ]),
+      });
+      expect(seed.status).toBe(204);
+      for (const [path, content] of [
+        ["/", "October 2026"],
+        ["/compare", "All periods together"],
+        ["/reports/2026-08", "D1-only note"],
+      ]) {
+        const response = await request(path);
+        expect(response.status, path).toBe(200);
+        expect(response.headers.get("cache-control")).toContain("no-store");
+        expect(await response.text()).toContain(content);
+      }
+      const csv = await request("/reports/2026-08.csv");
+      expect(csv.status).toBe(200);
+      expect(await csv.text()).toContain(
+        "period,title,author,format,channel,units,revenue",
+      );
+      expect((await request("/reports/1900-01")).status).toBe(404);
+    } finally {
+      await worker.dispose();
+    }
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+}, 60_000);
 
 // ─── The generated modules, run ───────────────────────────────────────────────
 
@@ -587,6 +732,56 @@ describe("reports template, generated site", () => {
             .reduce((sum, group) => sum + group.revenueCents, 0),
           `${period} by ${key}`,
         ).toBe(total.revenueCents);
+    }
+  });
+
+  it("uses the same fixture for SQLite and D1, and binds the requested period", async () => {
+    const seed = "scripts/seed-database.ts";
+    execFileSync(process.execPath, [seed], { cwd: root });
+    const sql = execFileSync(process.execPath, [seed, "--sql"], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    const db = new DatabaseSync(":memory:");
+    try {
+      db.exec(sql);
+      const bindings: unknown[][] = [];
+      const platform = {
+        name: "cloudflare" as const,
+        env: {
+          DB: {
+            prepare: (query: string) => ({
+              bind: (...args: (string | number)[]) => ({
+                all: async () => {
+                  bindings.push(args);
+                  expect(query).toMatch(/^\s*(SELECT|WITH)\b/i);
+                  return { results: db.prepare(query).all(...args) };
+                },
+              }),
+            }),
+          },
+        },
+      };
+      const { readReports } = await import(
+        /* @vite-ignore */ pathToFileURL(join(root, "src/lib/racing-db.ts"))
+          .href
+      );
+      const fixture = await site.reports.loadReports(
+        join(root, "data/reports"),
+      );
+      expect(
+        await readReports({}, undefined, join(root, "data/racing.db")),
+      ).toEqual(fixture);
+      expect(await readReports({ platform })).toEqual(fixture);
+      expect(await readReports({ platform }, "2026-08")).toEqual(
+        fixture.slice(0, 3),
+      );
+      expect(bindings.at(-1)).toEqual(["2026-08", 12, "2026-08"]);
+      await expect(
+        readReports({ platform: { name: "cloudflare", env: {} } }),
+      ).rejects.toThrow(/DB/);
+    } finally {
+      db.close();
     }
   });
 
