@@ -63,13 +63,13 @@ export const WORK_PAGE = page({
   name: "work",
   head: seoScript(
     "Work",
-    "Race engineering, restoration, photography, driver development, and track programs with pages for every project.",
+    "Selected identity, editorial, campaign, and art direction projects with a page for every case study.",
   ),
   mainClass: "container page",
   body: `      <page-intro
         data-bascik-prop-label="Selected work"
-        data-bascik-prop-title="Race projects"
-        data-bascik-prop-text="Engineering and program work across endurance racing, classic Porsche history, photography, and driver development."
+        data-bascik-prop-title="A collection of ideas, made real"
+        data-bascik-prop-text="Identity, editorial, campaigns, and image-making, each with a point of view and a reason to exist."
       />
       <project-list />`,
 });
@@ -108,28 +108,28 @@ export const ABOUT_PAGE = page({
   name: "about",
   head: seoScript(
     "About",
-    "Race engineering, classic Porsche restoration, photography, and driver development across iconic circuits.",
+    "An independent creative practice across visual identity, editorial, and art direction.",
   ),
   mainClass: "container page",
   body: `      <page-intro
         data-bascik-prop-label="About"
-        data-bascik-prop-title="Race craft, from paddock to podium"
-        data-bascik-prop-text="An endurance-focused motorsport portfolio shaped by preparation, precision, and fast feedback."
+        data-bascik-prop-title="Visual worlds built with care"
+        data-bascik-prop-text="An independent practice in identity, editorial, and art direction."
       />
-      <racing-bio />`,
+      <creator-bio />`,
 });
 
 export const CONTACT_PAGE = page({
   name: "contact",
   head: seoScript(
     "Contact",
-    "Enquire about race engineering, Porsche restoration, photography, driver development, or track programs.",
+    "Start a conversation about identity, editorial, art direction, or another thoughtful creative project.",
   ),
   mainClass: "container page",
   body: `      <page-intro
         data-bascik-prop-label="Contact"
-        data-bascik-prop-title="Start a motorsport project"
-        data-bascik-prop-text="Race engineering, restoration, photography, driver coaching, or a custom track program."
+        data-bascik-prop-title="Have a good one in mind?"
+        data-bascik-prop-text="Tell me what you are making, who it is for, and what you hope it will do."
       />
       <contact-form />`,
 });
@@ -152,26 +152,71 @@ export const NOT_FOUND_PAGE = page({
         data-bascik-prop-title="Page not found"
         data-bascik-prop-text="This page does not exist or has moved."
       />
-      <p><a href="/work" class="btn btn-primary">See race projects</a></p>`,
+      <p><a href="/work" class="btn btn-primary">Back to selected work</a></p>`,
 });
 
 /**
- * The global stylesheet: the default template's design tokens and helpers, then the few rules the portfolio's
- * pages share. `.project-grid` is global because project components build the same grid.
+ * The global stylesheet: an editorial portfolio system layered over the shared accessible foundation.
+ * `.project-grid` is global because project components build the same grid.
  */
 export const PORTFOLIO_STYLES_CSS = `${STYLES_CSS}
-/* ── Portfolio ── */
-.page { padding-top: 72px; padding-bottom: 72px; }
-
-.book-grid {
-  list-style: none; margin: 28px 0 0; padding: 0;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 36px 28px;
+/* ── Portfolio: warm paper, botanical green, and a quiet clay accent ── */
+:root {
+  --portfolio-accent: light-dark(#b64f3c, #f09a81);
+  --bg: light-dark(#f5f2eb, #171916);
+  --surface: light-dark(#fbf9f4, #22241f);
+  --surface-top: light-dark(#fffdf8, #292c26);
+  --elevated: light-dark(#e9e5db, #2b2e28);
+  --border: light-dark(#d8d4c9, #41443d);
+  --border-hover: light-dark(#9d9a8d, #777a70);
+  --accent: var(--portfolio-accent);
+  --accent-hover: light-dark(#943f31, #ffae98);
+  --accent-dim: light-dark(#f2e3dc, #382a25);
+  --on-accent: #fffaf5;
+  --text: light-dark(#262820, #f1efe7);
+  --text-muted: light-dark(#696b61, #bcbbb0);
+  --shadow: none;
+  --r: 2px;
+  --r-sm: 2px;
 }
 
-@media (max-width: 640px) {
-  .page { padding-top: 48px; padding-bottom: 48px; }
-  /* Two project cards side by side on a phone. */
-  .project-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 28px 16px; }
+body { font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; line-height: 1.65; }
+h1, h2, h3, h4 {
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.045em;
+}
+.container { max-width: 1360px; }
+.hero { padding: clamp(72px, 10vw, 128px) 0 clamp(80px, 12vw, 150px); text-align: left; }
+.hero > .container { max-width: 1360px; }
+.hero-actions { justify-content: flex-start; }
+.page { max-width: 1100px; padding-top: clamp(52px, 8vw, 100px); padding-bottom: clamp(64px, 9vw, 112px); }
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: clamp(40px, 7vw, 92px) clamp(20px, 4vw, 56px);
+  margin: clamp(36px, 6vw, 76px) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.project-grid > li { min-width: 0; grid-column: span 7; }
+.project-grid > li:nth-child(4n + 2),
+.project-grid > li:nth-child(4n + 3) { grid-column: span 5; }
+.project-grid > li:nth-child(4n + 2) { padding-top: 54px; }
+.project-grid > li:nth-child(4n + 3) { padding-top: 16px; }
+.project-grid > li:nth-child(4n) { padding-top: 70px; }
+.more { margin-top: 42px; }
+footer { background: var(--bg); }
+@media (max-width: 760px) {
+  .project-grid { gap: 36px 18px; }
+  .project-grid > li,
+  .project-grid > li:nth-child(n) { grid-column: span 6; padding-top: 0; }
+  .project-grid > li:nth-child(odd) { padding-top: 28px; }
+}
+@media (max-width: 480px) {
+  .project-grid { grid-template-columns: minmax(0, 1fr); gap: 34px; }
+  .project-grid > li,
+  .project-grid > li:nth-child(n) { grid-column: 1; padding-top: 0; }
 }
 `;
 
@@ -193,11 +238,14 @@ import { projects, featuredProjects } from "../src/lib/projects.ts";
 const [project] = projects;
 
 test.describe("Portfolio E2E Tests", () => {
-  test("home page introduces the racing portfolio and shows featured projects", async ({
+  test("home page introduces a creator and shows featured projects", async ({
     page,
   }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      "A practice in color, shape, and story.",
+    );
+    await expect(page.getByTestId("home-intro-art")).toBeVisible();
     const cards = page.getByTestId("featured-projects").getByTestId("project-card");
     await expect(cards).toHaveCount(featuredProjects().length);
 
@@ -274,7 +322,7 @@ test.describe("Portfolio E2E Tests", () => {
     await expect(page).toHaveURL("/about");
     await expect(page).toHaveTitle(/^About - /);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-      "Race craft, from paddock to podium",
+      "Visual worlds built with care",
     );
     await page.getByTestId("site-header-logo").click();
     await expect(page).toHaveURL("/");
@@ -367,7 +415,7 @@ test.describe("Portfolio E2E Tests", () => {
     await submit.click();
     await expect(status).toContainText("Message:");
 
-    await message.fill("I would like to discuss a race engineering program.");
+    await message.fill("I would like to discuss a visual identity project.");
     await submit.click();
     await expect(page).toHaveURL("/contact");
     await expect(status).toContainText("Thanks");
@@ -384,7 +432,7 @@ test.describe("Portfolio E2E Tests", () => {
       "content",
       "noindex",
     );
-    await page.getByRole("link", { name: "See race projects" }).click();
+    await page.getByRole("link", { name: "Back to selected work" }).click();
     await expect(page).toHaveURL("/work");
   });
 `;

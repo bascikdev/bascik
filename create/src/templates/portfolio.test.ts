@@ -2,7 +2,7 @@
  * portfolio.test.ts
  *
  * The portfolio template's content, without the compiler: which files it writes, what the pages and components
- * hold, and how the generated racing project collection behaves.
+ * hold, and how the generated creator project collection behaves.
  * temporary folder, so its check is tested as code, not as text.
  *
  * portfolio.integration.test.ts builds the site with the real CLI.
@@ -59,18 +59,6 @@ interface GeneratedProject {
 
 let tempDir: string;
 let projectsModule: { projects: GeneratedProject[] };
-type GeneratedBook = GeneratedProject & {
-  kind: string;
-  description: string[];
-  cover: { tone: string; alt: string };
-};
-let booksModule: {
-  books: GeneratedBook[];
-  featuredBooks: () => GeneratedBook[];
-  bookPath: (book: { slug: string }) => string;
-  checkBooks: (list: readonly unknown[]) => GeneratedBook[];
-  COVER_TONES: readonly string[];
-};
 let loads = 0;
 
 /** A generated module, written to the temporary folder and imported. Each call is a fresh module. */
@@ -111,19 +99,6 @@ beforeAll(async () => {
       };
     });
   projectsModule = { projects };
-  const legacyBooks = projects.map((project): GeneratedBook => ({
-    ...project,
-    kind: project.category,
-    description: [project.summary],
-    cover: { tone: project.accent, alt: `Project ${project.title}` },
-  }));
-  booksModule = {
-    books: legacyBooks,
-    featuredBooks: () => legacyBooks.filter((project) => project.featured),
-    bookPath: (project) => `/work/${project.slug}`,
-    checkBooks: (list) => list as GeneratedBook[],
-    COVER_TONES: ["amber", "tide", "moss", "rust", "slate", "plum"],
-  };
 });
 
 afterAll(async () => {
@@ -138,6 +113,38 @@ describe("portfolio template", () => {
     expect(PORTFOLIO_TEMPLATE.summary).toBe(
       "A portfolio: a work grid, a page per item, and about and contact pages",
     );
+  });
+
+  it("is an expressive creator portfolio with an editorial, asymmetric art direction", () => {
+    const content = [
+      file("src/lib/site.ts"),
+      file("src/pages/index.html"),
+      file("src/pages/work.html"),
+      file("src/pages/about.html"),
+      ...pathsMatching(/^content\/projects\/.*\.md$/).map((path) => file(path)),
+      file("src/components/home-intro/home-intro.html"),
+      file("src/components/creator-bio/creator-bio.html"),
+    ].join("\n");
+    const styles = file("src/pages/css/styles.css");
+
+    expect(content).toContain("Independent designer & art director");
+    expect(content).toContain("A practice in color, shape, and story.");
+    expect(content).toContain(
+      "A fictional identity for a neighborhood plant shop",
+    );
+    expect(content).not.toMatch(
+      /motorsport|racing|race engineering|porsche|paddock|circuit/i,
+    );
+    expect(styles).toContain(
+      "--portfolio-accent: light-dark(#b64f3c, #f09a81)",
+    );
+    expect(styles).toContain(
+      'font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif',
+    );
+    expect(styles).toContain(
+      "grid-template-columns: repeat(12, minmax(0, 1fr))",
+    );
+    expect(styles).not.toMatch(/bootstrap|\\.row\\s*\\{|\\.col-(?:sm|md|lg)-/i);
   });
 
   it("needs no package beyond the starter's own", () => {
@@ -159,7 +166,7 @@ describe("portfolio template", () => {
         );
   });
 
-  it("writes the racing project collection, pages, and dynamic route", () => {
+  it("writes the creator project collection, pages, and dynamic route", () => {
     expect(pagePaths.sort()).toEqual([
       "src/pages/404.html",
       "src/pages/about.html",
@@ -363,7 +370,7 @@ describe("portfolio template", () => {
     expect(form).not.toMatch(/name="(action|method|submit|reset|elements)"/);
   });
 
-  it("renders project cards and detail from racing Markdown data", () => {
+  it("renders project cards and detail from creator portfolio Markdown data", () => {
     expect(file("src/lib/project-cards.ts")).toContain("projectCards");
     expect(file("src/components/project-card/project-card.html")).toContain(
       'data-testid="project-card"',
@@ -471,142 +478,4 @@ describe("portfolio template: the site name", () => {
       );
     },
   );
-});
-
-describe.skip("obsolete generated books module", () => {
-  const valid: GeneratedBook = {
-    slug: "a-test-book",
-    title: "A Test Book",
-    year: 2024,
-    kind: "Novel",
-    category: "Race Engineering",
-    tags: ["Porsche 962"],
-    accent: "moss",
-    summary: "One sentence about the book.",
-    description: ["A paragraph."],
-    cover: { tone: "moss", alt: "Cover of A Test Book." },
-  };
-
-  it("has five or six sample books with unique slugs, half of them or fewer on the home page", () => {
-    const { books, featuredBooks } = booksModule;
-    expect(books.length).toBeGreaterThanOrEqual(5);
-    expect(books.length).toBeLessThanOrEqual(6);
-    expect(new Set(books.map((book) => book.slug)).size).toBe(books.length);
-    expect(new Set(books.map((book) => book.title)).size).toBe(books.length);
-    expect(featuredBooks().length).toBeGreaterThanOrEqual(2);
-    expect(featuredBooks().length).toBeLessThanOrEqual(books.length / 2);
-    // Newest first, as the work page says.
-    const years = books.map((book) => book.year);
-    expect(years).toEqual([...years].sort((a, b) => b - a));
-  });
-
-  it("gives every sample book what its page and its search result need", () => {
-    for (const book of booksModule.books) {
-      expect(book.slug).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
-      // The summary is the page's meta description, and the title plus a site name is its <title>.
-      expect(book.summary.length, book.slug).toBeGreaterThanOrEqual(50);
-      expect(book.summary.length, book.slug).toBeLessThanOrEqual(160);
-      expect(book.title.length, book.slug).toBeLessThanOrEqual(40);
-      expect(book.description.length, book.slug).toBeGreaterThanOrEqual(2);
-      expect(booksModule.COVER_TONES).toContain(book.cover.tone);
-      expect(book.cover.alt).toContain(book.title);
-      expect(booksModule.bookPath(book)).toBe(`/work/${book.slug}`);
-    }
-    // Each sample cover has its own color.
-    expect(new Set(booksModule.books.map((book) => book.cover.tone)).size).toBe(
-      booksModule.books.length,
-    );
-  });
-
-  it("accepts a valid list and returns it", () => {
-    expect(booksModule.checkBooks([valid])).toEqual([valid]);
-    expect(booksModule.checkBooks([])).toEqual([]);
-  });
-
-  it.each(["slug", "title", "year", "kind", "summary", "description", "cover"])(
-    "misuse: a book with no %s is refused with an error that names the file, the book and the field",
-    (field) => {
-      const broken: Record<string, unknown> = { ...valid };
-      delete broken[field];
-      const named = field === "slug" ? "A Test Book" : "a-test-book";
-      expect(() => booksModule.checkBooks([valid, broken])).toThrow(
-        `src/lib/books.ts: book 2 ("${named}")`,
-      );
-      expect(() => booksModule.checkBooks([valid, broken])).toThrow(
-        `"${field === "cover" ? "cover.tone" : field}"`,
-      );
-    },
-  );
-
-  it.each([
-    ["an empty title", { title: "   " }, '"title"'],
-    ["a year typed as text", { year: "2024" }, '"year"'],
-    [
-      "a description that is one string",
-      { description: "Text." },
-      '"description"',
-    ],
-    ["an empty description", { description: [] }, '"description"'],
-    [
-      "an unknown cover color",
-      { cover: { tone: "pink", alt: "A." } },
-      "cover.tone",
-    ],
-    ["a cover with no alt text", { cover: { tone: "moss" } }, "cover.alt"],
-    ["a page count that is not whole", { pages: 1.5 }, '"pages"'],
-  ])("misuse: %s is refused, naming the field", (_label, change, field) => {
-    expect(() => booksModule.checkBooks([{ ...valid, ...change }])).toThrow(
-      field,
-    );
-  });
-
-  it("misuse: a slug used twice is refused, naming both books", () => {
-    const again = { ...valid, title: "Another Book" };
-    expect(() =>
-      booksModule.checkBooks([valid, { ...valid, slug: "other" }, again]),
-    ).toThrow(
-      'src/lib/books.ts: book 3 ("a-test-book") has the same slug as book 1',
-    );
-  });
-
-  it.each([
-    "A Test Book",
-    "a_test",
-    "a/b",
-    "../up",
-    "a.b",
-    "été",
-    "-a",
-    "a--b",
-  ])(
-    "misuse: the slug %j is refused before Bascik would skip its route with only a warning",
-    (slug) => {
-      expect(() => booksModule.checkBooks([{ ...valid, slug }])).toThrow(
-        "lowercase letters, digits, and hyphens",
-      );
-    },
-  );
-
-  it("misuse: an entry that is not an object is refused by position", () => {
-    expect(() => booksModule.checkBooks([valid, null])).toThrow(
-      'book 2 ("no slug or title") is not an object',
-    );
-    expect(() => booksModule.checkBooks(["a-test-book"])).toThrow(
-      "is not an object",
-    );
-  });
-
-  it("misuse: a duplicate in the data stops the module from loading at all", async () => {
-    const source = file("src/lib/books.ts");
-    const first = booksModule.books[0].slug;
-    const second = booksModule.books[1].slug;
-    const duplicated = source.replace(
-      `slug: "${second}"`,
-      () => `slug: "${first}"`,
-    );
-    expect(duplicated).not.toBe(source);
-    await expect(load(duplicated)).rejects.toThrow(
-      `book 2 ("${first}") has the same slug as book 1`,
-    );
-  });
 });

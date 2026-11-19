@@ -3,7 +3,7 @@
  *
  * The portfolio's TypeScript modules under `src/lib/`, their tests, and the project config.
  *
- * `src/lib/books.ts` is the collection: a typed array, checked when the module loads so a bad entry stops the
+ * `src/lib/projects.ts` is the collection: a typed array, checked when the module loads so a bad entry stops the
  * build with a message that names it. `src/lib/site.ts` is the only file that holds the site's name.
  */
 
@@ -18,13 +18,13 @@ export const site = {
   /** The site's name: the header logo, og:site_name, and the end of every page title. */
   name: ${JSON.stringify(siteName)},
   /** Who the site is about. */
-  author: "Hayden Vale Racing",
-  role: "Motorsport engineering and race programs",
+  author: "Your Name",
+  role: "Independent designer & art director",
   tagline:
-    "Race engineering, classic Porsche restoration, photography, and driver development from Daytona to Le Mans.",
+    "Independent design and art direction for ideas with something to say.",
   /** The home page's description in search results: one or two sentences. */
   description:
-    "Motorsport portfolio covering race engineering, Porsche restoration, race photography, driver development, and track programs.",
+    "Selected identity, editorial, campaign, and art direction work by an independent creative practice.",
 } as const;
 `;
 
@@ -45,304 +45,6 @@ export default defineConfig({
 });
 `;
 
-/** `src/lib/books.ts`: the types, the sample books, and the check that runs when the module loads. */
-export const BOOKS_TS = `// The books this site shows. Each entry becomes a card on /work and a page at /work/<slug>
-// (src/pages/work/[slug].html). To add a book, add an entry; to remove one, delete it.
-//
-// Bascik strips the types without checking them, so checkBooks() checks every entry when this module loads:
-// a missing field or a slug used twice stops the build with a message that names the book.
-
-/** The cover colors <book-cover> draws (src/components/book-cover/book-cover.html). Add a color in both files. */
-export const COVER_TONES = [
-  "amber",
-  "moss",
-  "tide",
-  "plum",
-  "rust",
-  "slate",
-] as const;
-export type CoverTone = (typeof COVER_TONES)[number];
-
-export interface Book {
-  /** The last part of the page's URL: lowercase letters, digits, and hyphens. Unique. */
-  slug: string;
-  title: string;
-  /** The year it was published. */
-  year: number;
-  /** What kind of book it is, such as "Novel" or "Essays". */
-  kind: string;
-  /** One sentence: the card's text and the page's description in search results (50 to 160 characters reads best). */
-  summary: string;
-  /** The page's text, one string per paragraph. */
-  description: string[];
-  cover: {
-    tone: CoverTone;
-    /** What the cover shows, for people who cannot see it. */
-    alt: string;
-  };
-  pages?: number;
-  /** Show the book on the home page. */
-  featured?: boolean;
-}
-
-/** Every book, newest first: the order written here is the order on the site. */
-export const books: Book[] = checkBooks([
-  {
-    slug: "nine-letters-to-a-lighthouse",
-    title: "Nine Letters to a Lighthouse",
-    year: 2025,
-    kind: "Novella",
-    pages: 148,
-    featured: true,
-    summary:
-      "A keeper's granddaughter writes to the light that raised her family, one letter for each year it has stood dark.",
-    description: [
-      "The Carrow light was switched off nine years ago, and nobody told Mirren Ashby, who grew up in its kitchen. She finds out from a postcard. What follows is a year of letters addressed to a building: furious, funny, and slowly forgiving.",
-      "This is the shortest book on the shelf and the one readers write back about most. It can be read in an evening, preferably a windy one.",
-    ],
-    cover: {
-      tone: "tide",
-      alt: "Cover of Nine Letters to a Lighthouse: the title in white serif type on deep sea blue.",
-    },
-  },
-  {
-    slug: "the-lamplighters-almanac",
-    title: "The Lamplighter's Almanac",
-    year: 2023,
-    kind: "Novel",
-    pages: 384,
-    featured: true,
-    summary:
-      "A town that still lights its streets by hand hires its first new lamplighter in forty years, and she keeps notes.",
-    description: [
-      "Pell Harbor has 212 gas lamps and one rule: each is lit by a person, at dusk, every day of the year. When the old lamplighter retires, the job goes to Wren Tolland, who is nineteen, afraid of ladders, and unable to stop writing things down.",
-      "Told as a year of almanac entries, the novel follows one round of the lamps through four seasons, three funerals, a wedding, and a flood.",
-    ],
-    cover: {
-      tone: "amber",
-      alt: "Cover of The Lamplighter's Almanac: the title in white serif type on warm amber.",
-    },
-  },
-  {
-    slug: "tide-tables-for-beginners",
-    title: "Tide Tables for Beginners",
-    year: 2021,
-    kind: "Short stories",
-    pages: 226,
-    featured: true,
-    summary:
-      "Eleven stories set between high and low water, about people learning something later than they meant to.",
-    description: [
-      "A retired pilot takes swimming lessons. A ferry cook studies for a law degree between crossings. A widower learns to read the sky from his late wife's notebooks. Each story happens in the six hours between one tide and the next.",
-      "Several of these stories first appeared in small magazines; three are new to this collection.",
-    ],
-    cover: {
-      tone: "moss",
-      alt: "Cover of Tide Tables for Beginners: the title in white serif type on moss green.",
-    },
-  },
-  {
-    slug: "glasshouse-winter",
-    title: "Glasshouse Winter",
-    year: 2019,
-    kind: "Novel",
-    pages: 312,
-    summary:
-      "Two sisters inherit a botanical garden in the coldest winter on record and have until spring to decide what lives.",
-    description: [
-      "The boilers at Hollin Garden can keep one glasshouse warm, not five. Ada wants to save the orchids their mother collected; June wants to save the garden's accounts. The frost does not wait for them to agree.",
-      "A novel about inheritance, heating bills, and the difference between keeping something and keeping it alive.",
-    ],
-    cover: {
-      tone: "plum",
-      alt: "Cover of Glasshouse Winter: the title in white serif type on dark plum.",
-    },
-  },
-  {
-    slug: "a-small-hours-atlas",
-    title: "A Small Hours Atlas",
-    year: 2017,
-    kind: "Essays",
-    pages: 198,
-    summary:
-      "Essays on night shifts, ferry timetables, and the maps people draw of places they only visit after midnight.",
-    description: [
-      "Fourteen essays written between midnight and five in the morning, in the places that are open then: a bakery, a signal box, a hospital car park, the upper deck of the last boat home.",
-      "Part travel writing and part sleep diary, the book asks who keeps a town running while it sleeps, and what they see.",
-    ],
-    cover: {
-      tone: "slate",
-      alt: "Cover of A Small Hours Atlas: the title in white serif type on slate gray.",
-    },
-  },
-  {
-    slug: "the-salt-ledger",
-    title: "The Salt Ledger",
-    year: 2015,
-    kind: "Novel",
-    pages: 296,
-    summary:
-      "A debut novel about a salt works, the family that keeps its books, and the one entry nobody will explain.",
-    description: [
-      "For a hundred and forty years the Marsh family has written down every sack of salt that left Saltwick Pans. Then a new bookkeeper finds a line in the ledger for 1911 that has been paid, every year since, to no one.",
-      "The first novel, and still the one with the most weather in it.",
-    ],
-    cover: {
-      tone: "rust",
-      alt: "Cover of The Salt Ledger: the title in white serif type on rust red.",
-    },
-  },
-]);
-
-/** The books the home page shows. */
-export const featuredBooks = (): Book[] =>
-  books.filter((book) => book.featured);
-
-/** A book's page, as a site path. */
-export const bookPath = (book: Pick<Book, "slug">): string =>
-  \`/work/\${book.slug}\`;
-
-// A function declaration, like checkBooks: both are called above, while the module is still loading.
-function isText(value: unknown): value is string {
-  return typeof value === "string" && value.trim() !== "";
-}
-
-/**
- * The list as given, or an Error that names the first entry that cannot become a page. The parameter is
- * unknown[] so the check holds for entries the type checker never saw.
- */
-export function checkBooks(list: readonly unknown[]): Book[] {
-  const firstUse = new Map<string, number>();
-  list.forEach((entry, index) => {
-    const book = (entry ?? {}) as Partial<Book>;
-    const called = isText(book.slug)
-      ? book.slug
-      : isText(book.title)
-        ? book.title
-        : "no slug or title";
-    const fail = (problem: string): never => {
-      throw new Error(
-        \`src/lib/books.ts: book \${index + 1} ("\${called}") \${problem}\`,
-      );
-    };
-    if (typeof entry !== "object" || entry === null)
-      fail("is not an object. Each book is { slug, title, year, ... }.");
-    for (const field of ["slug", "title", "kind", "summary"] as const)
-      if (!isText(book[field])) fail(\`is missing "\${field}".\`);
-    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(book.slug!))
-      fail(
-        \`has the slug "\${book.slug}". A slug is the page's URL: use lowercase letters, digits, and hyphens, such as "my-first-book".\`,
-      );
-    if (!Number.isInteger(book.year))
-      fail('is missing "year", a whole number.');
-    if (
-      !Array.isArray(book.description) ||
-      book.description.length === 0 ||
-      !book.description.every(isText)
-    )
-      fail('is missing "description", a list with one string per paragraph.');
-    if (!COVER_TONES.includes(book.cover?.tone as CoverTone))
-      fail(\`needs "cover.tone" to be one of: \${COVER_TONES.join(", ")}.\`);
-    if (!isText(book.cover?.alt))
-      fail('is missing "cover.alt", the text that describes the cover.');
-    if (book.pages !== undefined && !Number.isInteger(book.pages))
-      fail('has "pages" that is not a whole number.');
-    const earlier = firstUse.get(book.slug!);
-    if (earlier !== undefined)
-      fail(
-        \`has the same slug as book \${earlier + 1}. Each book needs its own slug, because the slug is its page's URL.\`,
-      );
-    firstUse.set(book.slug!, index);
-  });
-  return list as Book[];
-}
-`;
-
-/** `src/lib/books.test.ts`: the sample data holds, and each kind of bad entry is refused by name. */
-export const BOOKS_TEST = `import { describe, expect, it } from "vitest";
-import {
-  bookPath,
-  books,
-  checkBooks,
-  featuredBooks,
-  type Book,
-} from "./books.ts";
-
-const valid: Book = {
-  slug: "a-test-book",
-  title: "A Test Book",
-  year: 2024,
-  kind: "Novel",
-  summary: "One sentence about the book.",
-  description: ["A paragraph."],
-  cover: { tone: "moss", alt: "Cover of A Test Book." },
-};
-
-describe("books", () => {
-  it("lists books that all pass the check, some of them featured", () => {
-    expect(books.length).toBeGreaterThan(0);
-    expect(() => checkBooks(books)).not.toThrow();
-    expect(featuredBooks().length).toBeGreaterThan(0);
-    expect(featuredBooks().every((book) => book.featured)).toBe(true);
-  });
-
-  it("gives each book a page under /work", () => {
-    expect(bookPath(valid)).toBe("/work/a-test-book");
-  });
-
-  it("accepts a book without the optional fields", () => {
-    expect(checkBooks([valid])).toEqual([valid]);
-  });
-
-  it.each(["slug", "title", "kind", "summary", "year", "description"] as const)(
-    "misuse: a book with no %s fails with its position and name",
-    (field) => {
-      const broken: Partial<Book> = { ...valid };
-      delete broken[field];
-      const named = field === "slug" ? "A Test Book" : "a-test-book";
-      expect(() => checkBooks([valid, broken])).toThrow(\`book 2 ("\${named}")\`);
-      expect(() => checkBooks([broken])).toThrow(\`"\${field}"\`);
-    },
-  );
-
-  it("misuse: two books with one slug fail, naming both positions", () => {
-    const other = { ...valid, title: "Another Book" };
-    expect(() => checkBooks([valid, { ...valid, slug: "b" }, other])).toThrow(
-      'book 3 ("a-test-book") has the same slug as book 1',
-    );
-  });
-
-  it.each(["A Test Book", "a_test", "-a", "a/b", "été"])(
-    "misuse: the slug %j is refused, because it would not be a clean URL",
-    (slug) => {
-      expect(() => checkBooks([{ ...valid, slug }])).toThrow(
-        "lowercase letters",
-      );
-    },
-  );
-
-  it("misuse: a cover color the component does not draw, or no alt text, is refused", () => {
-    expect(() =>
-      checkBooks([{ ...valid, cover: { tone: "pink", alt: "Cover." } }]),
-    ).toThrow("cover.tone");
-    expect(() =>
-      checkBooks([{ ...valid, cover: { tone: "moss", alt: " " } }]),
-    ).toThrow("cover.alt");
-    expect(() => checkBooks([{ ...valid, cover: undefined }])).toThrow(
-      "cover.tone",
-    );
-  });
-
-  it("misuse: an entry that is not an object, or a year typed as text, is refused", () => {
-    expect(() => checkBooks([null])).toThrow("book 1");
-    expect(() => checkBooks(["a-test-book"])).toThrow("is not an object");
-    expect(() => checkBooks([{ ...valid, year: "2024" }])).toThrow('"year"');
-    expect(() => checkBooks([{ ...valid, pages: 12.5 }])).toThrow('"pages"');
-  });
-});
-`;
-
-/** The racing project's Markdown collection reader. */
 export const PROJECTS_TS = `import { readdir, readFile } from "node:fs/promises";
 import { raw, type SafeHtml } from "@bascik/bascik/html";
 
@@ -353,7 +55,7 @@ export interface Project {
   category: string;
   tags: string[];
   summary: string;
-  accent: "amber" | "tide" | "moss" | "rust" | "slate" | "plum";
+  accent: "clay" | "sage" | "blue" | "citrus" | "lilac" | "ink";
   featured?: boolean;
   html: SafeHtml;
 }
@@ -392,7 +94,7 @@ export async function listProjects(): Promise<Project[]> {
     const category = scalar(fields.get("category"), "category", file);
     const summary = scalar(fields.get("summary"), "summary", file);
     const accentValue = scalar(fields.get("accent"), "accent", file);
-    if (!["amber", "tide", "moss", "rust", "slate", "plum"].includes(accentValue))
+    if (!["clay", "sage", "blue", "citrus", "lilac", "ink"].includes(accentValue))
       throw new Error(\`\${file}: invalid accent "\${accentValue}"\`);
     const tags = (fields.get("tags") || "").split("|").map((tag) => tag.trim()).filter(Boolean);
     if (tags.length === 0) throw new Error(\`\${file}: missing "tags"\`);
@@ -421,207 +123,99 @@ export const featuredProjects = (): Project[] => projects.filter((project) => pr
 export const projectPath = (project: Pick<Project, "slug">): string => \`/work/\${project.slug}\`;
 `;
 
-/** Legacy draft removed: */
-export const DISABLED_PROJECTS_DRAFT = `import { readdir, readFile } from "node:fs/promises";
-import { raw, type SafeHtml } from "@bascik/bascik/html";
-
-export interface Project {
-  slug: string;
-  title: string;
-  year: number;
-  category: string;
-  tags: string[];
-  summary: string;
-  accent: "amber" | "tide" | "moss" | "rust" | "slate" | "plum";
-  featured?: boolean;
-  html: SafeHtml;
-}
-
-function scalar(value: string | undefined, field: string, file: string): string {
-  if (!value?.trim()) throw new Error(
-    \`content/projects/: missing "" in frontmatter.
-
-\
-      .replace("\u0004", file)
-      .replace("\u0004", field)
-      .replace(/[\\u0000-\\u001f\\u007f]/g, "")
-  );
-  return value.trim();
-}
-
-function markdownToHtml(markdown: string): SafeHtml {
-  const blocks = markdown.trim().split(/\\n\\s*\\n/);
-  const rendered = blocks.map((block) => {
-    if (block.startsWith("## "))
-      return \`<h2></h2>\`.replace("\u0004", block.slice(3).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
-    if (block.startsWith("### "))
-      return \`<h3></h3>\`.replace("\u0004", block.slice(4).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
-    return \`<p></p>\`.replace("\u0004", block.replace(/\\n/g, " ").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
-  }).join("\\n");
-  return raw(rendered);
-}
-
-export async function listProjects(): Promise<Project[]> {
-  const names = (await readdir("./content/projects")).filter((name) => name.endsWith(".md")).sort();
-  const projects: Project[] = [];
-  for (const name of names) {
-    const file = \`content/projects/\`.replace("\u0004", name);
-    const source = await readFile(file, "utf8");
-    const match = /^---\\n([\\s\\S]*?)\\n---\\n([\\s\\S]*)$/.exec(source);
-    if (!match) throw new Error(\` is missing frontmatter\`.replace("\u0004", file));
-    const fields = new Map<string, string>();
-    for (const line of match[1].split("\\n")) {
-      const colon = line.indexOf(":");
-      if (colon > 0) fields.set(line.slice(0, colon).trim(), line.slice(colon + 1).trim().replace(/^["']|["']$/g, ""));
-    }
-    const slug = scalar(fields.get("slug"), "slug", file);
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug))
-      throw new Error(\`: invalid slug ""\`.replace("\u0004", file).replace("\u0004", slug));
-    const year = Number(fields.get("year"));
-    if (!Number.isInteger(year)) throw new Error(\`: "year" must be a whole number\`.replace("\u0004", file));
-    const category = scalar(fields.get("category"), "category", file);
-    const summary = scalar(fields.get("summary"), "summary", file);
-    const accentValue = scalar(fields.get("accent"), "accent", file);
-    if (!["amber", "tide", "moss", "rust", "slate", "plum"].includes(accentValue))
-      throw new Error(\`: invalid accent ""\`.replace("\u0004", file).replace("\u0004", accentValue));
-    const tags = (fields.get("tags") || "").split("|").map((tag) => tag.trim()).filter(Boolean);
-    if (tags.length === 0) throw new Error(\`: missing "tags"\`.replace("\u0004", file));
-    projects.push({
-      slug,
-      title: scalar(fields.get("title"), "title", file),
-      year,
-      category,
-      tags,
-      summary,
-      accent: accentValue as Project["accent"],
-      featured: fields.get("featured") === "true",
-      html: markdownToHtml(match[2]),
-    });
-  }
-  const slugs = new Set<string>();
-  for (const project of projects) {
-    if (slugs.has(project.slug)) throw new Error(\`duplicate project slug: \`.replace("\u0004", project.slug));
-    slugs.add(project.slug);
-  }
-  return projects.sort((a, b) => b.year - a.year);
-}
-
-export const projects = await listProjects();
-export const featuredProjects = (): Project[] => projects.filter((project) => project.featured);
-export const projectPath = (project: Pick<Project, "slug">): string => \`/work/\`.replace("\u0004", project.slug);
-`;
-
 export const PROJECT_MARKDOWN = {
-  "porsche-917-endurance-plan": `---
-slug: "porsche-917-endurance-plan"
-title: "Porsche 917 Endurance Plan"
+  "juniper-plant-studio": `---
+slug: "juniper-plant-studio"
+title: "Juniper Plant Studio"
 date: "2026-05-02"
 year: 2026
-category: "Race Engineering"
-tags: "Endurance|Porsche 917|Driver Development"
-summary: "A complete endurance program built around the Porsche 917, balancing performance, reliability, and a disciplined pit strategy."
-accent: "rust"
+category: "Visual identity"
+tags: "Identity|Packaging|Art direction"
+summary: "A fictional identity for a neighborhood plant shop, built around patient growth and the small rituals of care."
+accent: "clay"
 featured: "true"
 ---
-## The objective
+## A little more room to grow
 
-A focused test and race plan for the Porsche 917 across Daytona and Spa, with the same engineering rhythm used for modern endurance programs.
+A fictional neighborhood plant shop needed an identity that felt grounded without leaning on familiar botanical shorthand. The visual system pairs a quiet wordmark with expressive, cut-paper forms.
 
-## The approach
+## From shelf to storefront
 
-Hurley Haywood's era of preparation sets the standard: consistent driver feedback, measured setup changes, and no wasted run in the program.
+The identity carries across plant labels, paper wraps, and a small set of in-store signs, with enough flexibility for each new season.
 `,
-  "classic-porsche-restoration": `---
-slug: "classic-porsche-restoration"
-title: "Classic Porsche Restoration"
+  "sunday-paper-journal": `---
+slug: "sunday-paper-journal"
+title: "Sunday Paper Journal"
 date: "2026-03-18"
 year: 2026
-category: "Restoration"
-tags: "Porsche 935|Porsche 962|Workshop"
-summary: "Workshop and provenance planning for historic Porsche cars, with period-correct details and a return-to-track build standard."
-accent: "amber"
+category: "Editorial"
+tags: "Art direction|Publication|Typography"
+summary: "A fictional independent journal about slow weekends, thoughtful living, and noticing the details close at hand."
+accent: "sage"
 featured: "true"
 ---
-## Restoring purpose
+## A journal with room to breathe
 
-The project covers a Porsche 935 and 962 build program, preserving the details that make each car feel correct in the paddock and competitive on circuit.
+This sample publication gives essays and photography equal space. An unhurried grid and a warm, readable type palette keep each issue inviting.
 
-## Track readiness
+## A flexible issue system
 
-Every subsystem is inspected, documented, and tested for Sebring and Laguna Seca use without losing the car's history.
+The cover, section openers, and recurring page furniture make one issue recognizable while giving each story room to feel different.
 `,
-  "race-photography": `---
-slug: "race-photography"
-title: "Race Photography"
+  "common-ground-campaign": `---
+slug: "common-ground-campaign"
+title: "Common Ground Campaign"
 date: "2025-10-07"
 year: 2025
-category: "Photography"
-tags: "Le Mans|Spa|Race Photography"
-summary: "A motorsport image library covering the paddock, pit wall, and decisive moments at Le Mans and Spa."
-accent: "tide"
+category: "Campaign"
+tags: "Art direction|Illustration|Community"
+summary: "A fictional neighborhood growing project made visible through bold type, hand-cut shapes, and friendly public posters."
+accent: "blue"
 ---
-## Story in motion
+## A shared invitation
 
-The work follows teams and drivers through setup, start, and sunset, from a quiet garage to the final lap.
+This concept campaign invites neighbors to share small growing spaces. Its graphic system was designed to feel at home on a street poster, a community noticeboard, or a digital announcement.
 
-## Published work
+## A language for many voices
 
-Images document machinery, people, and atmosphere without staging the race or interrupting the job.
+Simple shapes and short, open-ended messages make the campaign easy to adapt for different events and local groups.
 `,
-  "jordan-taylor-driver-development": `---
-slug: "jordan-taylor-driver-development"
-title: "Jordan Taylor Driver Development"
+  "soft-form-ceramics": `---
+slug: "soft-form-ceramics"
+title: "Soft Form Ceramics"
 date: "2025-08-14"
 year: 2025
-category: "Driver Development"
-tags: "Jordan Taylor|Porsche 963|Data Coaching"
-summary: "A data-led coaching program translating on-track references into repeatable pace for prototype and GT drivers."
-accent: "plum"
+category: "Packaging"
+tags: "Identity|Packaging|Photography"
+summary: "A fictional ceramics label with a tactile identity system that gives quiet, hand-finished objects a confident voice."
+accent: "lilac"
 featured: "true"
 ---
-## Coaching method
+## Letting the material lead
 
-The program pairs clear debriefs with stint data, helping drivers build repeatable laps around traffic, tire degradation, and endurance rhythm.
+The concept pairs a compact wordmark with soft color blocks and close-cropped photography, leaving the forms themselves in focus.
 
-## Modern prototype reference
+## Made for a considered unboxing
 
-Porsche 963 sessions use the same measurement discipline that supports Jordan Taylor's factory-level prototype work.
+Labels, packing cards, and simple shipping materials share one flexible system.
 `,
-  "ross-bentley-track-program": `---
-slug: "ross-bentley-track-program"
-title: "Ross Bentley Track Program"
+  "field-notes-identity": `---
+slug: "field-notes-identity"
+title: "Field Notes Identity"
 date: "2024-11-22"
 year: 2024
-category: "Track Programs"
-tags: "Ross Bentley|Laguna Seca|Driver Coaching"
-summary: "A structured track program inspired by clear fundamentals, calm coaching, and measurable improvement."
-accent: "moss"
+category: "Identity"
+tags: "Brand strategy|Typography|Digital"
+summary: "A fictional research studio identity that turns observation, collected fragments, and fieldwork into a clear visual language."
+accent: "ink"
 ---
-## The framework
+## Marking what matters
 
-Students learn braking references, visual planning, and consistent setup communication through short, specific sessions.
+The studio brings together many disciplines. A flexible set of typographic and graphic tools gives each report and conversation a coherent thread.
 
-## The circuit
+## From note to system
 
-Laguna Seca provides the test: enough elevation, commitment, and technical corners to make progress visible.
-`,
-  "962-paul-newman-tribute": `---
-slug: "962-paul-newman-tribute"
-title: "962 Paul Newman Tribute"
-date: "2024-06-30"
-year: 2024
-category: "Program Campaign"
-tags: "Paul Newman|Porsche 962|Daytona"
-summary: "A concise campaign and track program celebrating Paul Newman's competition spirit through the Porsche 962 era."
-accent: "slate"
----
-## A measured tribute
-
-The program connects Paul Newman with the engineering and endurance discipline of Porsche 962 competition at Daytona.
-
-## Community focus
-
-Track sessions, paddock stories, and historical context bring the car's racing history to a new audience.
+Short notes, small diagrams, and a restrained palette help a complex subject become clear without losing its texture.
 `,
 } as const;
 
@@ -630,7 +224,7 @@ export const PROJECTS_TEST = `import { describe, expect, it } from "vitest";
 import { projectPath, projects, featuredProjects } from "./projects.ts";
 
 describe("projects", () => {
-  it("loads a racing Markdown collection with unique slugs", () => {
+  it("loads a creative project collection with unique slugs", () => {
     expect(projects.length).toBeGreaterThanOrEqual(5);
     expect(new Set(projects.map((project) => project.slug)).size).toBe(projects.length);
     expect(featuredProjects().length).toBeGreaterThan(0);
@@ -743,7 +337,7 @@ describe("seo", () => {
 
   it("ends each title with the site's name and marks a project page", () => {
     const tags = String(
-      seo({ title: "Porsche 962 Endurance", description: "About it.", type: "article" }),
+      seo({ title: "Juniper Plant Studio", description: "About it.", type: "article" }),
     );
     expect(tags).toContain('<meta property="og:type" content="article" />');
     expect(tags).toContain('<meta property="og:site_name" content="');
@@ -775,72 +369,6 @@ describe("seo", () => {
     expect(tags).toContain("&lt;script&gt;");
     expect(tags).toContain("&amp; Sons");
     expect(tags).not.toContain('content="She said "no"');
-  });
-});
-`;
-
-/** `src/lib/book-cards.ts`: the grid of cards the home page and the work page share. */
-export const BOOK_CARDS_TS = `import { html, type SafeHtml } from "@bascik/bascik/html";
-import { bookPath, type Book } from "./books.ts";
-
-/**
- * A grid with one <book-card> per book, its <book-cover> in the card's slot. Bascik expands both tags when the
- * page builds. html escapes each value, so a title with an apostrophe or an ampersand is safe.
- */
-export const bookCards = (list: readonly Book[]): SafeHtml =>
-  html\`<ul class="book-grid">
-    \${list.map((book) => {
-      const href = bookPath(book);
-      const meta = \`\${book.kind} · \${book.year}\`;
-      return html\`<li>
-        <book-card
-          data-bascik-prop-title="\${book.title}"
-          data-bascik-prop-meta="\${meta}"
-          data-bascik-prop-summary="\${book.summary}"
-          data-bascik-prop-href="\${href}"
-        >
-          <book-cover
-            data-bascik-prop-title="\${book.title}"
-            data-bascik-prop-alt="\${book.cover.alt}"
-            data-bascik-prop-tone="\${book.cover.tone}"
-          />
-        </book-card>
-      </li>\`;
-    })}
-  </ul>\`;
-`;
-
-/** `src/lib/book-cards.test.ts`. */
-export const BOOK_CARDS_TEST = `import { describe, expect, it } from "vitest";
-import { bookCards } from "./book-cards.ts";
-import { books, type Book } from "./books.ts";
-
-describe("bookCards", () => {
-  it("writes one card per book, in order, each linking to the book's page", () => {
-    const markup = String(bookCards(books));
-    expect(markup.match(/<book-card/g)).toHaveLength(books.length);
-    expect(markup.match(/<book-cover/g)).toHaveLength(books.length);
-    const links = [...markup.matchAll(/data-bascik-prop-href="([^"]+)"/g)].map(
-      (match) => match[1],
-    );
-    expect(links).toEqual(books.map((book) => \`/work/\${book.slug}\`));
-  });
-
-  it("writes an empty list for no books", () => {
-    expect(String(bookCards([]))).not.toContain("<li>");
-  });
-
-  it("misuse: escapes markup and quotes in a book's text", () => {
-    const book: Book = {
-      ...books[0],
-      title: '"Quoted" <b>& Sons</b>',
-      summary: "<img src=x onerror=alert(1)>",
-    };
-    const markup = String(bookCards([book]));
-    expect(markup).not.toContain("<b>");
-    expect(markup).not.toContain("<img");
-    expect(markup).toContain("&lt;b&gt;&amp; Sons&lt;/b&gt;");
-    expect(markup).not.toContain('title=""Quoted"');
   });
 });
 `;

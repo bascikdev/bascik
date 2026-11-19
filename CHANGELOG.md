@@ -14,10 +14,11 @@ it is not `@bascik/bascik`.
 ### Added
 
 - `create-bascik` 1.1.0: `--adapter <name>` adds a deploy adapter to the starter (`cloudflare`, `netlify`, or `none`), as in `npm create bascik my-site -- --adapter cloudflare`. `--template cloudflare` and `--template netlify` still work and mean the same thing; naming two different adapters with the two flags is an error. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
-- `create-bascik` 1.1.0: `--template portfolio` scaffolds a portfolio, as in `npm create bascik my-portfolio -- --template portfolio`. The sample site is an author's: a home page with featured books, a list of every book, a page per book, an about page, a contact form that checks its fields, and a 404 page, with a canonical URL and Open Graph tags on every page. The books are entries in `src/lib/books.ts`, and a [dynamic route](https://bascik.dev/scripts/dynamic-routes) turns each into a page; an entry with a missing field or a slug used twice stops the build with an error that names it. Covers are drawn in CSS, so there are no image files. It takes any `--adapter`. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
+- `create-bascik` 1.1.0: `--template portfolio` scaffolds a creator portfolio, as in `npm create bascik my-portfolio -- --template portfolio`. The sample site includes a home page with featured work, a project index, a page per project, an about page, a contact form that checks its fields, and a 404 page, with a canonical URL and Open Graph tags on every page. Projects are entries in `src/lib/projects.ts`, and a [dynamic route](https://bascik.dev/scripts/dynamic-routes) turns each into a page; an entry with a missing field or a slug used twice stops the build with an error that names it. Project visuals are composed in CSS, so there are no image files. It takes any `--adapter`. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
 
 ### Changed
 
+- `create-bascik`: the portfolio template is now an art-directed creator portfolio with fictional identity, editorial, and image-making projects rather than a motorsport author portfolio.
 - `create-bascik`: portfolio project cards and detail pages now use raised neutral surfaces, subtle depth, and responsive padding from the shared design system.
 
 - `create-bascik`: the starter and adapter variants use a shared light/dark design system, with a neutral canvas, raised cards, restrained periwinkle accents, visible keyboard focus, and motion that respects reader preferences.

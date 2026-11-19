@@ -200,586 +200,114 @@ describe("page-intro component", () => {
 
 // ─── home-intro ───────────────────────────────────────────────────────────────
 
-export const HOME_INTRO_HTML = `<section class="hero" data-testid="home-intro">
-  <div class="container">
-    <script data-bascik-build-once type="text/typescript">
-      import { html } from "@bascik/bascik/html";
-      import { site } from "@/lib/site.ts";
-      export default () =>
-        html\`<p class="section-label">\${site.role}</p>
-          <h1>\${site.author}</h1>
-          <p>\${site.tagline}</p>\`;
-    </script>
-    <div class="hero-actions">
-      <a href="/work" class="btn btn-primary">See race projects</a>
-      <a href="/contact" class="btn btn-ghost">Get in touch</a>
+export const HOME_INTRO_HTML = `<style>
+  .intro-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1.1fr);
+    align-items: center;
+    gap: clamp(40px, 8vw, 112px);
+  }
+  .intro-copy { max-width: 560px; }
+  h1 {
+    max-width: 10ch;
+    margin-bottom: 20px;
+    font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    font-size: clamp(3.2rem, 7.6vw, 6.6rem);
+    font-weight: 500;
+    letter-spacing: -0.07em;
+    line-height: 0.98;
+  }
+  .tagline { max-width: 36ch; font-size: clamp(1.05rem, 1.6vw, 1.25rem); }
+  .hero-art {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: clamp(300px, 38vw, 510px);
+    margin: 0;
+    overflow: hidden;
+    background: #e8dfd1;
+  }
+  .shape { position: absolute; display: block; }
+  .shape-large {
+    width: 65%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #d38669;
+    transform: translate(-4%, 4%);
+  }
+  .shape-small {
+    width: 36%;
+    aspect-ratio: 0.78;
+    right: 12%;
+    bottom: 10%;
+    background: #77876c;
+    transform: rotate(12deg);
+  }
+  .shape-cutout {
+    width: 28%;
+    aspect-ratio: 1;
+    top: 13%;
+    left: 12%;
+    border: 1px solid #514f46;
+    border-radius: 50%;
+  }
+  figcaption {
+    position: absolute;
+    right: 18px;
+    bottom: 16px;
+    color: #24251f;
+    font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    font-size: 0.9rem;
+    font-style: italic;
+  }
+  @media (max-width: 760px) {
+    .intro-layout { grid-template-columns: 1fr; gap: 34px; }
+    .intro-copy { max-width: 620px; }
+    .hero-art { min-height: 360px; }
+  }
+  @media (max-width: 480px) {
+    .hero-art { min-height: 290px; }
+  }
+</style>
+<section class="hero" data-testid="home-intro">
+  <div class="container intro-layout">
+    <div class="intro-copy">
+      <script data-bascik-build-once type="text/typescript">
+        import { html } from "@bascik/bascik/html";
+        import { site } from "@/lib/site.ts";
+        export default () =>
+          html\`<p class="section-label">\${site.role}</p>
+            <h1>A practice in color, shape, and story.</h1>
+            <p class="tagline">\${site.tagline}</p>\`;
+      </script>
+      <div class="hero-actions">
+        <a href="/work" class="btn btn-primary">Explore selected work</a>
+        <a href="/contact" class="btn btn-ghost">Start a conversation</a>
+      </div>
     </div>
+    <figure class="hero-art" role="img" aria-label="An abstract composition of layered color and organic shapes" data-testid="home-intro-art">
+      <span class="shape shape-large"></span>
+      <span class="shape shape-small"></span>
+      <span class="shape shape-cutout"></span>
+      <figcaption>Ideas, made tangible.</figcaption>
+    </figure>
   </div>
 </section>
 `;
 
 export const HOME_INTRO_TEST = `${testHead("home-intro")}
 describe("home-intro component", () => {
-  it("writes the racing site name as the page's h1 from src/lib/site.ts", async () => {
+  it("introduces a creator with one editorial h1 and their own tagline", async () => {
     const html = await source();
-    expect(html).toContain("<h1>\${site.author}</h1>");
+    expect(html).toContain("<h1>A practice in color, shape, and story.</h1>");
     expect(html).toContain("site.tagline");
+    expect(html).toContain('data-testid="home-intro-art"');
   });
 
-  it("links to the race projects and to the contact page", async () => {
+  it("links to selected work and the contact page", async () => {
     const html = await source();
     expect(html).toContain('href="/work"');
     expect(html).toContain('href="/contact"');
-  });
-});
-`;
-
-// ─── book-cover ───────────────────────────────────────────────────────────────
-
-/**
- * A cover drawn in CSS: no image file. `role="img"` with the `alt` prop as its label makes it one image to a
- * screen reader, the way an `<img alt>` would be.
- */
-export const BOOK_COVER_HTML = `<!-- @bascik
-A book cover drawn in CSS, with no image file. To use real artwork, replace the div with an img element that has
-width, height, and alt.
-@prop title - The title printed on the cover
-@prop alt - What the cover shows, read by screen readers in place of the drawing
-@prop tone - The color: amber, moss, tide, plum, rust, or slate (COVER_TONES in src/lib/books.ts)
--->
-<style>
-  .cover {
-    --from: #4b5563;
-    --to: #252b35;
-    container-type: inline-size;
-    position: relative;
-    aspect-ratio: 2 / 3;
-    overflow: hidden;
-    border-radius: 3px 8px 8px 3px;
-    background: linear-gradient(160deg, var(--from), var(--to));
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
-    color: #ffffff;
-  }
-  .cover[data-tone="amber"] {
-    --from: #9a5a18;
-    --to: #5a300f;
-  }
-  .cover[data-tone="moss"] {
-    --from: #4f6b3a;
-    --to: #283a20;
-  }
-  .cover[data-tone="tide"] {
-    --from: #2a6584;
-    --to: #15364d;
-  }
-  .cover[data-tone="plum"] {
-    --from: #6d3f73;
-    --to: #38203d;
-  }
-  .cover[data-tone="rust"] {
-    --from: #9c412c;
-    --to: #561f15;
-  }
-
-  /* The spine. */
-  .cover::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 5%;
-    background: rgba(0, 0, 0, 0.22);
-  }
-
-  .title {
-    position: absolute;
-    inset: 12% 8% auto 14%;
-    font-family: Georgia, "Times New Roman", serif;
-    /* Sized from the cover's own width, so a long word fits a small cover. */
-    font-size: clamp(0.8rem, 9.5cqi, 2.2rem);
-    font-weight: 700;
-    line-height: 1.15;
-    overflow-wrap: break-word;
-  }
-
-  /* A small ornament where a publisher's mark would be. */
-  .mark {
-    position: absolute;
-    left: 14%;
-    bottom: 10%;
-    width: 16%;
-    aspect-ratio: 1;
-    border: 2px solid rgba(255, 255, 255, 0.7);
-    border-radius: 50%;
-  }
-</style>
-<div
-  class="cover"
-  role="img"
-  data-bascik-attr-aria-label="alt"
-  data-bascik-attr-data-tone="tone"
-  data-testid="book-cover"
->
-  <span class="title" data-bascik-prop-title></span>
-  <span class="mark"></span>
-</div>
-`;
-
-export const BOOK_COVER_TEST = `${testHead("book-cover")}
-import { COVER_TONES } from "../../lib/books.ts";
-
-describe("book-cover component", () => {
-  it("is one image with a text alternative, and ships no image file", async () => {
-    const html = await source();
-    expect(html).toContain('role="img"');
-    expect(html).toContain('data-bascik-attr-aria-label="alt"');
-    expect(html).not.toContain("<img");
-    expect(html).not.toContain("url(");
-  });
-
-  it("draws every cover color a book may name; slate is the color without a rule", async () => {
-    const html = await source();
-    for (const tone of COVER_TONES.filter((tone) => tone !== "slate"))
-      expect(html).toContain(\`.cover[data-tone="\${tone}"]\`);
-    expect(html).toContain('data-bascik-attr-data-tone="tone"');
-  });
-});
-`;
-
-// ─── book-card ────────────────────────────────────────────────────────────────
-
-/** One book in a grid. The cover goes in the slot; the title's link covers the whole card. */
-export const BOOK_CARD_HTML = `<!-- @bascik
-One book in a grid: its cover in the slot, then what it is, its title, and a sentence about it.
-@prop title - The book's title, linked to its page
-@prop meta - A short line above the title, such as "Novel · 2023"
-@prop summary - One sentence about the book
-@prop href - The book's page
-@slot default - The cover, a <book-cover />
--->
-<style>
-  article {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    height: 100%;
-  }
-  .art {
-    transition: transform 0.2s;
-  }
-  @media (hover: hover) {
-    article:hover .art {
-      transform: translateY(-3px);
-    }
-  }
-  .meta {
-    margin: 0 0 4px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-  h3 {
-    margin: 0 0 6px;
-    font-size: 1.05rem;
-  }
-  a {
-    color: var(--text);
-    text-decoration: none;
-  }
-  /* The link covers the card, so the cover and the text are one target with one name. */
-  a::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-  }
-  a:focus-visible {
-    outline: none;
-  }
-  a:focus-visible::after {
-    outline: 2px solid var(--accent);
-    outline-offset: 6px;
-    border-radius: var(--r-sm);
-  }
-  .summary {
-    margin: 0;
-    font-size: 0.88rem;
-  }
-</style>
-<article data-testid="book-card">
-  <div class="art"><div data-bascik-slot></div></div>
-  <div>
-    <p class="meta" data-bascik-prop-meta></p>
-    <h3>
-      <a
-        data-bascik-attr-href="href"
-        data-bascik-prop-title
-        data-testid="book-card-link"
-      ></a>
-    </h3>
-    <p class="summary" data-bascik-prop-summary></p>
-  </div>
-</article>
-`;
-
-export const BOOK_CARD_TEST = `${testHead("book-card")}
-describe("book-card component", () => {
-  it("is an article whose title links to the book's page", async () => {
-    const html = await source();
-    expect(html).toMatch(/<article\\s[^>]*data-testid="book-card"/);
-    expect(html).toContain('data-bascik-attr-href="href"');
-    expect(html).toContain("data-bascik-prop-title");
-  });
-
-  it("takes the cover through its slot, and the line above and the sentence below as props", async () => {
-    const html = await source();
-    expect(html).toContain("<div data-bascik-slot></div>");
-    expect(html).toContain("data-bascik-prop-meta");
-    expect(html).toContain("data-bascik-prop-summary");
-  });
-});
-`;
-
-// ─── featured-books ───────────────────────────────────────────────────────────
-
-export const FEATURED_BOOKS_HTML = `<style>
-  .more {
-    margin: 32px 0 0;
-  }
-</style>
-<section class="section" data-testid="featured-books">
-  <div class="container">
-    <p class="section-label">Selected work</p>
-    <h2>Start here</h2>
-    <script data-bascik-build-once type="text/typescript">
-      import { bookCards } from "@/lib/book-cards.ts";
-      import { featuredBooks } from "@/lib/books.ts";
-      export default () => bookCards(featuredBooks());
-    </script>
-    <p class="more"><a href="/work">See all the books</a></p>
-  </div>
-</section>
-`;
-
-export const FEATURED_BOOKS_TEST = `${testHead("featured-books")}
-describe("featured-books component", () => {
-  it("builds its cards from the featured books, under an h2", async () => {
-    const html = await source();
-    expect(html).toContain("<h2>");
-    expect(html).toContain("bookCards(featuredBooks())");
-    expect(html).toMatch(
-      /<script\\s+data-bascik-build-once\\s+type="text\\/typescript"\\s*>/,
-    );
-  });
-
-  it("links to the full list", async () => {
-    expect(await source()).toContain('href="/work"');
-  });
-});
-`;
-
-// ─── book-list ────────────────────────────────────────────────────────────────
-
-export const BOOK_LIST_HTML = `<section data-testid="book-list">
-  <h2>All books</h2>
-  <script data-bascik-build-once type="text/typescript">
-    import { bookCards } from "@/lib/book-cards.ts";
-    import { books } from "@/lib/books.ts";
-    export default () => bookCards(books);
-  </script>
-</section>
-`;
-
-export const BOOK_LIST_TEST = `${testHead("book-list")}
-describe("book-list component", () => {
-  it("builds a card for every book, under an h2 so the cards' h3 skips no level", async () => {
-    const html = await source();
-    expect(html).toContain("<h2>All books</h2>");
-    expect(html).toContain("bookCards(books)");
-    expect(html).toMatch(
-      /<script\\s+data-bascik-build-once\\s+type="text\\/typescript"\\s*>/,
-    );
-  });
-});
-`;
-
-// ─── book-detail ──────────────────────────────────────────────────────────────
-
-/** One book's page. Its build script reads the book from the route, so it is `data-bascik-build`, not build-once. */
-export const BOOK_DETAIL_HTML = `<!-- @bascik
-One book's page: cover, title, text, and links to the books on either side. Use it on
-src/pages/work/[slug].html, whose routes script passes each book as the route's data.
--->
-<style>
-  .detail {
-    display: grid;
-    grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
-    gap: 48px;
-    align-items: start;
-  }
-  .text {
-    max-width: 65ch;
-  }
-  .lead {
-    font-size: 1.15rem;
-    color: var(--text);
-  }
-  .facts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px 40px;
-    margin: 32px 0 0;
-    padding-top: 20px;
-    border-top: 1px solid var(--border);
-  }
-  .fact dt {
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-  .fact dd {
-    margin: 0;
-  }
-  .pager {
-    grid-column: 1 / -1;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 12px 24px;
-    padding-top: 24px;
-    border-top: 1px solid var(--border);
-  }
-  @media (max-width: 640px) {
-    .detail {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 28px;
-    }
-    .art {
-      max-width: 220px;
-    }
-  }
-</style>
-<article class="detail" data-testid="book-detail">
-  <script data-bascik-build type="text/typescript">
-    import { bookDetail } from "./detail.ts";
-    export default () =>
-      bookDetail(JSON.parse(process.env.BASCIK_ROUTE || "{}").data);
-  </script>
-</article>
-`;
-
-/** `src/components/book-detail/detail.ts`: the markup of one book's page, kept beside the component that uses it. */
-export const BOOK_DETAIL_TS = `import { html, type SafeHtml } from "@bascik/bascik/html";
-import { bookPath, books, type Book } from "../../lib/books.ts";
-
-/** A link to the book before or after this one, or nothing at either end of the list. */
-const pagerLink = (
-  book: Book | undefined,
-  label: string,
-  testId: string,
-): SafeHtml | "" => {
-  if (!book) return "";
-  const href = bookPath(book);
-  return html\`<a href="\${href}" data-testid="\${testId}"
-    >\${label}: \${book.title}</a
-  >\`;
-};
-
-/**
- * The inside of <book-detail> for one book: the cover, the text, a few facts, and links to the books on either
- * side of it in the list. html escapes every value.
- */
-export function bookDetail(
-  book: Book | undefined,
-  all: readonly Book[] = books,
-): SafeHtml {
-  if (!book?.slug)
-    throw new Error(
-      "<book-detail> found no book in BASCIK_ROUTE. Use it on src/pages/work/[slug].html, whose routes script passes each book as the route's data.",
-    );
-  const index = all.findIndex((other) => other.slug === book.slug);
-  const newer = index > 0 ? all[index - 1] : undefined;
-  const older = index >= 0 ? all[index + 1] : undefined;
-  return html\`<div class="art">
-      <book-cover
-        data-bascik-prop-title="\${book.title}"
-        data-bascik-prop-alt="\${book.cover.alt}"
-        data-bascik-prop-tone="\${book.cover.tone}"
-      />
-    </div>
-    <div class="text">
-      <p class="section-label">\${book.kind}</p>
-      <h1>\${book.title}</h1>
-      <p class="lead">\${book.summary}</p>
-      \${book.description.map((paragraph) => html\`<p>\${paragraph}</p>\`)}
-      <dl class="facts">
-        <div class="fact">
-          <dt>Published</dt>
-          <dd>\${String(book.year)}</dd>
-        </div>
-        \${
-          book.pages
-            ? html\`<div class="fact">
-                <dt>Length</dt>
-                <dd>\${String(book.pages)} pages</dd>
-              </div>\`
-            : ""
-        }
-      </dl>
-    </div>
-    <nav class="pager" aria-label="More books" data-testid="book-detail-pager">
-      \${pagerLink(newer, "Newer", "book-detail-newer")}
-      <a href="/work" data-testid="book-detail-all">All books</a>
-      \${pagerLink(older, "Older", "book-detail-older")}
-    </nav>\`;
-}
-`;
-
-export const BOOK_DETAIL_TEST = `${testHead("book-detail")}
-import { books, type Book } from "../../lib/books.ts";
-import { bookDetail } from "./detail.ts";
-
-const book: Book = {
-  slug: "a-test-book",
-  title: "A Test Book",
-  year: 2024,
-  kind: "Novel",
-  summary: "One sentence about the book.",
-  description: ["First paragraph.", "Second paragraph."],
-  cover: { tone: "moss", alt: "Cover of A Test Book." },
-};
-
-describe("book-detail component", () => {
-  it("is an article that reads its book from the route", async () => {
-    const html = await source();
-    expect(html).toMatch(/<article\\s[^>]*data-testid="book-detail"/);
-    expect(html).toMatch(
-      /<script\\s+data-bascik-build\\s+type="text\\/typescript"\\s*>/,
-    );
-    expect(html).toContain("process.env.BASCIK_ROUTE");
-  });
-
-  it("writes the title as the page's h1, a paragraph per entry, and the cover with its text alternative", () => {
-    const markup = String(bookDetail(book, [book]));
-    expect(markup).toContain("<h1>A Test Book</h1>");
-    expect(markup.match(/<h1/g)).toHaveLength(1);
-    expect(markup).toContain("<p>First paragraph.</p>");
-    expect(markup).toContain("<p>Second paragraph.</p>");
-    expect(markup).toContain('data-bascik-prop-alt="Cover of A Test Book."');
-    expect(markup).toContain("<dd>2024</dd>");
-    expect(markup).not.toContain("pages</dd>");
-  });
-
-  it("links to the books on either side, and to neither at the ends of the list", () => {
-    const [first, second, third] = books;
-    const middle = String(bookDetail(second));
-    expect(middle).toContain(\`href="/work/\${first.slug}"\`);
-    expect(middle).toContain(\`href="/work/\${third.slug}"\`);
-    expect(String(bookDetail(first))).not.toContain("book-detail-newer");
-    expect(String(bookDetail(books.at(-1)))).not.toContain("book-detail-older");
-    expect(String(bookDetail(book, [book]))).toContain('href="/work"');
-  });
-
-  it("misuse: escapes markup in a book's text", () => {
-    const markup = String(
-      bookDetail(
-        {
-          ...book,
-          title: "<script>alert(1)</script>",
-          description: ['"Quoted" & <b>bold</b>'],
-        },
-        [],
-      ),
-    );
-    expect(markup).not.toContain("<script>");
-    expect(markup).not.toContain("<b>");
-    expect(markup).toContain("&lt;script&gt;");
-    expect(markup).toContain("&amp; &lt;b&gt;bold&lt;/b&gt;");
-  });
-
-  it("misuse: used on a page that is not the book route, it says where it belongs", () => {
-    expect(() => bookDetail(undefined)).toThrow("src/pages/work/[slug].html");
-    expect(() => bookDetail({} as Book)).toThrow("BASCIK_ROUTE");
-  });
-});
-`;
-
-// ─── author-bio ───────────────────────────────────────────────────────────────
-
-export const AUTHOR_BIO_HTML = `<style>
-  section {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
-    gap: 48px;
-    align-items: start;
-  }
-  .prose {
-    max-width: 65ch;
-  }
-  h2 {
-    margin-top: 36px;
-  }
-  h2:first-child {
-    margin-top: 0;
-  }
-  .facts {
-    margin: 0;
-    padding: 24px;
-    border: 1px solid var(--border);
-    border-radius: var(--r);
-    background: var(--elevated);
-  }
-  .fact + .fact {
-    margin-top: 16px;
-  }
-  .fact dt {
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-  .fact dd {
-    margin: 0;
-  }
-  @media (max-width: 760px) {
-    section {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 28px;
-    }
-  }
-</style>
-<section data-testid="racing-bio">
-  <div class="prose">
-    <h2>Built around the stopwatch</h2>
-    <p>Race engineering starts with clear feedback, repeatable setup changes, and a plan for every session.</p>
-    <h2>Classic machinery, present purpose</h2>
-    <p>Restoration and track work covers Porsche 917, 935, 962, and 963 history with a modern standard of preparation.</p>
-    <p><a href="/contact">Discuss a race project</a></p>
-  </div>
-  <dl class="facts">
-    <div class="fact"><dt>Circuits</dt><dd>Daytona, Sebring, Le Mans, Spa, Laguna Seca</dd></div>
-    <div class="fact"><dt>Specialties</dt><dd>Engineering, restoration, photography</dd></div>
-    <div class="fact"><dt>References</dt><dd>Hurley Haywood, Paul Newman, Jordan Taylor, Ross Bentley</dd></div>
-  </dl>
-</section>
-`;
-
-export const AUTHOR_BIO_TEST = `${testHead("author-bio")}
-describe("author-bio component", () => {
-  it("tells the author's story under h2 headings, with a list of facts beside it", async () => {
-    const html = await source();
-    expect(html).toMatch(/<section\\s[^>]*data-testid="author-bio"/);
-    expect(html).not.toContain("<h1");
-    expect(html.match(/<h2>/g)!.length).toBeGreaterThan(0);
-    expect(html.match(/<dt>/g)).toHaveLength(html.match(/<dd>/g)!.length);
-  });
-
-  it("links to the contact page", async () => {
-    expect(await source()).toContain('href="/contact"');
   });
 });
 `;
@@ -956,30 +484,76 @@ export const PROJECT_CARD_HTML = `<style>
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 18px;
     height: 100%;
-    padding: 14px;
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    background: var(--surface) var(--panel);
-    box-shadow: var(--sheen), var(--shadow);
   }
-  .visual { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 12px; background: var(--elevated); }
-  .visual[data-accent="amber"] { background: #9a5a18; }
-  .visual[data-accent="tide"] { background: #2a6584; }
-  .visual[data-accent="moss"] { background: #4f6b3a; }
-  .visual[data-accent="rust"] { background: #9c412c; }
-  .visual[data-accent="slate"] { background: #566270; }
-  .visual[data-accent="plum"] { background: #6d3f73; }
-  .visual::after { content: ""; position: absolute; inset: 18% 12%; border: 1px solid rgba(255,255,255,.65); }
-  h3 { margin: 0 0 6px; }
+  .visual {
+    position: relative;
+    aspect-ratio: 1.28 / 1;
+    overflow: hidden;
+    background: #eee2d5;
+    isolation: isolate;
+  }
+  .visual::before {
+    content: "";
+    position: absolute;
+    width: 72%;
+    aspect-ratio: 1;
+    top: 8%;
+    left: 18%;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 28%);
+  }
+  .visual::after {
+    content: "";
+    position: absolute;
+    inset: 12% 13%;
+    border: 1px solid rgb(36 37 31 / 40%);
+    transform: rotate(-7deg);
+  }
+  .visual[data-accent="clay"] { background: #e7c2ac; }
+  .visual[data-accent="sage"] { background: #c4cbb6; }
+  .visual[data-accent="blue"] { background: #b7c8d2; }
+  .visual[data-accent="citrus"] { background: #e8d59b; }
+  .visual[data-accent="lilac"] { background: #d3c7d8; }
+  .visual[data-accent="ink"] { background: #afb7ab; }
+  .shape {
+    position: absolute;
+    z-index: 1;
+    display: block;
+    width: 42%;
+    aspect-ratio: 0.78;
+    left: 16%;
+    bottom: 0;
+    background: #b64f3c;
+    clip-path: polygon(0 10%, 100% 0, 88% 100%, 8% 86%);
+  }
+  .shape-alt {
+    width: 28%;
+    aspect-ratio: 1;
+    left: auto;
+    right: 12%;
+    bottom: 18%;
+    border-radius: 50%;
+    background: #77876c;
+  }
+  .visual[data-accent="sage"] .shape { background: #51674b; }
+  .visual[data-accent="blue"] .shape { background: #344f67; }
+  .visual[data-accent="citrus"] .shape { background: #a74d38; }
+  .visual[data-accent="lilac"] .shape { background: #6a587b; }
+  .visual[data-accent="ink"] .shape { background: #273b37; }
+  .visual[data-accent="clay"] .shape-alt { background: #eddfc9; }
+  .visual[data-accent="blue"] .shape-alt { background: #e6d9c8; }
+  h3 { margin: 0 0 6px; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: 1.45rem; font-weight: 500; }
   a { color: var(--text); text-decoration: none; }
   a::after { content: ""; position: absolute; inset: 0; }
-  .meta { margin: 0 0 4px; font-size: .72rem; font-weight: 700; text-transform: uppercase; color: var(--accent); }
-  .summary { margin: 0; font-size: .88rem; }
+  .meta { margin: 0 0 5px; font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+  .summary { max-width: 46ch; margin: 0; font-size: .9rem; }
 </style>
 <article data-testid="project-card">
-  <div class="visual" data-bascik-attr-data-accent="accent" aria-hidden="true"></div>
+  <div class="visual" data-bascik-attr-data-accent="accent" aria-hidden="true">
+    <span class="shape"></span><span class="shape shape-alt"></span>
+  </div>
   <div>
     <p class="meta" data-bascik-prop-meta></p>
     <h3><a data-bascik-attr-href="href" data-bascik-prop-title data-testid="project-card-link"></a></h3>
@@ -990,16 +564,18 @@ export const PROJECT_CARD_HTML = `<style>
 
 export const PROJECT_CARD_TEST = `${testHead("project-card")}
 describe("project-card component", () => {
-  it("is an article linking to a race project", async () => {
+  it("is an article linking to a project with an original art-directed visual", async () => {
     const html = await source();
     expect(html).toContain('<article data-testid="project-card">');
     expect(html).toContain('data-bascik-attr-href="href"');
+    expect(html).toContain('class="visual"');
+    expect(html).toContain('<span class="shape"></span>');
   });
 });
 `;
 
 export const PROJECT_LIST_HTML = `<section data-testid="project-list">
-  <h2>All race projects</h2>
+  <h2>All selected work</h2>
   <script data-bascik-build-once type="text/typescript">
     import { projectCards } from "@/lib/project-cards.ts";
     import { projects } from "@/lib/projects.ts";
@@ -1012,7 +588,7 @@ export const PROJECT_LIST_TEST = `${testHead("project-list")}
 describe("project-list component", () => {
   it("lists every project under an h2", async () => {
     const html = await source();
-    expect(html).toContain("<h2>All race projects</h2>");
+    expect(html).toContain("<h2>All selected work</h2>");
     expect(html).toContain("projectCards(projects)");
   });
 });
@@ -1021,20 +597,20 @@ describe("project-list component", () => {
 export const FEATURED_PROJECTS_HTML = `<section class="section" data-testid="featured-projects">
   <div class="container">
     <p class="section-label">Selected work</p>
-    <h2>From the paddock</h2>
+    <h2>Selected work</h2>
     <script data-bascik-build-once type="text/typescript">
       import { projectCards } from "@/lib/project-cards.ts";
       import { featuredProjects } from "@/lib/projects.ts";
       export default () => projectCards(featuredProjects());
     </script>
-    <p class="more"><a href="/work">See all race projects</a></p>
+    <p class="more"><a href="/work">See all selected work</a></p>
   </div>
 </section>
 `;
 
 export const FEATURED_PROJECTS_TEST = `${testHead("featured-projects")}
 describe("featured-projects component", () => {
-  it("builds featured race cards and links to the full list", async () => {
+  it("builds featured project cards and links to the full list", async () => {
     const html = await source();
     expect(html).toContain("projectCards(featuredProjects())");
     expect(html).toContain('href="/work"');
@@ -1043,19 +619,30 @@ describe("featured-projects component", () => {
 `;
 
 export const PROJECT_DETAIL_HTML = `<style>
-  .detail { display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr); gap: 48px; align-items: start; padding: clamp(20px, 4vw, 36px); border: 1px solid var(--border); border-radius: 22px; background: var(--surface) var(--panel); box-shadow: var(--sheen), var(--shadow); }
-  .visual { aspect-ratio: 4 / 5; border-radius: 14px; background: var(--elevated); }
-  .visual[data-accent="amber"] { background: #9a5a18; }
-  .visual[data-accent="tide"] { background: #2a6584; }
-  .visual[data-accent="moss"] { background: #4f6b3a; }
-  .visual[data-accent="rust"] { background: #9c412c; }
-  .visual[data-accent="slate"] { background: #566270; }
-  .visual[data-accent="plum"] { background: #6d3f73; }
-  .text { max-width: 65ch; }
-  .lead { font-size: 1.15rem; }
-  .facts { display: flex; gap: 12px 40px; margin: 32px 0 0; padding-top: 20px; border-top: 1px solid var(--border); }
+  .detail { display: grid; grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.1fr); gap: clamp(36px, 7vw, 92px); align-items: start; }
+  .visual { position: relative; aspect-ratio: 0.9; overflow: hidden; background: #e7c2ac; isolation: isolate; }
+  .visual::before { content: ""; position: absolute; width: 74%; aspect-ratio: 1; top: 8%; left: 18%; border-radius: 50%; background: rgb(255 255 255 / 28%); }
+  .visual::after { content: ""; position: absolute; inset: 12% 13%; border: 1px solid rgb(36 37 31 / 40%); transform: rotate(-7deg); }
+  .visual[data-accent="sage"] { background: #c4cbb6; }
+  .visual[data-accent="blue"] { background: #b7c8d2; }
+  .visual[data-accent="citrus"] { background: #e8d59b; }
+  .visual[data-accent="lilac"] { background: #d3c7d8; }
+  .visual[data-accent="ink"] { background: #afb7ab; }
+  .shape { position: absolute; z-index: 1; display: block; width: 42%; aspect-ratio: 0.78; left: 16%; bottom: 0; background: #b64f3c; clip-path: polygon(0 10%, 100% 0, 88% 100%, 8% 86%); }
+  .shape-alt { width: 28%; aspect-ratio: 1; left: auto; right: 12%; bottom: 18%; border-radius: 50%; background: #77876c; }
+  .visual[data-accent="sage"] .shape { background: #51674b; }
+  .visual[data-accent="blue"] .shape { background: #344f67; }
+  .visual[data-accent="citrus"] .shape { background: #a74d38; }
+  .visual[data-accent="lilac"] .shape { background: #6a587b; }
+  .visual[data-accent="ink"] .shape { background: #273b37; }
+  .text { max-width: 65ch; padding-top: 8px; }
+  .text h1 { max-width: 16ch; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-weight: 500; letter-spacing: -0.06em; }
+  .lead { font-size: 1.16rem; color: var(--text); }
+  .facts { display: flex; flex-wrap: wrap; gap: 12px 36px; margin: 32px 0 0; padding-top: 20px; border-top: 1px solid var(--border); }
+  .facts dt { margin-bottom: 4px; color: var(--text-muted); font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .facts dd { margin: 0; }
   .pager { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 12px 24px; padding-top: 24px; border-top: 1px solid var(--border); }
-  @media (max-width: 640px) { .detail { grid-template-columns: minmax(0, 1fr); gap: 28px; } }
+  @media (max-width: 760px) { .detail { grid-template-columns: minmax(0, 1fr); gap: 28px; } .visual { aspect-ratio: 1.25; } }
 </style>
 <article class="detail" data-testid="project-detail">
   <script data-bascik-build type="text/typescript">
@@ -1083,7 +670,9 @@ export function projectDetail(project: Project | undefined): SafeHtml {
   const index = projects.findIndex((other) => other.slug === project.slug);
   const previous = index > 0 ? projects[index - 1] : undefined;
   const next = index >= 0 ? projects[index + 1] : undefined;
-  return html\`<div class="visual" data-accent="\${project.accent}" aria-label="\${project.title} project" role="img"></div>
+  return html\`<div class="visual" data-accent="\${project.accent}" aria-label="\${project.title} project artwork" role="img">
+      <span class="shape"></span><span class="shape shape-alt"></span>
+    </div>
     <div class="text">
       <p class="section-label">\${project.category}</p>
       <h1>\${project.title}</h1>
@@ -1094,46 +683,54 @@ export function projectDetail(project: Project | undefined): SafeHtml {
         <div><dt>Disciplines</dt><dd>\${project.tags.join(" / ")}</dd></div>
       </dl>
     </div>
-    <nav class="pager" aria-label="More race projects" data-testid="project-detail-pager">
+    <nav class="pager" aria-label="More projects" data-testid="project-detail-pager">
       \${previous ? html\`<a href="\${projectPath(previous)}" data-testid="project-detail-newer">Newer: \${previous.title}</a>\` : ""}
-      <a href="/work" data-testid="project-detail-all">All race projects</a>
+      <a href="/work" data-testid="project-detail-all">All selected work</a>
       \${next ? html\`<a href="\${projectPath(next)}" data-testid="project-detail-older">Older: \${next.title}</a>\` : ""}
     </nav>\`;
 }
 `;
 
-export const RACING_BIO_HTML = `<style>
-  section { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); gap: 48px; }
-  .prose { max-width: 65ch; }
-  h2 { margin-top: 36px; } h2:first-child { margin-top: 0; }
-  .facts { margin: 0; padding: 24px; border: 1px solid var(--border); border-radius: var(--r); background: var(--elevated); }
-  .fact + .fact { margin-top: 16px; } .fact dt { font-weight: 700; color: var(--accent); }
-  .fact dd { margin: 0; }
-  @media (max-width: 760px) { section { grid-template-columns: 1fr; gap: 28px; } }
+export const CREATOR_BIO_HTML = `<style>
+  section { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.8fr); gap: clamp(36px, 8vw, 112px); align-items: start; }
+  .prose { max-width: 62ch; }
+  h2 { margin-top: 36px; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: 1.8rem; font-weight: 500; }
+  h2:first-child { margin-top: 0; }
+  .facts { margin: 0; padding: 0; border-top: 1px solid var(--border); }
+  .fact { padding: 16px 0; border-bottom: 1px solid var(--border); }
+  .fact dt { font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+  .fact dd { margin: 5px 0 0; }
+  @media (max-width: 760px) { section { grid-template-columns: 1fr; gap: 32px; } }
 </style>
-<section data-testid="racing-bio">
+<section data-testid="creator-bio">
   <div class="prose">
-    <h2>Built around the stopwatch</h2>
-    <p>Hayden Vale Racing brings race engineering discipline to historic and modern programs: clear driver feedback, repeatable setup work, and a plan for every session.</p>
-    <h2>Classic machinery, present purpose</h2>
-    <p>Work spans restoration planning for Porsche 917, 935, 962, and 963 programs, from workshop provenance to track-day preparation.</p>
-    <p><a href="/contact">Discuss a race project</a></p>
+    <h2>Good work begins with a good question.</h2>
+    <p>This is an independent creative practice for people with something to say. The work moves between identity, editorial, and image-making, with a focus on finding the detail that makes an idea feel unmistakably its own.</p>
+    <h2>Made with care, and made to be used.</h2>
+    <p>From the first sketch to the final file, each project is shaped around its audience, its context, and the way it will live in the world.</p>
+    <p><a href="/contact">Tell me what you are making</a></p>
   </div>
   <dl class="facts">
-    <div class="fact"><dt>Circuits</dt><dd>Daytona, Sebring, Le Mans, Spa, Laguna Seca</dd></div>
-    <div class="fact"><dt>Specialties</dt><dd>Race engineering, restoration, photography</dd></div>
-    <div class="fact"><dt>References</dt><dd>Hurley Haywood, Paul Newman, Jordan Taylor, Ross Bentley</dd></div>
+    <div class="fact"><dt>Practice</dt><dd>Identity, editorial, art direction</dd></div>
+    <div class="fact"><dt>Approach</dt><dd>Curious, collaborative, considered</dd></div>
+    <div class="fact"><dt>Availability</dt><dd>Open for select projects</dd></div>
   </dl>
 </section>
 `;
 
-export const RACING_BIO_TEST = `${testHead("racing-bio")}
-describe("racing-bio component", () => {
-  it("covers racing specialties and references", async () => {
+export const CREATOR_BIO_TEST = `${testHead("creator-bio")}
+describe("creator-bio component", () => {
+  it("describes a creative practice under h2 headings, with a list of working details", async () => {
     const html = await source();
-    expect(html).toContain("Hurley Haywood");
-    expect(html).toContain("Porsche 917");
-    expect(html).toContain("Laguna Seca");
+    expect(html).toMatch(/<section\\s[^>]*data-testid="creator-bio"/);
+    expect(html).not.toContain("<h1");
+    expect(html.match(/<h2>/g)!.length).toBeGreaterThan(0);
+    expect(html.match(/<dt>/g)).toHaveLength(html.match(/<dd>/g)!.length);
+    expect(html).toContain("identity, editorial, and image-making");
+  });
+
+  it("links to the contact page", async () => {
+    expect(await source()).toContain('href="/contact"');
   });
 });
 `;

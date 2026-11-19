@@ -1,23 +1,19 @@
 /**
  * @module templates/portfolio
  *
- * The `portfolio` template: a racing professional portfolio. A home page with a short introduction
+ * The `portfolio` template: an expressive creator portfolio. A home page with an editorial introduction
  * and a grid of featured projects, a list of every project, one page per project, an about page, a contact page with a
  * form that checks its fields, a 404 page, and a title, description, canonical URL and Open Graph tags on
  * every page.
  *
  * How a project becomes a page, the way docs/content/scripts/dynamic-routes.md describes:
  *
- * 1. `src/lib/projects.ts` reads `content/projects/*.md` as the one collection and validates frontmatter.
- *    data in Markdown files because project pages contain long-form race context.
- *    files are for long-form content. `checkBooks()` runs when the module loads, so an entry with a missing
- *    field or a slug used twice stops the build with an error that names it.
+ * 1. `src/lib/projects.ts` reads `content/projects/*.md` as the one collection and validates its frontmatter.
+ *    Project pages can then use the Markdown body as a long-form case study.
  * 2. `src/pages/work/[slug].html` is a dynamic route template. Its `data-bascik-routes` script returns one route
- *    per book with the book as the route's data, so the build writes `/work/<slug>` for each and lists it in
- *    `sitemap.xml`. The head script and `<book-detail>` read the book from `BASCIK_ROUTE`.
- * 3. The home page and `/work` build their cards from the same array (`src/lib/book-cards.ts`).
- *
- * Covers are drawn in CSS by `<book-cover>` (`role="img"` with a text alternative): no image files.
+ *    per project with the project as the route's data, so the build writes `/work/<slug>` for each and lists it in
+ *    `sitemap.xml`. The head script and `<project-detail>` read the project from `BASCIK_ROUTE`.
+ * 3. The home page and `/work` build their cards from the same array (`src/lib/project-cards.ts`).
  *
  * The one file outside `src/` and `e2e/` is `bascik.config.ts`, for `pipeline.watchPaths: ["src/lib/"]`: the dev
  * server does not watch `src/lib/` by itself.
@@ -41,8 +37,8 @@ import {
   PROJECT_DETAIL_TS,
   FEATURED_PROJECTS_HTML,
   FEATURED_PROJECTS_TEST,
-  RACING_BIO_HTML,
-  RACING_BIO_TEST,
+  CREATOR_BIO_HTML,
+  CREATOR_BIO_TEST,
   CONTACT_FORM_HTML,
   CONTACT_FORM_TEST,
   HOME_INTRO_HTML,
@@ -91,7 +87,7 @@ const COMPONENTS: readonly (readonly [
   ["featured-projects", FEATURED_PROJECTS_HTML, FEATURED_PROJECTS_TEST],
   ["project-list", PROJECT_LIST_HTML, PROJECT_LIST_TEST],
   ["project-detail", PROJECT_DETAIL_HTML, PROJECT_DETAIL_TEST],
-  ["racing-bio", RACING_BIO_HTML, RACING_BIO_TEST],
+  ["creator-bio", CREATOR_BIO_HTML, CREATOR_BIO_TEST],
   ["contact-form", CONTACT_FORM_HTML, CONTACT_FORM_TEST],
 ];
 
@@ -165,7 +161,7 @@ export const projectCards = (list: readonly Project[]): SafeHtml =>
   ["src/components/project-detail/detail.ts", PROJECT_DETAIL_TS],
 ];
 
-/** `--template portfolio`: a racing portfolio, with one page per Markdown project. */
+/** `--template portfolio`: a creator portfolio, with one page per Markdown project. */
 export const PORTFOLIO_TEMPLATE: StarterTemplate = {
   name: "portfolio",
   summary:
