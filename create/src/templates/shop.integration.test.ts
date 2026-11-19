@@ -114,9 +114,9 @@ describe("shop template build", () => {
     }
   });
 
-  it("builds one page per book, lists them in the sitemap, and publishes the browser modules", async () => {
+  it("builds one page per racing product, lists them in the sitemap, and publishes the browser modules", async () => {
     // scaffold() takes any name; the CLI would refuse this one. It must reach the pages escaped.
-    const siteName = "Tom & Jerry's Books";
+    const siteName = "Porsche & Sons Racing Works";
     const projectDir = await scaffoldShop(siteName);
     const result = await build(projectDir);
     expect(result.exitCode, result.output).toBe(0);
@@ -144,10 +144,10 @@ describe("shop template build", () => {
     for (const path of ["cart", "checkout", "order-confirmed", "404"])
       expect(sitemap).not.toContain(`https://example.com/${path}<`);
 
-    // A book page: an absolute canonical URL, Product data, the book's own heading, and no leftover tags.
-    const page = await read("books/the-glass-tide.html");
+    // A product page: an absolute canonical URL, Product data, the product's own heading, and no leftover tags.
+    const page = await read("books/917-longtail-racing-jacket.html");
     expect(page).toContain(
-      '<link rel="canonical" href="https://example.com/books/the-glass-tide"',
+      '<link rel="canonical" href="https://example.com/books/917-longtail-racing-jacket"',
     );
     const data = JSON.parse(
       /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(
@@ -156,17 +156,17 @@ describe("shop template build", () => {
     ) as Record<string, unknown>;
     expect(data).toMatchObject({
       "@type": "Product",
-      name: "The Glass Tide",
+      name: "917 Longtail Racing Jacket",
       offers: {
-        price: "8.50",
+        price: "240.00",
         priceCurrency: "USD",
-        url: "https://example.com/books/the-glass-tide",
+        url: "https://example.com/books/917-longtail-racing-jacket",
       },
     });
-    expect(page).toMatch(/<h1[^>]*>The Glass Tide<\/h1>/);
-    expect(page).toContain("$8.50");
+    expect(page).toMatch(/<h1[^>]*>917 Longtail Racing Jacket<\/h1>/);
+    expect(page).toContain("$240.00");
     expect(page).toMatch(
-      /role="img"[^>]*aria-label="Cover of The Glass Tide by Rowan Achterberg"/,
+      /role="img"[^>]*aria-label="917 Longtail Racing Jacket by Hurley Haywood"/,
     );
     expect(page).not.toMatch(/<book-|<site-|data-bascik-/);
 
@@ -179,7 +179,7 @@ describe("shop template build", () => {
 
     // The site name is escaped wherever it is printed, and never raw.
     const home = await read("index.html");
-    expect(home).toContain("Tom &amp; Jerry&#39;s Books</title>");
+    expect(home).toContain("Porsche &amp; Sons Racing Works</title>");
     expect(home).not.toContain(siteName);
     expect(home.match(/<h1\b/g)).toHaveLength(1);
 
@@ -205,27 +205,27 @@ describe("shop template build", () => {
   it.each([
     [
       "a price that is not whole cents",
-      "priceCents: 1650",
+      "priceCents: 16500",
       "priceCents: 16.5",
-      'item 2 ("salt-and-cinder") needs "priceCents" as a whole number of cents above zero',
+      'item 2 ("935-moby-dick-racing-suit") needs "priceCents" as a whole number of cents above zero',
     ],
     [
       "a negative price",
-      "priceCents: 850",
+      "priceCents: 8500",
       "priceCents: -850",
-      'item 8 ("the-glass-tide") needs "priceCents" as a whole number of cents above zero',
+      'item 8 ("963-penske-wheel-nut-set") needs "priceCents" as a whole number of cents above zero',
     ],
     [
       "a duplicate slug",
-      'slug: "the-glass-tide"',
-      'slug: "salt-and-cinder"',
-      'item 8 ("salt-and-cinder") repeats the slug of an earlier item',
+      'slug: "917-longtail-racing-jacket"',
+      'slug: "935-moby-dick-racing-suit"',
+      'item 2 ("935-moby-dick-racing-suit") repeats the slug of an earlier item',
     ],
     [
       "a missing author",
-      'author: "Marisol Vance",',
+      'author: "Hurley Haywood",',
       "",
-      'item 1 ("the-lantern-orchard") is missing "author"',
+      'item 1 ("917-longtail-racing-jacket") is missing "author"',
     ],
   ])(
     "misuse: %s fails the build with an error naming the item",
@@ -235,9 +235,11 @@ describe("shop template build", () => {
       const result = await build(projectDir);
       expect(result.exitCode, result.output).toBe(1);
       expect(result.output).toContain(`catalog/books.ts: ${message}`);
-      // The failed build leaves no book pages behind to deploy by mistake.
+      // The failed build leaves no product pages behind to deploy by mistake.
       expect(
-        existsSync(join(projectDir, "dist", "books", "the-glass-tide.html")),
+        existsSync(
+          join(projectDir, "dist", "books", "917-longtail-racing-jacket.html"),
+        ),
       ).toBe(false);
     },
     120_000,

@@ -51,12 +51,15 @@ import {
 import {
   BASCIK_CONFIG_TS,
   BROWSER_MODULES_TS,
+  RACING_DB_TS,
+  RACING_SQL,
   CART_API_ROUTE,
   CART_TS,
   CATALOG_BOOKS_TS,
   CATALOG_TS,
   MONEY_TS,
   SEO_TS,
+  SEED_DATABASE_TS,
   TSCONFIG_JSON,
   siteTs,
 } from "./shop/data.js";
@@ -161,7 +164,7 @@ const shopComponents = ({ adapter }: TemplateContext): ShopComponent[] => [
     html: BOOK_CATALOG_HTML,
     companions: { "listing.ts": BOOK_CATALOG_HELPER_TS },
     claim:
-      "lists every book at build time and keeps its controls hidden until the script runs",
+      "lists every product at build time and keeps its controls hidden until the script runs",
     parts: [
       'id="controls" class="controls" aria-label="Sort and filter" hidden',
       '<label for="sort">',
@@ -252,6 +255,7 @@ const shopComponents = ({ adapter }: TemplateContext): ShopComponent[] => [
 
 const shopDirectories = (context: TemplateContext): string[] => [
   "catalog",
+  "data",
   "scripts",
   "src/lib",
   "src/browser",
@@ -265,6 +269,8 @@ const shopFiles = (context: TemplateContext): TemplateFile[] => [
   ["bascik.config.ts", BASCIK_CONFIG_TS],
   ["tsconfig.json", TSCONFIG_JSON],
   ["scripts/browser-modules.ts", BROWSER_MODULES_TS],
+  ["scripts/seed-database.ts", SEED_DATABASE_TS],
+  ["data/racing.sql", RACING_SQL],
 
   // The catalog, and the logic every page shares
   ["catalog/books.ts", CATALOG_BOOKS_TS],
@@ -272,6 +278,7 @@ const shopFiles = (context: TemplateContext): TemplateFile[] => [
   ["src/lib/catalog.ts", CATALOG_TS],
   ["src/lib/catalog.test.ts", CATALOG_TEST_TS],
   ["src/lib/seo.ts", SEO_TS],
+  ["src/lib/racing-db.ts", RACING_DB_TS],
 
   // The cart and price rules, which the browser gets too (/js/cart.js, /js/money.js)
   ["src/browser/cart.ts", CART_TS],
@@ -315,9 +322,14 @@ const shopFiles = (context: TemplateContext): TemplateFile[] => [
   ["e2e/app.spec.ts", shopE2eSpec(context.adapter)],
 ];
 
-/** `--template shop`: a bookshop with a catalog, a browser cart, and a demo checkout. */
+/** `--template shop`: a racing store with a catalog, a browser cart, and a demo checkout. */
 export const SHOP_TEMPLATE: StarterTemplate = {
   name: "shop",
+  scripts: {
+    "db:seed": "node scripts/seed-database.ts",
+    predev: "npm run db:seed",
+    prebuild: "npm run db:seed",
+  },
   summary:
     "A shop: a product catalog, product pages, a cart, and a demo checkout",
   directories: shopDirectories,

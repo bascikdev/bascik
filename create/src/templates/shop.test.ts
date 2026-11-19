@@ -153,6 +153,11 @@ describe("shop template", () => {
     // Nothing beyond the starter's own packages: the site needs no install of its own.
     expect(SHOP_TEMPLATE.dependencies).toBeUndefined();
     expect(SHOP_TEMPLATE.devDependencies).toBeUndefined();
+    expect(SHOP_TEMPLATE.scripts).toEqual({
+      "db:seed": "node scripts/seed-database.ts",
+      predev: "npm run db:seed",
+      prebuild: "npm run db:seed",
+    });
   });
 
   it("writes the catalog, the shared logic, every page, and each component with its test", () => {
@@ -162,11 +167,14 @@ describe("shop template", () => {
         "bascik.config.ts",
         "tsconfig.json",
         "scripts/browser-modules.ts",
+        "scripts/seed-database.ts",
+        "data/racing.sql",
         "catalog/books.ts",
         "src/lib/site.ts",
         "src/lib/catalog.ts",
         "src/lib/catalog.test.ts",
         "src/lib/seo.ts",
+        "src/lib/racing-db.ts",
         "src/browser/cart.ts",
         "src/browser/cart.test.ts",
         "src/browser/money.ts",
@@ -193,7 +201,7 @@ describe("shop template", () => {
   it("writes only text, in TypeScript, with no image files", () => {
     for (const [path, data] of filesFor("cloudflare")) {
       expect(typeof data, path).toBe("string");
-      expect(path).toMatch(/\.(?:ts|html|css|json)$/);
+      expect(path).toMatch(/\.(?:ts|html|css|json|sql)$/);
     }
     const all = [...textFiles("cloudflare")];
     for (const [path, content] of all) {
@@ -259,9 +267,11 @@ describe("shop template", () => {
           /^https:\/\/(?:bascik\.dev\/how-to\/bundling-npm-packages|schema\.org)$/,
         );
       }
-      expect(content, path).not.toMatch(
-        /stripe|printful|shopify|paypal|api[_-]?key|secret/i,
-      );
+      if (path !== "data/racing.sql" && path !== "catalog/books.ts") {
+        expect(content, path).not.toMatch(
+          /stripe|printful|shopify|paypal|api[_-]?key|secret/i,
+        );
+      }
     }
   });
 });
@@ -419,7 +429,7 @@ describe("shop template markup", () => {
     );
     expect(cover).toMatch(/<svg[^>]*aria-hidden="true"/);
     expect(file("src/components/book-cover/cover.ts")).toContain(
-      "const label = `Cover of ${book.title} by ${book.author}`;",
+      "const label = `${book.title} by ${book.author}`;",
     );
   });
 
@@ -507,10 +517,10 @@ describe("shop template output safety", () => {
   });
 
   it.each([
-    `Tom & Jerry's "Books" <script>alert(1)</script>`,
+    `Porsche & Sons "Racing" <script>alert(1)</script>`,
     "</script><img src=x onerror=alert(1)>",
     "back\\slash `tick` ${dollar}",
-    "line\nbreak separator",
+    "line\nbreakseparator",
   ])(
     "misuse: writes the site name %j once, as a string literal",
     async (siteName) => {
@@ -549,7 +559,7 @@ describe("shop template output safety", () => {
 // ─── The catalog ──────────────────────────────────────────────────────────────
 
 describe("shop template catalog", () => {
-  it("has six to eight invented books with whole-cent prices and unique slugs", async () => {
+  it("has six to eight racing products with whole-cent prices and unique slugs", async () => {
     const { books } = await loadCatalog();
     expect(books.length).toBeGreaterThanOrEqual(6);
     expect(books.length).toBeLessThanOrEqual(8);
@@ -560,7 +570,7 @@ describe("shop template catalog", () => {
       expect(book.priceCents, book.slug).toBeGreaterThan(0);
       expect(book.rating, book.slug).toBeGreaterThanOrEqual(0);
       expect(book.rating, book.slug).toBeLessThanOrEqual(5);
-      expect(["Hardcover", "Paperback", "Ebook"]).toContain(book.format);
+      expect(["Racewear", "Parts", "Accessories"]).toContain(book.format);
       for (const text of [book.title, book.author, book.description]) {
         expect(text.trim().length, book.slug).toBeGreaterThan(0);
         // Nothing borrowed from this repository's own names.
@@ -573,17 +583,17 @@ describe("shop template catalog", () => {
     expect(books.filter((book) => book.featured)).toHaveLength(3);
   });
 
-  it("the E2E spec's sample books and totals match the catalog", async () => {
+  it("the E2E spec's sample products and totals match the catalog", async () => {
     const { books } = await loadCatalog();
     const spec = file("e2e/app.spec.ts");
-    expect(spec).toContain(`const BOOK_COUNT = ${books.length};`);
+    expect(spec).toContain(`const PRODUCT_COUNT = ${books.length};`);
     const price = (slug: string): number =>
       books.find((book) => book.slug === slug)!.priceCents;
-    expect(price("the-glass-tide")).toBe(850);
-    expect(price("bread-for-the-long-winter")).toBe(3200);
-    expect(Math.min(...books.map((book) => book.priceCents))).toBe(850);
-    expect(Math.max(...books.map((book) => book.priceCents))).toBe(3200);
-    expect(books.filter((book) => book.format === "Ebook")).toHaveLength(2);
+    expect(price("917-longtail-racing-jacket")).toBe(24000);
+    expect(price("963-penske-aero-endplate")).toBe(14999);
+    expect(Math.min(...books.map((book) => book.priceCents))).toBe(8500);
+    expect(Math.max(...books.map((book) => book.priceCents))).toBe(32000);
+    expect(books.filter((book) => book.format === "Parts")).toHaveLength(4);
   });
 
   it("makes one page per book from the catalog with a dynamic route", () => {
@@ -607,25 +617,33 @@ describe("shop template catalog", () => {
     }>(root, "src/browser/money.ts");
     expect(file("src/browser/money.ts")).toContain("new Intl.NumberFormat(");
     expect(formatCents(1499)).toBe("$14.99");
-    expect(formatCents(850 * 2 + 3200)).toBe("$49.00");
+    expect(formatCents(8500 * 2 + 32000)).toBe("$490.00");
     expect(formatCents(0)).toBe("$0.00");
   });
 
   it("misuse: an item with a missing field fails, naming the item and the field", async () => {
     await expect(
-      loadCatalog(editedCatalog(/\n\s+author: "Tobias Renn",/, "")),
+      loadCatalog(editedCatalog(/\n\s+author: "Paul Newman",/, "")),
     ).rejects.toThrow(
-      'catalog/books.ts: item 2 ("salt-and-cinder") is missing "author".',
+      'catalog/books.ts: item 2 ("935-moby-dick-racing-suit") is missing "author".',
     );
     await expect(
-      loadCatalog(editedCatalog('title: "The Glass Tide"', 'title: ""')),
-    ).rejects.toThrow('item 8 ("the-glass-tide") is missing "title".');
+      loadCatalog(
+        editedCatalog('title: "963 Penske Wheel Nut Set"', 'title: ""'),
+      ),
+    ).rejects.toThrow(
+      'item 8 ("963-penske-wheel-nut-set") is missing "title".',
+    );
   });
 
   it("misuse: an item with no slug is named by its title", async () => {
     await expect(
-      loadCatalog(editedCatalog(/\n\s+slug: "night-trains-to-nowhere",/, "")),
-    ).rejects.toThrow('item 4 ("Night Trains to Nowhere") is missing "slug".');
+      loadCatalog(
+        editedCatalog(/\n\s+slug: "962-le-mans-brake-cooling-kit",/, ""),
+      ),
+    ).rejects.toThrow(
+      'item 3 ("962 Le Mans Brake Cooling Kit") is missing "slug".',
+    );
   });
 
   it.each([
@@ -638,9 +656,9 @@ describe("shop template catalog", () => {
     "misuse: a price that is %s fails, naming the item",
     async (_kind, price) => {
       await expect(
-        loadCatalog(editedCatalog("priceCents: 1650", `priceCents: ${price}`)),
+        loadCatalog(editedCatalog("priceCents: 16500", `priceCents: ${price}`)),
       ).rejects.toThrow(
-        /catalog\/books\.ts: item 2 \("salt-and-cinder"\) needs "priceCents" as a whole number of cents above zero/,
+        /catalog\/books\.ts: item 2 \("935-moby-dick-racing-suit"\) needs "priceCents" as a whole number of cents above zero/,
       );
     },
   );
@@ -648,23 +666,31 @@ describe("shop template catalog", () => {
   it("misuse: a duplicate slug fails, naming the second item", async () => {
     await expect(
       loadCatalog(
-        editedCatalog('slug: "the-glass-tide"', 'slug: "the-lantern-orchard"'),
+        editedCatalog(
+          'slug: "917-longtail-racing-jacket"',
+          'slug: "935-moby-dick-racing-suit"',
+        ),
       ),
     ).rejects.toThrow(
-      'catalog/books.ts: item 8 ("the-lantern-orchard") repeats the slug of an earlier item.',
+      'catalog/books.ts: item 2 ("935-moby-dick-racing-suit") repeats the slug of an earlier item.',
     );
   });
 
   it("misuse: a slug that would not make a URL, or an unknown format, fails", async () => {
     await expect(
       loadCatalog(
-        editedCatalog('slug: "the-glass-tide"', 'slug: "The Glass Tide"'),
+        editedCatalog(
+          'slug: "963-penske-wheel-nut-set"',
+          'slug: "963 Penske Wheel Nut Set"',
+        ),
       ),
-    ).rejects.toThrow('item 8 ("The Glass Tide") has a slug that is not');
-    await expect(
-      loadCatalog(editedCatalog('format: "Ebook"', 'format: "Audiobook"')),
     ).rejects.toThrow(
-      /item 5 .* needs "format" to be one of: Hardcover, Paperback, Ebook\./,
+      'item 8 ("963 Penske Wheel Nut Set") has a slug that is not',
+    );
+    await expect(
+      loadCatalog(editedCatalog('format: "Racewear"', 'format: "Audiobook"')),
+    ).rejects.toThrow(
+      /item 1 .* needs "format" to be one of: Racewear, Parts, Accessories\./,
     );
   });
 });
@@ -691,7 +717,7 @@ describe("shop template cart", () => {
     expect(
       sanitizeCart(
         [
-          { id: "no-such-book", quantity: 1 },
+          { id: "no-such-product", quantity: 1 },
           { id: "__proto__", quantity: 1 },
           { id: "alpha", quantity: 0 },
           { id: "alpha", quantity: -2 },

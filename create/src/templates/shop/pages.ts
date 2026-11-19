@@ -63,18 +63,18 @@ ${body}
 
 export const SHOP_INDEX_PAGE = page({
   name: "home",
-  title: "Books worth reading twice",
+  title: "Porsche parts and racewear",
   description:
-    "An independent bookshop with a small shelf chosen by hand: novels, essays, field guides and one very good bread book.",
+    "Porsche-inspired parts, racewear and accessories shaped by 917, 935, 962 and 963 racing history.",
   body: `      <home-hero />
       <featured-books />`,
 });
 
 export const SHOP_BOOKS_PAGE = page({
   name: "books",
-  title: "All books",
+  title: "All racing products",
   description:
-    "Browse every book on the shelf. Sort by title, price or rating, or filter by hardcover, paperback and ebook.",
+    "Browse Porsche racing products. Sort by name, price or rating, or filter by parts, racewear and accessories.",
   body: `      <book-catalog />`,
 });
 
@@ -100,7 +100,7 @@ export const SHOP_BOOK_PAGE = `<!doctype html>
         export default () => books.map((book) => ({ params: { slug: book.slug } }));
       </script>
       <div class="page">
-        <p><a href="/books/" data-testid="book-back">← All books</a></p>
+        <p><a href="/books/" data-testid="book-back">← All products</a></p>
         <script data-bascik-build type="text/typescript">
           import { bookBody } from "./book-page.ts";
           export default bookBody;
@@ -172,7 +172,7 @@ export const SHOP_CART_PAGE = page({
   name: "cart",
   title: "Your cart",
   description:
-    "The books in your cart, kept in this browser. Change a quantity, remove a book, or go on to the demo checkout.",
+    "The racing products in your cart, kept in this browser. Change a quantity, remove a product, or go on to the demo checkout.",
   noindex: true,
   body: `      <cart-list />`,
 });
@@ -205,15 +205,15 @@ export const SHOP_NOT_FOUND_PAGE = page({
   name: "404",
   title: "Page not found",
   description:
-    "This page is not on the shelf. Head back to the catalog to find a book.",
+    "This page is not in the paddock. Head back to the catalog to find a racing product.",
   noindex: true,
   body: `      <div class="container">
         <section class="section not-found">
           <p class="section-label">Error</p>
           <p class="not-found-code">404</p>
           <h1>Page not found</h1>
-          <p class="not-found-text">That page is not on the shelf.</p>
-          <a href="/books/" class="btn btn-primary">Browse the books</a>
+          <p class="not-found-text">That page is not in the paddock.</p>
+          <a href="/books/" class="btn btn-primary">Browse the products</a>
         </section>
       </div>`,
 });

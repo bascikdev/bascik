@@ -57,34 +57,34 @@ export const CATALOG_TEST_TS = `import { describe, it, expect } from "vitest";
 import { bookPath, books, findBook, validateCatalog } from "./catalog.ts";
 
 const valid = {
-  slug: "a-test-book",
-  title: "A Test Book",
-  author: "Test Author",
-  description: "A book that exists for one test.",
-  format: "Paperback",
+  slug: "a-test-racing-part",
+  title: "A Test Racing Part",
+  author: "Porsche Penske Motorsport",
+  description: "A racing product that exists for one test.",
+  format: "Racewear",
   priceCents: 1200,
   rating: 4,
   tone: "ink",
 };
 
 describe("the catalog", () => {
-  it("has books, each with its own slug", () => {
+  it("has products, each with its own slug", () => {
     expect(books.length).toBeGreaterThan(0);
     expect(new Set(books.map((book) => book.slug)).size).toBe(books.length);
   });
 
-  it("features at least one book on the home page", () => {
+  it("features at least one product on the home page", () => {
     expect(books.some((book) => book.featured)).toBe(true);
   });
 
-  it("finds a book by slug, and nothing for an unknown or missing slug", () => {
+  it("finds a product by slug, and nothing for an unknown or missing slug", () => {
     expect(findBook(books[0].slug)).toBe(books[0]);
-    expect(findBook("no-such-book")).toBeUndefined();
+    expect(findBook("no-such-product")).toBeUndefined();
     expect(findBook(undefined)).toBeUndefined();
   });
 
-  it("builds each book's path from its slug", () => {
-    expect(bookPath({ slug: "the-glass-tide" })).toBe("/books/the-glass-tide");
+  it("builds each product's path from its slug", () => {
+    expect(bookPath({ slug: "917-longtail-racing-jacket" })).toBe("/books/917-longtail-racing-jacket");
   });
 });
 
@@ -100,7 +100,7 @@ describe("validateCatalog", () => {
   it.each(["slug", "title", "author", "description"])(
     "names the item that is missing %s",
     (field) => {
-      const broken: Record<string, unknown> = { ...valid, slug: "second-book" };
+      const broken: Record<string, unknown> = { ...valid, slug: "second-racing-part" };
       delete broken[field];
       expect(() => validateCatalog([valid, broken])).toThrow(
         new RegExp(\`item 2 .* is missing "\${field}"\`),
@@ -110,7 +110,7 @@ describe("validateCatalog", () => {
 
   it("treats an empty or blank field as missing", () => {
     expect(() => validateCatalog([{ ...valid, title: "   " }])).toThrow(
-      'item 1 ("a-test-book") is missing "title".',
+      'item 1 ("a-test-racing-part") is missing "title".',
     );
   });
 
@@ -118,15 +118,15 @@ describe("validateCatalog", () => {
     "names the item whose price is %s",
     (priceCents) => {
       expect(() => validateCatalog([{ ...valid, priceCents }])).toThrow(
-        /item 1 \\("a-test-book"\\) needs "priceCents" as a whole number of cents/,
+        /item 1 \\("a-test-racing-part"\\) needs "priceCents" as a whole number of cents/,
       );
     },
   );
 
   it("names the item that repeats a slug", () => {
     expect(() =>
-      validateCatalog([valid, { ...valid, title: "Another Book" }]),
-    ).toThrow('item 2 ("a-test-book") repeats the slug of an earlier item.');
+      validateCatalog([valid, { ...valid, title: "Another Racing Part" }]),
+    ).toThrow('item 2 ("a-test-racing-part") repeats the slug of an earlier item.');
   });
 
   it("refuses a slug that would not make a clean URL", () => {
@@ -209,7 +209,7 @@ describe("sanitizeCart", () => {
       { id: "alpha" },
       { quantity: 1 },
       { id: 7, quantity: 1 },
-      { id: "no-such-book", quantity: 1 },
+      { id: "no-such-product", quantity: 1 },
       { id: "__proto__", quantity: 1 },
       { id: "alpha", quantity: 0 },
       { id: "alpha", quantity: -3 },
@@ -358,7 +358,7 @@ describe("counting and pricing", () => {
     { id: "beta", quantity: 3 },
   ];
 
-  it("counts copies, not lines", () => {
+  it("counts items, not lines", () => {
     expect(cartCount(cart)).toBe(5);
     expect(cartCount([])).toBe(0);
   });
@@ -481,19 +481,19 @@ const CART_API_E2E = `
   test("the server prices the cart from the catalog and refuses bad input", async ({ request }) => {
     const priced = await request.post("/api/cart", {
       // The extra price is ignored: the server only reads ids and quantities.
-      data: { lines: [{ id: "the-glass-tide", quantity: 2, priceCents: 1 }] },
+      data: { lines: [{ id: "917-longtail-racing-jacket", quantity: 2, priceCents: 1 }] },
     });
     expect(priced.status()).toBe(200);
     expect(await priced.json()).toEqual({
-      lines: [{ id: "the-glass-tide", quantity: 2, unitCents: 850, lineCents: 1700 }],
-      totalCents: 1700,
+      lines: [{ id: "917-longtail-racing-jacket", quantity: 2, unitCents: 24000, lineCents: 48000 }],
+      totalCents: 48000,
     });
 
     for (const data of [
-      { lines: [{ id: "no-such-book", quantity: 1 }] },
-      { lines: [{ id: "the-glass-tide", quantity: -1 }] },
-      { lines: [{ id: "the-glass-tide", quantity: 1e9 }] },
-      { lines: "the-glass-tide" },
+      { lines: [{ id: "no-such-product", quantity: 1 }] },
+      { lines: [{ id: "917-longtail-racing-jacket", quantity: -1 }] },
+      { lines: [{ id: "917-longtail-racing-jacket", quantity: 1e9 }] },
+      { lines: "917-longtail-racing-jacket" },
       {},
     ]) {
       expect((await request.post("/api/cart", { data })).status()).toBe(400);
@@ -512,121 +512,121 @@ export const shopE2eSpec = (
   adapter?: Adapter,
 ): string => `import { test, expect, type Page } from "@playwright/test";
 
-// Two books from catalog/books.ts. Change these when you change the catalog.
-const TIDE = { slug: "the-glass-tide", title: "The Glass Tide", price: "$8.50" };
-const BREAD = { slug: "bread-for-the-long-winter", title: "Bread for the Long Winter", price: "$32.00" };
-const BOOK_COUNT = 8;
+// Two racing products from catalog/books.ts. Change these when you change the catalog.
+const JACKET = { slug: "917-longtail-racing-jacket", title: "917 Longtail Racing Jacket", price: "$240.00" };
+const AERO = { slug: "963-penske-aero-endplate", title: "963 Penske Aero Endplate", price: "$149.99" };
+const PRODUCT_COUNT = 8;
 
-/** Open a book's page and add it to the cart, once per copy. */
-async function addToCart(page: Page, slug: string, copies = 1): Promise<void> {
+/** Open a product's page and add it to the cart, once per item. */
+async function addToCart(page: Page, slug: string, items = 1): Promise<void> {
   await page.goto(\`/books/\${slug}\`);
-  for (let added = 1; added <= copies; added += 1) {
+  for (let added = 1; added <= items; added += 1) {
     await page.getByTestId("book-detail-add").click();
     await expect(page.getByTestId("book-detail-status")).toContainText(
-      \`\${added} \${added === 1 ? "copy" : "copies"}\`,
+      \`\${added} \${added === 1 ? "item" : "items"}\`,
     );
   }
 }
 
-/** The cart line for a book, on the cart page. */
+/** The cart line for a product, on the cart page. */
 const cartLine = (page: Page, title: string) =>
   page.getByTestId("cart-list-line").filter({ hasText: title });
 
 test.describe("Shop", () => {
-  test("home page features books and leads to the catalog", async ({ page }) => {
+  test("home page features racing products and leads to the catalog", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/Books worth reading twice/);
+    await expect(page).toHaveTitle(/Porsche parts and racewear/);
     await expect(page.getByTestId("featured-books").getByTestId("book-card")).toHaveCount(3);
 
     await page.getByTestId("home-hero-browse").click();
     await expect(page).toHaveURL("/books/");
-    await expect(page.getByRole("heading", { level: 1, name: "Books" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Porsche racing shop" })).toBeVisible();
   });
 
   test("catalog sorts by price and filters by format", async ({ page }) => {
     await page.goto("/books/");
     const cards = page.getByTestId("book-catalog").getByTestId("book-card");
-    await expect(cards).toHaveCount(BOOK_COUNT);
+    await expect(cards).toHaveCount(PRODUCT_COUNT);
 
     await page.getByLabel("Sort by").selectOption("price-low");
-    await expect(cards.first()).toContainText(TIDE.title);
+    await expect(cards.first()).toContainText(AERO.title);
     await page.getByLabel("Sort by").selectOption("price-high");
-    await expect(cards.first()).toContainText(BREAD.title);
+    await expect(cards.first()).toContainText(JACKET.title);
 
-    await page.getByLabel("Format").selectOption("Ebook");
-    await expect(cards.filter({ visible: true })).toHaveCount(2);
+    await page.getByLabel("Category").selectOption("Parts");
+    await expect(cards.filter({ visible: true })).toHaveCount(4);
     await expect(page.getByTestId("book-catalog-status")).toHaveText(
-      \`Showing 2 of \${BOOK_COUNT} books\`,
+      \`Showing 4 of \${PRODUCT_COUNT} products\`,
     );
-    await page.getByLabel("Format").selectOption("all");
-    await expect(cards.filter({ visible: true })).toHaveCount(BOOK_COUNT);
+    await page.getByLabel("Category").selectOption("all");
+    await expect(cards.filter({ visible: true })).toHaveCount(PRODUCT_COUNT);
   });
 
-  test("catalog lists every book without JavaScript, with no dead controls", async ({ browser }) => {
+  test("catalog lists every product without JavaScript, with no dead controls", async ({ browser }) => {
     const context = await browser.newContext({ javaScriptEnabled: false });
     const page = await context.newPage();
     await page.goto("/books/");
-    await expect(page.getByTestId("book-card").filter({ visible: true })).toHaveCount(BOOK_COUNT);
+    await expect(page.getByTestId("book-card").filter({ visible: true })).toHaveCount(PRODUCT_COUNT);
     await expect(page.getByTestId("book-catalog-controls")).toBeHidden();
 
-    await page.getByRole("link", { name: TIDE.title }).click();
-    await expect(page.getByRole("heading", { level: 1, name: TIDE.title })).toBeVisible();
+    await page.getByRole("link", { name: JACKET.title }).click();
+    await expect(page.getByRole("heading", { level: 1, name: JACKET.title })).toBeVisible();
     await expect(page.getByTestId("book-detail-add")).toBeHidden();
     await context.close();
   });
 
-  test("book page shows the book, its cover's text alternative and its structured data", async ({ page }) => {
+  test("product page shows the product, its cover text alternative and structured data", async ({ page }) => {
     await page.goto("/books/");
-    await page.getByRole("link", { name: TIDE.title }).click();
-    await expect(page).toHaveURL(\`/books/\${TIDE.slug}\`);
-    await expect(page).toHaveTitle(/The Glass Tide by Rowan Achterberg/);
+    await page.getByRole("link", { name: JACKET.title }).click();
+    await expect(page).toHaveURL(\`/books/\${JACKET.slug}\`);
+    await expect(page).toHaveTitle(/917 Longtail Racing Jacket by Hurley Haywood/);
 
     const detail = page.getByTestId("book-detail");
-    await expect(detail.getByRole("heading", { level: 1 })).toHaveText(TIDE.title);
-    await expect(detail.getByTestId("book-detail-price")).toHaveText(TIDE.price);
+    await expect(detail.getByRole("heading", { level: 1 })).toHaveText(JACKET.title);
+    await expect(detail.getByTestId("book-detail-price")).toHaveText(JACKET.price);
     await expect(
-      detail.getByRole("img", { name: "Cover of The Glass Tide by Rowan Achterberg" }),
+      detail.getByRole("img", { name: "917 Longtail Racing Jacket by Hurley Haywood" }),
     ).toBeVisible();
 
     const data = JSON.parse(
       (await page.locator('script[type="application/ld+json"]').textContent()) ?? "{}",
     );
     expect(data["@type"]).toBe("Product");
-    expect(data.name).toBe(TIDE.title);
-    expect(data.offers).toMatchObject({ price: "8.50", priceCurrency: "USD" });
+    expect(data.name).toBe(JACKET.title);
+    expect(data.offers).toMatchObject({ price: "240.00", priceCurrency: "USD" });
   });
 
-  test("adding a book updates the cart count in the header", async ({ page }) => {
-    await page.goto(\`/books/\${TIDE.slug}\`);
+  test("adding a product updates the cart count in the header", async ({ page }) => {
+    await page.goto(\`/books/\${JACKET.slug}\`);
     const count = page.getByTestId("site-header-cart-count");
     await expect(count).toBeHidden();
     await expect(page.getByTestId("book-detail-view-cart")).toBeHidden();
 
     await page.getByTestId("book-detail-add").click();
     await expect(count).toHaveText("1");
-    await expect(page.getByTestId("book-detail-status")).toContainText("1 copy");
+    await expect(page.getByTestId("book-detail-status")).toContainText("1 item");
 
     await page.getByTestId("book-detail-add").click();
     await expect(count).toHaveText("2");
 
     await page.getByTestId("book-detail-view-cart").click();
     await expect(page).toHaveURL("/cart");
-    await expect(cartLine(page, TIDE.title)).toBeVisible();
+    await expect(cartLine(page, JACKET.title)).toBeVisible();
     await expect(page.getByTestId("cart-list-line").filter({ visible: true })).toHaveCount(1);
-    await expect(page.getByTestId("cart-list-total")).toHaveText("$17.00");
+    await expect(page.getByTestId("cart-list-total")).toHaveText("$480.00");
   });
 
   test("changing a quantity updates the line, the total and the count", async ({ page }) => {
-    await addToCart(page, TIDE.slug);
-    await addToCart(page, BREAD.slug);
+    await addToCart(page, JACKET.slug);
+    await addToCart(page, AERO.slug);
     await page.goto("/cart");
-    await expect(page.getByTestId("cart-list-total")).toHaveText("$40.50");
+    await expect(page.getByTestId("cart-list-total")).toHaveText("$389.99");
 
-    const quantity = cartLine(page, TIDE.title).getByTestId("cart-list-quantity");
+    const quantity = cartLine(page, JACKET.title).getByTestId("cart-list-quantity");
     await quantity.fill("3");
     await quantity.blur();
-    await expect(cartLine(page, TIDE.title).getByTestId("cart-list-amount")).toHaveText("$25.50");
-    await expect(page.getByTestId("cart-list-total")).toHaveText("$57.50");
+    await expect(cartLine(page, JACKET.title).getByTestId("cart-list-amount")).toHaveText("$720.00");
+    await expect(page.getByTestId("cart-list-total")).toHaveText("$869.99");
     await expect(page.getByTestId("site-header-cart-count")).toHaveText("4");
     await expect(page.getByTestId("cart-list-status")).toHaveText("Quantity updated.");
 
@@ -641,27 +641,27 @@ test.describe("Shop", () => {
   });
 
   test("removing a line takes it out of the cart", async ({ page }) => {
-    await addToCart(page, TIDE.slug);
-    await addToCart(page, BREAD.slug);
+    await addToCart(page, JACKET.slug);
+    await addToCart(page, AERO.slug);
     await page.goto("/cart");
 
-    await cartLine(page, TIDE.title).getByTestId("cart-list-remove").click();
-    await expect(cartLine(page, TIDE.title)).toBeHidden();
-    await expect(page.getByTestId("cart-list-total")).toHaveText(BREAD.price);
+    await cartLine(page, JACKET.title).getByTestId("cart-list-remove").click();
+    await expect(cartLine(page, JACKET.title)).toBeHidden();
+    await expect(page.getByTestId("cart-list-total")).toHaveText(AERO.price);
     await expect(page.getByTestId("site-header-cart-count")).toHaveText("1");
 
-    await cartLine(page, BREAD.title).getByTestId("cart-list-remove").click();
+    await cartLine(page, AERO.title).getByTestId("cart-list-remove").click();
     await expect(page.getByTestId("cart-list-empty")).toBeVisible();
     await expect(page.getByTestId("cart-list-checkout")).toBeHidden();
     await expect(page.getByTestId("site-header-cart-count")).toBeHidden();
   });
 
   test("the cart survives a reload and a visit to another page", async ({ page }) => {
-    await addToCart(page, BREAD.slug, 2);
+    await addToCart(page, AERO.slug, 2);
     await page.goto("/cart");
     await page.reload();
-    await expect(cartLine(page, BREAD.title).getByTestId("cart-list-quantity")).toHaveValue("2");
-    await expect(page.getByTestId("cart-list-total")).toHaveText("$64.00");
+    await expect(cartLine(page, AERO.title).getByTestId("cart-list-quantity")).toHaveValue("2");
+    await expect(page.getByTestId("cart-list-total")).toHaveText("$299.98");
 
     await page.goto("/");
     await expect(page.getByTestId("site-header-cart-count")).toHaveText("2");
@@ -674,20 +674,20 @@ test.describe("Shop", () => {
     await expect(page.getByTestId("cart-list-empty")).toBeVisible();
     await expect(page.getByTestId("site-header-cart-count")).toBeHidden();
 
-    // An unknown book, a stored price and a bad quantity are all ignored; the one good line stays.
+    // An unknown product, a stored price and a bad quantity are all ignored; the one good line stays.
     await page.evaluate(() =>
       localStorage.setItem(
         "cart",
         JSON.stringify([
-          { id: "no-such-book", quantity: 2 },
-          { id: "the-glass-tide", quantity: 1, priceCents: 1 },
-          { id: "bread-for-the-long-winter", quantity: -5 },
+          { id: "no-such-product", quantity: 2 },
+          { id: "917-longtail-racing-jacket", quantity: 1, priceCents: 1 },
+          { id: "963-penske-aero-endplate", quantity: -5 },
         ]),
       ),
     );
     await page.reload();
     await expect(page.getByTestId("cart-list-line").filter({ visible: true })).toHaveCount(1);
-    await expect(page.getByTestId("cart-list-total")).toHaveText(TIDE.price);
+    await expect(page.getByTestId("cart-list-total")).toHaveText(JACKET.price);
   });
 
   test("checkout with an empty cart shows no form", async ({ page }) => {
@@ -697,15 +697,15 @@ test.describe("Shop", () => {
   });
 
   test("checkout validates the address, then ends on the demo confirmation", async ({ page }) => {
-    await addToCart(page, TIDE.slug, 2);
+    await addToCart(page, JACKET.slug, 2);
     await page.goto("/cart");
     await page.getByTestId("cart-list-checkout").click();
     await expect(page).toHaveURL("/checkout");
 
     const summary = page.getByTestId("order-summary");
     await expect(summary.getByTestId("order-summary-line").filter({ visible: true })).toHaveCount(1);
-    await expect(summary).toContainText(TIDE.title);
-    await expect(page.getByTestId("order-summary-total")).toHaveText("$17.00");
+    await expect(summary).toContainText(JACKET.title);
+    await expect(page.getByTestId("order-summary-total")).toHaveText("$480.00");
 
     // Nothing filled in: every field reports, the first one takes focus, and the page stays.
     await page.getByTestId("checkout-form-submit").click();
@@ -717,8 +717,8 @@ test.describe("Shop", () => {
 
     await page.getByLabel("Full name").fill("Ada Reader");
     await page.getByLabel("Email").fill("not-an-email");
-    await page.getByLabel("Street address").fill("12 Shelf Lane");
-    await page.getByLabel("City").fill("Booktown");
+    await page.getByLabel("Street address").fill("12 Speedway Lane");
+    await page.getByLabel("City").fill("Le Mans");
     await page.getByLabel("State or region").fill("   ");
     await page.getByLabel("Postal code").fill("12345");
     await page.getByLabel("Country").fill("United States");
@@ -755,13 +755,13 @@ test.describe("Shop", () => {
     await expect(menu).toBeVisible();
   });
 
-  test("an unknown URL, or a book that is not in the catalog, is the 404 page", async ({ page }) => {
-    for (const path of ["/no-such-page", "/books/no-such-book"]) {
+  test("an unknown URL, or a product that is not in the catalog, is the 404 page", async ({ page }) => {
+    for (const path of ["/no-such-page", "/books/no-such-product"]) {
       const response = await page.goto(path);
       expect(response?.status()).toBe(404);
       await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
     }
-    await page.getByRole("link", { name: "Browse the books" }).click();
+    await page.getByRole("link", { name: "Browse the products" }).click();
     await expect(page).toHaveURL("/books/");
   });
 ${adapter ? CART_API_E2E : ""}});

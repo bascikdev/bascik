@@ -8,108 +8,108 @@
 
 /**
  * The catalog: the one file a shop owner edits to change what is for sale.
- * Every title and author is invented. Prices are whole cents.
+ * Racing products use real Porsche-era teams and drivers in the author field.
+ * Prices are whole cents.
  */
-export const CATALOG_BOOKS_TS = `// The catalog: every book the shop sells. Add, remove or edit entries here and the
-// home page, the catalog page, one page per book, the sitemap and the cart follow.
+export const CATALOG_BOOKS_TS = `// The racing catalog. Add, remove or edit entries here and the home page,
+// catalog page, one page per product, the sitemap and the cart follow.
 //
 // Prices are whole cents (1499 is $14.99), so sums never pick up rounding errors.
 // src/lib/catalog.ts checks every entry, and a mistake fails the build naming the entry.
-// This file is also published to the browser as /js/books.js (scripts/browser-modules.ts),
-// so keep it to plain data: no imports except types, and nothing private.
+// This file is also published to the browser as /js/books.js for compatibility.
 import type { Book } from "../src/lib/catalog.ts";
 
 export const books: Book[] = [
   {
-    slug: "the-lantern-orchard",
-    title: "The Lantern Orchard",
-    author: "Marisol Vance",
-    format: "Hardcover",
-    priceCents: 2400,
-    rating: 4.7,
+    slug: "917-longtail-racing-jacket",
+    title: "917 Longtail Racing Jacket",
+    author: "Hurley Haywood",
+    format: "Racewear",
+    priceCents: 24000,
+    rating: 4.9,
     tone: "plum",
     featured: true,
     description:
-      "Three sisters inherit an orchard that only fruits at night, and a ledger of debts their grandmother never mentioned.",
+      "A race-inspired longtail jacket with 917-era Gulf colors and a lightweight paddock-ready cut.",
   },
   {
-    slug: "salt-and-cinder",
-    title: "Salt and Cinder",
-    author: "Tobias Renn",
-    format: "Paperback",
-    priceCents: 1650,
-    rating: 4.3,
+    slug: "935-moby-dick-racing-suit",
+    title: "935 Moby Dick Racing Suit",
+    author: "Paul Newman",
+    format: "Racewear",
+    priceCents: 16500,
+    rating: 4.8,
     tone: "rust",
     featured: true,
     description:
-      "A lighthouse keeper and a runaway glassblower rebuild a harbor town one winter storm at a time.",
+      "A retro driving suit inspired by the Moby Dick 935 and the Daytona legends who raced it.",
   },
   {
-    slug: "a-field-guide-to-quiet-rivers",
-    title: "A Field Guide to Quiet Rivers",
-    author: "Ingrid Halloway",
-    format: "Hardcover",
-    priceCents: 2800,
-    rating: 4.8,
+    slug: "962-le-mans-brake-cooling-kit",
+    title: "962 Le Mans Brake Cooling Kit",
+    author: "Jordan Taylor",
+    format: "Parts",
+    priceCents: 28000,
+    rating: 4.7,
     tone: "teal",
     featured: true,
     description:
-      "Forty slow rivers, the birds that keep to them, and hand-drawn maps for walking each one from source to mouth.",
+      "A track-day brake cooling package styled around the endurance engineering of the 962.",
   },
   {
-    slug: "night-trains-to-nowhere",
-    title: "Night Trains to Nowhere",
-    author: "Dev Okonjo",
-    format: "Paperback",
-    priceCents: 1499,
-    rating: 4.1,
+    slug: "963-penske-aero-endplate",
+    title: "963 Penske Aero Endplate",
+    author: "Porsche Penske Motorsport",
+    format: "Parts",
+    priceCents: 14999,
+    rating: 4.6,
     tone: "ink",
     description:
-      "Eleven linked stories set on sleeper trains whose timetables never quite agree with the stations.",
+      "A display-spec aero endplate influenced by the 963's modern LMDh bodywork.",
   },
   {
-    slug: "the-cartographer-of-small-hours",
-    title: "The Cartographer of Small Hours",
-    author: "Priya Castellan",
-    format: "Ebook",
-    priceCents: 999,
+    slug: "martini-racing-helmet-livery-kit",
+    title: "Martini Racing Helmet Livery Kit",
+    author: "Ross Bentley",
+    format: "Accessories",
+    priceCents: 9999,
     rating: 4.5,
     tone: "moss",
     description:
-      "An insomniac mapmaker charts her city between midnight and dawn and finds a street that is only there at 3 a.m.",
+      "A retro-style helmet graphic kit inspired by Martini liveries and club racing history.",
   },
   {
-    slug: "bread-for-the-long-winter",
-    title: "Bread for the Long Winter",
-    author: "Anselm Dray",
-    format: "Hardcover",
-    priceCents: 3200,
+    slug: "917-le-mans-pit-watch",
+    title: "917 Le Mans Pit Watch",
+    author: "Hurley Haywood",
+    format: "Accessories",
+    priceCents: 32000,
     rating: 4.9,
     tone: "sand",
     description:
-      "Sixty loaves for cold months, from a two-day rye to a skillet flatbread, with a starter schedule that forgives a missed feeding.",
+      "A numbered pit-watch inspired by long Le Mans stints in the legendary 917.",
   },
   {
-    slug: "seventeen-ways-to-fold-a-map",
-    title: "Seventeen Ways to Fold a Map",
-    author: "Odalys Finch",
-    format: "Paperback",
-    priceCents: 1500,
-    rating: 3.9,
+    slug: "935-moby-dick-door-stripe-set",
+    title: "935 Moby Dick Door Stripe Set",
+    author: "Ross Bentley",
+    format: "Parts",
+    priceCents: 15000,
+    rating: 4.4,
     tone: "rust",
     description:
-      "Essays on getting lost on purpose, written across seventeen cities and one very long ferry crossing.",
+      "High-contrast door graphics recalling the Moby Dick 935's unmistakable racing profile.",
   },
   {
-    slug: "the-glass-tide",
-    title: "The Glass Tide",
-    author: "Rowan Achterberg",
-    format: "Ebook",
-    priceCents: 850,
-    rating: 4.2,
+    slug: "963-penske-wheel-nut-set",
+    title: "963 Penske Wheel Nut Set",
+    author: "Jordan Taylor",
+    format: "Parts",
+    priceCents: 8500,
+    rating: 4.3,
     tone: "teal",
     description:
-      "When the sea around an island freezes clear overnight, its children are the first to walk out and see what lies beneath.",
+      "A durable pit-bay wheel nut set with a modern Penske 963-inspired finish.",
   },
 ];
 `;
@@ -128,7 +128,7 @@ export const CATALOG_TS = `// The catalog's types, its checks, and the lookups p
 // The data itself is in catalog/books.ts.
 import { books as entries } from "../../catalog/books.ts";
 
-export const FORMATS = ["Hardcover", "Paperback", "Ebook"] as const;
+export const FORMATS = ["Racewear", "Parts", "Accessories"] as const;
 export type Format = (typeof FORMATS)[number];
 
 /** Cover colors, defined in src/components/book-cover/book-cover.html. */
@@ -182,7 +182,7 @@ export function validateCatalog(entries: unknown): Book[] {
       fail("has a slug that is not lowercase letters, digits and single hyphens.");
     }
     if (seen.has(slug)) {
-      fail("repeats the slug of an earlier item. Each book needs its own.");
+      fail("repeats the slug of an earlier item. Each product needs its own.");
     }
     seen.add(slug);
     const price = item.priceCents;
@@ -213,6 +213,60 @@ export const findBook = (slug: string | undefined): Book | undefined =>
 /** The book's page. Build the path here so every link agrees. */
 export const bookPath = (book: Pick<Book, "slug">): string =>
   \`/books/\${book.slug}\`;
+`;
+
+export const RACING_SQL = `CREATE TABLE IF NOT EXISTS products (
+  slug TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  team_or_driver TEXT NOT NULL,
+  category TEXT NOT NULL,
+  price_cents INTEGER NOT NULL,
+  rating REAL NOT NULL,
+  description TEXT NOT NULL
+);
+
+DELETE FROM products;
+
+INSERT INTO products (slug, title, team_or_driver, category, price_cents, rating, description) VALUES
+  ('917-longtail-racing-jacket', '917 Longtail Racing Jacket', 'Hurley Haywood', 'Racewear', 24000, 4.9, 'A race-inspired longtail jacket with 917-era Gulf colors and a lightweight paddock-ready cut.'),
+  ('935-moby-dick-racing-suit', '935 Moby Dick Racing Suit', 'Paul Newman', 'Racewear', 16500, 4.8, 'A retro driving suit inspired by the Moby Dick 935 and the Daytona legends who raced it.'),
+  ('962-le-mans-brake-cooling-kit', '962 Le Mans Brake Cooling Kit', 'Jordan Taylor', 'Parts', 28000, 4.7, 'A track-day brake cooling package styled around the endurance engineering of the 962.'),
+  ('963-penske-aero-endplate', '963 Penske Aero Endplate', 'Porsche Penske Motorsport', 'Parts', 14999, 4.6, 'A display-spec aero endplate influenced by the 963 modern LMDh bodywork.'),
+  ('martini-racing-helmet-livery-kit', 'Martini Racing Helmet Livery Kit', 'Ross Bentley', 'Accessories', 9999, 4.5, 'A retro-style helmet graphic kit inspired by Martini liveries and club racing history.'),
+  ('917-le-mans-pit-watch', '917 Le Mans Pit Watch', 'Hurley Haywood', 'Accessories', 32000, 4.9, 'A numbered pit-watch inspired by long Le Mans stints in the legendary 917.'),
+  ('935-moby-dick-door-stripe-set', '935 Moby Dick Door Stripe Set', 'Ross Bentley', 'Parts', 15000, 4.4, 'High-contrast door graphics recalling the Moby Dick 935 unmistakable racing profile.'),
+  ('963-penske-wheel-nut-set', '963 Penske Wheel Nut Set', 'Jordan Taylor', 'Parts', 8500, 4.3, 'A durable pit-bay wheel nut set with a modern Penske 963-inspired finish.');
+`;
+
+export const RACING_DB_TS = `import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+
+export interface RacingDatabase {
+  db: DatabaseSync;
+  path: string;
+}
+
+export function openRacingDatabase(): RacingDatabase {
+  const path = join(process.cwd(), "data", "racing.db");
+  mkdirSync(dirname(path), { recursive: true });
+  return { db: new DatabaseSync(path), path };
+}
+`;
+
+export const SEED_DATABASE_TS = `import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { openRacingDatabase } from "../src/lib/racing-db.ts";
+
+const sql = await readFile(join(process.cwd(), "data", "racing.sql"), "utf8");
+const { db, path } = openRacingDatabase();
+try {
+  db.exec(sql);
+  const count = db.prepare("SELECT COUNT(*) AS count FROM products").get() as { count: number };
+  console.log(\`Seeded \${count.count} products in \${path}\`);
+} finally {
+  db.close();
+}
 `;
 
 export const MONEY_TS = `// The one place a price becomes text. Prices are whole cents everywhere else.
@@ -488,7 +542,7 @@ export function jsonLd(data: Record<string, unknown>): SafeHtml {
 
 /** POST /api/cart, written only with a deploy adapter. */
 export const CART_API_ROUTE = `// POST /api/cart: the cart, priced by the server.
-// The browser sends only ids and quantities, { "lines": [{ "id": "the-glass-tide", "quantity": 2 }] },
+// The browser sends only ids and quantities, { "lines": [{ "id": "917-longtail-racing-jacket", "quantity": 2 }] },
 // and every price in the answer comes from the catalog on the server. A real checkout must
 // charge these totals, never a number the browser sent.
 // An API route is a module file, so its imports are relative: the @/ alias is for <script> blocks.

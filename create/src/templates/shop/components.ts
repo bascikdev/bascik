@@ -101,7 +101,7 @@ ${SITE_HEADER_CSS}
         <span></span><span></span><span></span>
       </button>
       <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
-        <li><a href="/books/" data-testid="site-header-books">Books</a></li>
+        <li><a href="/books/" data-testid="site-header-books">Porsche Shop</a></li>
         <!-- The link works without JavaScript. The count stays hidden until the saved cart is read. -->
         <li><a id="cart-link" href="/cart" data-testid="site-header-cart">Cart <span id="cart-count" class="count" data-testid="site-header-cart-count" hidden></span></a></li>
       </ul>
@@ -125,13 +125,13 @@ toggle.addEventListener("click", (): void => {
 const link = document.getElementById("cart-link") as HTMLAnchorElement;
 const count = document.getElementById("cart-count") as HTMLSpanElement;
 
-/** Show how many books the saved cart holds. An empty cart shows no count. */
+/** Show how many products the saved cart holds. An empty cart shows no count. */
 function showCount(): void {
   const items = cartCount(loadCart(books));
   count.textContent = String(items);
   count.hidden = items === 0;
   if (items === 0) link.removeAttribute("aria-label");
-  else link.setAttribute("aria-label", \`Cart, \${items} \${items === 1 ? "book" : "books"}\`);
+  else link.setAttribute("aria-label", \`Cart, \${items} \${items === 1 ? "item" : "items"}\`);
 }
 
 // Another component saved the cart, another tab did, or the page came back from the back/forward cache.
@@ -158,7 +158,7 @@ ${SITE_FOOTER_CSS}</style>
       </span>
       <nav aria-label="Footer navigation" data-testid="site-footer-nav">
         <a href="/" data-testid="site-footer-home">Home</a>
-        <a href="/books/" data-testid="site-footer-books">Books</a>
+        <a href="/books/" data-testid="site-footer-books">Shop</a>
         <a href="/cart" data-testid="site-footer-cart">Cart</a>
       </nav>
     </div>
@@ -168,11 +168,11 @@ ${SITE_FOOTER_CSS}</style>
 
 export const HOME_HERO_HTML = `<section class="hero" data-testid="home-hero">
   <div class="container">
-    <p class="section-label">Independent bookshop</p>
-    <h1>Books worth <span>reading twice</span></h1>
-    <p>A small shelf, chosen by hand. Every title here is invented: put your own in <code>catalog/books.ts</code>.</p>
+    <p class="section-label">Porsche racing collection</p>
+    <h1>Race-bred <span>Porsche gear</span></h1>
+    <p>Parts, racewear and accessories inspired by 917, 935, 962 and 963. Edit the catalog in <code>catalog/books.ts</code>.</p>
     <div class="hero-actions">
-      <a href="/books/" class="btn btn-primary" data-testid="home-hero-browse">Browse the books</a>
+      <a href="/books/" class="btn btn-primary" data-testid="home-hero-browse">Browse the products</a>
     </div>
   </div>
 </section>
@@ -189,7 +189,7 @@ A book cover drawn with CSS: no image file. Scales with the space it is given.
 @prop title - The book's title, printed on the cover
 @prop author - The author, printed under it
 @prop tone - The cover color: plum, rust, teal, ink, moss or sand (TONES in src/lib/catalog.ts)
-@prop label - The text alternative, such as "Cover of The Glass Tide by Rowan Achterberg"
+@prop label - The text alternative, such as "917 Longtail Racing Jacket by Hurley Haywood"
 -->
 <style>
   .cover {
@@ -236,9 +236,9 @@ A book cover drawn with CSS: no image file. Scales with the space it is given.
 export const BOOK_COVER_HELPER_TS = `import { html, type SafeHtml } from "@bascik/bascik/html";
 import type { Book } from "../../lib/catalog.ts";
 
-/** The <book-cover> tag for a book. html escapes the title and author. */
+/** The <book-cover> tag for a racing product. html escapes the title and author. */
 export const bookCover = (book: Book): SafeHtml => {
-  const label = \`Cover of \${book.title} by \${book.author}\`;
+  const label = \`\${book.title} by \${book.author}\`;
   return html\`<book-cover
     data-bascik-prop-title="\${book.title}"
     data-bascik-prop-author="\${book.author}"
@@ -252,10 +252,10 @@ export const BOOK_CARD_HTML = `<!-- @bascik
 One book in a list, linking to its page. The cover goes in the default slot.
 @prop title - The book's title
 @prop author - The author
-@prop format - Hardcover, Paperback or Ebook
+@prop format - Racewear, Parts or Accessories
 @prop price - The price as text, such as "$14.99"
 @prop rating - The rating out of 5, such as "4.5"
-@prop href - The book's page
+@prop href - The product's page
 -->
 <style>
   article {
@@ -325,12 +325,12 @@ export const FEATURED_BOOKS_HTML = `<style>
 </style>
 <section class="section" data-testid="featured-books">
   <div class="container">
-    <p class="section-label">Staff picks</p>
-    <h2>Featured books</h2>
+    <p class="section-label">Paddock picks</p>
+    <h2>Featured racing products</h2>
     <ul class="grid" data-testid="featured-books-list">
       <script data-bascik-build-once src="./featured.ts"></script>
     </ul>
-    <a href="/books/" class="btn btn-ghost" data-testid="featured-books-all">See every book →</a>
+    <a href="/books/" class="btn btn-ghost" data-testid="featured-books-all">See every product →</a>
   </div>
 </section>
 `;
@@ -369,9 +369,9 @@ export const BOOK_CATALOG_HTML = `<style>
 <section class="section" data-testid="book-catalog">
   <div class="container">
     <p class="section-label">Catalog</p>
-    <h1>Books</h1>
-    <p class="page-intro">Everything on the shelf. Each book has its own page.</p>
-    <!-- Hidden until the script runs: without JavaScript every book is listed and no control is dead. -->
+    <h1>Porsche racing shop</h1>
+    <p class="page-intro">Parts and racewear for the paddock, garage and grandstand.</p>
+    <!-- Hidden until the script runs: without JavaScript every product is listed and no control is dead. -->
     <form id="controls" class="controls" aria-label="Sort and filter" hidden data-testid="book-catalog-controls">
       <label for="sort">Sort by</label>
       <select id="sort" data-testid="book-catalog-sort">
@@ -380,9 +380,9 @@ export const BOOK_CATALOG_HTML = `<style>
         <option value="price-high">Price: high to low</option>
         <option value="rating">Rating</option>
       </select>
-      <label for="format">Format</label>
+      <label for="format">Category</label>
       <select id="format" data-testid="book-catalog-format">
-        <option value="all">All formats</option>
+        <option value="all">All categories</option>
         <script data-bascik-build-once type="text/typescript">
           import { formatOptions } from "./listing.ts";
           export default formatOptions;
@@ -427,7 +427,7 @@ export const BOOK_CATALOG_HTML = `<style>
       item.hidden = !match;
       if (match) shown += 1;
     }
-    if (announce) status.textContent = \`Showing \${shown} of \${items.length} books\`;
+    if (announce) status.textContent = \`Showing \${shown} of \${items.length} products\`;
   }
 
   controls.hidden = false;
@@ -468,7 +468,7 @@ A book's own page: its facts and the add-to-cart button. The cover goes in the d
 @prop slug - The book's slug, which is its id in the cart
 @prop title - The book's title
 @prop author - The author
-@prop format - Hardcover, Paperback or Ebook
+@prop format - Racewear, Parts or Accessories
 @prop price - The price as text
 @prop rating - The rating out of 5
 @prop description - What the book is about
@@ -501,7 +501,7 @@ A book's own page: its facts and the add-to-cart button. The cover goes in the d
     </p>
     <p class="description" data-bascik-prop-description></p>
     <p class="price" data-bascik-prop-price data-testid="book-detail-price"></p>
-    <noscript><p>Adding a book to the cart needs JavaScript.</p></noscript>
+    <noscript><p>Adding a product to the cart needs JavaScript.</p></noscript>
     <div class="actions">
       <!-- Hidden until the script runs, so there is no button that does nothing. -->
       <button id="add" type="button" class="btn btn-primary" data-bascik-attr-data-book="slug" data-testid="book-detail-add" hidden>Add to cart</button>
@@ -528,11 +528,11 @@ add.addEventListener("click", (): void => {
   const cart = addToCart(loadCart(books), id);
   if (!saveCart(cart)) {
     status.textContent =
-      "This book could not be added: your browser is not letting this site save a cart.";
+      "This product could not be added: your browser is not letting this site save a cart.";
     return;
   }
   const copies = cart.find((line) => line.id === id)?.quantity ?? 0;
-  status.textContent = \`Added. Your cart has \${copies} \${copies === 1 ? "copy" : "copies"} of this book.\`;
+  status.textContent = \`Added. Your cart has \${copies} \${copies === 1 ? "item" : "items"}.\`;
   viewCart.hidden = false;
 });
 `;
@@ -580,7 +580,7 @@ export const CART_LIST_HTML = `<style>
   <div class="container">
     <h1>Your cart</h1>
     <noscript><p>The cart is kept in your browser, so it needs JavaScript.</p></noscript>
-    <p id="empty" data-testid="cart-list-empty" hidden>Your cart is empty. <a href="/books/">Browse the books</a>.</p>
+    <p id="empty" data-testid="cart-list-empty" hidden>Your cart is empty. <a href="/books/">Browse the products</a>.</p>
     <!-- One hidden line per book in the catalog, written at build time. The script shows the
          lines that are in the cart and fills in their quantities: it never builds markup. -->
     <ul id="lines" class="lines" data-testid="cart-list-lines">
@@ -602,7 +602,7 @@ import { bookPath, books } from "../../lib/catalog.ts";
 import { formatCents } from "../../browser/money.ts";
 import { bookCover } from "../book-cover/cover.ts";
 
-/** A cart line for every book, hidden until cart-list.ts finds the book in the cart. */
+/** A cart line for every product, hidden until cart-list.ts finds the product in the cart. */
 export default (): SafeHtml =>
   html\`\${books.map((book) => {
     const href = bookPath(book);
@@ -867,7 +867,7 @@ export const ORDER_SUMMARY_HTML = `<style>
 export const ORDER_SUMMARY_HELPER_TS = `import { html, type SafeHtml } from "@bascik/bascik/html";
 import { books } from "../../lib/catalog.ts";
 
-/** A summary line for every book, hidden until order-summary.ts finds the book in the cart. */
+/** A summary line for every product, hidden until order-summary.ts finds the product in the cart. */
 export default (): SafeHtml =>
   html\`\${books.map(
     (book) =>
