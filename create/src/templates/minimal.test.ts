@@ -229,9 +229,13 @@ describe("minimal pages with a site name that is not plain text", () => {
 });
 
 describe("minimal stylesheet", () => {
-  it("is small, styles only elements the pages have, and follows the reader's color scheme", () => {
-    expect(MINIMAL_STYLES_CSS.split("\n").length).toBeLessThan(40);
+  it("keeps its minimal structure while using the shared palette and visible focus", () => {
+    expect(MINIMAL_STYLES_CSS.split("\n").length).toBeLessThan(60);
     expect(MINIMAL_STYLES_CSS).toContain("color-scheme: light dark");
+    expect(MINIMAL_STYLES_CSS).toContain(
+      "--canvas: light-dark(#e9edf3, #11151c)",
+    );
+    expect(MINIMAL_STYLES_CSS).toContain("outline-offset: 3px");
     // No class or id selectors: there is nothing in the pages for them to match.
     expect(MINIMAL_STYLES_CSS).not.toMatch(/^[^{}]*[.#][a-z][^{}]*\{/m);
     const braces = (character: string): number =>

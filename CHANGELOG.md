@@ -18,6 +18,8 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
+- `create-bascik`: the minimal template keeps its one-page structure while using the shared light/dark canvas, restrained accent links, fluid heading scale, and visible keyboard focus.
+
 - `create-bascik`: the starter and adapter variants use a shared light/dark design system, with a neutral canvas, raised cards, restrained periwinkle accents, visible keyboard focus, and motion that respects reader preferences.
 - Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).
 

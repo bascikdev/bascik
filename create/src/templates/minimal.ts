@@ -40,23 +40,46 @@ export const MINIMAL_STYLES_CSS = `*,
 
 :root {
   color-scheme: light dark;
+  --canvas: light-dark(#e9edf3, #11151c);
+  --surface: light-dark(#f8fafd, #222833);
+  --text: light-dark(#293247, #edf0f7);
+  --muted: light-dark(#616c80, #b3bbcb);
+  --accent: light-dark(#475cbd, #b1bfff);
 }
 
 body {
   margin: 0;
+  background: var(--canvas);
+  color: var(--text);
   font-family: system-ui, sans-serif;
   line-height: 1.6;
 }
 
 main {
-  max-width: 40rem;
+  max-width: 48rem;
   margin: 0 auto;
-  padding: 4rem 1.5rem;
+  padding: clamp(2.5rem, 9vw, 6rem) clamp(1.25rem, 5vw, 2rem);
 }
 
 h1 {
   margin-top: 0;
   line-height: 1.2;
+  font-size: clamp(2rem, 6vw, 3.25rem);
+  letter-spacing: -0.035em;
+}
+
+p {
+  color: var(--muted);
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 0.2em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 `;
 
