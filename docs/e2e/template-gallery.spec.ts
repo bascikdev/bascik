@@ -20,7 +20,9 @@ test("the CLI links to nine template previews that open their own demos", async 
   expect(new Set(origins).size).toBe(9);
   expect(
     origins.every((origin) =>
-      /^https:\/\/template-[a-z]+\.bascik\.dev$/.test(origin),
+      /^https:\/\/bascik-template-[a-z]+-preview\.collin-inbox\.workers\.dev$/.test(
+        origin,
+      ),
     ),
   ).toBe(true);
 
@@ -43,7 +45,7 @@ test("the CLI links to nine template previews that open their own demos", async 
   });
   await expect(docs.getByTestId("showcase-card-link")).toHaveAttribute(
     "href",
-    "https://template-docs.bascik.dev/docs/getting-started",
+    "https://bascik-template-docs-preview.collin-inbox.workers.dev/docs/getting-started",
   );
   await expect(docs).toContainText(
     "npm create bascik my-site -- --template docs",
