@@ -94,9 +94,9 @@ describe('pageHead', () => {
   });
 
   it('prints the page title with the site name, and the description', () => {
-    const head = String(pageHead({ title: 'Book fields', description: 'Every field of a book.' }));
-    expect(head).toContain('<title>Book fields - ');
-    expect(head).toContain('<meta name="description" content="Every field of a book." />');
+    const head = String(pageHead({ title: 'Braking zones', description: 'Every braking reference.' }));
+    expect(head).toContain('<title>Braking zones - ');
+    expect(head).toContain('<meta name="description" content="Every braking reference." />');
     expect(head).toContain('<meta property="og:description" content="Every field of a book." />');
     expect(SITE_NAME.length).toBeGreaterThan(0);
   });
@@ -115,11 +115,11 @@ describe('pageHead', () => {
 
   it('builds the canonical URL from the site URL, the base and the page path', () => {
     process.env.BASCIK_SITE_URL = 'https://example.com/';
-    process.env.BASCIK_BASE = '/books/';
-    process.env.BASCIK_PAGE_PATH = '/docs/book-fields';
+    process.env.BASCIK_BASE = '/racing/';
+    process.env.BASCIK_PAGE_PATH = '/docs/braking-zones';
     const head = String(pageHead({ title: 'A', description: 'B' }));
-    expect(head).toContain('<link rel="canonical" href="https://example.com/books/docs/book-fields" />');
-    expect(head).toContain('<meta property="og:url" content="https://example.com/books/docs/book-fields" />');
+    expect(head).toContain('<link rel="canonical" href="https://example.com/racing/docs/braking-zones" />');
+    expect(head).toContain('<meta property="og:url" content="https://example.com/racing/docs/braking-zones" />');
   });
 
   it('marks a noindex page and gives it no canonical URL', () => {
@@ -249,8 +249,8 @@ import { parseFrontMatter, renderMarkdown, slugify } from './markdown.ts';
 
 describe('parseFrontMatter', () => {
   it('reads key: value lines and returns the Markdown below them', () => {
-    const { data, body } = parseFrontMatter('---\\ntitle: "Book fields"\\ndescription: Every field.\\n---\\n\\nHello');
-    expect(data).toEqual({ title: 'Book fields', description: 'Every field.' });
+    const { data, body } = parseFrontMatter('---\ntitle: "Braking zones"\ndescription: Every reference.\n---\n\nHello');
+    expect(data).toEqual({ title: 'Braking zones', description: 'Every reference.' });
     expect(body.trim()).toBe('Hello');
   });
 
@@ -265,9 +265,9 @@ describe('parseFrontMatter', () => {
 
 describe('slugify', () => {
   it('lowercases and joins words with hyphens', () => {
-    expect(slugify('Find a Book!')).toBe('find-a-book');
-    expect(slugify('  Ratings & reviews  ')).toBe('ratings-reviews');
-    expect(slugify("An author's books")).toBe('an-authors-books');
+    expect(slugify('Find a Setup!')).toBe('find-a-setup');
+    expect(slugify('  Tyre & pressure  ')).toBe('tyre-pressure');
+    expect(slugify("A driver's race")).toBe('a-drivers-race');
   });
 
   it('never returns an empty id', () => {
@@ -292,10 +292,10 @@ describe('renderMarkdown', () => {
   });
 
   it('builds a valid id and plain text from a heading with HTML characters and Markdown', () => {
-    const { html, headings } = renderMarkdown('## The \`<book>\` tag & "quotes" in *titles*\\n', 'page.md');
-    expect(headings).toEqual([{ id: 'the-book-tag-quotes-in-titles', text: 'The <book> tag & "quotes" in titles', depth: 2 }]);
-    expect(html).toContain('id="the-book-tag-quotes-in-titles"');
-    expect(html).toContain('<code>&lt;book&gt;</code>');
+    const { html, headings } = renderMarkdown('## The \`<channel>\` tag & "quotes" in *data*\n', 'page.md');
+    expect(headings).toEqual([{ id: 'the-channel-tag-quotes-in-data', text: 'The <channel> tag & "quotes" in data', depth: 2 }]);
+    expect(html).toContain('id="the-channel-tag-quotes-in-data"');
+    expect(html).toContain('<code>&lt;channel&gt;</code>');
   });
 
   it('names the file when a page has a second title or skips a heading level', () => {
@@ -322,16 +322,16 @@ export interface SidebarGroup {
  */
 export const SIDEBAR: SidebarGroup[] = [
   {
-    label: "Guides",
-    pages: ["getting-started", "finding-books", "reading-lists"],
+    label: "Racecraft",
+    pages: ["race-weekend", "braking-zones", "setup-and-tyres"],
   },
   {
-    label: "Reference",
-    pages: ["book-fields", "author-fields"],
+    label: "Operations",
+    pages: ["pit-operations", "data-and-rules", "porsche-classics"],
   },
 ];
 
-/** The URL of a page: ${DOCS_CONTENT_DIR}/finding-books.md is served at /docs/finding-books. */
+/** The URL of a page: ${DOCS_CONTENT_DIR}/braking-zones.md is served at /docs/braking-zones. */
 export const docHref = (slug: string): string => \`/docs/\${slug}\`;
 
 /** Where "Docs" links go: the first page of the sidebar. */

@@ -153,11 +153,12 @@ describe("docs template", () => {
   it("writes outside src/ only its Markdown, its config and the e2e spec", () => {
     expect(pathsMatching(/^(?!src\/)/).sort()).toEqual([
       "bascik.config.ts",
-      "content/docs/author-fields.md",
-      "content/docs/book-fields.md",
-      "content/docs/finding-books.md",
-      "content/docs/getting-started.md",
-      "content/docs/reading-lists.md",
+      "content/docs/braking-zones.md",
+      "content/docs/data-and-rules.md",
+      "content/docs/pit-operations.md",
+      "content/docs/porsche-classics.md",
+      "content/docs/race-weekend.md",
+      "content/docs/setup-and-tyres.md",
       "e2e/app.spec.ts",
     ]);
   });
@@ -429,13 +430,20 @@ describe("docs template sample content", () => {
     }
   });
 
-  it("uses books and authors as its demo data", () => {
+  it("uses race operations and Porsche engineering as its demo content", () => {
     const markdown = pathsMatching(/^content\/docs\//)
       .map(file)
       .join("\n");
-    expect(markdown).toContain("Book Catalog");
-    expect(markdown).toMatch(/author/i);
-    expect(markdown).toContain("rating");
+    expect(markdown).toMatch(/Hurley Haywood/i);
+    expect(markdown).toMatch(/Paul Newman/i);
+    expect(markdown).toMatch(/Jordan Taylor/i);
+    expect(markdown).toMatch(/Ross Bentley/i);
+    expect(markdown).toMatch(
+      /Porsche 917|Porsche 935|Porsche 962|Porsche 963/i,
+    );
+    expect(markdown).toMatch(
+      /Daytona|Sebring|Watkins Glen|Laguna Seca|Le Mans|Spa/i,
+    );
   });
 });
 
@@ -457,10 +465,13 @@ describe("docs template misuse", () => {
 
   it("escapes that site name wherever a page prints it", () => {
     const head = String(
-      hostile.head.pageHead({ title: "Book fields", description: "Fields." }),
+      hostile.head.pageHead({
+        title: "Braking zones",
+        description: "Braking references.",
+      }),
     );
     expect(head).toContain(
-      "<title>Book fields - Tom &amp; &quot;Ann&#39;s&quot; &lt;b&gt;Docs&lt;/b&gt; `${x}`</title>",
+      "<title>Braking zones - Tom &amp; &quot;Ann&#39;s&quot; &lt;b&gt;Docs&lt;/b&gt; `${x}`</title>",
     );
     expect(head).not.toContain("<b>");
     expect(head).toContain(
@@ -505,7 +516,7 @@ describe("docs template misuse", () => {
       [
         '## The `<book>` tag & "quotes"',
         "## <em>Raw</em> <script>alert(1)</script> html",
-        "## Tom's *favorite* [authors](/docs/author-fields)",
+        "## Tom's *favorite* [reference](/docs/data-and-rules)",
         "## ???",
         "## Über Bücher 2",
       ].join("\n\n"),
@@ -518,7 +529,11 @@ describe("docs template misuse", () => {
         depth: 2,
       },
       { id: "raw-alert-1-html", text: "Raw alert(1) html", depth: 2 },
-      { id: "toms-favorite-authors", text: "Tom's favorite authors", depth: 2 },
+      {
+        id: "toms-favorite-reference",
+        text: "Tom's favorite reference",
+        depth: 2,
+      },
       { id: "section", text: "???", depth: 2 },
       { id: "über-bücher-2", text: "Über Bücher 2", depth: 2 },
     ]);
@@ -529,7 +544,7 @@ describe("docs template misuse", () => {
       "<code>&lt;book&gt;</code> tag &amp; &quot;quotes&quot;",
     );
     expect(html).toContain(
-      '<h2 id="toms-favorite-authors">Tom&#39;s <em>favorite</em> <a href="/docs/author-fields">authors</a></h2>',
+      '<h2 id="toms-favorite-reference">Tom&#39;s <em>favorite</em> <a href="/docs/data-and-rules">reference</a></h2>',
     );
   });
 
@@ -572,11 +587,11 @@ describe("docs template misuse", () => {
       await writeFile(join(dir, path.split("/").pop()!), file(path));
     }
     await writeFile(
-      join(dir, "ratings.md"),
-      "---\ntitle: Ratings\ndescription: How readers rate books.\n---\n\n## Rate\n",
+      join(dir, "weather-notes.md"),
+      "---\ntitle: Weather notes\ndescription: How changing weather affects the race plan.\n---\n\n## Track state\n",
     );
     await expect(project.docs.getDocs(dir)).rejects.toThrow(
-      'content/docs/ratings.md is not in the sidebar. Add "ratings" to SIDEBAR in src/lib/sidebar.ts, or delete the file.',
+      'content/docs/weather-notes.md is not in the sidebar. Add "weather-notes" to SIDEBAR in src/lib/sidebar.ts, or delete the file.',
     );
   });
 
@@ -584,11 +599,11 @@ describe("docs template misuse", () => {
     const dir = join(tempRoot, "missing");
     await mkdir(dir);
     for (const path of pathsMatching(/^content\/docs\//)) {
-      if (path.endsWith("/book-fields.md")) continue;
+      if (path.endsWith("/porsche-classics.md")) continue;
       await writeFile(join(dir, path.split("/").pop()!), file(path));
     }
     await expect(project.docs.getDocs(dir)).rejects.toThrow(
-      'src/lib/sidebar.ts: SIDEBAR lists "book-fields", but content/docs/book-fields.md does not exist. Create the file or remove the entry.',
+      'src/lib/sidebar.ts: SIDEBAR lists "porsche-classics", but content/docs/porsche-classics.md does not exist. Create the file or remove the entry.',
     );
   });
 
@@ -600,6 +615,6 @@ describe("docs template misuse", () => {
     }
     await writeFile(join(dir, ".DS_Store"), "");
     await writeFile(join(dir, "notes.txt"), "not a page");
-    await expect(project.docs.getDocs(dir)).resolves.toHaveLength(5);
+    await expect(project.docs.getDocs(dir)).resolves.toHaveLength(6);
   });
 });

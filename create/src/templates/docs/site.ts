@@ -220,7 +220,7 @@ export const HOME_HERO_HTML = `<section class="hero" data-testid="home-hero">
       import { SITE_NAME } from "@/lib/site.ts";
 
       export default () => html\`<h1>\${SITE_NAME}</h1>
-        <p>The guides and reference for Book Catalog, an imaginary library for looking up books and authors.</p>
+        <p>The race operations and engineering notes for braking, setup, pit work, telemetry, and Porsche prototypes.</p>
         <div class="hero-actions">
           <a href="\${DOCS_HOME}" class="btn btn-primary" data-testid="home-hero-start">Read the docs</a>
         </div>\`;
@@ -385,7 +385,7 @@ export const DOCS_ARTICLE_CSS = `.title { font-size: clamp(1.8rem, 4vw, 2.4rem);
 /**
  * The page itself: its title, its description, and the rendered Markdown.
  * `data-bascik-preserve="id"` keeps the heading ids as written, so the table
- * of contents and a URL such as /docs/finding-books#search-by-title reach them.
+ * of contents and a URL such as /docs/braking-zones#repeat-and-review reach them.
  */
 export const DOCS_ARTICLE_HTML = `<style>
 ${DOCS_ARTICLE_CSS}</style>
@@ -654,7 +654,7 @@ export const DOCS_INDEX_PAGE = `<!doctype html>
     export default () =>
       pageHead({
         title: "Documentation",
-        description: "The guides and reference for Book Catalog, an imaginary library for looking up books and authors.",
+        description: "Race operations and engineering guides for braking, setup, pit work, telemetry, rules, and Porsche race cars.",
       });
   </script>
 </head>
@@ -757,12 +757,12 @@ test.describe('Docs site', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
     await page.getByTestId('home-hero-start').click();
-    await expect(page).toHaveURL('/docs/getting-started');
-    await expect(page.getByRole('heading', { level: 1, name: 'Getting started' })).toBeVisible();
+    await expect(page).toHaveURL('/docs/race-weekend');
+    await expect(page.getByRole('heading', { level: 1, name: 'Race weekend' })).toBeVisible();
   });
 
   test('skip link is the first stop and points at the page content', async ({ page }) => {
-    await page.goto('/docs/getting-started');
+    await page.goto('/docs/race-weekend');
     await page.keyboard.press('Tab');
     const skip = page.getByTestId('site-header-skip-link');
     await expect(skip).toBeFocused();
@@ -771,25 +771,25 @@ test.describe('Docs site', () => {
   });
 
   test('sidebar lists both groups and marks only the current page', async ({ page }) => {
-    await page.goto('/docs/finding-books');
-    await expect(page).toHaveTitle(/^Finding books - /);
+    await page.goto('/docs/braking-zones');
+    await expect(page).toHaveTitle(/^Braking zones - /);
 
     const sidebar = page.getByTestId('docs-sidebar');
-    await expect(sidebar.getByText('Guides')).toBeVisible();
-    await expect(sidebar.getByText('Reference')).toBeVisible();
-    await expect(sidebar.getByRole('link')).toHaveCount(5);
+    await expect(sidebar.getByText('Racecraft')).toBeVisible();
+    await expect(sidebar.getByText('Operations')).toBeVisible();
+    await expect(sidebar.getByRole('link')).toHaveCount(6);
 
     const current = sidebar.locator('[aria-current="page"]');
     await expect(current).toHaveCount(1);
-    await expect(current).toHaveText('Finding books');
+    await expect(current).toHaveText('Braking zones');
 
-    await sidebar.getByRole('link', { name: 'Book fields' }).click();
-    await expect(page).toHaveURL('/docs/book-fields');
-    await expect(page.getByTestId('docs-sidebar').locator('[aria-current="page"]')).toHaveText('Book fields');
+    await sidebar.getByRole('link', { name: 'Porsche classic race engineering' }).click();
+    await expect(page).toHaveURL('/docs/porsche-classics');
+    await expect(page.getByTestId('docs-sidebar').locator('[aria-current="page"]')).toHaveText('Porsche classic race engineering');
   });
 
   test('table of contents links jump to the headings of the page', async ({ page }) => {
-    await page.goto('/docs/finding-books');
+    await page.goto('/docs/braking-zones');
     const toc = page.getByTestId('docs-toc-nav');
     const article = page.getByTestId('docs-article');
 
@@ -798,29 +798,29 @@ test.describe('Docs site', () => {
     expect(hrefs.length).toBeGreaterThan(3);
     for (const href of hrefs) await expect(article.locator(\`[id="\${href!.slice(1)}"]\`)).toHaveCount(1);
 
-    await toc.getByRole('link', { name: 'Sort the results' }).click();
-    await expect(page).toHaveURL('/docs/finding-books#sort-the-results');
-    await expect(article.getByRole('heading', { name: 'Sort the results' })).toBeInViewport();
+    await toc.getByRole('link', { name: 'Repeat and review' }).click();
+    await expect(page).toHaveURL('/docs/braking-zones#repeat-and-review');
+    await expect(article.getByRole('heading', { name: 'Repeat and review' })).toBeInViewport();
   });
 
   test('previous and next follow the sidebar order', async ({ page }) => {
-    await page.goto('/docs/getting-started');
+    await page.goto('/docs/race-weekend');
     await expect(page.getByTestId('docs-pagination-previous')).toHaveCount(0);
 
     await page.getByTestId('docs-pagination-next').click();
-    await expect(page).toHaveURL('/docs/finding-books');
+    await expect(page).toHaveURL('/docs/braking-zones');
 
     await page.getByTestId('docs-pagination-previous').click();
-    await expect(page).toHaveURL('/docs/getting-started');
+    await expect(page).toHaveURL('/docs/race-weekend');
 
-    await page.goto('/docs/author-fields');
+    await page.goto('/docs/porsche-classics');
     await expect(page.getByTestId('docs-pagination-next')).toHaveCount(0);
-    await expect(page.getByTestId('docs-pagination-previous')).toContainText('Book fields');
+    await expect(page.getByTestId('docs-pagination-previous')).toContainText('Data channels and race rules');
   });
 
   test('sidebar collapses behind its toggle on a small screen', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/docs/getting-started');
+    await page.goto('/docs/race-weekend');
 
     const toggle = page.getByTestId('docs-sidebar-toggle');
     const menu = page.getByTestId('docs-sidebar-menu');
@@ -834,7 +834,7 @@ test.describe('Docs site', () => {
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole('link', { name: 'Reading lists' })).toBeVisible();
+    await expect(menu.getByRole('link', { name: 'Setup and tyres' })).toBeVisible();
 
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -842,7 +842,7 @@ test.describe('Docs site', () => {
   });
 
   test('sidebar stays open with no toggle on a wide screen', async ({ page }) => {
-    await page.goto('/docs/getting-started');
+    await page.goto('/docs/race-weekend');
     await expect(page.getByTestId('docs-sidebar-toggle')).toBeHidden();
     await expect(page.getByTestId('docs-sidebar-menu')).toBeVisible();
     await expect(page.getByTestId('docs-toc')).toBeVisible();
