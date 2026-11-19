@@ -37,6 +37,14 @@ html { scroll-padding-top: 76px; }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* The main landmark starts below the navigation and keeps a clear page gutter. */
+.shop-main {
+  flex: 1;
+  width: 100%;
+  padding: clamp(24px, 4vw, 48px) clamp(16px, 4vw, 52px);
+}
+.shop-main > .container { max-width: 1280px; margin-inline: auto; }
+
 /* A page whose content is not one full-width section: the book page and the checkout. */
 .page {
   max-width: 1140px;
@@ -49,6 +57,7 @@ html { scroll-padding-top: 76px; }
 }
 @media (max-width: 640px) {
   .page { padding: 28px 20px; border-radius: 16px; }
+  .shop-main { padding: 24px 16px 36px; }
 }
 
 .status { min-height: 1.7em; color: var(--accent); }
@@ -60,6 +69,14 @@ html { scroll-padding-top: 76px; }
 }
 @media (max-width: 760px) {
   .checkout-columns { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes shop-enter {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .shop-main > * { animation: shop-enter 260ms ease-out both; }
 }
 `;
 
@@ -109,7 +126,7 @@ ${SITE_HEADER_CSS}
         <span></span><span></span><span></span>
       </button>
       <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
-        <li><a href="/books/" data-testid="site-header-books">Porsche Shop</a></li>
+        <li><a href="/books/" data-testid="site-header-books">Shop</a></li>
         <!-- The link works without JavaScript. The count stays hidden until the saved cart is read. -->
         <li><a id="cart-link" href="/cart" data-testid="site-header-cart">Cart <span id="cart-count" class="count" data-testid="site-header-cart-count" hidden></span></a></li>
       </ul>
@@ -174,82 +191,150 @@ ${SITE_FOOTER_CSS}</style>
 </footer>
 `;
 
-export const HOME_HERO_HTML = `<section class="hero" data-testid="home-hero">
+export const HOME_HERO_HTML = `<style>
+  .hero { padding-block: clamp(56px, 9vw, 112px) clamp(44px, 7vw, 84px); }
+  .hero > .container { max-width: 1080px; }
+  .hero h1 {
+    max-width: 13ch;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(3rem, 8vw, 6.5rem);
+    font-weight: 400;
+    letter-spacing: -0.055em;
+    line-height: 0.98;
+  }
+  .hero h1 span { color: var(--accent); font-style: italic; }
+  .hero > .container > p:not(.section-label) {
+    max-width: 49ch;
+    font-size: clamp(1.05rem, 1.8vw, 1.25rem);
+    line-height: 1.65;
+  }
+  .hero-actions { margin-top: 30px; }
+</style>
+<section class="hero" data-testid="home-hero">
   <div class="container">
-    <p class="section-label">Porsche racing collection</p>
-    <h1>Race-bred <span>Porsche gear</span></h1>
-    <p>Parts, racewear and accessories inspired by 917, 935, 962 and 963. Edit the catalog in <code>catalog/books.ts</code>.</p>
+    <p class="section-label">Bascik Example Shop · Trackside essentials</p>
+    <h1>Made for <span>the long way around.</span></h1>
+    <p>Considered apparel, useful garage pieces and everyday accessories with a motorsport point of view.</p>
     <div class="hero-actions">
-      <a href="/books/" class="btn btn-primary" data-testid="home-hero-browse">Browse the products</a>
+      <a href="/books/" class="btn btn-primary" data-testid="home-hero-browse">Explore the collection</a>
     </div>
   </div>
 </section>
 `;
 
-// ─── Books ────────────────────────────────────────────────────────────────────
+// ─── Product artwork and cards ────────────────────────────────────────────────
 
 /**
- * A cover drawn with CSS and one inline SVG ornament: no image files. The root
- * has `role="img"` and a label, so the title and author inside it are read once.
+ * Original vector illustrations are selected for each specific product. No
+ * book covers, external image service, or third-party product branding.
  */
-export const BOOK_COVER_HTML = `<!-- @bascik
-A book cover drawn with CSS: no image file. Scales with the space it is given.
-@prop title - The book's title, printed on the cover
-@prop author - The author, printed under it
-@prop tone - The cover color: plum, rust, teal, ink, moss or sand (TONES in src/lib/catalog.ts)
-@prop label - The text alternative, such as "917 Longtail Racing Jacket by Hurley Haywood"
+export const PRODUCT_ART_HTML = `<!-- @bascik
+An original, product-specific illustration drawn as inline SVG.
+@prop format - Racewear, Parts or Accessories
+@prop product - The product slug, used to select the matching illustration
+@prop tone - The artwork palette: plum, rust, teal, ink, moss or sand
+@prop label - A short text alternative describing the product illustration
 -->
 <style>
-  .cover {
+  .artwork {
     display: block;
     width: 100%;
-    /* The face sizes its text from this width (cqi), so a small cover stays readable. */
-    container-type: inline-size;
-  }
-  .face {
-    --paper: #3b3f47;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    aspect-ratio: 2 / 3;
-    padding: 11cqi 9cqi 9cqi 14cqi;
-    border-radius: 2cqi 5cqi 5cqi 2cqi;
-    background:
-      linear-gradient(90deg, rgba(0, 0, 0, 0.3) 0 5%, transparent 5% 100%),
-      var(--paper);
-    color: #fff;
     overflow: hidden;
+    aspect-ratio: 4 / 3;
+    border-radius: 12px;
+    background: var(--art-bg, #e8e4da);
   }
-  .face[data-tone="plum"] { --paper: #5a3566; }
-  .face[data-tone="rust"] { --paper: #8a3f24; }
-  .face[data-tone="teal"] { --paper: #1f5c63; }
-  .face[data-tone="ink"] { --paper: #26324f; }
-  .face[data-tone="moss"] { --paper: #3f5a2c; }
-  .face[data-tone="sand"] { --paper: #74552a; }
-  .title { font-size: 11cqi; font-weight: 700; line-height: 1.15; }
-  .author { font-size: 6.5cqi; letter-spacing: 0.08em; text-transform: uppercase; }
-  .ornament { width: 36cqi; height: auto; }
+  .artwork[data-tone="plum"] { --art-bg: #e9e2e8; --art-ink: #593e54; --art-detail: #b17e67; }
+  .artwork[data-tone="rust"] { --art-bg: #eee3d9; --art-ink: #814a35; --art-detail: #d3a26e; }
+  .artwork[data-tone="teal"] { --art-bg: #dce8e5; --art-ink: #315d58; --art-detail: #8aab9e; }
+  .artwork[data-tone="ink"] { --art-bg: #dfe3e8; --art-ink: #354354; --art-detail: #8c9cab; }
+  .artwork[data-tone="moss"] { --art-bg: #e3e7d9; --art-ink: #4a5a3d; --art-detail: #9bab7b; }
+  .artwork[data-tone="sand"] { --art-bg: #eee8d8; --art-ink: #775a36; --art-detail: #b99961; }
+  svg { display: none; width: 100%; height: 100%; color: var(--art-ink, #3e4c40); }
+  .detail { stroke: var(--art-detail, #a18d67); }
+  .artwork[data-product="pit-lane-coach-jacket"] .jacket,
+  .artwork[data-product="gridline-driver-suit"] .suit,
+  .artwork[data-product="brake-cooling-duct-kit"] .duct,
+  .artwork[data-product="aero-display-panel"] .panel,
+  .artwork[data-product="helmet-number-decal-set"] .helmet-decals,
+  .artwork[data-product="interval-chronograph"] .chronograph,
+  .artwork[data-product="door-number-decal-pack"] .door-decals,
+  .artwork[data-product="wheel-fastener-kit"] .fasteners { display: block; }
+  @media (prefers-reduced-motion: no-preference) {
+    .artwork svg { animation: art-enter 360ms ease-out both; }
+    @keyframes art-enter { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+  }
 </style>
-<span class="cover" role="img" data-bascik-attr-aria-label="label" data-testid="book-cover">
-  <span class="face" data-bascik-attr-data-tone="tone">
-    <span class="title" data-bascik-prop-title></span>
-    <svg class="ornament" viewBox="0 0 36 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
-      <path d="M1 6h10M25 6h10M18 1l5 5-5 5-5-5z" />
-    </svg>
-    <span class="author" data-bascik-prop-author></span>
-  </span>
+<span class="artwork" role="img" data-bascik-attr-aria-label="label" data-bascik-attr-data-format="format" data-bascik-attr-data-product="product" data-bascik-attr-data-tone="tone" data-testid="product-art">
+  <svg class="jacket" viewBox="0 0 240 180" aria-hidden="true">
+    <path d="m88 36 32 12 32-12 31 23-19 27-16-11v73H92V75L76 86 57 59l31-23Z" fill="currentColor" />
+    <path class="detail" d="M120 49v99m-18-96 10 13m26-13-10 13m-29 12h42m-42 9h42" fill="none" stroke-width="3" stroke-linecap="round" />
+    <path d="M106 68h28v6h-28z" fill="var(--art-bg)" />
+  </svg>
+  <svg class="suit" viewBox="0 0 240 180" aria-hidden="true">
+    <path d="m88 32 32 13 32-13 30 23-18 25-16-10v42l12 42H99l12-42V70L95 80 77 55l11-23Z" fill="currentColor" />
+    <path class="detail" d="M120 45v82m-21-47h42m-37 18h32m-31 31-7 24m45-24 7 24" fill="none" stroke-width="3" stroke-linecap="round" />
+    <path d="M109 65h22v8h-22z" fill="var(--art-bg)" />
+  </svg>
+  <svg class="duct" viewBox="0 0 240 180" aria-hidden="true">
+    <path d="M64 49h47v28H93v55H64V77H49V61a12 12 0 0 1 15-12Zm112 0h-47v28h18v55h29V77h15V61a12 12 0 0 0-15-12Z" fill="currentColor" />
+    <path class="detail" d="M71 56v14m98-14v14M76 85h10m68 0h10m-88 38h22m32 0h22" fill="none" stroke-width="4" stroke-linecap="round" />
+    <path d="M105 64h30v67h-30z" fill="var(--art-bg)" />
+  </svg>
+  <svg class="panel" viewBox="0 0 240 180" aria-hidden="true">
+    <path d="m60 49 111-12 12 86-111 13L60 49Z" fill="currentColor" />
+    <path class="detail" d="m72 61 85-9m-80 21 4 28m17-31 4 28m17-31 4 28m17-31 4 28" fill="none" stroke-width="4" stroke-linecap="round" />
+    <circle cx="72" cy="50" r="4" fill="var(--art-bg)" />
+    <circle cx="170" cy="40" r="4" fill="var(--art-bg)" />
+    <circle cx="178" cy="116" r="4" fill="var(--art-bg)" />
+    <circle cx="83" cy="130" r="4" fill="var(--art-bg)" />
+  </svg>
+  <svg class="helmet-decals" viewBox="0 0 240 180" aria-hidden="true">
+    <rect x="68" y="45" width="104" height="90" rx="8" fill="currentColor" />
+    <path d="M83 58h74v64H83z" fill="var(--art-bg)" />
+    <text x="120" y="106" fill="currentColor" font-size="48" font-family="system-ui" font-weight="700" text-anchor="middle">8</text>
+    <circle class="detail" cx="76" cy="53" r="3" fill="none" stroke-width="3" />
+    <circle class="detail" cx="164" cy="127" r="3" fill="none" stroke-width="3" />
+  </svg>
+  <svg class="chronograph" viewBox="0 0 240 180" aria-hidden="true">
+    <path d="M102 25h36l9 42h-54l9-42Zm-9 88h54l-9 42h-36l-9-42Z" fill="currentColor" />
+    <circle cx="120" cy="90" r="39" fill="var(--art-bg)" stroke="currentColor" stroke-width="8" />
+    <path class="detail" d="M120 65v27l17 11m-49-33-8-7m81 0-8 7" fill="none" stroke-width="4" stroke-linecap="round" />
+    <circle cx="120" cy="90" r="4" fill="currentColor" />
+  </svg>
+  <svg class="door-decals" viewBox="0 0 240 180" aria-hidden="true">
+    <circle cx="83" cy="90" r="42" fill="currentColor" />
+    <circle cx="157" cy="90" r="42" fill="currentColor" />
+    <circle cx="83" cy="90" r="34" fill="var(--art-bg)" />
+    <circle cx="157" cy="90" r="34" fill="var(--art-bg)" />
+    <text x="83" y="102" fill="currentColor" font-size="38" font-family="system-ui" font-weight="700" text-anchor="middle">7</text>
+    <text x="157" y="102" fill="currentColor" font-size="33" font-family="system-ui" font-weight="700" text-anchor="middle">24</text>
+    <circle class="detail" cx="83" cy="90" r="41" fill="none" stroke-width="2" />
+    <circle class="detail" cx="157" cy="90" r="41" fill="none" stroke-width="2" />
+  </svg>
+  <svg class="fasteners" viewBox="0 0 240 180" aria-hidden="true">
+    <g fill="currentColor">
+      <path d="M69 48h26v12H84v53H69z" /><path d="M107 39h26v12h-11v62h-15z" />
+      <path d="M145 48h26v12h-11v53h-15z" /><path d="M88 116h26v12h-11v20H88z" />
+      <path d="M126 116h26v12h-11v20h-15z" />
+    </g>
+    <g class="detail" fill="var(--art-bg)" stroke-width="2">
+      <circle cx="78" cy="48" r="5" /><circle cx="116" cy="39" r="5" /><circle cx="154" cy="48" r="5" />
+      <circle cx="97" cy="116" r="5" /><circle cx="135" cy="116" r="5" />
+    </g>
+  </svg>
 </span>
 `;
 
-export const BOOK_COVER_HELPER_TS = `import { html, type SafeHtml } from "@bascik/bascik/html";
+export const PRODUCT_ART_HELPER_TS = `import { html, type SafeHtml } from "@bascik/bascik/html";
 import type { Book } from "../../lib/catalog.ts";
 
-/** The <book-cover> tag for a racing product. html escapes the title and author. */
-export const bookCover = (book: Book): SafeHtml => {
-  const label = \`\${book.title} by \${book.author}\`;
-  return html\`<book-cover
-    data-bascik-prop-title="\${book.title}"
-    data-bascik-prop-author="\${book.author}"
+/** The <product-art> tag: product-specific, original art with an accessible label. */
+export const productArt = (book: Book): SafeHtml => {
+  const label = \`\${book.title} product illustration\`;
+  return html\`<product-art
+    data-bascik-prop-format="\${book.format}"
+    data-bascik-prop-product="\${book.slug}"
     data-bascik-prop-tone="\${book.tone}"
     data-bascik-prop-label="\${label}"
   />\`;
@@ -257,9 +342,8 @@ export const bookCover = (book: Book): SafeHtml => {
 `;
 
 export const BOOK_CARD_HTML = `<!-- @bascik
-One book in a list, linking to its page. The cover goes in the default slot.
-@prop title - The book's title
-@prop author - The author
+One product in a list, linking to its page. Its illustration goes in the default slot.
+@prop title - The product's title
 @prop format - Racewear, Parts or Accessories
 @prop price - The price as text, such as "$14.99"
 @prop rating - The rating out of 5, such as "4.5"
@@ -269,17 +353,19 @@ One book in a list, linking to its page. The cover goes in the default slot.
   article {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     height: 100%;
-    padding: 16px;
+    padding: 14px;
     background: var(--surface) var(--panel);
     border: 1px solid var(--border);
-    border-radius: 18px;
-    box-shadow: var(--sheen), var(--shadow);
+    border-radius: 10px;
+    box-shadow: none;
+    transition: border-color 150ms ease-out, transform 150ms ease-out;
   }
-  h3 { margin: 6px 0 0; font-size: 1rem; }
+  article:hover { border-color: var(--border-hover); transform: translateY(-2px); }
+  h3 { margin: 6px 0 0; font-size: 1.05rem; }
   h3 a { color: var(--text); }
-  .meta { margin: 0; font-size: 0.85rem; }
+  .meta { margin: 0; color: var(--text-muted); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
   .buy {
     display: flex;
     justify-content: space-between;
@@ -292,7 +378,7 @@ One book in a list, linking to its page. The cover goes in the default slot.
 <article data-testid="book-card">
   <div data-bascik-slot></div>
   <h3><a data-bascik-attr-href="href" data-bascik-prop-title data-testid="book-card-link"></a></h3>
-  <p class="meta"><span data-bascik-prop-author></span> · <span data-bascik-prop-format></span></p>
+  <p class="meta" data-bascik-prop-format></p>
   <p class="buy">
     <span class="price" data-bascik-prop-price data-testid="book-card-price"></span>
     <span><span aria-hidden="true">★</span> <span data-bascik-prop-rating></span><span class="visually-hidden"> out of 5</span></span>
@@ -303,19 +389,18 @@ One book in a list, linking to its page. The cover goes in the default slot.
 export const BOOK_CARD_HELPER_TS = `import { html, type SafeHtml } from "@bascik/bascik/html";
 import { bookPath, type Book } from "../../lib/catalog.ts";
 import { formatCents } from "../../browser/money.ts";
-import { bookCover } from "../book-cover/cover.ts";
+import { productArt } from "../product-art/art.ts";
 
-/** The <book-card> tag for a book, with its cover in the slot. */
+/** The <book-card> tag for a product, with its category artwork in the slot. */
 export const bookCard = (book: Book): SafeHtml => {
   const href = bookPath(book);
   return html\`<book-card
     data-bascik-prop-title="\${book.title}"
-    data-bascik-prop-author="\${book.author}"
     data-bascik-prop-format="\${book.format}"
     data-bascik-prop-price="\${formatCents(book.priceCents)}"
     data-bascik-prop-rating="\${book.rating.toFixed(1)}"
     data-bascik-prop-href="\${href}"
-  >\${bookCover(book)}</book-card>\`;
+  >\${productArt(book)}</book-card>\`;
 };
 `;
 
@@ -334,8 +419,8 @@ export const FEATURED_BOOKS_HTML = `<style>
 </style>
 <section class="section" data-testid="featured-books">
   <div class="container">
-    <p class="section-label">Paddock picks</p>
-    <h2>Featured racing products</h2>
+    <p class="section-label">The selection</p>
+    <h2>Considered for the track and beyond</h2>
     <ul class="grid" data-testid="featured-books-list">
       <script data-bascik-build-once src="./featured.ts"></script>
     </ul>
@@ -378,8 +463,8 @@ export const BOOK_CATALOG_HTML = `<style>
 <section class="section" data-testid="book-catalog">
   <div class="container">
     <p class="section-label">Catalog</p>
-    <h1>Porsche racing shop</h1>
-    <p class="page-intro">Parts and racewear for the paddock, garage and grandstand.</p>
+    <h1>Shop the collection</h1>
+    <p class="page-intro">Original apparel, workshop pieces and practical accessories with a motorsport point of view.</p>
     <!-- Hidden until the script runs: without JavaScript every product is listed and no control is dead. -->
     <form id="controls" class="controls" aria-label="Sort and filter" hidden data-testid="book-catalog-controls">
       <label for="sort">Sort by</label>
@@ -398,7 +483,7 @@ export const BOOK_CATALOG_HTML = `<style>
         </script>
       </select>
     </form>
-    <h2>All titles</h2>
+    <h2>All products</h2>
     <p id="status" class="status" role="status" data-testid="book-catalog-status"></p>
     <ul id="list" class="grid" data-testid="book-catalog-list">
       <script data-bascik-build-once type="text/typescript">
@@ -473,14 +558,13 @@ export const catalogItems = (): SafeHtml =>
 `;
 
 export const BOOK_DETAIL_HTML = `<!-- @bascik
-A book's own page: its facts and the add-to-cart button. The cover goes in the default slot.
-@prop slug - The book's slug, which is its id in the cart
-@prop title - The book's title
-@prop author - The author
+One product's detail page and add-to-cart button. Its illustration goes in the slot.
+@prop slug - The product's slug, which is its id in the cart
+@prop title - The product's title
 @prop format - Racewear, Parts or Accessories
 @prop price - The price as text
 @prop rating - The rating out of 5
-@prop description - What the book is about
+@prop description - What the product is
 -->
 <style>
   article {
@@ -503,7 +587,6 @@ A book's own page: its facts and the add-to-cart button. The cover goes in the d
   <div class="art"><div data-bascik-slot></div></div>
   <div>
     <h1 data-bascik-prop-title></h1>
-    <p>by <span data-bascik-prop-author></span></p>
     <p class="facts">
       <span data-bascik-prop-format></span> ·
       <span aria-hidden="true">★</span> <span data-bascik-prop-rating></span><span class="visually-hidden"> out of 5</span>
@@ -609,14 +692,14 @@ export const CART_LIST_HELPER_TS = `import { html, type SafeHtml } from "@bascik
 import { MAX_QUANTITY } from "../../browser/cart.ts";
 import { bookPath, books } from "../../lib/catalog.ts";
 import { formatCents } from "../../browser/money.ts";
-import { bookCover } from "../book-cover/cover.ts";
+import { productArt } from "../product-art/art.ts";
 
-/** A cart line for every product, hidden until cart-list.ts finds the product in the cart. */
+/** A cart line for every product, hidden until cart-list.ts finds it in the cart. */
 export default (): SafeHtml =>
   html\`\${books.map((book) => {
     const href = bookPath(book);
     return html\`<li class="line" data-book="\${book.slug}" data-testid="cart-list-line" hidden>
-      \${bookCover(book)}
+      \${productArt(book)}
       <span class="about">
         <a class="name" href="\${href}">\${book.title}</a>
         <span class="unit">\${formatCents(book.priceCents)} each</span>
@@ -694,7 +777,7 @@ lines.addEventListener("change", (event: Event): void => {
   if (!(input instanceof HTMLInputElement)) return;
   const quantity = Number(input.value);
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) {
-    status.textContent = \`Choose a whole quantity from 1 to \${MAX_QUANTITY}, or remove the book.\`;
+    status.textContent = \`Choose a whole quantity from 1 to \${MAX_QUANTITY}, or remove the product.\`;
     render();
     return;
   }
@@ -778,7 +861,7 @@ export const CHECKOUT_FORM_HTML = `<style>
 <section data-testid="checkout-form">
   <h2>Delivery address</h2>
   <noscript><p>The cart is kept in your browser, so the checkout needs JavaScript.</p></noscript>
-  <p id="empty" data-testid="checkout-form-empty" hidden>There is nothing to check out yet. <a href="/books/">Find a book first</a>.</p>
+  <p id="empty" data-testid="checkout-form-empty" hidden>There is nothing to check out yet. <a href="/books/">Choose a product first</a>.</p>
   <!-- Shown by the script when the cart has something in it. novalidate turns off the browser's
        pop-up bubbles: the script checks the fields and each one shows its message in the page. -->
   <form id="form" novalidate data-testid="checkout-form-form" hidden>

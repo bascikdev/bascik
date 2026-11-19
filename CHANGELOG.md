@@ -18,6 +18,7 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
+- `create-bascik`: the shop template is now branded Bascik Example Shop, uses original product-matched illustrations and a roomier editorial storefront, and no longer associates its fictional catalog with real people or companies.
 - `create-bascik`: shop pages and book cards now use the shared raised light/dark surfaces, with responsive padding and theme-aware form errors.
 
 - `create-bascik`: the starter and adapter variants use a shared light/dark design system, with a neutral canvas, raised cards, restrained periwinkle accents, visible keyboard focus, and motion that respects reader preferences.

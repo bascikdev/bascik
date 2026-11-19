@@ -25,8 +25,6 @@ import {
   BOOK_CARD_HTML,
   BOOK_CATALOG_HELPER_TS,
   BOOK_CATALOG_HTML,
-  BOOK_COVER_HELPER_TS,
-  BOOK_COVER_HTML,
   BOOK_DETAIL_HTML,
   BOOK_DETAIL_TS,
   CART_LIST_HELPER_TS,
@@ -46,6 +44,8 @@ import {
   SHOP_SITE_HEADER_TS,
   SHOP_SITE_META_HTML,
   SHOP_STYLES_CSS,
+  PRODUCT_ART_HELPER_TS,
+  PRODUCT_ART_HTML,
   orderSummaryTs,
 } from "./shop/components.js";
 import {
@@ -60,6 +60,7 @@ import {
   MONEY_TS,
   SEO_TS,
   SEED_DATABASE_TS,
+  SHOP_BRAND,
   TSCONFIG_JSON,
   siteTs,
 } from "./shop/data.js";
@@ -128,15 +129,22 @@ const shopComponents = ({ adapter }: TemplateContext): ShopComponent[] => [
     parts: ["<h1>", 'href="/books/"'],
   },
   {
-    name: "book-cover",
-    html: BOOK_COVER_HTML,
-    companions: { "cover.ts": BOOK_COVER_HELPER_TS },
-    claim: "is drawn without an image file and has a text alternative",
+    name: "product-art",
+    html: PRODUCT_ART_HTML,
+    companions: { "art.ts": PRODUCT_ART_HELPER_TS },
+    claim: "draws product-specific original artwork and has a text alternative",
     parts: [
       'role="img"',
       'data-bascik-attr-aria-label="label"',
       'aria-hidden="true"',
-      "data-bascik-prop-title",
+      'data-bascik-attr-data-format="format"',
+      'data-bascik-attr-data-product="product"',
+      'class="jacket"',
+      'class="suit"',
+      'class="duct"',
+      'class="panel"',
+      'class="chronograph"',
+      'class="fasteners"',
     ],
   },
   {
@@ -274,7 +282,7 @@ const shopFiles = (context: TemplateContext): TemplateFile[] => [
 
   // The catalog, and the logic every page shares
   ["catalog/books.ts", CATALOG_BOOKS_TS],
-  ["src/lib/site.ts", siteTs(context.siteName)],
+  ["src/lib/site.ts", siteTs(SHOP_BRAND)],
   ["src/lib/catalog.ts", CATALOG_TS],
   ["src/lib/catalog.test.ts", CATALOG_TEST_TS],
   ["src/lib/seo.ts", SEO_TS],
@@ -322,7 +330,7 @@ const shopFiles = (context: TemplateContext): TemplateFile[] => [
   ["e2e/app.spec.ts", shopE2eSpec(context.adapter)],
 ];
 
-/** `--template shop`: a racing store with a catalog, a browser cart, and a demo checkout. */
+/** `--template shop`: a racing-inspired retail store with a catalog, cart and demo checkout. */
 export const SHOP_TEMPLATE: StarterTemplate = {
   name: "shop",
   scripts: {

@@ -59,7 +59,6 @@ import { bookPath, books, findBook, validateCatalog } from "./catalog.ts";
 const valid = {
   slug: "a-test-racing-part",
   title: "A Test Racing Part",
-  author: "Porsche Penske Motorsport",
   description: "A racing product that exists for one test.",
   format: "Racewear",
   priceCents: 1200,
@@ -84,7 +83,7 @@ describe("the catalog", () => {
   });
 
   it("builds each product's path from its slug", () => {
-    expect(bookPath({ slug: "917-longtail-racing-jacket" })).toBe("/books/917-longtail-racing-jacket");
+    expect(bookPath({ slug: "pit-lane-coach-jacket" })).toBe("/books/pit-lane-coach-jacket");
   });
 });
 
@@ -97,7 +96,7 @@ describe("validateCatalog", () => {
     expect(() => validateCatalog({ books: [] })).toThrow(/must be an array/);
   });
 
-  it.each(["slug", "title", "author", "description"])(
+  it.each(["slug", "title", "description"])(
     "names the item that is missing %s",
     (field) => {
       const broken: Record<string, unknown> = { ...valid, slug: "second-racing-part" };
@@ -481,19 +480,19 @@ const CART_API_E2E = `
   test("the server prices the cart from the catalog and refuses bad input", async ({ request }) => {
     const priced = await request.post("/api/cart", {
       // The extra price is ignored: the server only reads ids and quantities.
-      data: { lines: [{ id: "917-longtail-racing-jacket", quantity: 2, priceCents: 1 }] },
+      data: { lines: [{ id: "pit-lane-coach-jacket", quantity: 2, priceCents: 1 }] },
     });
     expect(priced.status()).toBe(200);
     expect(await priced.json()).toEqual({
-      lines: [{ id: "917-longtail-racing-jacket", quantity: 2, unitCents: 24000, lineCents: 48000 }],
+      lines: [{ id: "pit-lane-coach-jacket", quantity: 2, unitCents: 24000, lineCents: 48000 }],
       totalCents: 48000,
     });
 
     for (const data of [
       { lines: [{ id: "no-such-product", quantity: 1 }] },
-      { lines: [{ id: "917-longtail-racing-jacket", quantity: -1 }] },
-      { lines: [{ id: "917-longtail-racing-jacket", quantity: 1e9 }] },
-      { lines: "917-longtail-racing-jacket" },
+      { lines: [{ id: "pit-lane-coach-jacket", quantity: -1 }] },
+      { lines: [{ id: "pit-lane-coach-jacket", quantity: 1e9 }] },
+      { lines: "pit-lane-coach-jacket" },
       {},
     ]) {
       expect((await request.post("/api/cart", { data })).status()).toBe(400);
@@ -513,8 +512,8 @@ export const shopE2eSpec = (
 ): string => `import { test, expect, type Page } from "@playwright/test";
 
 // Two racing products from catalog/books.ts. Change these when you change the catalog.
-const JACKET = { slug: "917-longtail-racing-jacket", title: "917 Longtail Racing Jacket", price: "$240.00" };
-const AERO = { slug: "963-penske-aero-endplate", title: "963 Penske Aero Endplate", price: "$149.99" };
+const JACKET = { slug: "pit-lane-coach-jacket", title: "Pit Lane Coach Jacket", price: "$240.00" };
+const AERO = { slug: "aero-display-panel", title: "Aero Display Panel", price: "$149.99" };
 const PRODUCT_COUNT = 8;
 
 /** Open a product's page and add it to the cart, once per item. */
@@ -535,12 +534,12 @@ const cartLine = (page: Page, title: string) =>
 test.describe("Shop", () => {
   test("home page features racing products and leads to the catalog", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/Porsche parts and racewear/);
+    await expect(page).toHaveTitle(/Motorsport-inspired apparel and goods/);
     await expect(page.getByTestId("featured-books").getByTestId("book-card")).toHaveCount(3);
 
     await page.getByTestId("home-hero-browse").click();
     await expect(page).toHaveURL("/books/");
-    await expect(page.getByRole("heading", { level: 1, name: "Porsche racing shop" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Shop the collection" })).toBeVisible();
   });
 
   test("catalog sorts by price and filters by format", async ({ page }) => {
@@ -579,13 +578,13 @@ test.describe("Shop", () => {
     await page.goto("/books/");
     await page.getByRole("link", { name: JACKET.title }).click();
     await expect(page).toHaveURL(\`/books/\${JACKET.slug}\`);
-    await expect(page).toHaveTitle(/917 Longtail Racing Jacket by Hurley Haywood/);
+    await expect(page).toHaveTitle(/Pit Lane Coach Jacket/);
 
     const detail = page.getByTestId("book-detail");
     await expect(detail.getByRole("heading", { level: 1 })).toHaveText(JACKET.title);
     await expect(detail.getByTestId("book-detail-price")).toHaveText(JACKET.price);
     await expect(
-      detail.getByRole("img", { name: "917 Longtail Racing Jacket by Hurley Haywood" }),
+      detail.getByRole("img", { name: "Pit Lane Coach Jacket product illustration" }),
     ).toBeVisible();
 
     const data = JSON.parse(
@@ -680,8 +679,8 @@ test.describe("Shop", () => {
         "cart",
         JSON.stringify([
           { id: "no-such-product", quantity: 2 },
-          { id: "917-longtail-racing-jacket", quantity: 1, priceCents: 1 },
-          { id: "963-penske-aero-endplate", quantity: -5 },
+          { id: "pit-lane-coach-jacket", quantity: 1, priceCents: 1 },
+          { id: "aero-display-panel", quantity: -5 },
         ]),
       ),
     );

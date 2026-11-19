@@ -6,9 +6,12 @@
  * the two root config files the site needs.
  */
 
+/** The shop's own brand, independent of the scaffold folder name. */
+export const SHOP_BRAND = "Bascik Example Shop";
+
 /**
  * The catalog: the one file a shop owner edits to change what is for sale.
- * Racing products use real Porsche-era teams and drivers in the author field.
+ * The demo products and collection names are fictional and unendorsed.
  * Prices are whole cents.
  */
 export const CATALOG_BOOKS_TS = `// The racing catalog. Add, remove or edit entries here and the home page,
@@ -21,95 +24,87 @@ import type { Book } from "../src/lib/catalog.ts";
 
 export const books: Book[] = [
   {
-    slug: "917-longtail-racing-jacket",
-    title: "917 Longtail Racing Jacket",
-    author: "Hurley Haywood",
+    slug: "pit-lane-coach-jacket",
+    title: "Pit Lane Coach Jacket",
     format: "Racewear",
     priceCents: 24000,
     rating: 4.9,
     tone: "plum",
     featured: true,
     description:
-      "A race-inspired longtail jacket with 917-era Gulf colors and a lightweight paddock-ready cut.",
+      "A lightweight coach jacket with a clean trackside silhouette and considered everyday details.",
   },
   {
-    slug: "935-moby-dick-racing-suit",
-    title: "935 Moby Dick Racing Suit",
-    author: "Paul Newman",
+    slug: "gridline-driver-suit",
+    title: "Gridline Driver Suit",
     format: "Racewear",
     priceCents: 16500,
     rating: 4.8,
     tone: "rust",
     featured: true,
     description:
-      "A retro driving suit inspired by the Moby Dick 935 and the Daytona legends who raced it.",
+      "A relaxed-fit one-piece suit in durable cotton twill, finished with a subtle contrast seam.",
   },
   {
-    slug: "962-le-mans-brake-cooling-kit",
-    title: "962 Le Mans Brake Cooling Kit",
-    author: "Jordan Taylor",
+    slug: "brake-cooling-duct-kit",
+    title: "Brake Cooling Duct Kit",
     format: "Parts",
     priceCents: 28000,
     rating: 4.7,
     tone: "teal",
     featured: true,
     description:
-      "A track-day brake cooling package styled around the endurance engineering of the 962.",
+      "A precision-finished cooling duct set designed for a tidy, functional garage installation.",
   },
   {
-    slug: "963-penske-aero-endplate",
-    title: "963 Penske Aero Endplate",
-    author: "Porsche Penske Motorsport",
+    slug: "aero-display-panel",
+    title: "Aero Display Panel",
     format: "Parts",
     priceCents: 14999,
     rating: 4.6,
     tone: "ink",
     description:
-      "A display-spec aero endplate influenced by the 963's modern LMDh bodywork.",
+      "A sculptural composite panel for a workshop wall, with a satin finish and mounting hardware.",
   },
   {
-    slug: "martini-racing-helmet-livery-kit",
-    title: "Martini Racing Helmet Livery Kit",
-    author: "Ross Bentley",
+    slug: "helmet-number-decal-set",
+    title: "Helmet Number Decal Set",
     format: "Accessories",
     priceCents: 9999,
     rating: 4.5,
     tone: "moss",
     description:
-      "A retro-style helmet graphic kit inspired by Martini liveries and club racing history.",
+      "A set of durable, removable helmet decals in a restrained palette for a personal finish.",
   },
   {
-    slug: "917-le-mans-pit-watch",
-    title: "917 Le Mans Pit Watch",
-    author: "Hurley Haywood",
+    slug: "interval-chronograph",
+    title: "Interval Chronograph",
     format: "Accessories",
     priceCents: 32000,
     rating: 4.9,
     tone: "sand",
     description:
-      "A numbered pit-watch inspired by long Le Mans stints in the legendary 917.",
+      "A compact analog stopwatch with a brushed steel case, tactile crown and clear elapsed-time dial.",
   },
   {
-    slug: "935-moby-dick-door-stripe-set",
-    title: "935 Moby Dick Door Stripe Set",
-    author: "Ross Bentley",
+    slug: "door-number-decal-pack",
+    title: "Door Number Decal Pack",
     format: "Parts",
     priceCents: 15000,
     rating: 4.4,
     tone: "rust",
     description:
-      "High-contrast door graphics recalling the Moby Dick 935's unmistakable racing profile.",
+      "Weather-resistant number decals for display builds and track-day projects, supplied as a matched pair.",
   },
   {
-    slug: "963-penske-wheel-nut-set",
-    title: "963 Penske Wheel Nut Set",
-    author: "Jordan Taylor",
+    slug: "wheel-fastener-kit",
+    title: "Wheel Fastener Kit",
     format: "Parts",
     priceCents: 8500,
     rating: 4.3,
     tone: "teal",
     description:
-      "A durable pit-bay wheel nut set with a modern Penske 963-inspired finish.",
+      "A neatly packed set of durable wheel fasteners with a corrosion-resistant finish for the garage.",
   },
 ];
 `;
@@ -131,15 +126,14 @@ import { books as entries } from "../../catalog/books.ts";
 export const FORMATS = ["Racewear", "Parts", "Accessories"] as const;
 export type Format = (typeof FORMATS)[number];
 
-/** Cover colors, defined in src/components/book-cover/book-cover.html. */
+/** Product artwork colors, defined in src/components/product-art/product-art.html. */
 export const TONES = ["plum", "rust", "teal", "ink", "moss", "sand"] as const;
 export type Tone = (typeof TONES)[number];
 
 export interface Book {
-  /** The last part of the book's URL (/books/<slug>) and its id in the cart. */
+  /** The last part of the product URL (/books/<slug>) and its id in the cart. */
   slug: string;
   title: string;
-  author: string;
   description: string;
   format: Format;
   /** The price in whole cents: 1499 is $14.99. */
@@ -152,7 +146,7 @@ export interface Book {
 }
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const TEXT_FIELDS = ["slug", "title", "author", "description"] as const;
+const TEXT_FIELDS = ["slug", "title", "description"] as const;
 
 /**
  * The catalog, checked. A bad entry throws an error that names it, which fails
@@ -218,7 +212,6 @@ export const bookPath = (book: Pick<Book, "slug">): string =>
 export const RACING_SQL = `CREATE TABLE IF NOT EXISTS products (
   slug TEXT PRIMARY KEY,
   title TEXT NOT NULL,
-  team_or_driver TEXT NOT NULL,
   category TEXT NOT NULL,
   price_cents INTEGER NOT NULL,
   rating REAL NOT NULL,
@@ -227,15 +220,15 @@ export const RACING_SQL = `CREATE TABLE IF NOT EXISTS products (
 
 DELETE FROM products;
 
-INSERT INTO products (slug, title, team_or_driver, category, price_cents, rating, description) VALUES
-  ('917-longtail-racing-jacket', '917 Longtail Racing Jacket', 'Hurley Haywood', 'Racewear', 24000, 4.9, 'A race-inspired longtail jacket with 917-era Gulf colors and a lightweight paddock-ready cut.'),
-  ('935-moby-dick-racing-suit', '935 Moby Dick Racing Suit', 'Paul Newman', 'Racewear', 16500, 4.8, 'A retro driving suit inspired by the Moby Dick 935 and the Daytona legends who raced it.'),
-  ('962-le-mans-brake-cooling-kit', '962 Le Mans Brake Cooling Kit', 'Jordan Taylor', 'Parts', 28000, 4.7, 'A track-day brake cooling package styled around the endurance engineering of the 962.'),
-  ('963-penske-aero-endplate', '963 Penske Aero Endplate', 'Porsche Penske Motorsport', 'Parts', 14999, 4.6, 'A display-spec aero endplate influenced by the 963 modern LMDh bodywork.'),
-  ('martini-racing-helmet-livery-kit', 'Martini Racing Helmet Livery Kit', 'Ross Bentley', 'Accessories', 9999, 4.5, 'A retro-style helmet graphic kit inspired by Martini liveries and club racing history.'),
-  ('917-le-mans-pit-watch', '917 Le Mans Pit Watch', 'Hurley Haywood', 'Accessories', 32000, 4.9, 'A numbered pit-watch inspired by long Le Mans stints in the legendary 917.'),
-  ('935-moby-dick-door-stripe-set', '935 Moby Dick Door Stripe Set', 'Ross Bentley', 'Parts', 15000, 4.4, 'High-contrast door graphics recalling the Moby Dick 935 unmistakable racing profile.'),
-  ('963-penske-wheel-nut-set', '963 Penske Wheel Nut Set', 'Jordan Taylor', 'Parts', 8500, 4.3, 'A durable pit-bay wheel nut set with a modern Penske 963-inspired finish.');
+INSERT INTO products (slug, title, category, price_cents, rating, description) VALUES
+  ('pit-lane-coach-jacket', 'Pit Lane Coach Jacket', 'Racewear', 24000, 4.9, 'A lightweight coach jacket with a clean trackside silhouette and considered everyday details.'),
+  ('gridline-driver-suit', 'Gridline Driver Suit', 'Racewear', 16500, 4.8, 'A relaxed-fit one-piece suit in durable cotton twill, finished with a subtle contrast seam.'),
+  ('brake-cooling-duct-kit', 'Brake Cooling Duct Kit', 'Parts', 28000, 4.7, 'A precision-finished cooling duct set designed for a tidy, functional garage installation.'),
+  ('aero-display-panel', 'Aero Display Panel', 'Parts', 14999, 4.6, 'A sculptural composite panel for a workshop wall, with a satin finish and mounting hardware.'),
+  ('helmet-number-decal-set', 'Helmet Number Decal Set', 'Accessories', 9999, 4.5, 'A set of durable, removable helmet decals in a restrained palette for a personal finish.'),
+  ('interval-chronograph', 'Interval Chronograph', 'Accessories', 32000, 4.9, 'A compact analog stopwatch with a brushed steel case, tactile crown and clear elapsed-time dial.'),
+  ('door-number-decal-pack', 'Door Number Decal Pack', 'Parts', 15000, 4.4, 'Weather-resistant number decals for display builds and track-day projects, supplied as a matched pair.'),
+  ('wheel-fastener-kit', 'Wheel Fastener Kit', 'Parts', 8500, 4.3, 'A neatly packed set of durable wheel fasteners with a corrosion-resistant finish for the garage.');
 `;
 
 export const RACING_DB_TS = `import { DatabaseSync } from "node:sqlite";
@@ -542,7 +535,7 @@ export function jsonLd(data: Record<string, unknown>): SafeHtml {
 
 /** POST /api/cart, written only with a deploy adapter. */
 export const CART_API_ROUTE = `// POST /api/cart: the cart, priced by the server.
-// The browser sends only ids and quantities, { "lines": [{ "id": "917-longtail-racing-jacket", "quantity": 2 }] },
+// The browser sends only ids and quantities, { "lines": [{ "id": "pit-lane-coach-jacket", "quantity": 2 }] },
 // and every price in the answer comes from the catalog on the server. A real checkout must
 // charge these totals, never a number the browser sent.
 // An API route is a module file, so its imports are relative: the @/ alias is for <script> blocks.

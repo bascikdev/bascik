@@ -53,7 +53,7 @@ const page = ({
   </head>
   <body>
     <site-header />
-    <main id="main" data-testid="${name}-main">
+    <main id="main" class="shop-main" data-testid="${name}-main">
 ${body}
     </main>
     <site-footer />
@@ -63,18 +63,18 @@ ${body}
 
 export const SHOP_INDEX_PAGE = page({
   name: "home",
-  title: "Porsche parts and racewear",
+  title: "Motorsport-inspired apparel and goods",
   description:
-    "Porsche-inspired parts, racewear and accessories shaped by 917, 935, 962 and 963 racing history.",
+    "Original apparel, workshop pieces and practical accessories with a motorsport point of view.",
   body: `      <home-hero />
       <featured-books />`,
 });
 
 export const SHOP_BOOKS_PAGE = page({
   name: "books",
-  title: "All racing products",
+  title: "Shop the collection",
   description:
-    "Browse Porsche racing products. Sort by name, price or rating, or filter by parts, racewear and accessories.",
+    "Browse original apparel, workshop pieces and practical accessories. Sort by name, price or rating, or filter by category.",
   body: `      <book-catalog />`,
 });
 
@@ -93,7 +93,7 @@ export const SHOP_BOOK_PAGE = `<!doctype html>
   </head>
   <body>
     <site-header />
-    <main id="main" data-testid="book-main">
+    <main id="main" class="shop-main" data-testid="book-main">
       <script data-bascik-routes type="text/typescript">
         import { books } from "@/lib/catalog.ts";
         // One page per book in catalog/books.ts, at /books/<slug>.
@@ -112,14 +112,14 @@ export const SHOP_BOOK_PAGE = `<!doctype html>
 </html>
 `;
 
-export const SHOP_BOOK_PAGE_TS = `// What src/pages/books/[slug].html prints for each book: its head tags and its <book-detail>.
+export const SHOP_BOOK_PAGE_TS = `// What src/pages/books/[slug].html prints for each product: its head tags and detail.
 import { html, type SafeHtml } from "@bascik/bascik/html";
-import { bookCover } from "../../components/book-cover/cover.ts";
+import { productArt } from "../../components/product-art/art.ts";
 import { findBook, type Book } from "../../lib/catalog.ts";
 import { formatCents } from "../../browser/money.ts";
 import { absoluteUrl, jsonLd, seo } from "../../lib/seo.ts";
 
-/** The book for the route being built. BASCIK_ROUTE holds the params the routes script returned. */
+/** The product for the route being built. BASCIK_ROUTE holds the returned params. */
 export function routeBook(): Book {
   const route = JSON.parse(process.env.BASCIK_ROUTE || "{}") as {
     params?: { slug?: string };
@@ -127,18 +127,18 @@ export function routeBook(): Book {
   const book = findBook(route.params?.slug);
   if (!book) {
     throw new Error(
-      \`No book in the catalog for \${process.env.BASCIK_PAGE_PATH ?? "this route"}.\`,
+      \`No product in the catalog for \${process.env.BASCIK_PAGE_PATH ?? "this route"}.\`,
     );
   }
   return book;
 }
 
-/** The title, description and Product structured data. It describes only what the page shows. */
+/** The title, description and Product structured data for this page. */
 export function bookHead(): SafeHtml {
   const book = routeBook();
   const url = absoluteUrl(process.env.BASCIK_PAGE_PATH || "/");
   return html\`\${seo({
-    title: \`\${book.title} by \${book.author}\`,
+    title: book.title,
     description: book.description,
   })}\${jsonLd({
     "@type": "Product",
@@ -159,12 +159,11 @@ export function bookBody(): SafeHtml {
   return html\`<book-detail
     data-bascik-prop-slug="\${book.slug}"
     data-bascik-prop-title="\${book.title}"
-    data-bascik-prop-author="\${book.author}"
     data-bascik-prop-format="\${book.format}"
     data-bascik-prop-price="\${formatCents(book.priceCents)}"
     data-bascik-prop-rating="\${book.rating.toFixed(1)}"
     data-bascik-prop-description="\${book.description}"
-  >\${bookCover(book)}</book-detail>\`;
+  >\${productArt(book)}</book-detail>\`;
 }
 `;
 
@@ -172,7 +171,7 @@ export const SHOP_CART_PAGE = page({
   name: "cart",
   title: "Your cart",
   description:
-    "The racing products in your cart, kept in this browser. Change a quantity, remove a product, or go on to the demo checkout.",
+    "Your products are kept in this browser. Change a quantity, remove an item, or continue to the demo checkout.",
   noindex: true,
   body: `      <cart-list />`,
 });
@@ -205,14 +204,14 @@ export const SHOP_NOT_FOUND_PAGE = page({
   name: "404",
   title: "Page not found",
   description:
-    "This page is not in the paddock. Head back to the catalog to find a racing product.",
+    "This page is not in the collection. Head back to the shop to find a product.",
   noindex: true,
   body: `      <div class="container">
         <section class="section not-found">
           <p class="section-label">Error</p>
           <p class="not-found-code">404</p>
           <h1>Page not found</h1>
-          <p class="not-found-text">That page is not in the paddock.</p>
+          <p class="not-found-text">That page is not in the collection.</p>
           <a href="/books/" class="btn btn-primary">Browse the products</a>
         </section>
       </div>`,

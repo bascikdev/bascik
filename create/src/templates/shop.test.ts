@@ -20,9 +20,10 @@ import {
   type TemplateFile,
 } from "../scaffold.ts";
 import { TEMPLATES, templateNamed } from "../templates.ts";
+import { SHOP_BRAND, siteTs } from "./shop/data.ts";
 import { SHOP_TEMPLATE } from "./shop.ts";
 
-const filesFor = (adapter?: Adapter, siteName = "My Shop"): TemplateFile[] =>
+const filesFor = (adapter?: Adapter, siteName = SHOP_BRAND): TemplateFile[] =>
   SHOP_TEMPLATE.files({ siteName, adapter });
 
 /** Every generated file as text, by path. The template writes no binary files. */
@@ -43,7 +44,7 @@ const COMPONENTS = [
   "site-header",
   "site-footer",
   "home-hero",
-  "book-cover",
+  "product-art",
   "book-card",
   "featured-books",
   "book-catalog",
@@ -99,7 +100,6 @@ const load = <T>(root: string, path: string): Promise<T> =>
 interface Book {
   slug: string;
   title: string;
-  author: string;
   description: string;
   format: string;
   priceCents: number;
@@ -198,6 +198,41 @@ describe("shop template", () => {
     expect([...folders].sort()).toEqual([...COMPONENTS].sort());
   });
 
+  it("brands the store, gives the page room, and matches each product with original art", () => {
+    const header = file("src/components/site-header/site-header.html");
+    const styles = file("src/pages/css/styles.css");
+    const art = file("src/components/product-art/product-art.html");
+    const catalog = file("catalog/books.ts");
+
+    expect(file("src/lib/site.ts")).toContain(
+      'export const siteName = "Bascik Example Shop";',
+    );
+    expect(header).toContain('import { siteName } from "@/lib/site.ts";');
+    expect(styles).toMatch(/\.shop-main\s*\{[^}]*padding:\s*clamp\(/s);
+    expect(art).toContain('role="img"');
+    expect(art).toContain('data-bascik-attr-data-format="format"');
+    expect(art).toContain('data-bascik-attr-data-product="product"');
+    for (const [slug, illustration] of [
+      ["pit-lane-coach-jacket", "jacket"],
+      ["gridline-driver-suit", "suit"],
+      ["brake-cooling-duct-kit", "duct"],
+      ["aero-display-panel", "panel"],
+      ["helmet-number-decal-set", "helmet-decals"],
+      ["interval-chronograph", "chronograph"],
+      ["door-number-decal-pack", "door-decals"],
+      ["wheel-fastener-kit", "fasteners"],
+    ]) {
+      expect(art).toContain(
+        `.artwork[data-product="${slug}"] .${illustration}`,
+      );
+      expect(art).toContain(`<svg class="${illustration}"`);
+    }
+    expect(catalog).not.toMatch(/\bauthor\s*:/);
+    expect(catalog).not.toMatch(
+      /Porsche|Penske|Martini|Hurley Haywood|Paul Newman|Jordan Taylor|Ross Bentley/i,
+    );
+  });
+
   it("writes only text, in TypeScript, with no image files", () => {
     for (const [path, data] of filesFor("cloudflare")) {
       expect(typeof data, path).toBe("string");
@@ -286,7 +321,7 @@ describe("shop template markup", () => {
       expect(page).toMatch(/^<!doctype html>\n<html lang="en">/);
       expect(page).toContain("<site-meta />");
       expect(page.match(/<main\b/g)).toHaveLength(1);
-      expect(page).toContain('<main id="main" data-testid="');
+      expect(page).toMatch(/<main\b[^>]*id="main"[^>]*data-testid="/);
       expect(page.indexOf("<site-header />")).toBeLessThan(
         page.indexOf("<main"),
       );
@@ -422,14 +457,26 @@ describe("shop template markup", () => {
     );
   });
 
-  it("draws covers without image files and gives each a text alternative", () => {
-    const cover = file("src/components/book-cover/book-cover.html");
-    expect(cover).toMatch(
-      /<span class="cover" role="img" data-bascik-attr-aria-label="label"/,
+  it("draws product-appropriate illustrations without image files", () => {
+    const art = file("src/components/product-art/product-art.html");
+    expect(art).toMatch(
+      /<span class="artwork" role="img" data-bascik-attr-aria-label="label"/,
     );
-    expect(cover).toMatch(/<svg[^>]*aria-hidden="true"/);
-    expect(file("src/components/book-cover/cover.ts")).toContain(
-      "const label = `${book.title} by ${book.author}`;",
+    expect(art).toContain('data-bascik-attr-data-product="product"');
+    expect(art).toContain(
+      '.artwork[data-product="pit-lane-coach-jacket"] .jacket',
+    );
+    expect(art).toContain(
+      '.artwork[data-product="gridline-driver-suit"] .suit',
+    );
+    expect(art).toContain(
+      '.artwork[data-product="interval-chronograph"] .chronograph',
+    );
+    expect(file("src/components/product-art/art.ts")).toContain(
+      "const label = `${book.title} product illustration`;",
+    );
+    expect(file("src/components/product-art/art.ts")).toContain(
+      'data-bascik-prop-product="${book.slug}"',
     );
   });
 
@@ -474,10 +521,10 @@ describe("shop template output safety", () => {
     expect(builders.map(([path]) => path).sort()).toEqual([
       "src/components/book-card/card.ts",
       "src/components/book-catalog/listing.ts",
-      "src/components/book-cover/cover.ts",
       "src/components/cart-list/lines.ts",
       "src/components/featured-books/featured.ts",
       "src/components/order-summary/lines.ts",
+      "src/components/product-art/art.ts",
       "src/lib/seo.ts",
       "src/pages/books/book-page.ts",
     ]);
@@ -526,14 +573,17 @@ describe("shop template output safety", () => {
     async (siteName) => {
       const files = textFiles(undefined, siteName);
       expect(files.get("src/lib/site.ts")).toContain(
+        `export const siteName = ${JSON.stringify(SHOP_BRAND)};`,
+      );
+      // The template brand is fixed; the site module still safely serializes a later edit.
+      expect(siteTs(siteName)).toContain(
         `export const siteName = ${JSON.stringify(siteName)};`,
       );
-      // No other file carries the name: pages print it through html, which escapes it.
-      for (const [path, content] of files) {
-        if (path === "src/lib/site.ts") continue;
-        expect(content, path).toBe(textFiles(undefined, "My Shop").get(path));
-      }
-      const root = await writeSite(["src/lib/site.ts"], {}, siteName);
+      const root = await writeSite(
+        ["src/lib/site.ts"],
+        { "src/lib/site.ts": siteTs(siteName) },
+        siteName,
+      );
       const site = await load<{ siteName: string }>(root, "src/lib/site.ts");
       expect(site.siteName).toBe(siteName);
     },
@@ -571,7 +621,7 @@ describe("shop template catalog", () => {
       expect(book.rating, book.slug).toBeGreaterThanOrEqual(0);
       expect(book.rating, book.slug).toBeLessThanOrEqual(5);
       expect(["Racewear", "Parts", "Accessories"]).toContain(book.format);
-      for (const text of [book.title, book.author, book.description]) {
+      for (const text of [book.title, book.description]) {
         expect(text.trim().length, book.slug).toBeGreaterThan(0);
         // Nothing borrowed from this repository's own names.
         expect(text, book.slug).not.toMatch(/bascik|merch/i);
@@ -589,8 +639,8 @@ describe("shop template catalog", () => {
     expect(spec).toContain(`const PRODUCT_COUNT = ${books.length};`);
     const price = (slug: string): number =>
       books.find((book) => book.slug === slug)!.priceCents;
-    expect(price("917-longtail-racing-jacket")).toBe(24000);
-    expect(price("963-penske-aero-endplate")).toBe(14999);
+    expect(price("pit-lane-coach-jacket")).toBe(24000);
+    expect(price("aero-display-panel")).toBe(14999);
     expect(Math.min(...books.map((book) => book.priceCents))).toBe(8500);
     expect(Math.max(...books.map((book) => book.priceCents))).toBe(32000);
     expect(books.filter((book) => book.format === "Parts")).toHaveLength(4);
@@ -621,29 +671,26 @@ describe("shop template catalog", () => {
     expect(formatCents(0)).toBe("$0.00");
   });
 
-  it("misuse: an item with a missing field fails, naming the item and the field", async () => {
-    await expect(
-      loadCatalog(editedCatalog(/\n\s+author: "Paul Newman",/, "")),
-    ).rejects.toThrow(
-      'catalog/books.ts: item 2 ("935-moby-dick-racing-suit") is missing "author".',
-    );
+  it("misuse: an item with a missing description fails, naming the item and field", async () => {
     await expect(
       loadCatalog(
-        editedCatalog('title: "963 Penske Wheel Nut Set"', 'title: ""'),
+        editedCatalog(
+          /\n\s+description:\s*\n\s+"A relaxed-fit one-piece suit in durable cotton twill, finished with a subtle contrast seam\.",/,
+          "",
+        ),
       ),
     ).rejects.toThrow(
-      'item 8 ("963-penske-wheel-nut-set") is missing "title".',
+      'catalog/books.ts: item 2 ("gridline-driver-suit") is missing "description".',
     );
+    await expect(
+      loadCatalog(editedCatalog('title: "Wheel Fastener Kit"', 'title: ""')),
+    ).rejects.toThrow('item 8 ("wheel-fastener-kit") is missing "title".');
   });
 
   it("misuse: an item with no slug is named by its title", async () => {
     await expect(
-      loadCatalog(
-        editedCatalog(/\n\s+slug: "962-le-mans-brake-cooling-kit",/, ""),
-      ),
-    ).rejects.toThrow(
-      'item 3 ("962 Le Mans Brake Cooling Kit") is missing "slug".',
-    );
+      loadCatalog(editedCatalog(/\n\s+slug: "brake-cooling-duct-kit",/, "")),
+    ).rejects.toThrow('item 3 ("Brake Cooling Duct Kit") is missing "slug".');
   });
 
   it.each([
@@ -658,7 +705,7 @@ describe("shop template catalog", () => {
       await expect(
         loadCatalog(editedCatalog("priceCents: 16500", `priceCents: ${price}`)),
       ).rejects.toThrow(
-        /catalog\/books\.ts: item 2 \("935-moby-dick-racing-suit"\) needs "priceCents" as a whole number of cents above zero/,
+        /catalog\/books\.ts: item 2 \("gridline-driver-suit"\) needs "priceCents" as a whole number of cents above zero/,
       );
     },
   );
@@ -667,12 +714,12 @@ describe("shop template catalog", () => {
     await expect(
       loadCatalog(
         editedCatalog(
-          'slug: "917-longtail-racing-jacket"',
-          'slug: "935-moby-dick-racing-suit"',
+          'slug: "pit-lane-coach-jacket"',
+          'slug: "gridline-driver-suit"',
         ),
       ),
     ).rejects.toThrow(
-      'catalog/books.ts: item 2 ("935-moby-dick-racing-suit") repeats the slug of an earlier item.',
+      'catalog/books.ts: item 2 ("gridline-driver-suit") repeats the slug of an earlier item.',
     );
   });
 
@@ -680,13 +727,11 @@ describe("shop template catalog", () => {
     await expect(
       loadCatalog(
         editedCatalog(
-          'slug: "963-penske-wheel-nut-set"',
-          'slug: "963 Penske Wheel Nut Set"',
+          'slug: "wheel-fastener-kit"',
+          'slug: "Wheel Fastener Kit"',
         ),
       ),
-    ).rejects.toThrow(
-      'item 8 ("963 Penske Wheel Nut Set") has a slug that is not',
-    );
+    ).rejects.toThrow('item 8 ("Wheel Fastener Kit") has a slug that is not');
     await expect(
       loadCatalog(editedCatalog('format: "Racewear"', 'format: "Audiobook"')),
     ).rejects.toThrow(
