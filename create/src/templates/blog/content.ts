@@ -107,7 +107,7 @@ author: Apex Racing Desk
 tags: [race-previews, wec]
 ---
 
-Spa and Le Mans expose different parts of an endurance package. Spa demands repeatable speed through Eau Rouge and a fast-changing weather window. Le Mans stretches the driver, hybrid system, and traffic plan over a full 24-hour race.
+Spa and Le Mans expose different parts of an endurance package. Spa demands repeatable speed through the uphill section and a fast-changing weather window. Le Mans stretches the driver, hybrid system, and traffic plan over a full 24-hour race.
 
 ## Spa: speed with limited recovery
 
