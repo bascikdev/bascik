@@ -398,7 +398,7 @@ form.addEventListener("submit", (event: SubmitEvent): void => {
 The home page's opening: the company's one-line promise, two ways forward, and a drawing of a bookshelf. The drawing is inline SVG, so the page loads no image.
 -->
 <style>
-  .hero { padding: 88px 0 72px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .hero { padding: 88px 0 72px; background: var(--surface) var(--panel); border-bottom: 1px solid var(--border); }
   .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 48px; align-items: center; }
   h1 span { color: var(--brand); }
   /* The drawing is stroked and filled with currentColor, so it follows the brand color in both color schemes. */
@@ -481,7 +481,7 @@ The company's key figures as a description list, from figures.ts beside this fil
 -->
 <style>
   .figures { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; }
-  .figure { display: flex; flex-direction: column-reverse; gap: 4px; padding: 20px 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+  .figure { display: flex; flex-direction: column-reverse; gap: 4px; padding: 20px 24px; background: var(--surface) var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--sheen), var(--shadow); }
   .figure dt { font-size: 0.88rem; color: var(--text-muted); }
   .figure dd { margin: 0; font-size: 2rem; font-weight: 700; line-height: 1.1; color: var(--brand); }
 </style>
@@ -521,7 +521,7 @@ The newsroom: a dated entry for each item in news.ts beside this file, newest fi
 -->
 <style>
   .news { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; max-width: 760px; }
-  .entry { padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+  .entry { padding: 24px; background: var(--surface) var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--sheen), var(--shadow); }
   .entry p { margin: 0; font-size: 0.92rem; }
   .entry .meta { margin-bottom: 8px; color: var(--brand); font-size: 0.82rem; }
 </style>
@@ -638,7 +638,7 @@ export function newsList(entries: NewsEntry[] = NEWS): SafeHtml {
 The office: postal address, phone and email in an <address>, and the opening hours. Every value comes from src/lib/site.ts.
 -->
 <style>
-  .office { padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+  .office { padding: 24px; background: var(--surface) var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--sheen), var(--shadow); }
   .office address { font-style: normal; }
   .office h3 { margin-top: 20px; }
   .office p:last-child { margin-bottom: 0; }
@@ -688,7 +688,7 @@ The top of an inner page: its breadcrumb, its one top-level heading, and an intr
 @prop text - One or two sentences under the heading.
 -->
 <style>
-  .intro { padding: 48px 0 44px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .intro { padding: 48px 0 44px; background: var(--surface) var(--panel); border-bottom: 1px solid var(--border); }
   .lead { max-width: 640px; margin-bottom: 0; font-size: 1.15rem; }
 </style>
 <header class="intro" data-testid="page-intro">
@@ -732,7 +732,7 @@ The open roles, from roles.ts beside this file: a title, the team, the location 
 -->
 <style>
   .roles { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
-  .role { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+  .role { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding: 24px; background: var(--surface) var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--sheen), var(--shadow); }
   .role > div { flex: 1 1 320px; }
   .role p { margin: 0; font-size: 0.92rem; }
   .role .facts { margin-bottom: 8px; color: var(--brand); font-size: 0.82rem; }
@@ -1033,6 +1033,7 @@ The head tags every page shares: charset, viewport, icons and the global stylesh
 -->
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light dark" />
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
@@ -1361,7 +1362,7 @@ The leadership team: a name, a role and a short biography for each person in tea
 -->
 <style>
   .team { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); gap: 20px; }
-  .member { display: flex; gap: 16px; padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+  .member { display: flex; gap: 16px; padding: 24px; background: var(--surface) var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--sheen), var(--shadow); }
   .avatar { flex: none; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); font-weight: 700; }
   .member h3 { margin-bottom: 0; }
   .member p { margin: 0; font-size: 0.9rem; }
@@ -1440,7 +1441,7 @@ Quotes from authors, each a <figure> with a <blockquote> and a <figcaption>, fro
 -->
 <style>
   .quotes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
-  .quote { margin: 0; height: 100%; padding: 24px; display: flex; flex-direction: column; gap: 16px; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--brand); border-radius: var(--r); }
+  .quote { margin: 0; height: 100%; padding: 24px; display: flex; flex-direction: column; gap: 16px; background: var(--surface) var(--panel); border: 1px solid var(--border); border-inline-start: 3px solid var(--brand); border-radius: var(--r); box-shadow: var(--sheen), var(--shadow); }
   .quote blockquote { margin: 0; flex: 1; }
   .quote blockquote p { margin: 0; color: var(--text); }
   .quote figcaption { font-size: 0.88rem; color: var(--text-muted); }

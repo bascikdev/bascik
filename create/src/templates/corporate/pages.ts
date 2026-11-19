@@ -358,23 +358,26 @@ export const CORPORATE_CSS = `/* styles.css: the site's global stylesheet. The d
   color-scheme: light dark;
 
   /* Surfaces and lines */
-  --bg:            #ffffff;
-  --surface:       #f4f5f7;
-  --border:        #d9dde3;
-  --border-strong: #6f7785;
+  --bg:            #e9edf3;
+  --surface:       #f8fafd;
+  --surface-top:   #ffffff;
+  --border:        #d6deea;
+  --border-strong: #616c80;
 
   /* Text */
-  --text:          #1b1f27;
-  --text-muted:    #545c6a;
+  --text:          #293247;
+  --text-muted:    #616c80;
 
   /* The brand color, a darker shade for hover, a tint for panels, and the text color that sits on the brand color */
-  --brand:         #8a1c3a;
-  --brand-strong:  #6d1530;
-  --brand-soft:    #f9edf0;
+  --brand:         #475cbd;
+  --brand-strong:  #394da9;
+  --brand-soft:    #edf0fc;
   --on-brand:      #ffffff;
 
-  --danger:        #b3261e;
-  --shadow:        0 12px 32px rgba(27, 31, 39, 0.14);
+  --danger:        #a32e42;
+  --shadow:        0 24px 48px -16px rgba(36, 53, 89, 0.24), 0 6px 12px -4px rgba(36, 53, 89, 0.12);
+  --panel:         linear-gradient(155deg, var(--surface-top), var(--surface) 72%);
+  --sheen:         inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
   /* Type */
   --sans:  system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -382,24 +385,26 @@ export const CORPORATE_CSS = `/* styles.css: the site's global stylesheet. The d
   --mono:  ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   /* Shape */
-  --r:    12px;
-  --r-sm: 6px;
+  --r:    22px;
+  --r-sm: 10px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg:            #15171c;
-    --surface:       #1d2027;
-    --border:        #2e333d;
-    --border-strong: #8a92a0;
-    --text:          #eef0f3;
-    --text-muted:    #b1b7c2;
-    --brand:         #f29bb0;
-    --brand-strong:  #f7b7c6;
-    --brand-soft:    #2b1a20;
-    --on-brand:      #2a0a14;
-    --danger:        #ff9d8a;
-    --shadow:        0 12px 32px rgba(0, 0, 0, 0.5);
+    --bg:            #11151c;
+    --surface:       #222833;
+    --surface-top:   #363e4c;
+    --border:        #404957;
+    --border-strong: #b3bbcb;
+    --text:          #edf0f7;
+    --text-muted:    #b3bbcb;
+    --brand:         #b1bfff;
+    --brand-strong:  #c8d2ff;
+    --brand-soft:    #30394f;
+    --on-brand:      #202b4a;
+    --danger:        #ffabb7;
+    --shadow:        0 24px 48px -16px rgba(0, 0, 0, 0.55), 0 6px 12px -4px rgba(0, 0, 0, 0.3);
+    --sheen:         inset 0 1px 0 rgba(255, 255, 255, 0.15);
   }
 }
 
@@ -411,7 +416,7 @@ html { scroll-padding-top: 80px; }
 
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -455,12 +460,12 @@ a:hover { color: var(--brand-strong); }
 }
 .btn-primary { background: var(--brand); color: var(--on-brand); }
 .btn-primary:hover { background: var(--brand-strong); color: var(--on-brand); }
-.btn-ghost { background: transparent; color: var(--text); border-color: var(--border-strong); }
+.btn-ghost { background: var(--surface) var(--panel); color: var(--text); border-color: var(--border-strong); }
 .btn-ghost:hover { color: var(--brand); border-color: var(--brand); }
 .actions { display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* ── Cards ── */
-.card { padding: 28px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+.card { padding: 28px; background: var(--surface) var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--sheen), var(--shadow); }
 .card p { margin-bottom: 0; }
 
 /* For text a screen reader should read and the eye does not need, such as the end of a "Learn more" link. */

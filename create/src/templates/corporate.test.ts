@@ -416,8 +416,8 @@ describe("corporate template: house rules", () => {
       }
     }
     const { light, dark } = themes();
-    // A light page: the background is lighter than the text. Dark is the reverse.
-    expect(contrast(light.get("--bg")!, "#ffffff")).toBeLessThan(1.1);
+    // Both neutral canvases stay close to their respective extremes.
+    expect(contrast(light.get("--bg")!, "#ffffff")).toBeLessThan(1.2);
     expect(contrast(dark.get("--bg")!, "#000000")).toBeLessThan(1.3);
     // The dark block changes colors only, and every color the light block has.
     const colors = [...light].filter(([, value]) => value.startsWith("#"));
