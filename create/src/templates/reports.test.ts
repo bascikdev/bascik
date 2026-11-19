@@ -797,8 +797,8 @@ describe("reports template, generated site", () => {
     expect(pages).toContain(`<cite>${AWKWARD_TITLE_HTML}</cite>`);
     // SVG: the bar's tooltip has the whole label, the text beside the bar a cut one.
     expect(pages).toContain(`<title>${AWKWARD_TITLE_HTML}: $34.00</title>`);
-    expect(pages).toContain(
-      '<text class="chart-label" x="140" y="27.5" text-anchor="end">Porsche &lt;b&gt;&amp; 963, $…</text>',
+    expect(pages).toMatch(
+      /<text class="chart-label"[^>]*>Porsche &lt;b&gt;&amp; 963, \$…<\/text>/,
     );
     expect(pages).toContain(
       "<title>&lt;Web&gt; &amp; &#39;Mail&#39;: $34.00</title>",

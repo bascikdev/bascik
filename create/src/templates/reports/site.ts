@@ -107,6 +107,43 @@ test.describe("Reports site", () => {
     await expect(page).toHaveURL("/reports/2026-10");
   });
 
+  test("report cards adapt to the viewport and pages do not overflow", async ({
+    page,
+  }) => {
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 768, height: 600 },
+      { width: 320, height: 640 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto("/");
+      const list = page.getByTestId("report-list");
+      const card = (name: string) =>
+        list.getByRole("article").filter({
+          has: page.getByRole("link", { name, exact: true }),
+        });
+      const latest = card("October 2026");
+      const previous = card("September 2026");
+      const latestBox = await latest.boundingBox();
+      const previousBox = await previous.boundingBox();
+      expect(latestBox).not.toBeNull();
+      expect(previousBox).not.toBeNull();
+      if (!latestBox || !previousBox) throw new Error("Report cards are not visible");
+      if (viewport.width > 1000) {
+        expect(previousBox.x).toBeGreaterThan(latestBox.x + latestBox.width - 1);
+        expect(Math.abs(previousBox.y - latestBox.y)).toBeLessThan(1);
+      } else {
+        expect(previousBox.y).toBeGreaterThanOrEqual(latestBox.y + latestBox.height);
+      }
+
+      for (const path of ["/", "/reports/2026-08", "/compare"]) {
+        await page.goto(path);
+        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+      }
+    }
+  });
+
   test("a report shows its figures, and every table adds up to them", async ({
     page,
   }) => {
@@ -141,6 +178,132 @@ test.describe("Reports site", () => {
     );
   });
 
+  test("charts form a responsive dashboard in light and dark mode", async ({ page }) => {
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      for (const width of [1440, 768, 320]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto("/reports/2026-10");
+        const figures = page.getByTestId("report-charts").getByRole("figure");
+        const format = figures.filter({ hasText: "Revenue by format" });
+        const channel = figures.filter({ hasText: "Revenue by channel" });
+        const formatBox = await format.boundingBox();
+        const channelBox = await channel.boundingBox();
+        if (!formatBox || !channelBox) throw new Error("Charts are not visible");
+        if (width > 700) {
+          expect(channelBox.x).toBeGreaterThanOrEqual(formatBox.x + formatBox.width);
+          expect(Math.abs(channelBox.y - formatBox.y)).toBeLessThan(1);
+        } else {
+          expect(channelBox.y).toBeGreaterThanOrEqual(formatBox.y + formatBox.height);
+        }
+        for (const figure of await figures.all()) {
+          await expect(figure.getByRole("img")).toBeVisible();
+          await expect(figure.getByRole("table")).toBeVisible();
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      }
+    }
+  });
+
+  test("dark mode keeps metric surfaces neutral and layered", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto("/reports/2026-10");
+    const surfaces = await page.getByTestId("report-summary").locator("dl > div").evaluateAll(
+      (items) => items.map((item) => {
+        const style = getComputedStyle(item);
+        return { background: style.backgroundImage, shadow: style.boxShadow };
+      }),
+    );
+    expect(surfaces).toHaveLength(4);
+    expect(new Set(surfaces.map((surface) => surface.background)).size).toBe(1);
+    expect(surfaces.every((surface) => surface.shadow !== "none")).toBe(true);
+    expect(await page.locator("body").evaluate((body) => getComputedStyle(body).backgroundImage)).toBe("none");
+  });
+
+  test("chart surfaces keep their depth while bars remain flat", async ({ page }) => {
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.goto("/reports/2026-08");
+      const treatments = await page.getByTestId("chart-explorer").evaluateAll((figures) =>
+        figures.map((figure) => {
+          const plot = figure.querySelector('svg[role="img"]')!;
+          return {
+            panel: getComputedStyle(figure).backgroundImage,
+            plot: getComputedStyle(plot).backgroundImage,
+            panelShadow: getComputedStyle(figure).boxShadow,
+            plotShadow: getComputedStyle(plot).boxShadow,
+            bars: Array.from(plot.querySelectorAll("path"), (bar) => {
+              const style = getComputedStyle(bar);
+              return { fill: style.fill, filter: style.filter, stroke: style.stroke };
+            }),
+          };
+        }),
+      );
+      expect(treatments).toHaveLength(3);
+      for (const treatment of treatments) {
+        expect(treatment.panel).not.toBe(treatment.plot);
+        expect(treatment.plot).not.toBe("none");
+        expect(treatment.panelShadow).not.toBe("none");
+        expect(treatment.plotShadow).not.toBe("none");
+        expect(treatment.bars.length).toBeGreaterThan(0);
+        expect(new Set(treatment.bars.map((bar) => bar.fill)).size).toBeGreaterThan(1);
+        for (const bar of treatment.bars) {
+          expect(bar.fill).toMatch(/^rgb\\(/);
+          expect(bar.filter).toBe("none");
+          expect(bar.stroke).toBe("none");
+        }
+      }
+    }
+  });
+
+  test("report navigation links have visible surfaces and interaction states", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.goto("/reports/2026-08");
+      const previous = page.getByTestId("report-pager-previous");
+      const before = await previous.evaluate((link) => {
+        const style = getComputedStyle(link);
+        return { background: style.backgroundImage, border: style.borderColor };
+      });
+      expect(before.background).not.toBe("none");
+      await previous.hover();
+      expect(await previous.evaluate((link) => getComputedStyle(link).borderColor)).not.toBe(before.border);
+      await previous.focus();
+      await expect(previous).toBeFocused();
+      expect(await previous.evaluate((link) => getComputedStyle(link).outlineStyle)).toBe("solid");
+      await previous.click();
+      await expect(page).toHaveURL("/reports/2026-07");
+    }
+  });
+
+  test("the compare button stays opaque throughout hover transitions", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.mouse.move(0, 0);
+      await page.goto("/");
+      const button = page.getByRole("link", { name: "Compare all periods", exact: true });
+      for (const hovering of [true, false]) {
+        const [colors] = await Promise.all([
+          button.evaluate((element) => new Promise<string[]>((resolve) => {
+            const colors: string[] = [];
+            const until = performance.now() + 220;
+            const sample = () => {
+              colors.push(getComputedStyle(element).backgroundColor);
+              if (performance.now() < until) requestAnimationFrame(sample);
+              else resolve(colors);
+            };
+            sample();
+          })),
+          hovering ? button.hover() : page.mouse.move(0, 0),
+        ]);
+        expect(colors.length).toBeGreaterThan(1);
+        expect(colors.every((color) => /^rgb\\(/.test(color))).toBe(true);
+      }
+    }
+  });
+
   test("each chart is an image with a caption and a table of the same figures", async ({
     page,
   }) => {
@@ -165,6 +328,102 @@ test.describe("Reports site", () => {
         table.getByRole("row", { name: new RegExp(\`^\${format}\`) }),
       ).toContainText(amount);
     }
+  });
+
+  test("chart inspection links bars and rows without affecting other charts", async ({ page }) => {
+    await page.goto("/reports/2026-08");
+    const formats = page.getByTestId("chart-explorer").filter({ hasText: "Revenue by format" });
+    const channels = page.getByTestId("chart-explorer").filter({ hasText: "Revenue by channel" });
+    const bar = formats.locator("svg > g").first();
+    const label = await bar.locator("title").textContent();
+    const button = formats.getByRole("button", { name: label + " (inspect)", exact: true });
+    const row = formats.getByRole("row").filter({
+      has: page.getByRole("button", { name: label + " (inspect)", exact: true }),
+    });
+    await bar.locator("path").hover();
+    await expect(formats.getByTestId("chart-explorer-inspection")).toHaveText(label!);
+    await expect(bar).toHaveAttribute("data-active", "true");
+    await expect(formats.locator('tbody tr[data-active="true"]')).toHaveCount(1);
+    await expect(channels).not.toHaveAttribute("data-inspecting", "true");
+    await page.keyboard.press("Escape");
+    await expect(formats).toHaveAttribute("data-inspecting", "false");
+
+    await button.focus();
+    await expect(bar).toHaveAttribute("data-active", "true");
+    await button.press("Space");
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    expect(await row.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("solid");
+    await page.getByRole("heading", { level: 1 }).hover();
+    await expect(bar).toHaveAttribute("data-active", "true");
+    await page.keyboard.press("Escape");
+    await expect(button).toBeFocused();
+    await expect(button).toHaveAttribute("aria-pressed", "false");
+    await expect(formats).toHaveAttribute("data-inspecting", "false");
+
+    await row.hover();
+    await expect(bar).toHaveAttribute("data-active", "true");
+    expect(await row.getByRole("cell").last().evaluate((element) => getComputedStyle(element).cursor)).toBe("pointer");
+    await expect(row.getByRole("rowheader")).toHaveText((await bar.getAttribute("data-chart-key"))!);
+    const bounds = (await row.boundingBox())!;
+    await row.click({ position: { x: bounds.width - 12, y: bounds.height / 2 } });
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await row.click({ position: { x: bounds.width - 12, y: bounds.height / 2 } });
+    await expect(button).toHaveAttribute("aria-pressed", "false");
+    await page.emulateMedia({ media: "print" });
+    await expect(button).toBeHidden();
+    await expect(formats.getByTestId("chart-explorer-inspection")).toBeHidden();
+    expect(await bar.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
+  });
+
+  test("touch inspection pins and releases a period without replacing its navigation link", async ({ browser, baseURL }) => {
+    const context = await browser.newContext({ baseURL, hasTouch: true, viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    await page.goto("/compare");
+    const chart = page.getByTestId("chart-explorer");
+    const button = chart.getByRole("button", { name: /^Sep 2026:/ });
+    const row = chart.getByRole("row", { name: /^September 2026/ });
+    const bounds = (await row.boundingBox())!;
+    const position = { x: Math.min(bounds.width - 12, 250), y: bounds.height / 2 };
+    await row.tap({ position });
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(chart.locator('svg > g[data-active="true"]')).toHaveAttribute("data-chart-key", "2026-09");
+    await row.tap({ position });
+    await expect(button).toHaveAttribute("aria-pressed", "false");
+    await chart.getByRole("link", { name: "September 2026", exact: true }).tap();
+    await expect(page).toHaveURL("/reports/2026-09");
+    await context.close();
+  });
+
+  test("inspection matches period keys rather than table row positions", async ({ page }) => {
+    await page.route("**/compare", async (route) => {
+      const response = await route.fetch();
+      const body = (await response.text()).replace(
+        "<tbody>",
+        '<tbody><tr><th scope="row"><time datetime="2020-01">January 2020</time></th><td>0</td><td>$0.00</td><td>$0.00</td><td>n/a</td></tr>',
+      );
+      await route.fulfill({ response, body });
+    });
+    await page.goto("/compare");
+    const chart = page.getByTestId("chart-explorer");
+    await expect(chart.getByRole("row", { name: /^January 2020/ }).getByRole("button")).toHaveCount(0);
+    await chart.getByRole("button", { name: /^Sep 2026:/ }).click();
+    await expect(chart.locator('svg > g[data-active="true"]')).toHaveAttribute("data-chart-key", "2026-09");
+    await expect(chart.getByRole("row", { name: /^September 2026/ })).toHaveAttribute("data-active", "true");
+  });
+
+  test("charts and tables remain complete without JavaScript", async ({ browser, baseURL }) => {
+    const context = await browser.newContext({ baseURL, javaScriptEnabled: false });
+    const page = await context.newPage();
+    await page.goto("/reports/2026-08");
+    const charts = page.getByTestId("chart-explorer");
+    await expect(charts).toHaveCount(3);
+    await expect(charts.getByRole("img")).toHaveCount(3);
+    await expect(charts.getByRole("table")).toHaveCount(3);
+    await expect(charts.getByRole("button")).toHaveCount(0);
+    await expect(charts.getByTestId("chart-explorer-inspection").first()).toBeHidden();
+    await page.getByTestId("report-pager-previous").click();
+    await expect(page).toHaveURL("/reports/2026-07");
+    await context.close();
   });
 
   test("previous and next links walk through the periods", async ({ page }) => {
@@ -205,7 +464,19 @@ test.describe("Reports site", () => {
           .getByRole("row", { name: /^Total/ }),
       ).toContainText(revenue);
 
-    await periods.getByRole("link", { name: "September 2026" }).click();
+    const periodLink = periods.getByRole("link", { name: "September 2026" });
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.mouse.move(0, 0);
+      for (const hovering of [false, true]) {
+        if (hovering) await periodLink.hover();
+        await expect(periodLink).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+        await expect(periodLink).toHaveCSS("border-top-width", "0px");
+        await expect(periodLink).toHaveCSS("padding", "0px");
+        await expect(periodLink).toHaveCSS("text-decoration-line", "underline");
+      }
+    }
+    await periodLink.click();
     await expect(page).toHaveURL("/reports/2026-09");
   });
 
@@ -286,12 +557,35 @@ test.describe("Reports site", () => {
 
     await page.emulateMedia({ media: "print" });
     for (const id of chrome) await expect(page.getByTestId(id)).toBeHidden();
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    const heading = page.getByRole("heading", { level: 1 });
+    await expect(heading).toBeVisible();
+    expect(await heading.evaluate((element) => getComputedStyle(element).color)).toBe("rgb(0, 0, 0)");
     await expect(page.getByTestId("report-summary")).toBeVisible();
     await expect(
       page.getByRole("img", { name: "Revenue by channel, August 2026" }),
     ).toBeVisible();
     await expect(page.getByTestId("report-tables-lines")).toBeVisible();
+    const fills = await page.getByTestId("report-charts").locator("svg path").evaluateAll(
+      (bars) => bars.map((bar) => getComputedStyle(bar).fill),
+    );
+    expect(fills.length).toBeGreaterThan(0);
+    expect(fills.every((fill) => fill === "rgb(34, 34, 34)" || fill === "rgb(255, 255, 255)")).toBe(true);
+  });
+
+  test("the report list remains readable when printed", async ({ page }) => {
+    await page.goto("/");
+    await page.emulateMedia({ media: "print" });
+    const latest = page.getByTestId("report-list").getByRole("article").first();
+    for (const element of [
+      latest,
+      latest.getByRole("link"),
+      latest.locator("dt").first(),
+      latest.locator("dd").first(),
+    ]) {
+      expect(["rgb(0, 0, 0)", "rgb(51, 51, 51)"]).toContain(
+        await element.evaluate((node) => getComputedStyle(node).color),
+      );
+    }
   });
 
   test("the skip link is the first stop and leads to the content", async ({
@@ -327,21 +621,45 @@ const CSS_STYLES_CSS = `/* ── Tokens ── */
 
 :root {
   color-scheme: light dark;
-  --bg: light-dark(#f6f5f1, #16181b);
-  --surface: light-dark(#ffffff, #1e2125);
-  --text: light-dark(#1b1d21, #ecedee);
-  --text-muted: light-dark(#565c66, #a4aab5);
-  --border: light-dark(#d8d5cc, #383c43);
-  --link: light-dark(#1a4f8f, #9cc4f5);
-  /* Charts: one hue. The period a report is about is drawn in --chart, the others in --chart-muted. */
-  --chart: light-dark(#1f4e86, #8fbdf0);
-  --chart-muted: light-dark(#6f97c4, #4f7099);
+  --bg: light-dark(#e9edf3, #11151c);
+  --surface: light-dark(#f8fafd, #222833);
+  --surface-top: light-dark(#ffffff, #363e4c);
+  --surface-soft: light-dark(#f0f3f8, #282f3b);
+  --text: light-dark(#293247, #edf0f7);
+  --text-muted: light-dark(#616c80, #b3bbcb);
+  --border: light-dark(#d6deea, #404957);
+  --link: light-dark(#475cbd, #b1bfff);
+  --link-wash: light-dark(#edf0fc, #30394f);
+  --chart: light-dark(#7d8ee5, #a5b4ff);
+  --chart-muted: light-dark(#c9d2f6, #536798);
+  --highlight: light-dark(#475cbd, #b1bfff);
+  --blue: light-dark(#f0f3fc, #252931);
+  --pink: light-dark(#faf1f6, #252931);
+  --mint: light-dark(#eff8f6, #252931);
+  --lavender: light-dark(#f5f2fc, #252931);
+  --chart-mint: light-dark(#7dc5b8, #8ed3c6);
+  --chart-pink: light-dark(#d4a0c4, #dfafd2);
+  --chart-blue: light-dark(#92b6e4, #a5c7f1);
+  --in-oklab: ;
+  --panel: linear-gradient(155deg var(--in-oklab), var(--surface-top), var(--surface) 72%);
+  --plot: linear-gradient(160deg var(--in-oklab), light-dark(#eaf0fa, #202a3b), light-dark(#fcfdff, #151c27) 75%);
+  --sheen: inset 0 1px 0 light-dark(rgb(255 255 255 / 100%), rgb(255 255 255 / 18%)),
+    inset 1px 0 0 light-dark(rgb(255 255 255 / 80%), rgb(255 255 255 / 5%)),
+    inset 0 -1px 0 light-dark(rgb(211 220 236 / 60%), rgb(0 0 0 / 24%));
+  --shadow: 0 24px 48px -16px light-dark(rgb(36 53 89 / 24%), rgb(0 0 0 / 55%)),
+    0 6px 12px -4px light-dark(rgb(36 53 89 / 12%), rgb(0 0 0 / 30%)),
+    0 1px 2px light-dark(rgb(36 53 89 / 8%), rgb(0 0 0 / 20%));
   /* The skip link's background; its text is always dark. */
-  --accent: #d3ff8d;
+  --accent: #dce5ff;
   --mono: "SF Mono", "Fira Code", Menlo, monospace;
-  --r: 8px;
-  --r-sm: 6px;
-  --page: 960px;
+  --r: 22px;
+  --r-sm: 10px;
+  --page: 1280px;
+}
+@supports (background: linear-gradient(in oklab, #fff, #000)) {
+  :root {
+    --in-oklab: in oklab;
+  }
 }
 
 /* ── Base ── */
@@ -353,8 +671,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  font-size: 16px;
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
   line-height: 1.6;
 }
 
@@ -363,7 +681,7 @@ main {
   width: 100%;
   max-width: var(--page);
   margin: 0 auto;
-  padding: 40px 24px 64px;
+  padding: 40px 32px 72px;
 }
 
 h1,
@@ -373,13 +691,15 @@ h3 {
   margin: 0 0 12px;
 }
 h1 {
-  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  font-size: clamp(1.7rem, 3vw, 2.25rem);
+  font-weight: 650;
+  letter-spacing: -0.04em;
 }
 h2 {
-  font-size: 1.35rem;
-  margin-top: 48px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
+  font-size: 1.1rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  margin-top: 32px;
 }
 h3 {
   font-size: 1.05rem;
@@ -391,7 +711,17 @@ p {
 
 a {
   color: var(--link);
+  text-decoration-color: light-dark(#b6c0e8, #65749e);
+  text-decoration-thickness: 1px;
   text-underline-offset: 3px;
+}
+a:hover {
+  text-decoration-color: currentColor;
+}
+
+:focus-visible {
+  outline: 3px solid var(--link);
+  outline-offset: 3px;
 }
 
 code {
@@ -408,106 +738,286 @@ cite {
 }
 
 /* ── Page heading ── */
+.masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 32px;
+  align-items: center;
+  margin-bottom: 28px;
+}
+.masthead > * {
+  grid-column: 1;
+  min-width: 0;
+}
+.masthead > :last-child {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  margin: 0;
+}
+.masthead h1 {
+  margin-bottom: 8px;
+}
 .eyebrow {
-  margin-bottom: 4px;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  margin-bottom: 8px;
+  color: var(--highlight);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.035em;
 }
 .lede {
-  max-width: 68ch;
-  font-size: 1.05rem;
+  max-width: 76ch;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.65;
+  margin-bottom: 0;
 }
 
 .button {
   display: inline-block;
-  padding: 8px 16px;
-  border: 1px solid var(--text);
+  padding: 10px 16px;
+  border: 1px solid var(--border);
   border-radius: var(--r-sm);
-  background: var(--surface);
+  /* Keep an opaque base while hover removes the gradient. */
+  background: var(--surface) var(--panel);
   color: var(--text);
   font: inherit;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
+  box-shadow: var(--sheen), 0 2px 4px light-dark(rgb(32 46 83 / 5%), rgb(0 0 0 / 15%));
 }
 .button:hover {
-  background: var(--bg);
+  background: var(--surface-soft);
+  border-color: var(--link);
+  color: var(--link);
+}
+.masthead a.button {
+  border-color: light-dark(#5064be, #c0cbf4);
+  background: light-dark(#4b60bc, #b6c3ef) linear-gradient(180deg, light-dark(#687dd9, #dbe2ff), light-dark(#4b60bc, #b6c3ef));
+  color: light-dark(#fff, #202b4a);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 30%),
+    0 3px 7px light-dark(rgb(63 84 162 / 20%), rgb(0 0 0 / 20%));
+}
+.masthead a.button:hover {
+  background: light-dark(#4559b4, #e1e7ff);
+  color: light-dark(#fff, #202b4a);
 }
 
 /* ── Headline figures ── */
 .figures {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
-  margin: 16px 0 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 16px;
+  margin: 20px 0 0;
 }
 .figure-item {
-  padding: 14px 16px;
-  background: var(--surface);
+  min-width: 0;
+  padding: 22px;
   border: 1px solid var(--border);
   border-radius: var(--r);
+  background: linear-gradient(145deg, var(--surface-top), var(--blue));
+  box-shadow: var(--sheen), var(--shadow);
+}
+@media screen {
+  .figure-item:nth-child(4n + 2) {
+    background: linear-gradient(145deg, var(--surface-top), var(--mint));
+  }
+  .figure-item:nth-child(4n + 3) {
+    background: linear-gradient(145deg, var(--surface-top), var(--pink));
+  }
+  .figure-item:nth-child(4n + 4) {
+    background: linear-gradient(145deg, var(--surface-top), var(--lavender));
+  }
 }
 .figure-item dt {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.figure-item dt::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 10px;
+  border-radius: 50%;
+  background: var(--highlight);
+  box-shadow: 0 0 0 4px var(--link-wash);
+  vertical-align: 1px;
 }
 .figure-item dd {
   margin: 0;
 }
-.figure-value {
-  font-size: 1.5rem;
-  font-weight: 700;
+.figure-item .figure-value {
+  margin: 8px 0;
+  font-size: clamp(1.6rem, 2.7vw, 2.3rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 .figure-note {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 /* ── Report list ── */
 .report-cards {
   display: grid;
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+  gap: 20px;
   margin: 16px 0 0;
   padding: 0;
   list-style: none;
 }
+.report-card {
+  height: 100%;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--panel);
+  box-shadow: var(--sheen), var(--shadow);
+}
+.report-cards > li:first-child .report-card {
+  border-color: light-dark(#cdd6f0, #525c78);
+}
 .report-card h3 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+.report-card h3 a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: var(--text);
+  text-decoration: none;
+}
+.report-card h3 a::after {
+  content: "";
+  flex: 0 0 8px;
+  height: 8px;
+  margin: 0 6px 0 0;
+  border-top: 1.5px solid;
+  border-right: 1.5px solid;
+  transform: rotate(45deg);
+  color: var(--highlight);
+}
+.report-card h3 a:hover {
+  color: var(--link);
+  text-decoration: none;
+}
+.report-card:hover {
+  border-color: light-dark(#c5cfe9, #515e78);
+}
+.report-card .figures {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+  border: 0;
+  background: none;
+}
+.report-card .figure-item {
+  padding: 16px;
+  border: 0;
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 light-dark(rgb(255 255 255 / 80%), rgb(255 255 255 / 5%));
+}
+.report-card .figure-item .figure-value {
+  font-size: clamp(1.3rem, 2vw, 1.7rem);
 }
 
 /* ── Charts ── */
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.chart-grid > h2,
+.chart-grid > .chart-figure:first-of-type {
+  grid-column: 1 / -1;
+}
+.chart-grid > h2 {
+  margin-bottom: -4px;
+}
 .chart-figure {
-  margin: 24px 0 0;
-  padding: 20px;
-  background: var(--surface);
+  position: relative;
+  min-width: 0;
+  margin: 20px 0 0;
+  padding: 24px;
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--r);
+  box-shadow: var(--sheen), var(--shadow);
+}
+.chart-grid > .chart-figure {
+  margin: 0;
 }
 .chart-figure figcaption {
-  margin-bottom: 12px;
-  font-weight: 700;
+  margin-bottom: 20px;
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .chart {
   display: block;
   width: 100%;
-  max-width: 640px;
+  max-width: 720px;
   height: auto;
+  padding: 18px 12px;
+  border: 1px solid light-dark(#dce4f1, #111923);
+  border-radius: 16px;
+  background: var(--plot);
+  box-shadow: inset 0 2px 5px light-dark(rgb(56 77 116 / 8%), rgb(0 0 0 / 28%)),
+    0 1px 0 light-dark(#fff, rgb(255 255 255 / 8%));
+}
+@media (min-width: 701px) {
+  .chart-grid > .chart-figure:not(:first-of-type) > .chart {
+    min-height: 180px;
+  }
 }
 .chart-bar {
   fill: var(--chart);
+  stroke: none;
+}
+@media screen {
+  .chart-figure[data-inspecting="true"] .chart g[data-active="false"] .chart-bar {
+    opacity: 0.4;
+  }
+  .chart g[data-active="true"] .chart-bar {
+    opacity: 1;
+    stroke: var(--text);
+    stroke-width: 1.5;
+  }
+  .chart-figure .data-table tr[data-active="true"] {
+    background: var(--link-wash);
+    box-shadow: inset 3px 0 var(--link);
+  }
+  .chart-figure .data-table tr:has(.chart-inspect:focus-visible) {
+    outline: 2px solid var(--link);
+    outline-offset: -2px;
+  }
+  .chart > g:nth-of-type(4n + 2) .chart-bar {
+    fill: var(--chart-mint);
+  }
+  .chart > g:nth-of-type(4n + 3) .chart-bar {
+    fill: var(--chart-pink);
+  }
+  .chart > g:nth-of-type(4n + 4) .chart-bar {
+    fill: var(--chart-blue);
+  }
 }
 .chart-bar-muted {
   fill: var(--chart-muted);
+  opacity: 0.65;
 }
 .chart-axis {
-  stroke: var(--text-muted);
+  stroke: var(--border);
   stroke-width: 1;
 }
 .chart-label {
@@ -524,12 +1034,64 @@ cite {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+.chart-inspection {
+  grid-column: 1 / -1;
+  margin: 16px 0 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.chart-figure .data-table tr:has(.chart-inspect) {
+  position: relative;
+  cursor: pointer;
+}
+.chart-inspect {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.chart-figure .data-table a {
+  position: relative;
+  z-index: 2;
+}
 
 /* ── Tables ── */
 /* A wide table scrolls inside its own box on a narrow screen, so the page never scrolls sideways. */
 .table-scroll {
-  margin-top: 28px;
+  margin-top: 20px;
+  padding: 20px;
   overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--panel);
+  box-shadow: var(--sheen), var(--shadow);
+}
+.chart-figure > .table-scroll {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: light-dark(rgb(255 255 255 / 65%), rgb(12 17 25 / 22%));
+  box-shadow: inset 0 1px 3px light-dark(rgb(41 58 93 / 4%), rgb(0 0 0 / 15%)),
+    0 1px 0 light-dark(rgb(255 255 255 / 80%), rgb(255 255 255 / 6%));
+}
+.chart-figure .data-table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .table-scroll:focus-visible {
   outline: 2px solid var(--link);
@@ -539,31 +1101,36 @@ cite {
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.92rem;
+  font-size: 0.8rem;
 }
 .data-table caption {
-  padding-bottom: 8px;
+  padding-bottom: 16px;
   color: var(--text-muted);
   font-weight: 600;
   text-align: left;
 }
 .data-table th,
 .data-table td {
-  padding: 6px 10px;
+  padding: 12px 10px;
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: top;
 }
 .data-table thead th {
-  border-bottom: 2px solid var(--text);
-  font-size: 0.82rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.data-table tbody tr:nth-child(even) {
+  background: var(--surface-soft);
 }
 .data-table tbody th {
   font-weight: 500;
 }
 .data-table tfoot th,
 .data-table tfoot td {
-  border-top: 2px solid var(--text);
+  border-top: 1px solid var(--border);
   border-bottom: 0;
   font-weight: 700;
 }
@@ -572,10 +1139,104 @@ cite {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.data-table a {
+  white-space: nowrap;
+}
 
 /* A long address must not push the page wider than the paper or a phone. */
 .url {
+  display: inline-block;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
   overflow-wrap: anywhere;
+}
+
+.pager > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--sheen), 0 2px 4px light-dark(rgb(32 46 83 / 4%), rgb(0 0 0 / 12%));
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.pager > a:hover {
+  border-color: var(--link);
+  color: var(--link);
+}
+.pager > a[rel="prev"]::before,
+.pager > a[rel="next"]::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-top: 1.5px solid;
+  border-right: 1.5px solid;
+  transform: rotate(45deg);
+}
+.pager > a[rel="prev"]::before {
+  transform: rotate(-135deg);
+}
+.pager > span {
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+@media screen and (prefers-reduced-motion: no-preference) {
+  a,
+  button,
+  .report-card {
+    transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  }
+}
+
+@media (min-width: 1000px) {
+  .chart-grid > .chart-figure:first-of-type {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 0 32px;
+    align-items: center;
+  }
+  .chart-grid > .chart-figure:first-of-type > figcaption {
+    grid-column: 1 / -1;
+  }
+  .chart-grid > .chart-figure:first-of-type > .table-scroll {
+    margin: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  main {
+    padding: 28px 16px 48px;
+  }
+  .masthead {
+    display: block;
+  }
+  .masthead > :last-child {
+    margin-top: 16px;
+  }
+  .chart-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .report-card,
+  .chart-figure {
+    padding: 18px;
+  }
+  .report-card .figures {
+    gap: 8px;
+  }
+  .report-card .figure-item {
+    padding: 12px;
+  }
 }
 
 /* ── Print: the report as a document ── */
@@ -584,26 +1245,54 @@ cite {
 }
 
 @media print {
+  .chart-inspection,
+  .chart-inspect {
+    display: none;
+  }
   /* Paper is light, whatever the reader's screen is set to. */
   :root {
     color-scheme: light;
     --bg: #fff;
     --surface: #fff;
+    --surface-soft: #fff;
     --text: #000;
     --text-muted: #333;
     --border: #888;
     --link: #000;
     --chart: #222;
+    --shadow: none;
   }
 
   body {
     display: block;
     min-height: 0;
+    background: #fff;
     font-size: 10.5pt;
   }
   main {
     max-width: none;
     padding: 0;
+  }
+  .masthead {
+    display: block;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: #000;
+  }
+  .masthead .eyebrow,
+  .masthead .lede,
+  .masthead a {
+    color: #000;
+  }
+  .masthead code {
+    background: none;
+    border-color: #888;
+  }
+  h1 {
+    font-size: 22pt;
+    letter-spacing: normal;
   }
   h2 {
     margin-top: 20pt;
@@ -647,19 +1336,80 @@ cite {
     grid-template-columns: repeat(4, 1fr);
     gap: 8pt;
   }
-  .figure-value {
+  .figure-item .figure-value,
+  .report-card .figure-item .figure-value {
     font-size: 14pt;
+  }
+  .report-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+  .figure-item,
+  .report-card .figure-item,
+  .report-card,
+  .report-cards > li:first-child .report-card,
+  .chart-figure {
+    background: none;
+    color: #000;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .figure-item dt::before {
+    display: none;
+  }
+  .chart {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .chart-grid > .chart-figure:not(:first-of-type) > .chart {
+    min-height: 0;
+  }
+  .chart-figure > .table-scroll {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .chart-figure .data-table caption {
+    position: static;
+    width: auto;
+    height: auto;
+    padding-bottom: 16px;
+    overflow: visible;
+    clip-path: none;
+    white-space: normal;
+  }
+  .table-scroll,
+  .data-table a,
+  .url {
+    background: none;
+    box-shadow: none;
+  }
+  .data-table a,
+  .url {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+  }
+  .chart-grid,
+  .chart-grid > .chart-figure:first-of-type {
+    display: block;
   }
   .chart-figure {
     padding: 10pt;
   }
 
   /* Charts without color: the current period solid, the others outlined, every value written out. */
-  .chart-bar {
+  .chart > g .chart-bar {
     fill: #222;
+    stroke: #222;
   }
-  .chart-bar-muted {
+  .chart > g .chart-bar-muted {
     fill: #fff;
+    opacity: 1;
     stroke: #222;
     stroke-width: 1.5;
   }
@@ -688,11 +1438,10 @@ const INDEX_HTML = `<!doctype html>
         <p class="eyebrow">Reports</p>
         <h1>Racing reports</h1>
         <p class="lede">
-          One report per month, built from the files in
-          <code>data/reports/</code>. Open a report to read it, print it or save
-          it as a PDF, or download its figures as CSV.
+          Your monthly performance, at a glance. Explore revenue and sales,
+          compare periods, or open a report for the full picture.
         </p>
-        <p><a href="/compare">Compare all periods</a></p>
+        <p><a class="button" href="/compare">Compare all periods</a></p>
       </header>
       <report-list />
     </main>

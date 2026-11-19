@@ -150,15 +150,15 @@ describe("chartFigure", () => {
       chartFigure(AWKWARD, barChart("x", []), html\`<table></table>\`),
     );
     expect(figure).toMatch(
-      /^<figure class="chart-figure">\\s*<figcaption>Porsche &lt;b&gt;&amp;/,
+      /^<chart-explorer>\\s*<figcaption>Porsche &lt;b&gt;&amp;/,
     );
-    expect(figure).toMatch(/<\\/svg>\\s*<table><\\/table>\\s*<\\/figure>$/);
+    expect(figure).toMatch(/<\\/svg>\\s*<table><\\/table>\\s*<\\/chart-explorer>$/);
   });
 });
 `;
 
 /** `src/lib/charts.ts` */
-const CHARTS_TS = `// src/lib/charts.ts: charts drawn as inline SVG at build time. No chart library and no script in the browser.
+const CHARTS_TS = `// src/lib/charts.ts: charts drawn as inline SVG at build time, enhanced by chart-explorer without a chart library.
 //
 // Each chart has one series, so there is no legend: the figure's caption names it, every bar carries its value as
 // text, and the table beside it has the same figures. Colors come from the classes in src/pages/css/styles.css,
@@ -167,6 +167,8 @@ import { html, type SafeHtml } from "@bascik/bascik/html";
 import { money, shortPeriodLabel } from "./format.ts";
 
 export interface ChartItem {
+  /** Matches the table's row label, or a period's datetime. */
+  key?: string;
   label: string;
   /** A second line under the label of a column, such as the year. */
   sublabel?: string;
@@ -179,7 +181,7 @@ export interface ChartItem {
 
 const WIDTH = 640;
 /** The radius of a bar's rounded end. */
-const RADIUS = 4;
+const RADIUS = 7;
 /** Labels longer than this are cut, with the whole label in the bar's tooltip. */
 const LABEL_LENGTH = 20;
 
@@ -231,7 +233,7 @@ const emptyChart = (label: string): SafeHtml =>
 /** Horizontal bars, one row per item, for comparing named things such as formats or channels. */
 export function barChart(label: string, items: readonly ChartItem[]): SafeHtml {
   if (items.length === 0) return emptyChart(label);
-  const [labelWidth, valueWidth, row, thickness] = [150, 110, 34, 18];
+  const [labelWidth, valueWidth, row, thickness] = [150, 110, 44, 26];
   const plot = WIDTH - labelWidth - valueWidth;
   const max = largest(items);
   const height = items.length * row + 12;
@@ -239,7 +241,7 @@ export function barChart(label: string, items: readonly ChartItem[]): SafeHtml {
     const length = max === 0 ? 0 : round((drawable(item.value) / max) * plot);
     const y = 6 + index * row + (row - thickness) / 2;
     const middle = round(y + thickness / 2 + 4.5);
-    return html\`<g>
+    return html\`<g data-chart-key="\${item.key ?? item.label}">
       <title>\${item.label}: \${item.valueLabel}</title>
       <text
         class="chart-label"
@@ -299,7 +301,7 @@ export function columnChart(
       max === 0 ? 0 : round((drawable(item.value) / max) * (baseline - top));
     const center = round(side + slot * index + slot / 2);
     const name = item.sublabel ? \`\${item.label} \${item.sublabel}\` : item.label;
-    return html\`<g>
+    return html\`<g data-chart-key="\${item.key ?? name}">
       <title>\${name}: \${item.valueLabel}</title>
       \${
         length > 0
@@ -364,6 +366,7 @@ export const periodColumns = (
   periods.map(({ period, revenueCents }, index) => {
     const [month, year] = shortPeriodLabel(period).split(" ");
     return {
+      key: period,
       label: month,
       sublabel: year,
       value: revenueCents,
@@ -378,10 +381,10 @@ export const chartFigure = (
   chart: SafeHtml,
   table: SafeHtml,
 ): SafeHtml =>
-  html\`<figure class="chart-figure">
+  html\`<chart-explorer>
     <figcaption>\${caption}</figcaption>
     \${chart}\${table}
-  </figure>\`;
+  </chart-explorer>\`;
 `;
 
 /** `src/lib/csv.test.ts` */

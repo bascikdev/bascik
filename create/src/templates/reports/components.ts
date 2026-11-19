@@ -9,6 +9,102 @@
 import type { TemplateFile } from "../../scaffold.js";
 import { SKIP_LINK_CSS } from "./derived.js";
 
+const CHART_EXPLORER_HTML = `<!-- @bascik
+An SVG and its data table, with lightweight linked inspection. The complete chart and table work without scripts.
+-->
+<figure id="chart" class="chart-figure" data-testid="chart-explorer">
+  <div data-bascik-slot></div>
+  <p id="inspection" class="chart-inspection" data-testid="chart-explorer-inspection" hidden></p>
+</figure>
+<script type="text/typescript" src="chart-explorer.ts"></script>
+`;
+
+const CHART_EXPLORER_TS = `const root = document.getElementById("chart")!;
+const inspection = document.getElementById("inspection")!;
+const rows = new Map(
+  Array.from(root.querySelectorAll<HTMLTableRowElement>("tbody tr"), (row) => [
+    row.querySelector("time")?.getAttribute("datetime") ?? row.cells[0].textContent!.trim(),
+    row,
+  ]),
+);
+const entries = Array.from(root.querySelectorAll<SVGGElement>("svg > g"), (bar) => {
+  const row = rows.get(bar.dataset.chartKey!);
+  if (!row) throw new Error("Chart item has no matching table row: " + bar.dataset.chartKey);
+  const label = bar.querySelector("title")!.textContent!;
+  const header = row.cells[0];
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "chart-inspect";
+  button.setAttribute("aria-label", label + " (inspect)");
+  button.setAttribute("aria-pressed", "false");
+  button.setAttribute("data-testid", "chart-explorer-inspect");
+  header.append(button);
+  return { bar, row, button, label };
+});
+
+type Entry = (typeof entries)[number];
+let hovered: Entry | undefined;
+let focused: Entry | undefined;
+let pinned: Entry | undefined;
+const hint = "Hover bars. Select a row to pin; Escape to clear.";
+const render = () => {
+  const active = pinned ?? hovered ?? focused;
+  root.dataset.inspecting = String(Boolean(active));
+  inspection.textContent = active ? active.label : hint;
+  for (const entry of entries) {
+    entry.bar.dataset.active = String(entry === active);
+    entry.row.dataset.active = String(entry === active);
+    entry.button.setAttribute("aria-pressed", String(entry === pinned));
+  }
+};
+for (const entry of entries) {
+  for (const target of [entry.bar, entry.row]) {
+    target.addEventListener("pointerenter", () => {
+      hovered = entry;
+      render();
+    });
+  }
+  entry.row.addEventListener("focusin", () => {
+    focused = entry;
+    hovered = undefined;
+    render();
+  });
+  entry.row.addEventListener("focusout", (event) => {
+    if (event.relatedTarget instanceof Node && entry.row.contains(event.relatedTarget)) return;
+    focused = undefined;
+    render();
+  });
+  entry.button.addEventListener("click", () => {
+    pinned = pinned === entry ? undefined : entry;
+    render();
+  });
+}
+root.addEventListener("pointerleave", () => {
+  hovered = undefined;
+  render();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  pinned = hovered = focused = undefined;
+  render();
+});
+if (entries.length > 0) {
+  inspection.hidden = false;
+  render();
+}
+`;
+
+const CHART_EXPLORER_TEST_TS = `import { readFileSync } from "node:fs";
+import { expect, it } from "vitest";
+
+it("keeps the SVG and table in a semantic figure with inspection hidden until enhancement", () => {
+  const markup = readFileSync(new URL("./chart-explorer.html", import.meta.url), "utf8");
+  expect(markup).toMatch(/<figure\\s+id="chart"\\s+class="chart-figure"\\s+data-testid="chart-explorer"/);
+  expect(markup).toContain("data-bascik-slot");
+  expect(markup).toContain('data-testid="chart-explorer-inspection" hidden');
+});
+`;
+
 /** `src/components/period-comparison/period-comparison.html` */
 const PERIOD_COMPARISON_PERIOD_COMPARISON_HTML = `<!-- @bascik
 Every period side by side: totals, a chart and a table of revenue per period with the change from one to the next,
@@ -354,7 +450,7 @@ The charts of a report: revenue over the periods so far, by format and by channe
 build time, in a <figure> with a caption and a table of the same figures.
 Only for src/pages/reports/[period].html: it reads the report from the route.
 -->
-<section data-testid="report-charts">
+<section class="chart-grid" data-testid="report-charts">
   <h2>Charts</h2>
   <script data-bascik-build type="text/typescript">
     import { reportRoute } from "@/lib/reports.ts";
@@ -380,12 +476,12 @@ import { charts } from "./render.ts";
 const html = flat(
   readFileSync(new URL("./report-charts.html", import.meta.url), "utf8"),
 );
-const figures = (markup: string): string[] => markup.split("<figure").slice(1);
+const figures = (markup: string): string[] => markup.split("<chart-explorer>").slice(1);
 
 describe("report-charts component", () => {
   it("is a section with a heading that reads the report from the page's route", () => {
     expect(html).toMatch(
-      /<section data-testid="report-charts">\\s*<h2>Charts<\\/h2>/,
+      /<section class="chart-grid" data-testid="report-charts">\\s*<h2>Charts<\\/h2>/,
     );
     expect(html).toContain("charts(reportRoute(process.env.BASCIK_ROUTE))");
   });
@@ -668,6 +764,29 @@ const REPORT_NOTES_REPORT_NOTES_HTML = `<!-- @bascik
 The notes of a report: the period's own notes from its data file, the report's permanent link, and how the figures
 are calculated. Only for src/pages/reports/[period].html: it reads the report from the route.
 -->
+<style>
+  section {
+    margin-top: 32px;
+    padding: 24px;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--panel);
+    box-shadow: var(--sheen), var(--shadow);
+  }
+
+  h2 {
+    margin-top: 0;
+  }
+
+  @media print {
+    section {
+      padding: 0;
+      border: 0;
+      background: none;
+      box-shadow: none;
+    }
+  }
+</style>
 <section data-testid="report-notes">
   <h2>Notes and methodology</h2>
   <script data-bascik-build type="text/typescript">
@@ -803,7 +922,7 @@ from the route.
     }
   }
 </style>
-<nav aria-label="Other reports" data-testid="report-pager">
+<nav class="pager" aria-label="Other reports" data-testid="report-pager">
   <script data-bascik-build type="text/typescript">
     import { reportRoute } from "@/lib/reports.ts";
     import { pager } from "./render.ts";
@@ -825,7 +944,7 @@ const html = flat(
 describe("report-pager component", () => {
   it("is a named <nav> that reads its neighbors from the page's route", () => {
     expect(html).toContain(
-      '<nav aria-label="Other reports" data-testid="report-pager">',
+      '<nav class="pager" aria-label="Other reports" data-testid="report-pager">',
     );
     expect(html).toContain("pager(reportRoute(process.env.BASCIK_ROUTE))");
   });
@@ -1146,7 +1265,25 @@ const SITE_FOOTER_SITE_FOOTER_HTML = `<style>
 
   nav {
     display: flex;
-    gap: 20px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  a {
+    display: inline-block;
+    padding: 6px 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-decoration: none;
+  }
+
+  a:hover {
+    border-color: var(--border);
+    background: var(--surface);
+    color: var(--link);
   }
 
   @media print {
@@ -1204,8 +1341,9 @@ describe("site-footer component", () => {
 const SITE_HEADER_SITE_HEADER_HTML = `<style>
 ${SKIP_LINK_CSS}
   header {
-    background: var(--surface);
+    background: var(--panel);
     border-bottom: 1px solid var(--border);
+    box-shadow: var(--sheen), 0 2px 12px light-dark(rgb(45 57 86 / 3%), rgb(0 0 0 / 8%));
   }
 
   nav {
@@ -1215,21 +1353,72 @@ ${SKIP_LINK_CSS}
     gap: 8px 24px;
     max-width: var(--page);
     margin: 0 auto;
-    padding: 14px 24px;
+    padding: 16px 32px;
   }
 
   .brand {
-    font-weight: 700;
+    min-width: 0;
+    max-width: 100%;
+    font-weight: 650;
+    letter-spacing: -0.03em;
     color: var(--text);
+    overflow-wrap: anywhere;
     text-decoration: none;
+  }
+  .brand::before {
+    content: "";
+    display: inline-block;
+    width: 22px;
+    height: 22px;
+    margin-right: 10px;
+    border: 5px solid var(--chart);
+    border-radius: 8px;
+    vertical-align: middle;
+    transform: rotate(-12deg);
+    background: var(--lavender);
   }
 
   ul {
     display: flex;
-    gap: 20px;
+    flex-wrap: wrap;
+    gap: 4px;
     list-style: none;
     margin: 0 0 0 auto;
-    padding: 0;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-soft);
+    box-shadow: inset 0 1px 3px light-dark(rgb(45 57 86 / 4%), rgb(0 0 0 / 15%));
+  }
+
+  li a {
+    display: inline-block;
+    padding: 7px 14px;
+    border-radius: 10px;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-decoration: none;
+    border: 1px solid transparent;
+  }
+
+  li a:hover {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--link);
+    box-shadow: var(--sheen), 0 2px 4px rgb(0 0 0 / 5%);
+  }
+
+  nav a:focus-visible {
+    outline: 3px solid var(--link);
+    outline-offset: 3px;
+  }
+
+  @media (max-width: 700px) {
+    nav {
+      padding: 16px;
+      gap: 12px;
+    }
   }
 
   /* A printed report has no use for navigation. */
@@ -1334,6 +1523,12 @@ describe("site-meta component", () => {
 
 /** Everything under `src/components/` except `site-meta/site-meta.html`. */
 export const COMPONENT_FILES: TemplateFile[] = [
+  ["src/components/chart-explorer/chart-explorer.html", CHART_EXPLORER_HTML],
+  ["src/components/chart-explorer/chart-explorer.ts", CHART_EXPLORER_TS],
+  [
+    "src/components/chart-explorer/chart-explorer.test.ts",
+    CHART_EXPLORER_TEST_TS,
+  ],
   [
     "src/components/period-comparison/period-comparison.html",
     PERIOD_COMPARISON_PERIOD_COMPARISON_HTML,
