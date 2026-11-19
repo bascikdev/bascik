@@ -45,7 +45,7 @@ export const DOCS_STYLES_CSS = `${STYLES_CSS}
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface) var(--panel);
-  box-shadow: var(--sheen), 0 12px 28px -20px rgb(36 53 89 / 30%);
+  box-shadow: var(--sheen), var(--shadow);
 }
 @media (max-width: 1000px) {
   .docs-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 36px; }
