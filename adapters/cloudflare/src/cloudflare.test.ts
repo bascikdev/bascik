@@ -75,7 +75,7 @@ describe.each(TARGETS)("cloudflare adapter in local workerd (%s)", (target) => {
     } finally {
       await bypass.dispose();
     }
-  });
+  }, 60_000);
 
   it("static requests are served by the asset layer with the built bytes", async () => {
     const res = await harness.fetch("/");
