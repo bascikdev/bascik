@@ -31,11 +31,30 @@ export const DOCS_STYLES_CSS = `${STYLES_CSS}
   padding-top: 40px;
   padding-bottom: 72px;
 }
+.docs-layout > main {
+  min-width: 0;
+  padding: clamp(24px, 4vw, 40px);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface) var(--panel);
+  box-shadow: var(--sheen), var(--shadow);
+}
+.docs-layout > nav,
+.docs-layout > aside {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface) var(--panel);
+  box-shadow: var(--sheen), 0 12px 28px -20px rgb(36 53 89 / 30%);
+}
 @media (max-width: 1000px) {
   .docs-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 36px; }
 }
 @media (max-width: 760px) {
   .docs-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; padding-top: 20px; }
+  .docs-layout > main { padding: 24px 20px; border-radius: 16px; }
+  .docs-layout > nav,
+  .docs-layout > aside { padding: 14px; }
 }
 
 /* ── Rendered Markdown ── */
@@ -59,8 +78,9 @@ export const DOCS_STYLES_CSS = `${STYLES_CSS}
 .prose th { color: var(--text); font-weight: 600; }
 .prose td { color: var(--text-muted); }
 .prose blockquote {
-  background: var(--accent-dim); border: 1px solid rgba(211,255,141,0.22);
-  border-radius: var(--r); padding: 14px 18px;
+  background: var(--accent-dim); border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 12px; padding: 14px 18px;
 }
 .prose blockquote p { color: var(--text); margin: 0; }
 `;
