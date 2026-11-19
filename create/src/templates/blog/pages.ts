@@ -16,7 +16,11 @@ export const BLOG_CSS = `/* src/pages/css/blog.css: the blog's page column, post
   width: 100%;
   max-width: 760px;
   margin: 0 auto;
-  padding: 72px 28px;
+  padding: clamp(28px, 5vw, 56px);
+  background: var(--surface) var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: var(--sheen), var(--shadow);
 }
 
 /* ── Post lists (printed by postCards() in src/lib/posts.ts) ── */
@@ -80,7 +84,7 @@ export const BLOG_CSS = `/* src/pages/css/blog.css: the blog's page column, post
 .prose th { background: var(--surface); }
 
 @media (max-width: 640px) {
-  .page { padding: 48px 20px; }
+  .page { padding: 28px 20px; border-radius: 16px; }
 }
 `;
 

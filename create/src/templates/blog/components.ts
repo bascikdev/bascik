@@ -210,8 +210,12 @@ describe("site-intro component", () => {
 /** One post in a list: an `<article>` whose title, link, date, author and summary arrive as props from `postCards()` in `src/lib/posts.ts`. */
 export const POST_CARD_HTML = `<style>
 article {
-  padding: 20px 0;
-  border-bottom: 1px solid var(--border);
+  position: relative;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface) var(--panel);
+  box-shadow: var(--sheen), 0 12px 28px -20px rgb(36 53 89 / 30%);
 }
 h3 { margin: 0 0 4px; font-size: 1.2rem; }
 h3 a { color: var(--text); }
