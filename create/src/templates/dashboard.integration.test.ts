@@ -29,6 +29,7 @@ import {
   realpath,
   rm,
   symlink,
+  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
@@ -172,6 +173,7 @@ describe("dashboard template, built and served", () => {
 
     const output = await build(project);
     expect(output).toContain("Build complete");
+    expect(existsSync(join(project, "data/racing.db"))).toBe(false);
     const dist = join(project, "dist");
 
     const pages = (await filesUnder(dist)).filter((path) =>
@@ -236,7 +238,7 @@ describe("dashboard template, built and served", () => {
     expect(preorder).not.toContain("<svg");
   }, 120_000);
 
-  it("builds the same bytes twice: the data is seeded and nothing built reads the clock", async () => {
+  it("builds the same bytes with and without a seeded database", async () => {
     // One project, built twice in place: instance ids hash the source path,
     // so two copies of the project would differ for a reason that is not the data.
     const project = await scaffoldDashboard();
@@ -247,6 +249,11 @@ describe("dashboard template, built and served", () => {
     const firstBuild = new Map<string, Buffer>();
     for (const file of files)
       firstBuild.set(file, await readFile(join(dist, file)));
+
+    await execFileAsync(process.execPath, ["scripts/seed-database.ts"], {
+      cwd: project,
+    });
+    expect(existsSync(join(project, "data/racing.db"))).toBe(true);
 
     // The second build starts with no output and no cached script results, so every script runs again.
     await rm(dist, { recursive: true, force: true });
@@ -262,6 +269,23 @@ describe("dashboard template, built and served", () => {
         file,
       ).toBe(true);
   }, 180_000);
+
+  it("reports a corrupt database instead of silently using demo data", async () => {
+    const project = await scaffoldDashboard();
+    await writeFile(join(project, "data/racing.db"), "not a database");
+    await expect(
+      execFileAsync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          "await import(process.argv[1])",
+          pathToFileURL(join(project, "src/lib/racing-db.ts")).href,
+        ],
+        { cwd: project },
+      ),
+    ).rejects.toThrow(/not a database/i);
+  });
 
   it("renders the overview per request in a Cloudflare Worker, live tile included", async () => {
     const project = await scaffoldDashboard("cloudflare");

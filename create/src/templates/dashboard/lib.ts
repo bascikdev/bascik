@@ -239,7 +239,7 @@ const FALLBACK_ORDERS: readonly RacingOrder[] = Array.from({ length: 160 }, (_, 
 }).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
 
 interface SqliteModule {
-  DatabaseSync: new (path: URL) => {
+  DatabaseSync: new (path: URL | string) => {
     exec(sql: string): unknown;
     prepare(sql: string): {
       all(...params: unknown[]): unknown[];
@@ -251,26 +251,21 @@ interface SqliteModule {
 let TITLES_RESULT: readonly RacingTitle[] = FALLBACK_TITLES;
 let ORDERS_RESULT: readonly RacingOrder[] = FALLBACK_ORDERS;
 
-try {
-  if (typeof process !== "undefined" && typeof process.getBuiltinModule === "function") {
-    const sqlite = process.getBuiltinModule("node:sqlite") as SqliteModule | undefined;
-    if (sqlite?.DatabaseSync) {
-      const databaseUrl = new URL("../../data/racing.db", import.meta.url);
-      const sqlUrl = new URL("../../data/racing.sql", import.meta.url);
-      const fs = process.getBuiltinModule("node:fs") as {
-        existsSync(path: URL): boolean;
-        readFileSync(path: URL, encoding: "utf8"): string;
-      };
-      if (!fs.existsSync(databaseUrl)) {
-        const seedDatabase = new sqlite.DatabaseSync(databaseUrl);
-        try {
-          seedDatabase.exec(fs.readFileSync(sqlUrl, "utf8"));
-        } finally {
-          seedDatabase.close();
-        }
-      }
-      const database = new sqlite.DatabaseSync(databaseUrl);
+if (typeof process !== "undefined" && typeof process.getBuiltinModule === "function" && typeof import.meta.url === "string" && import.meta.url.startsWith("file:")) {
+  const sqlite = process.getBuiltinModule("node:sqlite") as SqliteModule | undefined;
+  if (sqlite?.DatabaseSync) {
+    const databaseUrl = new URL("../../data/racing.db", import.meta.url);
+    const sqlUrl = new URL("../../data/racing.sql", import.meta.url);
+    const fs = process.getBuiltinModule("node:fs") as {
+      existsSync(path: URL): boolean;
+      readFileSync(path: URL, encoding: "utf8"): string;
+    };
+    const seeded = fs.existsSync(databaseUrl);
+    // Bundled serverless functions do not include the SQL file; use the demo data there.
+    if (seeded || fs.existsSync(sqlUrl) || import.meta.url.endsWith("/src/lib/racing-db.ts")) {
+      const database = new sqlite.DatabaseSync(seeded ? databaseUrl : ":memory:");
       try {
+        if (!seeded) database.exec(fs.readFileSync(sqlUrl, "utf8"));
         TITLES_RESULT = (database.prepare("SELECT slug, title, author, price_cents AS priceCents, stock, preorder FROM cars ORDER BY rowid").all() as Array<RacingTitle & { preorder: number }>).map((row) => ({ ...row, preorder: row.preorder === 1 }));
         ORDERS_RESULT = (database.prepare("SELECT id, date, customer, status FROM orders ORDER BY date DESC, id DESC").all() as Array<Omit<RacingOrder, "lines" | "totalCents">>).map((order) => {
           const lines = database.prepare("SELECT slug, quantity FROM order_lines WHERE order_id = ? ORDER BY slug").all(order.id) as { slug: string; quantity: number }[];
@@ -285,9 +280,6 @@ try {
       }
     }
   }
-} catch {
-  TITLES_RESULT = FALLBACK_TITLES;
-  ORDERS_RESULT = FALLBACK_ORDERS;
 }
 
 export const TITLES: readonly RacingTitle[] = TITLES_RESULT;
