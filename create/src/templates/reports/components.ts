@@ -181,7 +181,7 @@ describe("comparison", () => {
     for (const id of ["titles", "authors", "formats", "channels"])
       expect(markup).toContain(\`data-testid="period-comparison-\${id}"\`);
     expect(markup).toContain(
-      '<th scope="row">Porsche 911 RSR</th><td>Jordan Taylor</td><td class="num">22</td><td class="num">$374.00</td>',
+      '<th scope="row">Bascik Touring 11</th><td>Bascik Racing</td><td class="num">22</td><td class="num">$374.00</td>',
     );
   });
 
@@ -770,8 +770,8 @@ are calculated. Only for src/pages/reports/[period].html: it reads the report fr
     padding: 24px;
     border: 1px solid var(--border);
     border-radius: var(--r);
-    background: var(--panel);
-    box-shadow: var(--sheen), var(--shadow);
+    background: var(--surface);
+    box-shadow: var(--shadow);
   }
 
   h2 {
@@ -863,7 +863,7 @@ describe("notes", () => {
   it("escapes a note", () => {
     const markup = flat(notes(report("2026-07", [], [AWKWARD]), undefined));
     expect(markup).toContain(
-      "<li>Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</li>",
+      "<li>Bascik &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</li>",
     );
   });
 });
@@ -1061,7 +1061,7 @@ describe("summary", () => {
       "August 2026 brought in $263.97 from 15 units across 2 titles.",
     );
     expect(markup).toContain(
-      "<cite>Porsche 911 RSR</cite>by Jordan Taylor, with $204.00 (77.3% of revenue).",
+      "<cite>Bascik Touring 11</cite>by Bascik Racing, with $204.00 (77.3% of revenue).",
     );
   });
 
@@ -1102,7 +1102,7 @@ describe("summary", () => {
       ),
     );
     expect(markup).toContain(
-      "<cite>Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</cite>by &lt;i&gt;A&amp;B&lt;/i&gt;",
+      "<cite>Bascik &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</cite>by &lt;i&gt;A&amp;B&lt;/i&gt;",
     );
   });
 });
@@ -1224,7 +1224,7 @@ describe("tables", () => {
 
   it("lists each line with its format and channel", () => {
     expect(markup).toContain(
-      '<th scope="row">Porsche 962C</th><td>Hurley Haywood</td><td>LMDh</td><td>Daytona</td><td class="num">3</td><td class="num">$59.97</td>',
+      '<th scope="row">Bascik Prototype 62</th><td>Bascik Racing</td><td>LMDh</td><td>Daytona</td><td class="num">3</td><td class="num">$59.97</td>',
     );
   });
 
@@ -1236,7 +1236,7 @@ describe("tables", () => {
       tables(routeOf([report("2026-07", [sale({ title: AWKWARD })])])),
     );
     expect(awkward).toContain(
-      '<th scope="row">Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</th>',
+      '<th scope="row">Bascik &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</th>',
     );
     expect(awkward).not.toContain("<b>");
   });
@@ -1341,9 +1341,8 @@ describe("site-footer component", () => {
 const SITE_HEADER_SITE_HEADER_HTML = `<style>
 ${SKIP_LINK_CSS}
   header {
-    background: var(--panel);
+    background: var(--surface);
     border-bottom: 1px solid var(--border);
-    box-shadow: var(--sheen), 0 2px 12px light-dark(rgb(45 57 86 / 3%), rgb(0 0 0 / 8%));
   }
 
   nav {
@@ -1359,8 +1358,10 @@ ${SKIP_LINK_CSS}
   .brand {
     min-width: 0;
     max-width: 100%;
-    font-weight: 650;
-    letter-spacing: -0.03em;
+    font-family: var(--serif);
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
     color: var(--text);
     overflow-wrap: anywhere;
     text-decoration: none;
@@ -1368,45 +1369,37 @@ ${SKIP_LINK_CSS}
   .brand::before {
     content: "";
     display: inline-block;
-    width: 22px;
-    height: 22px;
-    margin-right: 10px;
-    border: 5px solid var(--chart);
-    border-radius: 8px;
+    width: 10px;
+    height: 10px;
+    margin-right: 12px;
+    border: 0;
+    border-radius: 2px;
     vertical-align: middle;
-    transform: rotate(-12deg);
-    background: var(--lavender);
+    background: var(--chart);
   }
 
   ul {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 8px 24px;
     list-style: none;
     margin: 0 0 0 auto;
-    padding: 3px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: var(--surface-soft);
-    box-shadow: inset 0 1px 3px light-dark(rgb(45 57 86 / 4%), rgb(0 0 0 / 15%));
+    padding: 0;
   }
 
   li a {
     display: inline-block;
-    padding: 7px 14px;
-    border-radius: 10px;
+    padding: 7px 0;
     color: var(--text-muted);
     font-size: 0.8rem;
     font-weight: 500;
     text-decoration: none;
-    border: 1px solid transparent;
+    border-bottom: 1px solid transparent;
   }
 
   li a:hover {
-    background: var(--panel);
-    border-color: var(--border);
+    border-color: var(--link);
     color: var(--link);
-    box-shadow: var(--sheen), 0 2px 4px rgb(0 0 0 / 5%);
   }
 
   nav a:focus-visible {

@@ -107,7 +107,7 @@ test.describe("Reports site", () => {
     await expect(page).toHaveURL("/reports/2026-10");
   });
 
-  test("report cards adapt to the viewport and pages do not overflow", async ({
+  test("report rows stack at every viewport and pages do not overflow", async ({
     page,
   }) => {
     for (const viewport of [
@@ -129,12 +129,8 @@ test.describe("Reports site", () => {
       expect(latestBox).not.toBeNull();
       expect(previousBox).not.toBeNull();
       if (!latestBox || !previousBox) throw new Error("Report cards are not visible");
-      if (viewport.width > 1000) {
-        expect(previousBox.x).toBeGreaterThan(latestBox.x + latestBox.width - 1);
-        expect(Math.abs(previousBox.y - latestBox.y)).toBeLessThan(1);
-      } else {
-        expect(previousBox.y).toBeGreaterThanOrEqual(latestBox.y + latestBox.height);
-      }
+      expect(Math.abs(previousBox.x - latestBox.x)).toBeLessThan(1);
+      expect(previousBox.y).toBeGreaterThanOrEqual(latestBox.y + latestBox.height - 1);
 
       for (const path of ["/", "/reports/2026-08", "/compare"]) {
         await page.goto(path);
@@ -178,7 +174,7 @@ test.describe("Reports site", () => {
     );
   });
 
-  test("charts form a responsive dashboard in light and dark mode", async ({ page }) => {
+  test("charts and tables adapt to light and dark mode", async ({ page }) => {
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme });
       for (const width of [1440, 768, 320]) {
@@ -205,18 +201,26 @@ test.describe("Reports site", () => {
     }
   });
 
-  test("dark mode keeps metric surfaces neutral and layered", async ({ page }) => {
+  test("dark mode gives every headline figure the same quiet treatment", async ({ page }) => {
     await page.emulateMedia({ colorScheme: "dark" });
     await page.goto("/reports/2026-10");
     const surfaces = await page.getByTestId("report-summary").locator("dl > div").evaluateAll(
       (items) => items.map((item) => {
         const style = getComputedStyle(item);
-        return { background: style.backgroundImage, shadow: style.boxShadow };
+        return {
+          background: style.backgroundImage,
+          shadow: style.boxShadow,
+          border: style.borderTopColor,
+          borderStyle: style.borderTopStyle,
+        };
       }),
     );
     expect(surfaces).toHaveLength(4);
     expect(new Set(surfaces.map((surface) => surface.background)).size).toBe(1);
-    expect(surfaces.every((surface) => surface.shadow !== "none")).toBe(true);
+    expect(surfaces.every((surface) => surface.background === "none")).toBe(true);
+    expect(surfaces.every((surface) => surface.shadow === "none")).toBe(true);
+    expect(new Set(surfaces.map((surface) => surface.border)).size).toBe(1);
+    expect(surfaces.every((surface) => surface.borderStyle === "solid")).toBe(true);
     expect(await page.locator("body").evaluate((body) => getComputedStyle(body).backgroundImage)).toBe("none");
   });
 
@@ -230,6 +234,8 @@ test.describe("Reports site", () => {
           return {
             panel: getComputedStyle(figure).backgroundImage,
             plot: getComputedStyle(plot).backgroundImage,
+            panelColor: getComputedStyle(figure).backgroundColor,
+            plotColor: getComputedStyle(plot).backgroundColor,
             panelShadow: getComputedStyle(figure).boxShadow,
             plotShadow: getComputedStyle(plot).boxShadow,
             bars: Array.from(plot.querySelectorAll("path"), (bar) => {
@@ -241,12 +247,13 @@ test.describe("Reports site", () => {
       );
       expect(treatments).toHaveLength(3);
       for (const treatment of treatments) {
-        expect(treatment.panel).not.toBe(treatment.plot);
-        expect(treatment.plot).not.toBe("none");
+        expect(treatment.panel).toBe("none");
+        expect(treatment.plot).toBe("none");
+        expect(treatment.panelColor).not.toBe(treatment.plotColor);
         expect(treatment.panelShadow).not.toBe("none");
-        expect(treatment.plotShadow).not.toBe("none");
+        expect(treatment.plotShadow).toBe("none");
         expect(treatment.bars.length).toBeGreaterThan(0);
-        expect(new Set(treatment.bars.map((bar) => bar.fill)).size).toBeGreaterThan(1);
+        expect(new Set(treatment.bars.map((bar) => bar.fill)).size).toBeLessThanOrEqual(2);
         for (const bar of treatment.bars) {
           expect(bar.fill).toMatch(/^rgb\\(/);
           expect(bar.filter).toBe("none");
@@ -264,9 +271,9 @@ test.describe("Reports site", () => {
       const previous = page.getByTestId("report-pager-previous");
       const before = await previous.evaluate((link) => {
         const style = getComputedStyle(link);
-        return { background: style.backgroundImage, border: style.borderColor };
+        return { background: style.backgroundColor, border: style.borderColor };
       });
-      expect(before.background).not.toBe("none");
+      expect(before.background).not.toBe("rgba(0, 0, 0, 0)");
       await previous.hover();
       expect(await previous.evaluate((link) => getComputedStyle(link).borderColor)).not.toBe(before.border);
       await previous.focus();
@@ -494,11 +501,11 @@ test.describe("Reports site", () => {
 
     expect(header).toBe("period,title,author,format,channel,units,revenue");
     expect(rows[0]).toMatch(
-      /^2026-08,Porsche 917K,Hurley Haywood,Vintage,Daytona,\\d+,\\d+\\.\\d{2}$/,
+      /^2026-08,Bascik Prototype 17,Bascik Racing,Vintage,Sebring,\\d+,\\d+\\.\\d{2}$/,
     );
     // A title with a comma is one quoted field.
     expect(
-      rows.some((row) => row.startsWith('2026-08,"Porsche 935 Moby Dick",')),
+      rows.some((row) => row.startsWith('2026-08,"Bascik GT 35, Long Tail",')),
     ).toBe(true);
 
     // One row per line of the report's last table, and the units add up to the headline figure.
@@ -621,45 +628,27 @@ const CSS_STYLES_CSS = `/* ── Tokens ── */
 
 :root {
   color-scheme: light dark;
-  --bg: light-dark(#e9edf3, #11151c);
-  --surface: light-dark(#f8fafd, #222833);
-  --surface-top: light-dark(#ffffff, #363e4c);
-  --surface-soft: light-dark(#f0f3f8, #282f3b);
-  --text: light-dark(#293247, #edf0f7);
-  --text-muted: light-dark(#616c80, #b3bbcb);
-  --border: light-dark(#d6deea, #404957);
-  --link: light-dark(#475cbd, #b1bfff);
-  --link-wash: light-dark(#edf0fc, #30394f);
-  --chart: light-dark(#7d8ee5, #a5b4ff);
-  --chart-muted: light-dark(#c9d2f6, #536798);
-  --highlight: light-dark(#475cbd, #b1bfff);
-  --blue: light-dark(#f0f3fc, #252931);
-  --pink: light-dark(#faf1f6, #252931);
-  --mint: light-dark(#eff8f6, #252931);
-  --lavender: light-dark(#f5f2fc, #252931);
-  --chart-mint: light-dark(#7dc5b8, #8ed3c6);
-  --chart-pink: light-dark(#d4a0c4, #dfafd2);
-  --chart-blue: light-dark(#92b6e4, #a5c7f1);
-  --in-oklab: ;
-  --panel: linear-gradient(155deg var(--in-oklab), var(--surface-top), var(--surface) 72%);
-  --plot: linear-gradient(160deg var(--in-oklab), light-dark(#eaf0fa, #202a3b), light-dark(#fcfdff, #151c27) 75%);
-  --sheen: inset 0 1px 0 light-dark(rgb(255 255 255 / 100%), rgb(255 255 255 / 18%)),
-    inset 1px 0 0 light-dark(rgb(255 255 255 / 80%), rgb(255 255 255 / 5%)),
-    inset 0 -1px 0 light-dark(rgb(211 220 236 / 60%), rgb(0 0 0 / 24%));
-  --shadow: 0 24px 48px -16px light-dark(rgb(36 53 89 / 24%), rgb(0 0 0 / 55%)),
-    0 6px 12px -4px light-dark(rgb(36 53 89 / 12%), rgb(0 0 0 / 30%)),
-    0 1px 2px light-dark(rgb(36 53 89 / 8%), rgb(0 0 0 / 20%));
+  --bg: light-dark(#f5f2ea, #151a16);
+  --surface: light-dark(#fffdf8, #202720);
+  --surface-soft: light-dark(#f0eee7, #252d26);
+  --text: light-dark(#282d28, #e8ece6);
+  --text-muted: light-dark(#697168, #b0b9ae);
+  --border: light-dark(#d9d8ce, #3c463c);
+  --link: light-dark(#315f45, #b2d0ad);
+  --link-wash: light-dark(#edf3e9, #2c3b2e);
+  --chart: light-dark(#537b56, #a5c79e);
+  --chart-muted: light-dark(#b6c5b2, #526650);
+  --highlight: light-dark(#315f45, #b2d0ad);
+  --panel: var(--surface);
+  --plot: var(--surface-soft);
+  --shadow: 0 12px 28px -22px light-dark(rgb(35 45 38 / 34%), rgb(0 0 0 / 62%));
   /* The skip link's background; its text is always dark. */
-  --accent: #dce5ff;
+  --accent: #dce8d9;
   --mono: "SF Mono", "Fira Code", Menlo, monospace;
-  --r: 22px;
-  --r-sm: 10px;
-  --page: 1280px;
-}
-@supports (background: linear-gradient(in oklab, #fff, #000)) {
-  :root {
-    --in-oklab: in oklab;
-  }
+  --serif: "Iowan Old Style", "Baskerville", "Times New Roman", serif;
+  --r: 14px;
+  --r-sm: 8px;
+  --page: 1200px;
 }
 
 /* ── Base ── */
@@ -691,18 +680,21 @@ h3 {
   margin: 0 0 12px;
 }
 h1 {
-  font-size: clamp(1.7rem, 3vw, 2.25rem);
-  font-weight: 650;
-  letter-spacing: -0.04em;
+  font-family: var(--serif);
+  font-size: clamp(2.2rem, 4.5vw, 3.8rem);
+  font-weight: 500;
+  letter-spacing: -0.035em;
 }
 h2 {
-  font-size: 1.1rem;
-  font-weight: 650;
-  letter-spacing: -0.025em;
+  font-family: var(--serif);
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
   margin-top: 32px;
 }
 h3 {
-  font-size: 1.05rem;
+  font-family: var(--serif);
+  font-size: 1.15rem;
   margin-top: 24px;
 }
 p {
@@ -741,9 +733,11 @@ cite {
 .masthead {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 32px;
-  align-items: center;
-  margin-bottom: 28px;
+  column-gap: 40px;
+  align-items: start;
+  margin-bottom: 40px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border);
 }
 .masthead > * {
   grid-column: 1;
@@ -752,40 +746,40 @@ cite {
 .masthead > :last-child {
   grid-column: 2;
   grid-row: 1 / span 3;
-  margin: 0;
+  justify-self: end;
+  margin: 4px 0 0;
 }
 .masthead h1 {
   margin-bottom: 8px;
 }
 .eyebrow {
   margin-bottom: 8px;
-  color: var(--highlight);
+  color: var(--link);
   font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.035em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 .lede {
-  max-width: 76ch;
+  max-width: 64ch;
   color: var(--text-muted);
-  font-size: 0.95rem;
-  line-height: 1.65;
+  font-size: 1rem;
+  line-height: 1.7;
   margin-bottom: 0;
 }
 
 .button {
   display: inline-block;
-  padding: 10px 16px;
+  padding: 11px 16px;
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
-  /* Keep an opaque base while hover removes the gradient. */
-  background: var(--surface) var(--panel);
+  background: var(--surface);
   color: var(--text);
   font: inherit;
   font-size: 0.82rem;
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
-  box-shadow: var(--sheen), 0 2px 4px light-dark(rgb(32 46 83 / 5%), rgb(0 0 0 / 15%));
 }
 .button:hover {
   background: var(--surface-soft);
@@ -793,67 +787,47 @@ cite {
   color: var(--link);
 }
 .masthead a.button {
-  border-color: light-dark(#5064be, #c0cbf4);
-  background: light-dark(#4b60bc, #b6c3ef) linear-gradient(180deg, light-dark(#687dd9, #dbe2ff), light-dark(#4b60bc, #b6c3ef));
-  color: light-dark(#fff, #202b4a);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 30%),
-    0 3px 7px light-dark(rgb(63 84 162 / 20%), rgb(0 0 0 / 20%));
+  border-color: light-dark(#315f45, #a7c7a2);
+  background: light-dark(#315f45, #cfe0ca);
+  color: light-dark(#fff, #202a21);
 }
 .masthead a.button:hover {
-  background: light-dark(#4559b4, #e1e7ff);
-  color: light-dark(#fff, #202b4a);
+  background: light-dark(#274d37, #e0eadc);
+  color: light-dark(#fff, #202a21);
 }
 
 /* ── Headline figures ── */
 .figures {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
-  gap: 16px;
-  margin: 20px 0 0;
+  gap: 20px;
+  margin: 24px 0 0;
 }
 .figure-item {
   min-width: 0;
-  padding: 22px;
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  background: linear-gradient(145deg, var(--surface-top), var(--blue));
-  box-shadow: var(--sheen), var(--shadow);
-}
-@media screen {
-  .figure-item:nth-child(4n + 2) {
-    background: linear-gradient(145deg, var(--surface-top), var(--mint));
-  }
-  .figure-item:nth-child(4n + 3) {
-    background: linear-gradient(145deg, var(--surface-top), var(--pink));
-  }
-  .figure-item:nth-child(4n + 4) {
-    background: linear-gradient(145deg, var(--surface-top), var(--lavender));
-  }
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 2px solid var(--link);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
 }
 .figure-item dt {
   color: var(--text-muted);
   font-size: 0.8rem;
-  font-weight: 500;
-}
-.figure-item dt::before {
-  content: "";
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 10px;
-  border-radius: 50%;
-  background: var(--highlight);
-  box-shadow: 0 0 0 4px var(--link-wash);
-  vertical-align: 1px;
+  font-weight: 600;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
 }
 .figure-item dd {
   margin: 0;
 }
 .figure-item .figure-value {
-  margin: 8px 0;
-  font-size: clamp(1.6rem, 2.7vw, 2.3rem);
-  font-weight: 600;
-  letter-spacing: -0.035em;
+  margin: 10px 0 6px;
+  font-family: var(--serif);
+  font-size: clamp(1.8rem, 3vw, 2.5rem);
+  font-weight: 500;
+  letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -866,28 +840,28 @@ cite {
 /* ── Report list ── */
 .report-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
   margin: 16px 0 0;
   padding: 0;
+  border-top: 1px solid var(--border);
   list-style: none;
 }
 .report-card {
-  height: 100%;
-  padding: 24px;
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  background: var(--panel);
-  box-shadow: var(--sheen), var(--shadow);
-}
-.report-cards > li:first-child .report-card {
-  border-color: light-dark(#cdd6f0, #525c78);
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  align-items: center;
+  gap: 32px;
+  padding: 24px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
 }
 .report-card h3 {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  font-size: 1.45rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
 }
 .report-card h3 a {
   display: flex;
@@ -911,24 +885,22 @@ cite {
   color: var(--link);
   text-decoration: none;
 }
-.report-card:hover {
-  border-color: light-dark(#c5cfe9, #515e78);
-}
 .report-card .figures {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 20px;
+  gap: 20px;
+  margin-top: 0;
   border: 0;
   background: none;
 }
 .report-card .figure-item {
-  padding: 16px;
+  padding: 12px 0 0;
   border: 0;
-  border-radius: 14px;
-  box-shadow: inset 0 1px 0 light-dark(rgb(255 255 255 / 80%), rgb(255 255 255 / 5%));
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
 }
 .report-card .figure-item .figure-value {
-  font-size: clamp(1.3rem, 2vw, 1.7rem);
+  font-size: clamp(1.25rem, 2vw, 1.65rem);
 }
 
 /* ── Charts ── */
@@ -948,20 +920,21 @@ cite {
   position: relative;
   min-width: 0;
   margin: 20px 0 0;
-  padding: 24px;
-  background: var(--panel);
+  padding: 22px;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r);
-  box-shadow: var(--sheen), var(--shadow);
+  box-shadow: var(--shadow);
 }
 .chart-grid > .chart-figure {
   margin: 0;
 }
 .chart-figure figcaption {
   margin-bottom: 20px;
-  font-size: 0.98rem;
+  font-family: var(--serif);
+  font-size: 1.15rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .chart {
@@ -969,12 +942,11 @@ cite {
   width: 100%;
   max-width: 720px;
   height: auto;
-  padding: 18px 12px;
-  border: 1px solid light-dark(#dce4f1, #111923);
-  border-radius: 16px;
+  padding: 16px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
   background: var(--plot);
-  box-shadow: inset 0 2px 5px light-dark(rgb(56 77 116 / 8%), rgb(0 0 0 / 28%)),
-    0 1px 0 light-dark(#fff, rgb(255 255 255 / 8%));
+  box-shadow: none;
 }
 @media (min-width: 701px) {
   .chart-grid > .chart-figure:not(:first-of-type) > .chart {
@@ -1001,15 +973,6 @@ cite {
   .chart-figure .data-table tr:has(.chart-inspect:focus-visible) {
     outline: 2px solid var(--link);
     outline-offset: -2px;
-  }
-  .chart > g:nth-of-type(4n + 2) .chart-bar {
-    fill: var(--chart-mint);
-  }
-  .chart > g:nth-of-type(4n + 3) .chart-bar {
-    fill: var(--chart-pink);
-  }
-  .chart > g:nth-of-type(4n + 4) .chart-bar {
-    fill: var(--chart-blue);
   }
 }
 .chart-bar-muted {
@@ -1069,20 +1032,19 @@ cite {
 /* A wide table scrolls inside its own box on a narrow screen, so the page never scrolls sideways. */
 .table-scroll {
   margin-top: 20px;
-  padding: 20px;
+  padding: 16px;
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--r);
-  background: var(--panel);
-  box-shadow: var(--sheen), var(--shadow);
+  background: var(--surface);
+  box-shadow: none;
 }
 .chart-figure > .table-scroll {
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: light-dark(rgb(255 255 255 / 65%), rgb(12 17 25 / 22%));
-  box-shadow: inset 0 1px 3px light-dark(rgb(41 58 93 / 4%), rgb(0 0 0 / 15%)),
-    0 1px 0 light-dark(rgb(255 255 255 / 80%), rgb(255 255 255 / 6%));
+  padding: 8px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
 }
 .chart-figure .data-table caption {
   position: absolute;
@@ -1161,10 +1123,9 @@ cite {
   min-height: 44px;
   padding: 10px 16px;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel);
+  border-radius: var(--r-sm);
+  background: var(--surface);
   color: var(--text);
-  box-shadow: var(--sheen), 0 2px 4px light-dark(rgb(32 46 83 / 4%), rgb(0 0 0 / 12%));
   font-size: 0.82rem;
   font-weight: 600;
   text-decoration: none;
@@ -1192,10 +1153,31 @@ cite {
 }
 
 @media screen and (prefers-reduced-motion: no-preference) {
+  @keyframes settle-in {
+    from {
+      scale: 0.97;
+      opacity: 0;
+    }
+    to {
+      scale: 1;
+      opacity: 1;
+    }
+  }
+
   a,
-  button,
-  .report-card {
-    transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  button {
+    transition:
+      color 160ms ease,
+      background-color 160ms ease,
+      border-color 160ms ease,
+      scale 150ms ease-out;
+  }
+  button:active,
+  .button:active {
+    scale: 0.97;
+  }
+  .masthead {
+    animation: settle-in 420ms ease-out both;
   }
 }
 
@@ -1227,15 +1209,15 @@ cite {
   .chart-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  .report-card,
+  .report-card {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
   .chart-figure {
     padding: 18px;
   }
   .report-card .figures {
-    gap: 8px;
-  }
-  .report-card .figure-item {
-    padding: 12px;
+    gap: 14px;
   }
 }
 
@@ -1341,20 +1323,16 @@ cite {
     font-size: 14pt;
   }
   .report-cards {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
   .figure-item,
   .report-card .figure-item,
   .report-card,
-  .report-cards > li:first-child .report-card,
   .chart-figure {
     background: none;
     color: #000;
     box-shadow: none;
     border-radius: 0;
-  }
-  .figure-item dt::before {
-    display: none;
   }
   .chart {
     padding: 0;

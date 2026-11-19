@@ -2,7 +2,7 @@
  * @module templates/reports
  *
  * The `reports` template: a reporting site. Each JSON file in `data/reports/`
- * is one period (the demo data is four months of Porsche endurance racing) and
+ * is one period (the demo data is four months of fictional Bascik endurance racing) and
  * becomes one report page through a dynamic route, with an executive summary,
  * charts drawn as inline SVG at build time, data tables and notes. A home page
  * lists the reports, a comparison page adds them up, a post-phase exec script

@@ -30,11 +30,10 @@ import { SKIP_LINK_CSS } from "./reports/derived.js";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /** A site name that would break a page, a script or a string if it were written unescaped. */
-const AWKWARD_NAME = `Porsche & Haywood <script>alert("x")</script> 'Racing' \\ $&`;
+const AWKWARD_NAME = `Bascik Example & Track Club <script>alert("x")</script> 'Racing' \\ $&`;
 /** A title that would break HTML, SVG or CSV if it were not escaped for each. */
-const AWKWARD_TITLE = `Porsche <b>& 963, $& 'n' more`;
-const AWKWARD_TITLE_HTML =
-  "Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more";
+const AWKWARD_TITLE = `Bascik <b>& 63, $& 'n' more`;
+const AWKWARD_TITLE_HTML = "Bascik &lt;b&gt;&amp; 63, $&amp; &#39;n&#39; more";
 
 const filesOf = (
   siteName = "My Reports",
@@ -114,7 +113,10 @@ describe("reports template", () => {
     });
     expect(file("scripts/seed-database.ts")).toContain("DatabaseSync");
     expect(file("src/lib/racing-db.ts")).toContain("node:sqlite");
-    expect(file("data/racing.sql")).toContain("Porsche 917K");
+    expect(file("data/racing.sql")).toContain("Bascik Prototype 17");
+    expect(file("data/racing.sql")).not.toMatch(
+      /Porsche|Hurley Haywood|Paul Newman|Jordan Taylor|Ross Bentley|Martini Racing/,
+    );
     expect(GITIGNORE).toContain("data/racing.db");
   });
 
@@ -348,7 +350,7 @@ describe("reports template site name", () => {
     expect(JSON.parse(literal ?? "null")).toBe(AWKWARD_NAME);
     for (const [path, text] of files)
       if (path !== "src/lib/site.ts") {
-        expect(text, path).not.toContain("Porsche & Haywood");
+        expect(text, path).not.toContain("Porsche");
         expect(text, path).not.toContain("alert(");
       }
   });
@@ -400,9 +402,16 @@ describe("reports template demo data", () => {
     expect(channels("2026-08")).not.toContain("Spa");
     const titles = (period: string): string[] =>
       demoSales(period).map((sale) => sale.title);
-    expect(titles("2026-08")).not.toContain("Porsche 963");
-    expect(titles("2026-09")).toContain("Porsche 963");
-    expect(titles("2026-07")).toContain("Porsche 917K & Martini Racing");
+    expect(titles("2026-08")).not.toContain("Bascik Prototype 63");
+    expect(titles("2026-09")).toContain("Bascik Prototype 63");
+    expect(titles("2026-07")).toContain("Bascik Prototype 17 & Track Club");
+    expect(
+      [...DATA_FILES.map(([, data]) => data), file("data/racing.sql")].join(
+        "\n",
+      ),
+    ).not.toMatch(
+      /Porsche|Hurley Haywood|Paul Newman|Jordan Taylor|Ross Bentley|Martini Racing/,
+    );
   });
 });
 
@@ -467,8 +476,8 @@ describe("reports template, generated site", () => {
   };
 
   const sale = (fields: Partial<Sale> = {}): Sale => ({
-    title: "Porsche 911 RSR",
-    author: "Jordan Taylor",
+    title: "Bascik Touring 11",
+    author: "Bascik Racing",
     format: "GTP",
     channel: "Sebring",
     units: 2,
@@ -739,8 +748,8 @@ describe("reports template, generated site", () => {
 
   it("quotes CSV fields that have a comma, a quote or a line break", () => {
     const { csvField } = site.csv;
-    expect(csvField("Porsche 911 RSR")).toBe("Porsche 911 RSR");
-    expect(csvField("Porsche 935 Moby Dick")).toBe("Porsche 935 Moby Dick");
+    expect(csvField("Bascik Touring 11")).toBe("Bascik Touring 11");
+    expect(csvField("Bascik GT 35 Long Tail")).toBe("Bascik GT 35 Long Tail");
     expect(csvField('The "Big" One')).toBe('"The ""Big"" One"');
     expect(csvField("two\nlines")).toBe('"two\nlines"');
     expect(csvField("two\r\nlines")).toBe('"two\r\nlines"');
@@ -798,14 +807,14 @@ describe("reports template, generated site", () => {
     // SVG: the bar's tooltip has the whole label, the text beside the bar a cut one.
     expect(pages).toContain(`<title>${AWKWARD_TITLE_HTML}: $34.00</title>`);
     expect(pages).toMatch(
-      /<text class="chart-label"[^>]*>Porsche &lt;b&gt;&amp; 963, \$…<\/text>/,
+      /<text class="chart-label"[^>]*>Bascik &lt;b&gt;&amp; 63, \$&amp; …<\/text>/,
     );
     expect(pages).toContain(
       "<title>&lt;Web&gt; &amp; &#39;Mail&#39;: $34.00</title>",
     );
 
     // CSV: one quoted field, with only the quotes doubled.
-    const quoted = `"Porsche <b>& 963, $& 'n' more"`;
+    const quoted = `"Bascik <b>& 63, $& 'n' more"`;
     expect(site.csv.reportsCsv(reports)).toBe(
       "period,title,author,format,channel,units,revenue\r\n" +
         `2026-07,${quoted},${quoted},${quoted},<Web> & 'Mail',2,34.00\r\n`,
@@ -824,7 +833,7 @@ describe("reports template, generated site", () => {
       }),
     );
     expect(head).toContain(
-      "<title>Racing reports - Porsche &amp; Haywood &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &#39;Racing&#39; \\ $&amp;</title>",
+      "<title>Racing reports - Bascik Example &amp; Track Club &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &#39;Racing&#39; \\ $&amp;</title>",
     );
     expect(head).not.toContain("<script>");
   });

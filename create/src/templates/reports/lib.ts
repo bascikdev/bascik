@@ -91,7 +91,7 @@ describe.each([
     expect(svg).toContain("&lt;i&gt;&amp;</text>");
     expect(svg).toContain("&quot;$&amp;&quot;</text>");
     expect(svg).toContain(
-      'aria-label="Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more"',
+      'aria-label="Bascik &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more"',
     );
     expect(svg).not.toContain("<i>");
   });
@@ -99,7 +99,7 @@ describe.each([
 
 describe("barChart", () => {
   it("cuts a long label and keeps the whole of it in the tooltip", () => {
-    const label = "Porsche 963 and Other Places";
+    const label = "Bascik Prototype 63 and Other Places";
     const svg = flat(barChart("Long", [item(label, 1)]));
     expect(svg).toContain(">A Field Guide to Qu…</text>");
     expect(svg).toContain(\`<title>\${label}: $1</title>\`);
@@ -150,7 +150,7 @@ describe("chartFigure", () => {
       chartFigure(AWKWARD, barChart("x", []), html\`<table></table>\`),
     );
     expect(figure).toMatch(
-      /^<chart-explorer>\\s*<figcaption>Porsche &lt;b&gt;&amp;/,
+      /^<chart-explorer>\\s*<figcaption>Bascik &lt;b&gt;&amp;/,
     );
     expect(figure).toMatch(/<\\/svg>\\s*<table><\\/table>\\s*<\\/chart-explorer>$/);
   });
@@ -394,14 +394,14 @@ import { AWKWARD, report, sale, twoReports } from "./testing.ts";
 
 describe("csvField", () => {
   it("leaves plain text and numbers as they are", () => {
-    expect(csvField("Porsche 911 RSR")).toBe("Porsche 911 RSR");
+    expect(csvField("Bascik Touring 11")).toBe("Bascik Touring 11");
     expect(csvField("Tom's <b> & co")).toBe("Tom's <b> & co");
     expect(csvField(12)).toBe("12");
     expect(csvField(0)).toBe("0");
   });
 
   it("quotes a field with a comma, a quote or a line break, doubling quotes", () => {
-    expect(csvField("Porsche 935 Moby Dick")).toBe('"Porsche 935 Moby Dick"');
+    expect(csvField("Bascik GT 35, Long Tail")).toBe('"Bascik GT 35, Long Tail"');
     expect(csvField('The "Big" One')).toBe('"The ""Big"" One"');
     expect(csvField("two\\nlines")).toBe('"two\\nlines"');
     expect(csvField("two\\r\\nlines")).toBe('"two\\r\\nlines"');
@@ -433,9 +433,9 @@ describe("reportsCsv", () => {
     expect(reportsCsv(twoReports())).toBe(
       [
         "period,title,author,format,channel,units,revenue",
-        "2026-07,Porsche 911 RSR,Jordan Taylor,GTP,Sebring,10,170.00",
-        "2026-08,Porsche 911 RSR,Jordan Taylor,GTP,Sebring,12,204.00",
-        "2026-08,Porsche 962C,Hurley Haywood,LMDh,Daytona,3,59.97",
+        "2026-07,Bascik Touring 11,Bascik Racing,GTP,Sebring,10,170.00",
+        "2026-08,Bascik Touring 11,Bascik Racing,GTP,Sebring,12,204.00",
+        "2026-08,Bascik Prototype 62,Bascik Racing,LMDh,Daytona,3,59.97",
         "",
       ].join("\\r\\n"),
     );
@@ -454,9 +454,9 @@ describe("reportsCsv", () => {
       ]),
     ]);
     expect(csv).toContain(
-      \`2026-07,"Porsche <b>& 963, $& 'n' more",'=cmd|' /C calc'!A0,GTP\`,
+      \`2026-07,"Bascik <b>& 963, $& 'n' more",'=cmd|' /C calc'!A0,GTP\`,
     );
-    expect(toCsv([[AWKWARD]])).toBe(\`"Porsche <b>& 963, $& 'n' more"\\r\\n\`);
+    expect(toCsv([[AWKWARD]])).toBe(\`"Bascik <b>& 963, $& 'n' more"\\r\\n\`);
   });
 });
 
@@ -603,7 +603,7 @@ describe("figureList", () => {
       '<dt>Revenue</dt><dd class="figure-value">$1.00</dd><dd class="figure-note">Up 5.0%</dd>',
     );
     expect(list).toContain('<dd class="figure-value">&lt;3</dd></div>');
-    expect(list).toContain("<dt>Porsche &lt;b&gt;&amp;");
+    expect(list).toContain("<dt>Bascik &lt;b&gt;&amp;");
     expect(list.split("figure-note")).toHaveLength(2);
   });
 });
@@ -1107,7 +1107,7 @@ const REPORTS_TS = `// src/lib/reports.ts: the one place that reads, checks, sor
 //     "period": "2026-07",
 //     "notes": ["The shop was closed on July 3 and July 4."],
 //     "sales": [
-//       { "title": "Porsche 911 RSR", "author": "Jordan Taylor", "format": "GTP", "channel": "Sebring",
+//       { "title": "Bascik Touring 11", "author": "Bascik Racing", "format": "GTP", "channel": "Sebring",
 //         "units": 12, "revenueCents": 20400 }
 //     ]
 //   }
@@ -1407,9 +1407,9 @@ describe("pageHead", () => {
 
   it("escapes the title and the description", () => {
     const head = String(pageHead({ title: AWKWARD, description: AWKWARD }));
-    expect(head).toContain("<title>Porsche &lt;b&gt;&amp; 963");
+    expect(head).toContain("<title>Bascik &lt;b&gt;&amp; 963");
     expect(head).toContain(
-      'content="Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more"',
+      'content="Bascik &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more"',
     );
     expect(head).not.toContain("<b>");
   });
@@ -1529,7 +1529,7 @@ describe("dataTable", () => {
       }),
     );
     expect(awkward).toContain(
-      '<th scope="row">Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</th>',
+      '<th scope="row">Bascik &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</th>',
     );
     expect(awkward).toContain('<td><time datetime="2026-07">July</time></td>');
     expect(awkward).not.toContain("<b>");
@@ -1542,7 +1542,7 @@ describe("salesTable", () => {
       salesTable(twoReports()[1].sales, "title", "By title", "titles"),
     );
     expect(table).toContain(
-      '<th scope="row">Porsche 911 RSR</th><td>Jordan Taylor</td><td class="num">12</td><td class="num">$204.00</td><td class="num">77.3%</td>',
+      '<th scope="row">Bascik Touring 11</th><td>Bascik Racing</td><td class="num">12</td><td class="num">$204.00</td><td class="num">77.3%</td>',
     );
     expect(table).toContain(
       '<th scope="row">Total</th><td></td><td class="num">15</td><td class="num">$263.97</td><td class="num">100.0%</td>',
@@ -1710,8 +1710,8 @@ import {
 
 /** One sales line, with any field replaced. */
 export const sale = (fields: Partial<Sale> = {}): Sale => ({
-  title: "Porsche 911 RSR",
-  author: "Jordan Taylor",
+  title: "Bascik Touring 11",
+  author: "Bascik Racing",
   format: "GTP",
   channel: "Sebring",
   units: 2,
@@ -1733,8 +1733,8 @@ export const twoReports = (): Report[] => [
     [
       sale({ units: 12, revenueCents: 20400 }),
       sale({
-        title: "Porsche 962C",
-        author: "Hurley Haywood",
+        title: "Bascik Prototype 62",
+        author: "Bascik Racing",
         format: "LMDh",
         channel: "Daytona",
         units: 3,
@@ -1752,7 +1752,7 @@ export const routeOf = (
 ): ReportRoute => reportRoutes(reports)[index];
 
 /** Text that would break HTML, SVG or CSV if it were not escaped for each. */
-export const AWKWARD = \`Porsche <b>& 963, $& 'n' more\`;
+export const AWKWARD = \`Bascik <b>& 963, $& 'n' more\`;
 
 /**
  * Markup on one line, with no space next to a tag, so a test never depends on how a template or a component file

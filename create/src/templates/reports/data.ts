@@ -1,9 +1,9 @@
 /**
  * @module templates/reports/data
  *
- * The demo data of the `reports` template: four months of Porsche endurance
+ * The demo data of the `reports` template: four months of fictional Bascik
  * racing reports, written to `data/reports/<period>.json`. Each file reads like
- * a race record: one line per car, driver, racing class and circuit.
+ * a race record: one line per car, team, racing class and circuit.
  */
 
 interface RaceCar {
@@ -37,53 +37,53 @@ const POINTS_CENTS: Record<Format, number> = {
   Vintage: 1999,
 };
 
-/** A Porsche racing field. One title has an `&` to verify HTML and CSV escaping. */
+/** A fictional racing field. One title has an `&` to verify HTML and CSV escaping. */
 const CARS: readonly RaceCar[] = [
   {
-    title: "Porsche 917K",
-    author: "Hurley Haywood",
+    title: "Bascik Prototype 17",
+    author: "Bascik Racing",
     pace: 46,
     formats: ["Vintage", "GTP"],
   },
   {
-    title: "Porsche 935 Moby Dick",
-    author: "Paul Newman",
+    title: "Bascik GT 35, Long Tail",
+    author: "Bascik Racing",
     pace: 38,
     formats: ["Vintage", "GT3"],
   },
   {
-    title: "Porsche 962C",
-    author: "Jordan Taylor",
+    title: "Bascik Prototype 62",
+    author: "Bascik Racing",
     pace: 31,
     formats: ["GTP", "GT3"],
   },
   {
-    title: "Porsche 917K & Martini Racing",
-    author: "Paul Newman",
+    title: "Bascik Prototype 17 & Track Club",
+    author: "Bascik Racing",
     pace: 27,
     formats: ["Vintage", "GTP"],
   },
   {
-    title: "Porsche 911 RSR",
-    author: "Ross Bentley",
+    title: "Bascik Touring 11",
+    author: "Bascik Racing",
     pace: 22,
     formats: ["GT3", "GTP"],
   },
   {
-    title: "Porsche 935",
-    author: "Jordan Taylor",
+    title: "Bascik Classic 35",
+    author: "Bascik Racing",
     pace: 17,
     formats: ["Vintage", "GT3"],
   },
   {
-    title: "Porsche 911 RSR",
-    author: "Jordan Taylor",
+    title: "Bascik Touring 11",
+    author: "Bascik Racing",
     pace: 14,
     formats: ["GT3", "GTP"],
   },
   {
-    title: "Porsche 963",
-    author: "Hurley Haywood",
+    title: "Bascik Prototype 63",
+    author: "Bascik Racing",
     pace: 34,
     formats: ["LMDh", "GTP"],
     from: 2,
@@ -97,7 +97,7 @@ const PERIODS: readonly { period: string; busy: number; notes: string[] }[] = [
     busy: 96,
     notes: [
       "The Watkins Glen paddock closed briefly on July 3.",
-      "A Hurley Haywood seminar on July 18 drew the largest vintage crowd.",
+      "A Bascik Racing workshop on July 18 drew the largest vintage crowd.",
     ],
   },
   {
@@ -111,7 +111,7 @@ const PERIODS: readonly { period: string; busy: number; notes: string[] }[] = [
     period: "2026-09",
     busy: 101,
     notes: [
-      "The Porsche 963 entered the September report after the Laguna Seca test.",
+      "The Bascik Prototype 63 entered the September report after the Laguna Seca test.",
     ],
   },
   {
@@ -233,12 +233,12 @@ export const RACING_SQL = `CREATE TABLE IF NOT EXISTS racing_entries (
 DELETE FROM racing_entries;
 
 INSERT INTO racing_entries (period, car, driver, circuit, racing_class, laps, points_cents) VALUES
-  ('2026-07', 'Porsche 917K', 'Hurley Haywood', 'Daytona', 'Vintage', 48, 2800),
-  ('2026-07', 'Porsche 935 Moby Dick', 'Paul Newman', 'Sebring', 'GTP', 38, 1700),
-  ('2026-08', 'Porsche 962C', 'Jordan Taylor', 'Watkins Glen', 'GTP', 31, 1700),
-  ('2026-09', 'Porsche 963', 'Hurley Haywood', 'Laguna Seca', 'LMDh', 34, 2800),
-  ('2026-10', 'Porsche 911 RSR', 'Ross Bentley', 'Le Mans', 'GT3', 22, 999),
-  ('2026-10', 'Porsche 963', 'Jordan Taylor', 'Spa', 'LMDh', 40, 2800);
+  ('2026-07', 'Bascik Prototype 17', 'Bascik Racing', 'Daytona', 'Vintage', 48, 2800),
+  ('2026-07', 'Bascik GT 35, Long Tail', 'Bascik Racing', 'Sebring', 'GTP', 38, 1700),
+  ('2026-08', 'Bascik Prototype 62', 'Bascik Racing', 'Watkins Glen', 'GTP', 31, 1700),
+  ('2026-09', 'Bascik Prototype 63', 'Bascik Racing', 'Laguna Seca', 'LMDh', 34, 2800),
+  ('2026-10', 'Bascik Touring 11', 'Bascik Racing', 'Le Mans', 'GT3', 22, 999),
+  ('2026-10', 'Bascik Prototype 63', 'Bascik Racing', 'Spa', 'LMDh', 40, 2800);
 `;
 
 export const RACING_DB_TS = `import { DatabaseSync } from "node:sqlite";
