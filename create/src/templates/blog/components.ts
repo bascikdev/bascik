@@ -215,7 +215,7 @@ article {
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface) var(--panel);
-  box-shadow: var(--sheen), 0 12px 28px -20px rgb(36 53 89 / 30%);
+  box-shadow: var(--sheen), var(--shadow);
 }
 h3 { margin: 0 0 4px; font-size: 1.2rem; }
 h3 a { color: var(--text); }
