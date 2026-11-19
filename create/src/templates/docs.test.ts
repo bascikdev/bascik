@@ -46,6 +46,7 @@ interface Heading {
 interface DocPage {
   slug: string;
   title: string;
+  searchText: string;
   html: string;
   headings: Heading[];
   sidebar: { label: string; links: { slug: string; href: string }[] }[];
@@ -153,27 +154,29 @@ describe("docs template", () => {
   it("writes outside src/ only its Markdown, its config and the e2e spec", () => {
     expect(pathsMatching(/^(?!src\/)/).sort()).toEqual([
       "bascik.config.ts",
-      "content/docs/braking-zones.md",
-      "content/docs/data-and-rules.md",
-      "content/docs/pit-operations.md",
-      "content/docs/porsche-classics.md",
-      "content/docs/race-weekend.md",
-      "content/docs/setup-and-tyres.md",
+      "content/docs/build-and-check.md",
+      "content/docs/components-and-design.md",
+      "content/docs/deployment.md",
+      "content/docs/getting-started.md",
+      "content/docs/navigation-and-search.md",
+      "content/docs/writing-pages.md",
       "e2e/app.spec.ts",
     ]);
   });
 
-  it("watches the Markdown and the helpers, and sets nothing else in the config", () => {
+  it("watches content and avoids caching scripts that read the docs directory", () => {
     const config = file("bascik.config.ts");
     expect(config).toContain('watchPaths: ["content/", "src/lib/"]');
+    expect(config).toContain('"src/components/docs-search/**"');
+    expect(config).toContain('"src/pages/docs/**"');
     // The site URL is per deployment (BASCIK_SITE_URL), and no other default is changed.
     expect(config).not.toContain("siteUrl");
-    expect(config.match(/^ {2}\w+:/gm)).toEqual(["  pipeline:"]);
+    expect(config.match(/^ {2}\w+:/gm)).toEqual(["  pipeline:", "  scripts:"]);
   });
 
   it("gives every component a test beside it and every helper with logic a test", () => {
     const components = pathsMatching(/^src\/components\/.*\.html$/);
-    expect(components).toHaveLength(10);
+    expect(components).toHaveLength(11);
     for (const path of components) {
       expect(files.has(path.replace(/\.html$/, ".test.ts")), path).toBe(true);
     }
@@ -209,7 +212,10 @@ describe("docs template markup", () => {
   it("writes every script as TypeScript", () => {
     for (const path of pathsMatching(/\.html$/)) {
       for (const tag of file(path).match(/<script\b[^>]*>/g) ?? []) {
-        expect(tag, path).toContain('type="text/typescript"');
+        expect(
+          tag.includes('type="text/typescript"') || /src="[^"]+\.ts"/.test(tag),
+          `${path}: ${tag}`,
+        ).toBe(true);
       }
     }
     expect(pathsMatching(/\.(js|mjs|cjs)$/)).toEqual([]);
@@ -290,7 +296,7 @@ describe("docs template markup", () => {
         file("src/components/home-hero/home-hero.html") +
           file("src/components/home-features/home-features.html"),
       ),
-    ).toEqual([1, 2, 3, 3, 3]);
+    ).toEqual([1, 2, 3, 3, 3, 3]);
     expect(levels(file("src/pages/404.html"))).toEqual([1]);
     expect(
       levels(file("src/components/docs-article/docs-article.html")),
@@ -430,19 +436,15 @@ describe("docs template sample content", () => {
     }
   });
 
-  it("uses race operations and Porsche engineering as its demo content", () => {
+  it("uses generic documentation topics without fictional attribution to real people or companies", () => {
     const markdown = pathsMatching(/^content\/docs\//)
       .map(file)
       .join("\n");
-    expect(markdown).toMatch(/Hurley Haywood/i);
-    expect(markdown).toMatch(/Paul Newman/i);
-    expect(markdown).toMatch(/Jordan Taylor/i);
-    expect(markdown).toMatch(/Ross Bentley/i);
-    expect(markdown).toMatch(
-      /Porsche 917|Porsche 935|Porsche 962|Porsche 963/i,
-    );
-    expect(markdown).toMatch(
-      /Daytona|Sebring|Watkins Glen|Laguna Seca|Le Mans|Spa/i,
+    expect(markdown).toMatch(/search/i);
+    expect(markdown).toMatch(/front matter/i);
+    expect(markdown).not.toMatch(/Porsche|race weekend|race operations/i);
+    expect(markdown).not.toMatch(
+      /Hurley Haywood|Paul Newman|Jordan Taylor|Ross Bentley/i,
     );
   });
 });
@@ -588,7 +590,7 @@ describe("docs template misuse", () => {
     }
     await writeFile(
       join(dir, "weather-notes.md"),
-      "---\ntitle: Weather notes\ndescription: How changing weather affects the race plan.\n---\n\n## Track state\n",
+      "---\ntitle: Weather notes\ndescription: How to update a guide when conditions change.\n---\n\n## Update the guide\n",
     );
     await expect(project.docs.getDocs(dir)).rejects.toThrow(
       'content/docs/weather-notes.md is not in the sidebar. Add "weather-notes" to SIDEBAR in src/lib/sidebar.ts, or delete the file.',
@@ -599,11 +601,11 @@ describe("docs template misuse", () => {
     const dir = join(tempRoot, "missing");
     await mkdir(dir);
     for (const path of pathsMatching(/^content\/docs\//)) {
-      if (path.endsWith("/porsche-classics.md")) continue;
+      if (path.endsWith("/deployment.md")) continue;
       await writeFile(join(dir, path.split("/").pop()!), file(path));
     }
     await expect(project.docs.getDocs(dir)).rejects.toThrow(
-      'src/lib/sidebar.ts: SIDEBAR lists "porsche-classics", but content/docs/porsche-classics.md does not exist. Create the file or remove the entry.',
+      'src/lib/sidebar.ts: SIDEBAR lists "deployment", but content/docs/deployment.md does not exist. Create the file or remove the entry.',
     );
   });
 

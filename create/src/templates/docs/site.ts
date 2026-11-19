@@ -15,74 +15,103 @@ import {
 // ─── Global CSS ───────────────────────────────────────────────────────────────
 
 /**
- * The default template's design system, plus the three-column docs layout and
- * the styles of rendered Markdown. Markdown arrives as build script output, so
- * it is styled from here under `.prose`, not from a component's scoped CSS.
+ * The docs site's own design system, three-column layout, and rendered
+ * Markdown styles. Markdown arrives as build output and is styled under
+ * `.prose`.
  */
 export const DOCS_STYLES_CSS = `${STYLES_CSS}
-/* ── Docs layout: sidebar, page, table of contents ── */
+.container { max-width: 1440px; }
+
+:root {
+  --bg: light-dark(#fff, #111317);
+  --surface: light-dark(#fff, #191c21);
+  --surface-top: light-dark(#fff, #20242a);
+  --elevated: light-dark(#f5f6f8, #22262d);
+  --border: light-dark(#e2e5e9, #343941);
+  --border-hover: light-dark(#bdc6d6, #596274);
+  --accent: light-dark(#315bd6, #a9bcff);
+  --accent-hover: light-dark(#2449bb, #c0ceff);
+  --accent-dim: light-dark(#eef2ff, #202a40);
+  --on-accent: light-dark(#fff, #151b2a);
+  --text: light-dark(#20242a, #edf0f5);
+  --text-muted: light-dark(#626974, #a9b0bb);
+  --panel: none;
+  --sheen: none;
+  --shadow: none;
+  --r: 10px;
+  --r-sm: 6px;
+}
+
+body { background: var(--surface); line-height: 1.65; }
+header { background: var(--surface); }
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 20px;
+  margin-top: 28px;
+}
+
+/* ── Docs layout ── */
 .docs-layout {
   flex: 1;
   width: 100%;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 200px;
-  gap: 48px;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 760px) minmax(160px, 220px);
+  justify-content: center;
+  gap: clamp(24px, 3vw, 48px);
   align-items: start;
-  padding-top: 40px;
-  padding-bottom: 72px;
+  padding-top: 36px;
+  padding-bottom: 88px;
 }
-.docs-layout > main {
+.docs-layout > main#main {
   min-width: 0;
-  padding: clamp(24px, 4vw, 40px);
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  background: var(--surface) var(--panel);
-  box-shadow: var(--sheen), var(--shadow);
+  padding: 0 clamp(12px, 2vw, 28px);
 }
-.docs-layout > nav,
-.docs-layout > aside {
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface) var(--panel);
-  box-shadow: var(--sheen), var(--shadow);
+
+@media (max-width: 1100px) {
+  .docs-layout { grid-template-columns: minmax(180px, 220px) minmax(0, 760px); }
+  .docs-layout > aside { display: none; }
 }
-@media (max-width: 1000px) {
-  .docs-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 36px; }
-}
+
 @media (max-width: 760px) {
-  .docs-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; padding-top: 20px; }
-  .docs-layout > main { padding: 24px 20px; border-radius: 16px; }
-  .docs-layout > nav,
-  .docs-layout > aside { padding: 14px; }
+  .docs-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; padding-top: 18px; padding-bottom: 56px; }
+  .docs-layout > main#main { padding: 16px 0; }
 }
 
 /* ── Rendered Markdown ── */
-.prose h2, .prose h3, .prose h4 { scroll-margin-top: 80px; }
-.prose h2 { font-size: 1.4rem; margin: 40px 0 12px; }
-.prose h3 { font-size: 1.1rem; margin: 28px 0 8px; }
+.title { font-size: clamp(2.2rem, 4vw, 3rem); line-height: 1.1; letter-spacing: -0.05em; margin-bottom: 14px; }
+.lead { font-size: 1.1rem; max-width: 68ch; margin-bottom: 40px; }
+.prose { max-width: 74ch; line-height: 1.75; }
+.prose h2, .prose h3, .prose h4 { scroll-margin-top: 96px; color: var(--text); }
+.prose h2 { font-size: 1.45rem; margin: 48px 0 14px; padding-top: 18px; border-top: 1px solid var(--border); }
+.prose h3 { font-size: 1.12rem; margin: 30px 0 10px; }
 .prose h4 { font-size: 1rem; margin: 24px 0 8px; }
-.prose p, .prose ul, .prose ol, .prose pre, .prose table, .prose blockquote { margin: 0 0 18px; }
-.prose ul, .prose ol { padding-left: 22px; color: var(--text-muted); }
-.prose li + li { margin-top: 4px; }
+.prose p, .prose ul, .prose ol, .prose pre, .prose table, .prose blockquote { margin: 0 0 20px; }
+.prose ul, .prose ol { padding-left: 24px; color: var(--text-muted); }
+.prose li + li { margin-top: 6px; }
+.prose strong { color: var(--text); }
+.prose :not(pre) > code { font-size: .88em; }
 .prose pre {
   background: var(--elevated); border: 1px solid var(--border);
-  border-radius: var(--r); padding: 16px 18px; overflow-x: auto;
+  border-radius: var(--r); padding: 18px 20px; overflow-x: auto;
 }
 .prose pre code {
   background: none; border: none; padding: 0;
-  color: var(--text); font-size: 0.85rem; line-height: 1.6;
+  color: var(--text); font-size: 0.86rem; line-height: 1.7;
 }
-.prose table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 0.9rem; }
-.prose th, .prose td { text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+.prose table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 0.92rem; }
+.prose th, .prose td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
 .prose th { color: var(--text); font-weight: 600; }
 .prose td { color: var(--text-muted); }
 .prose blockquote {
-  background: var(--accent-dim); border: 1px solid var(--border);
-  border-inline-start: 3px solid var(--accent);
-  border-radius: 12px; padding: 14px 18px;
+  margin-inline: 0; padding: 4px 0 4px 18px;
+  border-inline-start: 2px solid var(--accent);
 }
 .prose blockquote p { color: var(--text); margin: 0; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .docs-layout a { transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease; }
+}
 `;
 
 // ─── Components ───────────────────────────────────────────────────────────────
@@ -140,9 +169,16 @@ export const DOCS_SITE_HEADER_CSS = `${HEADER_BAR_CSS}.links {
   color: var(--text-muted);
   border-radius: var(--r-sm);
   text-decoration: none;
-  transition: color .15s, background .15s;
 }
 .link:hover { color: var(--text); background: var(--elevated); opacity: 1; }
+@media (prefers-reduced-motion: no-preference) {
+  .link { transition: color 150ms ease, background-color 150ms ease; }
+}
+@media (max-width: 640px) {
+  .container { padding: 0 16px; }
+  nav { justify-content: space-between; gap: 12px; }
+  .links { display: none; }
+}
 `;
 
 /** Sticky header: the skip link first, the site name, and a link to the docs. */
@@ -162,9 +198,260 @@ ${DOCS_SITE_HEADER_CSS}</style>
             <li><a href="\${DOCS_HOME}" class="link" data-testid="site-header-docs">Docs</a></li>
           </ul>\`;
       </script>
+      <docs-search />
     </nav>
   </div>
 </header>
+`;
+
+export const DOCS_SEARCH_CSS = `.root { position: relative; }
+.open {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  background: var(--surface);
+  font: inherit;
+  cursor: pointer;
+}
+.open:hover { color: var(--text); border-color: var(--border-hover); }
+.shortcut {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font: 0.75rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.dialog {
+  width: min(600px, calc(100vw - 32px));
+  max-height: min(680px, calc(100vh - 40px));
+  max-height: min(680px, calc(100dvh - 40px));
+  margin: 10vh auto 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 24px 80px rgb(15 23 42 / .2);
+}
+.dialog:modal { overscroll-behavior: contain; }
+.dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgb(15 23 42 / .44);
+}
+.dialog[open] { animation: dialog-in 150ms ease-out both; }
+@keyframes dialog-in {
+  from { opacity: 0; scale: .97; }
+  to { opacity: 1; scale: 1; }
+}
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px 16px;
+}
+.title { margin: 0; font-size: 1.05rem; }
+.close {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.field { display: block; padding: 0 24px 18px; }
+.label { display: block; margin-bottom: 8px; color: var(--text-muted); font-size: .85rem; }
+.input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border-hover);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+}
+.input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.results {
+  max-height: min(380px, 45vh);
+  margin: 0;
+  padding: 8px 12px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+.result + .result { border-top: 1px solid var(--border); }
+.link {
+  display: block;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  color: var(--text);
+  text-decoration: none;
+}
+.link:hover, .link:focus-visible { background: var(--accent-dim); opacity: 1; }
+.excerpt { display: block; margin-top: 3px; color: var(--text-muted); font-size: .85rem; }
+.status { min-height: 1.5em; margin: 0; padding: 10px 24px 16px; color: var(--text-muted); font-size: .85rem; }
+.open:active, .close:active { scale: .97; }
+@media (prefers-reduced-motion: no-preference) {
+  .open, .close { transition: scale 150ms ease-out, color 150ms ease, border-color 150ms ease, background-color 150ms ease; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog[open] { animation: none; }
+}
+@media (max-width: 760px) {
+  .open { padding: 8px 10px; }
+  .shortcut { display: none; }
+  .dialog { margin-top: 8vh; }
+}
+`;
+
+export const DOCS_SEARCH_HTML = `<style>
+${DOCS_SEARCH_CSS}</style>
+<div class="root" id="root" data-testid="docs-search">
+  <pre id="index" hidden><script data-bascik-build-once type="text/typescript">
+    import { json } from "@bascik/bascik/html";
+    import { getDocs } from "@/lib/docs.ts";
+    import { docHref } from "@/lib/sidebar.ts";
+
+    export default async () => {
+      const pages = await getDocs();
+      const records = pages.flatMap((page) => [
+        {
+          label: page.title,
+          href: docHref(page.slug),
+          excerpt: page.description,
+          searchText: page.title + " " + page.description + " " + page.searchText,
+        },
+        ...page.headings.map((heading) => ({
+          label: page.title + " · " + heading.text,
+          href: docHref(page.slug) + "#" + heading.id,
+          excerpt: heading.text,
+          searchText: page.title + " " + heading.text,
+        })),
+      ]);
+      return String(json(records));
+    };
+  </script></pre>
+  <button id="open" class="open" type="button" aria-haspopup="dialog" aria-controls="dialog" aria-label="Search documentation" data-testid="docs-search-open" hidden>
+    <span class="open-label">Search docs</span>
+    <kbd class="shortcut" aria-hidden="true">⌘ / Ctrl K</kbd>
+  </button>
+  <dialog id="dialog" class="dialog" aria-labelledby="title" data-testid="docs-search-dialog">
+    <div class="top">
+      <p id="title" class="title">Search the docs</p>
+      <button id="close" class="close" type="button" data-testid="docs-search-close">Close</button>
+    </div>
+    <label class="field">
+      <span class="label">Search pages and headings</span>
+      <input id="query" class="input" type="search" autocomplete="off" autofocus aria-controls="results" aria-describedby="status" data-testid="docs-search-input">
+    </label>
+    <ul id="results" class="results" data-testid="docs-search-results"></ul>
+    <p id="status" class="status" role="status">Type to search pages and headings.</p>
+  </dialog>
+  <script src="docs-search.ts"></script>
+</div>
+`;
+
+export const DOCS_SEARCH_SCRIPT_TS = `interface SearchRecord {
+  label: string;
+  href: string;
+  excerpt: string;
+  searchText: string;
+}
+
+const root = document.getElementById("root") as HTMLDivElement;
+const index = document.getElementById("index") as HTMLPreElement;
+const trigger = document.getElementById("open") as HTMLButtonElement;
+const dialog = document.getElementById("dialog") as HTMLDialogElement;
+const close = document.getElementById("close") as HTMLButtonElement;
+const input = document.getElementById("query") as HTMLInputElement;
+const results = document.getElementById("results") as HTMLUListElement;
+const status = document.getElementById("status") as HTMLParagraphElement;
+const records = JSON.parse(index.textContent ?? "[]") as SearchRecord[];
+
+const renderResults = (): void => {
+  const query = input.value.trim().toLocaleLowerCase();
+  results.replaceChildren();
+  if (!query) {
+    status.textContent = "Type to search pages and headings.";
+    return;
+  }
+
+  const matches = records
+    .filter((record) => record.searchText.toLocaleLowerCase().includes(query))
+    .slice(0, 8);
+  for (const match of matches) {
+    const item = document.createElement("li");
+    item.classList.add("result");
+    const link = document.createElement("a");
+    link.classList.add("link");
+    link.setAttribute("href", match.href);
+    link.setAttribute("data-testid", "docs-search-result");
+    link.append(document.createTextNode(match.label));
+    const excerpt = document.createElement("span");
+    excerpt.classList.add("excerpt");
+    excerpt.textContent = match.excerpt;
+    link.append(excerpt);
+    item.append(link);
+    results.append(item);
+  }
+  status.textContent = matches.length
+    ? \`\${matches.length} matching results shown.\`
+    : \`No results for “\${input.value.trim()}”.\`;
+};
+
+trigger.hidden = false;
+trigger.addEventListener("click", () => dialog.showModal());
+close.addEventListener("click", () => dialog.close());
+input.addEventListener("input", renderResults);
+document.addEventListener("keydown", (event: KeyboardEvent) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    if (!dialog.open) dialog.showModal();
+    input.focus();
+  }
+});
+`;
+
+export const DOCS_SEARCH_TEST = `import { describe, it, expect } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+describe('docs-search component', () => {
+  const path = join(process.cwd(), 'src/components/docs-search/docs-search.html');
+  const scriptPath = join(process.cwd(), 'src/components/docs-search/docs-search.ts');
+
+  it('uses a native dialog with a labeled search field and a hidden progressive-enhancement trigger', async () => {
+    const html = await readFile(path, 'utf8');
+    expect(html).toContain('<dialog id="dialog"');
+    expect(html).toContain('aria-labelledby="title"');
+    expect(html).toContain('type="search"');
+    expect(html).toContain("autofocus");
+    expect(html).toContain(".dialog:modal { overscroll-behavior: contain; }");
+    expect(html).toContain("overflow: hidden;\n  overscroll-behavior: contain;");
+    expect(html).toMatch(/<button[^>]*data-testid="docs-search-open"[^>]*hidden>/);
+    expect(html).toContain('<pre id="index" hidden>');
+  });
+
+  it('supports page content search, a keyboard shortcut, and safe text rendering', async () => {
+    const html = await readFile(path, 'utf8');
+    const script = await readFile(scriptPath, 'utf8');
+    expect(html).toContain('data-bascik-build-once');
+    expect(html).toContain('getDocs()');
+    expect(html).toContain('json(records)');
+    expect(script).toContain('event.metaKey || event.ctrlKey');
+    expect(script).toContain('event.key.toLowerCase() === "k"');
+    expect(script).toContain('document.createTextNode(match.label)');
+    expect(script).not.toContain('innerHTML');
+    expect(script).not.toContain('dialog.addEventListener("close"');
+  });
+});
 `;
 
 export const DOCS_SITE_HEADER_TEST = `import { describe, it, expect } from 'vitest';
@@ -187,6 +474,7 @@ describe('site-header component', () => {
     expect(html).toContain('SITE_NAME');
     expect(html).toContain('DOCS_HOME');
     expect(html).toContain('aria-label="Main"');
+    expect(html).toContain('<docs-search />');
   });
 });
 `;
@@ -240,7 +528,7 @@ export const HOME_HERO_HTML = `<section class="hero" data-testid="home-hero">
       import { SITE_NAME } from "@/lib/site.ts";
 
       export default () => html\`<h1>\${SITE_NAME}</h1>
-        <p>The race operations and engineering notes for braking, setup, pit work, telemetry, and Porsche prototypes.</p>
+        <p>A clear, searchable home for the guides, concepts, and decisions your team needs to keep moving.</p>
         <div class="hero-actions">
           <a href="\${DOCS_HOME}" class="btn btn-primary" data-testid="home-hero-start">Read the docs</a>
         </div>\`;
@@ -398,14 +686,14 @@ describe('docs-sidebar component', () => {
 });
 `;
 
-export const DOCS_ARTICLE_CSS = `.title { font-size: clamp(1.8rem, 4vw, 2.4rem); margin-bottom: 10px; }
+export const DOCS_ARTICLE_CSS = `.title { font-size: clamp(2.2rem, 4vw, 3rem); line-height: 1.1; letter-spacing: -0.05em; margin-bottom: 14px; }
 .lead { font-size: 1.05rem; margin-bottom: 32px; }
 `;
 
 /**
  * The page itself: its title, its description, and the rendered Markdown.
  * `data-bascik-preserve="id"` keeps the heading ids as written, so the table
- * of contents and a URL such as /docs/braking-zones#repeat-and-review reach them.
+ * of contents and a URL such as /docs/getting-started#start-the-dev-server reach them.
  */
 export const DOCS_ARTICLE_HTML = `<style>
 ${DOCS_ARTICLE_CSS}</style>
@@ -448,7 +736,7 @@ describe('docs-article component', () => {
 
 export const DOCS_TOC_CSS = `.toc {
   position: sticky;
-  top: 84px;
+  top: 96px;
   max-height: calc(100vh - 100px);
   overflow-y: auto;
   font-size: 0.85rem;
@@ -472,7 +760,15 @@ export const DOCS_TOC_CSS = `.toc {
   text-decoration: none;
 }
 .link:hover { color: var(--text); opacity: 1; }
+.link[aria-current="location"] {
+  margin-left: -1px;
+  border-left: 2px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+  padding-left: 11px;
+}
 .sub { padding-left: 24px; }
+.sub[aria-current="location"] { padding-left: 23px; }
 
 @media (max-width: 1000px) {
   .toc { display: none; }
@@ -482,7 +778,7 @@ export const DOCS_TOC_CSS = `.toc {
 /** "On this page": a link to each `##` and `###` heading of the page being built. */
 export const DOCS_TOC_HTML = `<style>
 ${DOCS_TOC_CSS}</style>
-<aside class="toc" data-testid="docs-toc">
+<aside class="toc" id="toc" data-testid="docs-toc">
   <script data-bascik-build type="text/typescript">
     import { html } from "@bascik/bascik/html";
     import { currentDoc } from "@/lib/docs.ts";
@@ -502,6 +798,45 @@ ${DOCS_TOC_CSS}</style>
     };
   </script>
 </aside>
+<script src="docs-toc.ts"></script>
+`;
+
+export const DOCS_TOC_SCRIPT_TS = `const toc = document.getElementById("toc") as HTMLElement;
+const links = Array.from(toc.getElementsByTagName("a"));
+const article = document.getElementsByTagName("article").item(0) as HTMLElement;
+const sectionIds = new Set(links.map((link) => link.hash.slice(1)));
+const headings = Array.from(article.querySelectorAll("h2, h3")).filter((heading) =>
+  sectionIds.has(heading.id),
+);
+
+const setCurrent = (id: string): void => {
+  for (const link of links) link.removeAttribute("aria-current");
+  links
+    .find((link) => link.hash.slice(1) === id)
+    ?.setAttribute("aria-current", "location");
+};
+
+const updateFromHash = (): void => {
+  const id = window.location.hash.slice(1);
+  if (id && headings.some((heading) => heading.id === id)) setCurrent(id);
+};
+
+if (headings.length > 0) setCurrent(headings[0].id);
+updateFromHash();
+window.addEventListener("hashchange", updateFromHash);
+
+if (typeof IntersectionObserver !== "undefined") {
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const current = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((left, right) => left.boundingClientRect.top - right.boundingClientRect.top)[0];
+      if (current) setCurrent((current.target as HTMLElement).id);
+    },
+    { rootMargin: "-100px 0px -70% 0px", threshold: 0 },
+  );
+  headings.forEach((heading) => observer.observe(heading));
+}
 `;
 
 export const DOCS_TOC_TEST = `import { describe, it, expect } from 'vitest';
@@ -522,6 +857,15 @@ describe('docs-toc component', () => {
     expect(html).toContain('href="#\${heading.id}"');
     expect(html).toContain('>\${heading.text}</a>');
     expect(html).not.toContain('raw(');
+  });
+
+  it('ships a keyboard-friendly scroll spy that marks the active section', async () => {
+    const html = await readFile(path, 'utf8');
+    const script = await readFile(join(process.cwd(), 'src/components/docs-toc/docs-toc.ts'), 'utf8');
+    expect(html).toContain('<script src="docs-toc.ts"></script>');
+    expect(script).toContain('new IntersectionObserver');
+    expect(script).toContain('setAttribute("aria-current", "location")');
+    expect(script).toContain('window.addEventListener("hashchange", updateFromHash)');
   });
 });
 `;
@@ -621,8 +965,8 @@ export const homeFeatures = (
   <div class="container">
     <p class="section-label">Start here</p>
     <h2>How this site works</h2>
-    <p>Replace the sample pages with your own: the sidebar, the table of contents, and the previous and next links follow.</p>
-    <div class="grid-3 mt-28">
+    <p>Replace the sample pages with your own. Navigation, search, section links, and pagination all follow your content.</p>
+    <div class="feature-grid">
       <feature-card data-testid="feature-markdown">
         <div data-bascik-slot="header">Markdown</div>
         <h3>One file per page</h3>
@@ -638,6 +982,11 @@ export const homeFeatures = (
         <h3>Built from your headings</h3>
         <p>Every <code>##</code> and <code>###</code> heading gets a link beside the page.</p>
       </feature-card>${options.adapter ? apiFeatureCard(HOST_RUNTIME[options.adapter]) : ""}
+      <feature-card data-testid="feature-search">
+        <div data-bascik-slot="header">Search</div>
+        <h3>Find a page or section</h3>
+        <p>Search page copy and headings from the header, or press <kbd>Ctrl K</kbd> or <kbd>⌘ K</kbd>.</p>
+      </feature-card>
     </div>
   </div>
 </section>
@@ -654,7 +1003,7 @@ describe('home-features component', () => {
     const html = await readFile(path, 'utf8');
     expect(html).toContain('<section class="section" data-testid="home-features">');
     expect(html).toContain('<h2>How this site works</h2>');
-    for (const card of ['feature-markdown', 'feature-sidebar', 'feature-toc']) {
+    for (const card of ['feature-markdown', 'feature-sidebar', 'feature-toc', 'feature-search']) {
       expect(html).toContain(\`<feature-card data-testid="\${card}">\`);
     }
   });
@@ -674,7 +1023,7 @@ export const DOCS_INDEX_PAGE = `<!doctype html>
     export default () =>
       pageHead({
         title: "Documentation",
-        description: "Race operations and engineering guides for braking, setup, pit work, telemetry, rules, and Porsche race cars.",
+        description: "A modern documentation starter with searchable Markdown guides, responsive navigation, and an active table of contents.",
       });
   </script>
 </head>
@@ -777,12 +1126,12 @@ test.describe('Docs site', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
     await page.getByTestId('home-hero-start').click();
-    await expect(page).toHaveURL('/docs/race-weekend');
-    await expect(page.getByRole('heading', { level: 1, name: 'Race weekend' })).toBeVisible();
+    await expect(page).toHaveURL('/docs/getting-started');
+    await expect(page.getByRole('heading', { level: 1, name: 'Getting started' })).toBeVisible();
   });
 
   test('skip link is the first stop and points at the page content', async ({ page }) => {
-    await page.goto('/docs/race-weekend');
+    await page.goto('/docs/getting-started');
     await page.keyboard.press('Tab');
     const skip = page.getByTestId('site-header-skip-link');
     await expect(skip).toBeFocused();
@@ -791,25 +1140,25 @@ test.describe('Docs site', () => {
   });
 
   test('sidebar lists both groups and marks only the current page', async ({ page }) => {
-    await page.goto('/docs/braking-zones');
-    await expect(page).toHaveTitle(/^Braking zones - /);
+    await page.goto('/docs/writing-pages');
+    await expect(page).toHaveTitle(/^Writing pages - /);
 
     const sidebar = page.getByTestId('docs-sidebar');
-    await expect(sidebar.getByText('Racecraft')).toBeVisible();
-    await expect(sidebar.getByText('Operations')).toBeVisible();
+    await expect(sidebar.getByText('Start here')).toBeVisible();
+    await expect(sidebar.getByText('Customize')).toBeVisible();
     await expect(sidebar.getByRole('link')).toHaveCount(6);
 
     const current = sidebar.locator('[aria-current="page"]');
     await expect(current).toHaveCount(1);
-    await expect(current).toHaveText('Braking zones');
+    await expect(current).toHaveText('Writing pages');
 
-    await sidebar.getByRole('link', { name: 'Porsche classic race engineering' }).click();
-    await expect(page).toHaveURL('/docs/porsche-classics');
-    await expect(page.getByTestId('docs-sidebar').locator('[aria-current="page"]')).toHaveText('Porsche classic race engineering');
+    await sidebar.getByRole('link', { name: 'Deployment' }).click();
+    await expect(page).toHaveURL('/docs/deployment');
+    await expect(page.getByTestId('docs-sidebar').locator('[aria-current="page"]')).toHaveText('Deployment');
   });
 
   test('table of contents links jump to the headings of the page', async ({ page }) => {
-    await page.goto('/docs/braking-zones');
+    await page.goto('/docs/getting-started');
     const toc = page.getByTestId('docs-toc-nav');
     const article = page.getByTestId('docs-article');
 
@@ -818,29 +1167,44 @@ test.describe('Docs site', () => {
     expect(hrefs.length).toBeGreaterThan(3);
     for (const href of hrefs) await expect(article.locator(\`[id="\${href!.slice(1)}"]\`)).toHaveCount(1);
 
-    await toc.getByRole('link', { name: 'Repeat and review' }).click();
-    await expect(page).toHaveURL('/docs/braking-zones#repeat-and-review');
-    await expect(article.getByRole('heading', { name: 'Repeat and review' })).toBeInViewport();
+    const activeSection = toc.getByRole('link', { name: 'Start the dev server' });
+    await activeSection.click();
+    await expect(page).toHaveURL('/docs/getting-started#start-the-dev-server');
+    await expect(article.getByRole('heading', { name: 'Start the dev server' })).toBeInViewport();
+    await expect(activeSection).toHaveAttribute('aria-current', 'location');
   });
 
   test('previous and next follow the sidebar order', async ({ page }) => {
-    await page.goto('/docs/race-weekend');
+    await page.goto('/docs/getting-started');
     await expect(page.getByTestId('docs-pagination-previous')).toHaveCount(0);
 
     await page.getByTestId('docs-pagination-next').click();
-    await expect(page).toHaveURL('/docs/braking-zones');
+    await expect(page).toHaveURL('/docs/writing-pages');
 
     await page.getByTestId('docs-pagination-previous').click();
-    await expect(page).toHaveURL('/docs/race-weekend');
+    await expect(page).toHaveURL('/docs/getting-started');
 
-    await page.goto('/docs/porsche-classics');
+    await page.goto('/docs/deployment');
     await expect(page.getByTestId('docs-pagination-next')).toHaveCount(0);
-    await expect(page.getByTestId('docs-pagination-previous')).toContainText('Data channels and race rules');
+    await expect(page.getByTestId('docs-pagination-previous')).toContainText('Build and check');
+  });
+
+  test('search opens from the keyboard, finds page content, and follows a result', async ({ page }) => {
+    await page.goto('/docs/getting-started');
+    await page.keyboard.press('Control+k');
+
+    const dialog = page.getByTestId('docs-search-dialog');
+    const input = page.getByTestId('docs-search-input');
+    await expect(dialog).toBeVisible();
+    await expect(input).toBeFocused();
+    await input.fill('front matter');
+    await page.getByTestId('docs-search-results').getByRole('link', { name: /Writing pages/ }).click();
+    await expect(page).toHaveURL('/docs/writing-pages');
   });
 
   test('sidebar collapses behind its toggle on a small screen', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/docs/race-weekend');
+    await page.goto('/docs/getting-started');
 
     const toggle = page.getByTestId('docs-sidebar-toggle');
     const menu = page.getByTestId('docs-sidebar-menu');
@@ -854,7 +1218,7 @@ test.describe('Docs site', () => {
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole('link', { name: 'Setup and tyres' })).toBeVisible();
+    await expect(menu.getByRole('link', { name: 'Writing pages' })).toBeVisible();
 
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -862,10 +1226,11 @@ test.describe('Docs site', () => {
   });
 
   test('sidebar stays open with no toggle on a wide screen', async ({ page }) => {
-    await page.goto('/docs/race-weekend');
+    await page.goto('/docs/getting-started');
     await expect(page.getByTestId('docs-sidebar-toggle')).toBeHidden();
     await expect(page.getByTestId('docs-sidebar-menu')).toBeVisible();
     await expect(page.getByTestId('docs-toc')).toBeVisible();
+    await expect(page.getByTestId('docs-search-open')).toBeVisible();
   });
 
   test('unknown page shows the 404 page', async ({ page }) => {

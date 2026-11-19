@@ -1,223 +1,188 @@
 /**
- * The docs template's race operations and engineering sample pages.
- * The order and grouping of the pages is `SIDEBAR` in `lib.ts`.
+ * The docs template's sample guides: real instructions for making the
+ * generated documentation site your own. The order and grouping live in
+ * `lib.ts`.
  */
 
-const RACE_WEEKEND = `---
-title: Race weekend
-description: Build a race-weekend plan that connects the track, the team, and the car.
+const GETTING_STARTED = `---
+title: Getting started
+description: Run the documentation site locally, build it, and replace the sample content.
 ---
 
-A race weekend starts as a shared operating plan, not a collection of setup guesses. Define the sessions, the conditions, and the decisions that each run must resolve.
+This starter gives you a documentation site with Markdown pages, generated routes, a sidebar, a table of contents, and search. Most content changes happen in \`content/docs/\`.
 
-## Plan the sessions
+## Start the dev server
 
-At Daytona, Sebring, Watkins Glen, Laguna Seca, Le Mans, or Spa, use the event schedule to separate learning runs from validation runs:
+Install the project dependencies, then run the development script:
 
-- **Practice:** establish reference laps and confirm tire behavior.
-- **Qualifying:** run the fuel, pressure, and traffic plan you can repeat.
-- **Warm-up:** verify the baseline and communicate changes early.
-- **Race:** execute the strategy, preserve the car, and update for conditions.
+\`\`\`sh
+npm install
+npm run dev
+\`\`\`
 
-### Record one baseline
+The site rebuilds when you edit a Markdown file or a watched helper in \`src/lib/\`.
 
-Keep every change tied to a timestamp and a lap range. The team should be able to answer what changed, why it changed, and which data channel showed the effect.
+## Build for production
 
-## Roles and handoffs
+Build a static site with a canonical URL for its metadata:
 
-The race engineer owns the session plan and the final setup change. The data engineer confirms sensor health and trace quality. The driver validates balance in clear running. The crew chief controls pit equipment and repeatable handoffs.
+\`\`\`sh
+BASCIK_SITE_URL=https://example.com npm run build
+\`\`\`
 
-> A fast lap without trustworthy weather, fuel, tire, and timing context is only a limited reference.
+### Set a site URL
 
-## Next steps
+For local builds, set \`BASCIK_SITE_URL\` in \`.env\`. The build uses it for canonical links and the generated sitemap.
 
-- [Braking zones](/docs/braking-zones) turns corner entry into repeatable markers.
-- [Setup and tyres](/docs/setup-and-tyres) connects qualifying targets to tire pressure and balance.
-- [Pit operations](/docs/pit-operations) keeps driver changes and pit stops synchronized.
+## Make it yours
+
+Replace the sample guides, choose their order in \`src/lib/sidebar.ts\`, and update the site name in \`src/lib/site.ts\`. Continue with [Writing pages](/docs/writing-pages) and [Navigation and search](/docs/navigation-and-search).
 `;
 
-const BRAKING_ZONES = `---
-title: Braking zones
-description: Mark braking points, release shapes, and corner-entry balance at representative circuits.
+const WRITING_PAGES = `---
+title: Writing pages
+description: Add Markdown guides with page metadata, useful headings, and working links.
 ---
 
-A useful braking zone has a start, a pressure build, a release, and a reference to the car's response. Mark it by distance or timing marker, not only by a subjective point on track.
+Each Markdown file in \`content/docs/\` becomes one page at \`/docs/<file-name>\`. The file name becomes the route, so use lowercase words joined by hyphens.
 
-## Build a reference
+## Add a page
 
-For a representative lap at Sebring or Watkins Glen, compare four traces:
+Start with front matter containing a title and a one-sentence description:
 
-| Channel | What to inspect |
-| :------ | :-------------- |
-| Brake pressure | Initial build, peak pressure, and release shape |
-| Steering angle | Entry speed, lock, and correction |
-| Longitudinal acceleration | Brake application and corner-entry stability |
-| Speed | Turn-in speed and minimum speed by sector |
+\`\`\`md
+---
+title: Account setup
+description: Configure an account and invite its first team member.
+---
 
-## Find the limit
+## Create an account
 
-At Laguna Seca, a late entrance can create front lock and extra time spent away from the ideal exit. At Le Mans, the priority is often a stable stop after high-speed load. Spa asks for a smooth transition in changing grip and elevation.
+Write the guide here.
+\`\`\`
 
-### Qualitative notes
+### Choose headings
 
-Record the driver's words beside the data: locked front, rear light, turn-in push, or throttle pickup hesitation. The description should identify the car state and the part of the corner, while the trace confirms the magnitude.
+The front-matter title is the page's only \`h1\`. Begin the body at \`##\`, then use \`###\` for subsections. Heading IDs are generated from their text and listed in the table of contents.
 
-## Repeat and review
+## Add a sidebar entry
 
-Run at least one comparable lap before changing brake balance or entry setup. Ross Bentley's race-driving method emphasizes observation and repeatable references, especially when the driver and engineer compare a plan with the actual lap.
+Add the file name without \`.md\` to a group in \`src/lib/sidebar.ts\`. The build reports a clear error if a page is missing from the sidebar, an entry has no file, or a page is listed twice.
+
+## Link between pages
+
+Use the route in an ordinary Markdown link, such as [Navigation and search](/docs/navigation-and-search). Keep links within the pages that exist in the sidebar.
 `;
 
-const SETUP_AND_TYRES = `---
-title: Setup and tyres
-description: Coordinate qualifying setups and tire management across weather, traffic, and stint length.
+const NAVIGATION_AND_SEARCH = `---
+title: Navigation and search
+description: Help readers move through the docs with a current sidebar, table of contents, and keyboard-accessible search.
 ---
 
-Qualifying setup and race setup are different compromises. A qualifying lap favors immediate grip and one controlled peak; a race stint favors stable temperatures, predictable degradation, and consistent traffic behavior.
+The navigation is generated from the page list, so readers can move between topics without losing their place.
 
-## Qualify with a plan
+## Sidebar
 
-Set a fuel and pressure target, a push lap, an out-lap, and a traffic contingency. Jordan Taylor's Grand Touring race work shows the value of preparation in high-traffic sessions, but the setup still has to suit the track and class.
+Groups and their order come from \`SIDEBAR\` in \`src/lib/sidebar.ts\`. The current page is marked with \`aria-current="page"\`. On a small screen, a button collapses the list; without JavaScript, the links remain visible.
 
-| Variable | Qualifying question | Race question |
-| :------- | :----------------- | :------------ |
-| Tire pressure | Is initial grip stable? | Is pressure still in its operating band? |
-| Spring and bar | Does turn-in respond quickly? | Does the car stay controlled over a stint? |
-| Fuel load | Is the lap run in low fuel? | Is the final stint predictable? |
-| Traffic | Can the lap avoid slow zones? | Can the car manage wake and passing? |
+## Search
 
-## Manage tire temperature
+The search index is built from page titles, descriptions, and headings. Results link directly to a page or a section, and are ordinary anchors that work with a keyboard.
 
-Read tire temperatures with pressure, lap time, and track conditions together. A high inner reading can be alignment or load, while a rise across the tire can reflect pace or track temperature.
+### Open search
 
-- Start with a documented pressure baseline.
-- Compare cold and hot values only under the same procedure.
-- Avoid a setup conclusion from one interrupted lap.
-- Plan a stop for the expected crossover, not only for fuel.
+Choose **Search docs** in the header or press \`Ctrl+K\` on Windows and Linux, or \`Cmd+K\` on macOS. The native dialog provides focus handling and closes with Escape.
 
-## Preserve the window
+## Table of contents
 
-At Daytona and Sebring, bumps and abrasive surfaces can raise tire load. At Watkins Glen and Spa, changing weather can make the first lap of a stint more representative than peak grip.
-
-> Tire management is a control system: inputs, feedback, limits, and adjustment.
+The on-page list links to each \`##\` and \`###\` heading. As a heading enters the reading area, the corresponding link receives \`aria-current="location"\`; every fragment link still works if JavaScript is unavailable.
 `;
 
-const PIT_OPERATIONS = `---
-title: Pit operations
-description: Standardize driver changes, pit stop procedures, timing, and handoffs.
+const COMPONENTS_AND_DESIGN = `---
+title: Components and design
+description: Change the documentation shell and its design tokens without rewriting page content.
 ---
 
-A pit stop is a repeatable system with independent jobs. The procedure should define who announces the stop, who prepares the equipment, and what stops the car from releasing unsafe or incomplete.
+The pages are composed from components in \`src/components/\`. The shared header, sidebar, article, table of contents, and pagination each have a focused job.
 
-## Driver changes
+## Change the shell
 
-A driver change should follow a named sequence:
+Edit \`site-header\` and \`site-footer\` for shared navigation and site information. Keep a skip link before the navigation and preserve the page's single \`main\` landmark.
 
-1. The arriving driver calls the timing board and the pit entry status.
-2. The crew positions the car within the marked stopping area.
-3. Belts, window, radio, and protective equipment are checked before the seat change.
-4. The driver signs in or follows the series procedure when required.
-5. The departing driver performs a full systems and visibility check before release.
+## Adjust the visual system
 
-Paul Newman and Hurley Haywood are examples of the endurance-racing tradition in which driver selection, preparation, and racecraft extend beyond raw lap time.
+The global tokens and documentation layout live in \`src/pages/css/styles.css\`. Components keep their own styles beside their markup. Change the tokens first, then tune the Markdown styles under \`.prose\`.
 
-## Pit stop checklist
+### Keep content readable
 
-| Phase | Control |
-| :---- | :------ |
-| Entry | Pit lane speed, service target, and traffic |
-| Arrival | Chocks, pit position, and fire-extinguisher readiness |
-| Service | Tire, fuel or charging, damage, and driver-change ownership |
-| Exit | Final belts, systems check, clear lane, and release confirmation |
+Use a narrow measure for long paragraphs, clear heading spacing, and horizontally scrollable code and tables. Check both color schemes and a narrow viewport after changing the layout.
 
-## Build repeatability
+## Add a reusable component
 
-Run the procedure from the same call line and use the same confirmations for practice and race stops. Measure elapsed time, service time, and lost time separately. A fast tire change means little if it follows a slow arrival or creates an unsafe release.
-
-## Series checks
-
-IMSA and WEC pit rules differ by event, class, and regulations. Confirm the current sporting and technical bulletin before any stop procedure is final.
+Use a component when a section has a clear job or markup repeats. Keep ordinary links and buttons semantic, and add \`data-testid\` hooks to the component root and interactive controls that tests need.
 `;
 
-const DATA_AND_RULES = `---
-title: Data channels and race rules
-description: Define telemetry channels that support decisions and track IMSA and WEC requirements.
+const BUILD_AND_CHECK = `---
+title: Build and check
+description: Validate routes, Markdown, generated output, and browser behavior before publishing.
 ---
 
-Race data must answer a question: is the car in a safe operating state, is its balance changing, and does the strategy match the remaining stint?
+Use the project's scripts to catch content and template mistakes before deployment.
 
-## Core data channels
+## Check structure
 
-| Channel group | Example channels | Decision supported |
-| :------------ | :--------------- | :---------------- |
-| Timing | Lap, sector, delta, pit loss | Pace and strategy |
-| Powertrain | RPM, gear, throttle, temperatures | Fuel and damage management |
-| Tires | Pressure, temperatures, wheel speed | Stint limits and pressures |
-| Chassis | Brake, steering, suspension, ride height | Balance and compliance |
-| Vehicle health | Battery, oil, water, sensor fault | Reliability and pit priority |
+\`\`\`sh
+npx bascik --check
+npm test
+\`\`\`
 
-Use a common unit and a named calibration for each channel. Sensor drops must appear as gaps or faults, not interpolated values that look like valid measurements.
+The docs helper validates front matter, heading levels, duplicate heading IDs, and agreement between Markdown files and the sidebar.
 
-## IMSA and WEC working rules
+## Build and inspect
 
-IMSA and WEC set the sporting, technical, safety, and stop procedures for their events. They publish series-specific balances of performance, pit-entry restrictions, full-course-yellow rules, tire rules, and homologation limits.
+\`\`\`sh
+BASCIK_SITE_URL=https://example.com npx bascik --build
+\`\`\`
 
-Before each session:
+Inspect \`dist/\` to confirm that the routes, titles, code blocks, and navigation were generated as expected.
 
-- Read the latest sporting and technical bulletin.
-- Confirm class, tire, refueling or charging, and driver-change requirements.
-- Review local yellow, red, and safety-car procedures.
-- Validate official timing data against the team telemetry.
+## Exercise navigation
 
-> Regulations change over time and by event. Use the current official documentation for every final decision.
+Run the browser tests after changing the sidebar, search, or table of contents:
 
-## Le Mans and the endurance format
+\`\`\`sh
+npx playwright test
+\`\`\`
 
-A Le Mans race plan must cover darkness, weather, safety-car timing, and traffic. Daytona and Sebring often demand repeatable pace through rough surfaces and changing grip. Spa and Laguna Seca reward a setup that remains predictable as fuel and tire load change.
+Test keyboard operation, small-screen layout, and links to headings as well as the initial page view.
 `;
 
-const PORSCHE_CLASSICS = `---
-title: Porsche classic race engineering
-description: Historical notes on the Porsche 917, 935, 962, and 963 across endurance racing.
+const DEPLOYMENT = `---
+title: Deployment
+description: Publish the generated static documentation or add an adapter for request-time features.
 ---
 
-Porsche prototypes and GT cars share an endurance-racing principle: keep the package stable long enough to make fewer errors than the opposition.
+The docs pages are static HTML by default. Choose a deployment path based on the capabilities the site needs.
 
-## Model notes
+## Publish a static site
 
-| Porsche | Engineering theme | Racing context |
-| :------ | :---------------- | :------------- |
-| 917 | Aerodynamics, engine power, and high-speed confidence | Early-1970s sports-prototype racing |
-| 935 | Turbocharged production-based competition with aero adaptation | IMSA and international GT racing |
-| 962 | Closed-cockpit endurance prototype with adaptable circuits | IMSA and World Sports-Prototype programs |
-| 963 | Modern hybrid prototype prepared for IMSA and WEC competition | Hypercar-era endurance racing |
+Run \`npm run build\` with \`BASCIK_SITE_URL\` set, then deploy the generated \`dist/\` directory to your static host.
 
-These are broad themes, not setup prescriptions. Weight, aerodynamics, tire, electronics, and homologation rules differ from period to period.
+## Add a deployment adapter
 
-## Drivers and preparation
+Create the project with \`--adapter cloudflare\` or \`--adapter netlify\` to include the matching adapter setup. The docs pages remain static, while the starter's API route demonstrates request-time code.
 
-Hurley Haywood is closely associated with Porsche endurance success, from major wins to the 917 and 935-era cars. Paul Newman brought high-level Hollywood visibility and serious amateur racing discipline to Porsche competition. Jordan Taylor represents the modern Porsche 963-era professional lineup, with IMSA and endurance-race experience. Ross Bentley connects racecraft instruction to repeatable observation and debriefing.
+## Verify the published site
 
-## Preserve an older car
-
-- Separate restoration requirements from race setup.
-- Protect period-specific parts and document any replacement.
-- Establish cooling, oil pressure, brake, and tire baselines before speed.
-- Use a modern data logger for trend analysis without changing the car to fit the logger.
-- Keep a current safety and technical inspection path for the event.
-
-## Circuit context
-
-The Daytona banking, Sebring bumps, Watkins Glen elevation, Laguna Seca corkscrew, Le Mans straights and night sectors, and Spa weather are useful reminders that one historical setup is not a universal setup.
-
-> Vintage Porsche notes should respect the car's original engineering and the safety rules of the event in which it competes.
+Open the deployed site and check a nested docs URL directly, its canonical URL, its sitemap, and its not-found response. Confirm that search and fragment navigation work in the production build.
 `;
 
 /** The sample pages by file name without `.md`, in sidebar order. */
 export const DOCS_SAMPLE_PAGES: Record<string, string> = {
-  "race-weekend": RACE_WEEKEND,
-  "braking-zones": BRAKING_ZONES,
-  "setup-and-tyres": SETUP_AND_TYRES,
-  "pit-operations": PIT_OPERATIONS,
-  "data-and-rules": DATA_AND_RULES,
-  "porsche-classics": PORSCHE_CLASSICS,
+  "getting-started": GETTING_STARTED,
+  "writing-pages": WRITING_PAGES,
+  "navigation-and-search": NAVIGATION_AND_SEARCH,
+  "components-and-design": COMPONENTS_AND_DESIGN,
+  "build-and-check": BUILD_AND_CHECK,
+  deployment: DEPLOYMENT,
 };

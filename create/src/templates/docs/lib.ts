@@ -18,6 +18,12 @@ export default defineConfig({
     // Rebuild pages in the dev server when a Markdown page or a helper in src/lib/ changes.
     watchPaths: ["content/", "src/lib/"],
   },
+  scripts: {
+    // These scripts read a directory, so their output cannot be safely cached by imported-file contents.
+    cache: {
+      exclude: ["src/components/docs-search/**", "src/pages/docs/**"],
+    },
+  },
 });
 `;
 
@@ -94,10 +100,10 @@ describe('pageHead', () => {
   });
 
   it('prints the page title with the site name, and the description', () => {
-    const head = String(pageHead({ title: 'Braking zones', description: 'Every braking reference.' }));
-    expect(head).toContain('<title>Braking zones - ');
-    expect(head).toContain('<meta name="description" content="Every braking reference." />');
-    expect(head).toContain('<meta property="og:description" content="Every field of a book." />');
+    const head = String(pageHead({ title: 'Getting started', description: 'Run the docs site locally.' }));
+    expect(head).toContain('<title>Getting started - ');
+    expect(head).toContain('<meta name="description" content="Run the docs site locally." />');
+    expect(head).toContain('<meta property="og:description" content="Run the docs site locally." />');
     expect(SITE_NAME.length).toBeGreaterThan(0);
   });
 
@@ -116,10 +122,10 @@ describe('pageHead', () => {
   it('builds the canonical URL from the site URL, the base and the page path', () => {
     process.env.BASCIK_SITE_URL = 'https://example.com/';
     process.env.BASCIK_BASE = '/racing/';
-    process.env.BASCIK_PAGE_PATH = '/docs/braking-zones';
+    process.env.BASCIK_PAGE_PATH = '/docs/getting-started';
     const head = String(pageHead({ title: 'A', description: 'B' }));
-    expect(head).toContain('<link rel="canonical" href="https://example.com/racing/docs/braking-zones" />');
-    expect(head).toContain('<meta property="og:url" content="https://example.com/racing/docs/braking-zones" />');
+    expect(head).toContain('<link rel="canonical" href="https://example.com/racing/docs/getting-started" />');
+    expect(head).toContain('<meta property="og:url" content="https://example.com/racing/docs/getting-started" />');
   });
 
   it('marks a noindex page and gives it no canonical URL', () => {
@@ -322,16 +328,16 @@ export interface SidebarGroup {
  */
 export const SIDEBAR: SidebarGroup[] = [
   {
-    label: "Racecraft",
-    pages: ["race-weekend", "braking-zones", "setup-and-tyres"],
+    label: "Start here",
+    pages: ["getting-started", "writing-pages", "navigation-and-search"],
   },
   {
-    label: "Operations",
-    pages: ["pit-operations", "data-and-rules", "porsche-classics"],
+    label: "Customize",
+    pages: ["components-and-design", "build-and-check", "deployment"],
   },
 ];
 
-/** The URL of a page: ${DOCS_CONTENT_DIR}/braking-zones.md is served at /docs/braking-zones. */
+/** The URL of a page: ${DOCS_CONTENT_DIR}/getting-started.md is served at /docs/getting-started. */
 export const docHref = (slug: string): string => \`/docs/\${slug}\`;
 
 /** Where "Docs" links go: the first page of the sidebar. */
@@ -365,6 +371,8 @@ export interface Doc {
   slug: string;
   title: string;
   description: string;
+  /** The source Markdown, used to search the full page body. */
+  searchText: string;
   /** The rendered Markdown. */
   html: string;
   /** The page's headings, for the "On this page" list. */
@@ -400,7 +408,13 @@ export function toDoc(slug: string, source: string): Doc {
   if (!title) throw new Error(\`\${where}: front matter needs a title\`);
   if (!description)
     throw new Error(\`\${where}: front matter needs a description\`);
-  return { slug, title, description, ...renderMarkdown(body, where) };
+  return {
+    slug,
+    title,
+    description,
+    searchText: body,
+    ...renderMarkdown(body, where),
+  };
 }
 
 /**
