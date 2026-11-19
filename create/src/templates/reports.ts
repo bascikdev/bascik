@@ -2,7 +2,7 @@
  * @module templates/reports
  *
  * The `reports` template: a reporting site. Each JSON file in `data/reports/`
- * is one period (the demo data is four months of a bookshop's sales) and
+ * is one period (the demo data is four months of Porsche endurance racing) and
  * becomes one report page through a dynamic route, with an executive summary,
  * charts drawn as inline SVG at build time, data tables and notes. A home page
  * lists the reports, a comparison page adds them up, a post-phase exec script
@@ -22,7 +22,13 @@ import type {
   TemplateFile,
 } from "../scaffold.js";
 import { COMPONENT_FILES } from "./reports/components.js";
-import { DATA_FILES } from "./reports/data.js";
+import {
+  DATA_FILES,
+  RACING_DB_TS,
+  RACING_DB_TEST_TS,
+  RACING_SQL,
+  SEED_DATABASE_TS,
+} from "./reports/data.js";
 import { SITE_META_HTML_WITHOUT_DESCRIPTION } from "./reports/derived.js";
 import { LIB_FILES } from "./reports/lib.js";
 import { SITE_FILES } from "./reports/site.js";
@@ -44,6 +50,10 @@ export const REPORTS_DIR = "data/reports";
 `;
 
 const reportsFiles = ({ siteName }: TemplateContext): TemplateFile[] => [
+  ["data/racing.sql", RACING_SQL],
+  ["scripts/seed-database.ts", SEED_DATABASE_TS],
+  ["src/lib/racing-db.ts", RACING_DB_TS],
+  ["src/lib/racing-db.test.ts", RACING_DB_TEST_TS],
   ...DATA_FILES,
   ["src/lib/site.ts", siteModule(siteName)],
   ...LIB_FILES,
@@ -67,6 +77,11 @@ const reportsDirectories = (context: TemplateContext): string[] => [
 /** A reporting site: one report page per data file, with charts, tables, CSV downloads and print styles. */
 export const REPORTS_TEMPLATE: StarterTemplate = {
   name: "reports",
+  scripts: {
+    "db:seed": "node scripts/seed-database.ts",
+    predev: "npm run db:seed",
+    prebuild: "npm run db:seed",
+  },
   summary:
     "A reporting site: dated reports from data files, SVG charts, CSV downloads, and print styles",
   directories: reportsDirectories,

@@ -71,8 +71,8 @@ console.log(\`[csv] wrote \${files.length} files to reports/\`);
 const APP_SPEC_TS = `import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 
-// These tests read the demo data in data/reports/ (July to October 2026). When you replace the data, change the
-// periods and titles named here to ones of your own.
+// These tests read the racing data in data/reports/ (July to October 2026). When you replace the data, change the
+// periods and cars named here to ones of your own.
 const MONEY = /\\$[\\d,]+\\.\\d{2}/;
 
 test.describe("Reports site", () => {
@@ -80,9 +80,9 @@ test.describe("Reports site", () => {
     page,
   }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/^Sales reports - /);
+    await expect(page).toHaveTitle(/^Racing reports - /);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-      "Sales reports",
+      "Racing reports",
     );
 
     const list = page.getByTestId("report-list");
@@ -111,9 +111,9 @@ test.describe("Reports site", () => {
     page,
   }) => {
     await page.goto("/reports/2026-08");
-    await expect(page).toHaveTitle(/^August 2026 sales report - /);
+    await expect(page).toHaveTitle(/^August 2026 racing report - /);
     const heading = page.getByRole("heading", { level: 1 });
-    await expect(heading).toHaveText("August 2026 sales report");
+    await expect(heading).toHaveText("August 2026 racing report");
     await expect(heading.locator("time")).toHaveAttribute(
       "datetime",
       "2026-08",
@@ -137,7 +137,7 @@ test.describe("Reports site", () => {
       ).toContainText(revenue);
 
     await expect(page.getByTestId("report-notes")).toContainText(
-      "No events were held in August",
+      "No race entries were filed in August",
     );
   });
 
@@ -223,11 +223,11 @@ test.describe("Reports site", () => {
 
     expect(header).toBe("period,title,author,format,channel,units,revenue");
     expect(rows[0]).toMatch(
-      /^2026-08,The Salt Cartographer,Imogen Vale,Hardcover,In store,\\d+,\\d+\\.\\d{2}$/,
+      /^2026-08,Porsche 917K,Hurley Haywood,Vintage,Daytona,\\d+,\\d+\\.\\d{2}$/,
     );
     // A title with a comma is one quoted field.
     expect(
-      rows.some((row) => row.startsWith('2026-08,"Bread, Smoke & Ash",')),
+      rows.some((row) => row.startsWith('2026-08,"Porsche 935 Moby Dick",')),
     ).toBe(true);
 
     // One row per line of the report's last table, and the units add up to the headline figure.
@@ -675,9 +675,9 @@ const INDEX_HTML = `<!doctype html>
       import { pageHead } from "@/lib/seo.ts";
       export default () =>
         pageHead({
-          title: "Sales reports",
+          title: "Racing reports",
           description:
-            "Monthly sales reports: revenue, units, top titles and authors, with charts, tables and CSV downloads.",
+            "Monthly racing reports: revenue, units, top titles and authors, with charts, tables and CSV downloads.",
         });
     </script>
   </head>
@@ -686,7 +686,7 @@ const INDEX_HTML = `<!doctype html>
     <main id="main" data-testid="home-main">
       <header class="masthead">
         <p class="eyebrow">Reports</p>
-        <h1>Sales reports</h1>
+        <h1>Racing reports</h1>
         <p class="lede">
           One report per month, built from the files in
           <code>data/reports/</code>. Open a report to read it, print it or save
@@ -724,7 +724,7 @@ const REPORTS_PERIOD_HTML = `<!doctype html>
       export default () => {
         const period = periodLabel(reportRoute(process.env.BASCIK_ROUTE).report.period);
         return pageHead({
-          title: \`\${period} sales report\`,
+          title: \`\${period} racing report\`,
           description: \`Sales report for \${period}: revenue, units, top titles and authors, by format and by channel.\`,
         });
       };
@@ -756,7 +756,7 @@ const COMPARE_HTML = `<!doctype html>
         pageHead({
           title: "Period comparison",
           description:
-            "Every sales report side by side: revenue and units per period, and sales by title, author, format and channel.",
+            "Every racing report side by side: revenue and units per period, and sales by title, author, format and channel.",
         });
     </script>
   </head>

@@ -85,7 +85,7 @@ describe("comparison", () => {
     for (const id of ["titles", "authors", "formats", "channels"])
       expect(markup).toContain(\`data-testid="period-comparison-\${id}"\`);
     expect(markup).toContain(
-      '<th scope="row">Understory</th><td>Imogen Vale</td><td class="num">22</td><td class="num">$374.00</td>',
+      '<th scope="row">Porsche 911 RSR</th><td>Jordan Taylor</td><td class="num">22</td><td class="num">$374.00</td>',
     );
   });
 
@@ -576,10 +576,10 @@ import type { ReportRoute } from "../../lib/reports.ts";
 
 /** The heading of a report page. The <report-actions> tag it returns is rendered like one written in a page. */
 export function masthead({ report }: ReportRoute): SafeHtml {
-  return html\`<p class="eyebrow">Monthly sales report</p>
+  return html\`<p class="eyebrow">Monthly racing report</p>
     <h1>
       <time datetime="\${report.period}">\${periodLabel(report.period)}</time>
-      sales report
+      racing report
     </h1>
     <report-actions
       data-bascik-prop-csv="\${csvPath(report.period)}"
@@ -625,7 +625,7 @@ describe("masthead", () => {
 
   it("makes the period the page's one <h1>, as a <time>", () => {
     expect(markup).toContain(
-      '<h1><time datetime="2026-08">August 2026</time>sales report</h1>',
+      '<h1><time datetime="2026-08">August 2026</time>racing report</h1>',
     );
     expect(markup.split("<h1")).toHaveLength(2);
   });
@@ -744,7 +744,7 @@ describe("notes", () => {
   it("escapes a note", () => {
     const markup = flat(notes(report("2026-07", [], [AWKWARD]), undefined));
     expect(markup).toContain(
-      "<li>Bread &lt;b&gt;&amp; &quot;Ash&quot;, $&amp; &#39;n&#39; more</li>",
+      "<li>Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</li>",
     );
   });
 });
@@ -942,7 +942,7 @@ describe("summary", () => {
       "August 2026 brought in $263.97 from 15 units across 2 titles.",
     );
     expect(markup).toContain(
-      "<cite>Understory</cite>by Imogen Vale, with $204.00 (77.3% of revenue).",
+      "<cite>Porsche 911 RSR</cite>by Jordan Taylor, with $204.00 (77.3% of revenue).",
     );
   });
 
@@ -983,7 +983,7 @@ describe("summary", () => {
       ),
     );
     expect(markup).toContain(
-      "<cite>Bread &lt;b&gt;&amp; &quot;Ash&quot;, $&amp; &#39;n&#39; more</cite>by &lt;i&gt;A&amp;B&lt;/i&gt;",
+      "<cite>Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</cite>by &lt;i&gt;A&amp;B&lt;/i&gt;",
     );
   });
 });
@@ -1105,7 +1105,7 @@ describe("tables", () => {
 
   it("lists each line with its format and channel", () => {
     expect(markup).toContain(
-      '<th scope="row">Night Ferry to Halvard</th><td>Tobias Renn</td><td>Audiobook</td><td>In store</td><td class="num">3</td><td class="num">$59.97</td>',
+      '<th scope="row">Porsche 962C</th><td>Hurley Haywood</td><td>LMDh</td><td>Daytona</td><td class="num">3</td><td class="num">$59.97</td>',
     );
   });
 
@@ -1117,7 +1117,7 @@ describe("tables", () => {
       tables(routeOf([report("2026-07", [sale({ title: AWKWARD })])])),
     );
     expect(awkward).toContain(
-      '<th scope="row">Bread &lt;b&gt;&amp; &quot;Ash&quot;, $&amp; &#39;n&#39; more</th>',
+      '<th scope="row">Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</th>',
     );
     expect(awkward).not.toContain("<b>");
   });

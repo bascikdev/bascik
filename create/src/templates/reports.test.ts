@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ADAPTERS, SITE_HEADER_CSS } from "../scaffold.js";
+import { ADAPTERS, GITIGNORE, SITE_HEADER_CSS } from "../scaffold.js";
 import { templateNamed, TEMPLATES } from "../templates.js";
 import { REPORTS_TEMPLATE, siteModule } from "./reports.js";
 import { DATA_FILES, DEMO_PERIODS, demoSales } from "./reports/data.js";
@@ -30,11 +30,11 @@ import { SKIP_LINK_CSS } from "./reports/derived.js";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /** A site name that would break a page, a script or a string if it were written unescaped. */
-const AWKWARD_NAME = `Vale & Renn <script>alert("x")</script> 'Books' \\ $&`;
+const AWKWARD_NAME = `Porsche & Haywood <script>alert("x")</script> 'Racing' \\ $&`;
 /** A title that would break HTML, SVG or CSV if it were not escaped for each. */
-const AWKWARD_TITLE = `Bread <b>& "Ash", $& 'n' more`;
+const AWKWARD_TITLE = `Porsche <b>& 963, $& 'n' more`;
 const AWKWARD_TITLE_HTML =
-  "Bread &lt;b&gt;&amp; &quot;Ash&quot;, $&amp; &#39;n&#39; more";
+  "Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more";
 
 const filesOf = (
   siteName = "My Reports",
@@ -89,6 +89,9 @@ describe("reports template", () => {
   it("writes the home page, the report route, the comparison, the 404, the data, the config and the CSV script", () => {
     const paths = [...filesOf().keys()];
     for (const path of [
+      "scripts/seed-database.ts",
+      "src/lib/racing-db.ts",
+      "data/racing.sql",
       "src/pages/index.html",
       "src/pages/reports/[period].html",
       "src/pages/compare.html",
@@ -101,6 +104,18 @@ describe("reports template", () => {
       ...DEMO_PERIODS.map((period) => `data/reports/${period}.json`),
     ])
       expect(paths).toContain(path);
+  });
+
+  it("seeds racing data through package scripts", () => {
+    expect(REPORTS_TEMPLATE.scripts).toEqual({
+      "db:seed": "node scripts/seed-database.ts",
+      predev: "npm run db:seed",
+      prebuild: "npm run db:seed",
+    });
+    expect(file("scripts/seed-database.ts")).toContain("DatabaseSync");
+    expect(file("src/lib/racing-db.ts")).toContain("node:sqlite");
+    expect(file("data/racing.sql")).toContain("Porsche 917K");
+    expect(GITIGNORE).toContain("data/racing.db");
   });
 
   it("writes the same static site with or without an adapter", () => {
@@ -333,7 +348,7 @@ describe("reports template site name", () => {
     expect(JSON.parse(literal ?? "null")).toBe(AWKWARD_NAME);
     for (const [path, text] of files)
       if (path !== "src/lib/site.ts") {
-        expect(text, path).not.toContain("Vale & Renn");
+        expect(text, path).not.toContain("Porsche & Haywood");
         expect(text, path).not.toContain("alert(");
       }
   });
@@ -348,7 +363,7 @@ describe("reports template site name", () => {
 });
 
 describe("reports template demo data", () => {
-  it("has four consecutive months of books and authors", () => {
+  it("has four consecutive months of race cars and drivers", () => {
     expect(DEMO_PERIODS).toEqual(["2026-07", "2026-08", "2026-09", "2026-10"]);
     expect(DATA_FILES.map(([path]) => path)).toEqual(
       DEMO_PERIODS.map((period) => `data/reports/${period}.json`),
@@ -381,13 +396,13 @@ describe("reports template demo data", () => {
   it("shows a quiet channel, a new title and a title that needs escaping", () => {
     const channels = (period: string): Set<string> =>
       new Set(demoSales(period).map((sale) => sale.channel));
-    expect(channels("2026-07")).toContain("Events");
-    expect(channels("2026-08")).not.toContain("Events");
+    expect(channels("2026-07")).toContain("Daytona");
+    expect(channels("2026-08")).not.toContain("Spa");
     const titles = (period: string): string[] =>
       demoSales(period).map((sale) => sale.title);
-    expect(titles("2026-08")).not.toContain("How to Read a River");
-    expect(titles("2026-09")).toContain("How to Read a River");
-    expect(titles("2026-07")).toContain("Bread, Smoke & Ash");
+    expect(titles("2026-08")).not.toContain("Porsche 963");
+    expect(titles("2026-09")).toContain("Porsche 963");
+    expect(titles("2026-07")).toContain("Porsche 917K & Martini Racing");
   });
 });
 
@@ -452,10 +467,10 @@ describe("reports template, generated site", () => {
   };
 
   const sale = (fields: Partial<Sale> = {}): Sale => ({
-    title: "Understory",
-    author: "Imogen Vale",
-    format: "Paperback",
-    channel: "Online",
+    title: "Porsche 911 RSR",
+    author: "Jordan Taylor",
+    format: "GTP",
+    channel: "Sebring",
     units: 2,
     revenueCents: 3400,
     ...fields,
@@ -707,7 +722,7 @@ describe("reports template, generated site", () => {
   });
 
   it("draws a chart with one bar, with no bars, and with nothing, as valid SVG", () => {
-    const item = { label: "Hardcover", value: 5, valueLabel: "$5.00" };
+    const item = { label: "Vintage", value: 5, valueLabel: "$5.00" };
     for (const chart of [site.charts.barChart, site.charts.columnChart]) {
       for (const items of [[item], [{ ...item, value: 0 }], []]) {
         const svg = flat(chart("Revenue", items));
@@ -724,8 +739,8 @@ describe("reports template, generated site", () => {
 
   it("quotes CSV fields that have a comma, a quote or a line break", () => {
     const { csvField } = site.csv;
-    expect(csvField("Understory")).toBe("Understory");
-    expect(csvField("Bread, Smoke & Ash")).toBe('"Bread, Smoke & Ash"');
+    expect(csvField("Porsche 911 RSR")).toBe("Porsche 911 RSR");
+    expect(csvField("Porsche 935 Moby Dick")).toBe("Porsche 935 Moby Dick");
     expect(csvField('The "Big" One')).toBe('"The ""Big"" One"');
     expect(csvField("two\nlines")).toBe('"two\nlines"');
     expect(csvField("two\r\nlines")).toBe('"two\r\nlines"');
@@ -783,14 +798,14 @@ describe("reports template, generated site", () => {
     // SVG: the bar's tooltip has the whole label, the text beside the bar a cut one.
     expect(pages).toContain(`<title>${AWKWARD_TITLE_HTML}: $34.00</title>`);
     expect(pages).toContain(
-      '<text class="chart-label" x="140" y="27.5" text-anchor="end">Bread &lt;b&gt;&amp; &quot;Ash&quot;, $…</text>',
+      '<text class="chart-label" x="140" y="27.5" text-anchor="end">Porsche &lt;b&gt;&amp; 963, $…</text>',
     );
     expect(pages).toContain(
       "<title>&lt;Web&gt; &amp; &#39;Mail&#39;: $34.00</title>",
     );
 
     // CSV: one quoted field, with only the quotes doubled.
-    const quoted = `"Bread <b>& ""Ash"", $& 'n' more"`;
+    const quoted = `"Porsche <b>& 963, $& 'n' more"`;
     expect(site.csv.reportsCsv(reports)).toBe(
       "period,title,author,format,channel,units,revenue\r\n" +
         `2026-07,${quoted},${quoted},${quoted},<Web> & 'Mail',2,34.00\r\n`,
@@ -804,12 +819,12 @@ describe("reports template, generated site", () => {
     expect(siteName).toBe(AWKWARD_NAME);
     const head = String(
       site.seo.pageHead({
-        title: "Sales reports",
+        title: "Racing reports",
         description: "All of them.",
       }),
     );
     expect(head).toContain(
-      "<title>Sales reports - Vale &amp; Renn &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &#39;Books&#39; \\ $&amp;</title>",
+      "<title>Racing reports - Porsche &amp; Haywood &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &#39;Racing&#39; \\ $&amp;</title>",
     );
     expect(head).not.toContain("<script>");
   });

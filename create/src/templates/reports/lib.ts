@@ -38,15 +38,15 @@ describe.each([
 ])("%s", (_name, chart) => {
   it("draws one bar per item, with its label and its value as text", () => {
     const svg = flat(
-      chart("Revenue by format", [item("Hardcover", 300), item("Ebook", 100)]),
+      chart("Revenue by format", [item("Vintage", 300), item("GT3", 100)]),
     );
     sound(svg);
     expect(svg).toContain('role="img"');
     expect(svg).toContain('aria-label="Revenue by format"');
     expect(bars(svg)).toBe(2);
-    for (const text of ["Hardcover", "Ebook", "$300", "$100"])
+    for (const text of ["Vintage", "GT3", "$300", "$100"])
       expect(svg).toContain(\`>\${text}</text>\`);
-    expect(svg).toContain("<title>Hardcover: $300</title>");
+    expect(svg).toContain("<title>Vintage: $300</title>");
   });
 
   it("draws a single item", () => {
@@ -91,7 +91,7 @@ describe.each([
     expect(svg).toContain("&lt;i&gt;&amp;</text>");
     expect(svg).toContain("&quot;$&amp;&quot;</text>");
     expect(svg).toContain(
-      'aria-label="Bread &lt;b&gt;&amp; &quot;Ash&quot;, $&amp; &#39;n&#39; more"',
+      'aria-label="Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more"',
     );
     expect(svg).not.toContain("<i>");
   });
@@ -99,7 +99,7 @@ describe.each([
 
 describe("barChart", () => {
   it("cuts a long label and keeps the whole of it in the tooltip", () => {
-    const label = "A Field Guide to Quiet Rooms and Other Places";
+    const label = "Porsche 963 and Other Places";
     const svg = flat(barChart("Long", [item(label, 1)]));
     expect(svg).toContain(">A Field Guide to Qu…</text>");
     expect(svg).toContain(\`<title>\${label}: $1</title>\`);
@@ -150,7 +150,7 @@ describe("chartFigure", () => {
       chartFigure(AWKWARD, barChart("x", []), html\`<table></table>\`),
     );
     expect(figure).toMatch(
-      /^<figure class="chart-figure">\\s*<figcaption>Bread &lt;b&gt;&amp;/,
+      /^<figure class="chart-figure">\\s*<figcaption>Porsche &lt;b&gt;&amp;/,
     );
     expect(figure).toMatch(/<\\/svg>\\s*<table><\\/table>\\s*<\\/figure>$/);
   });
@@ -391,14 +391,14 @@ import { AWKWARD, report, sale, twoReports } from "./testing.ts";
 
 describe("csvField", () => {
   it("leaves plain text and numbers as they are", () => {
-    expect(csvField("Understory")).toBe("Understory");
+    expect(csvField("Porsche 911 RSR")).toBe("Porsche 911 RSR");
     expect(csvField("Tom's <b> & co")).toBe("Tom's <b> & co");
     expect(csvField(12)).toBe("12");
     expect(csvField(0)).toBe("0");
   });
 
   it("quotes a field with a comma, a quote or a line break, doubling quotes", () => {
-    expect(csvField("Bread, Smoke & Ash")).toBe('"Bread, Smoke & Ash"');
+    expect(csvField("Porsche 935 Moby Dick")).toBe('"Porsche 935 Moby Dick"');
     expect(csvField('The "Big" One')).toBe('"The ""Big"" One"');
     expect(csvField("two\\nlines")).toBe('"two\\nlines"');
     expect(csvField("two\\r\\nlines")).toBe('"two\\r\\nlines"');
@@ -430,9 +430,9 @@ describe("reportsCsv", () => {
     expect(reportsCsv(twoReports())).toBe(
       [
         "period,title,author,format,channel,units,revenue",
-        "2026-07,Understory,Imogen Vale,Paperback,Online,10,170.00",
-        "2026-08,Understory,Imogen Vale,Paperback,Online,12,204.00",
-        "2026-08,Night Ferry to Halvard,Tobias Renn,Audiobook,In store,3,59.97",
+        "2026-07,Porsche 911 RSR,Jordan Taylor,GTP,Sebring,10,170.00",
+        "2026-08,Porsche 911 RSR,Jordan Taylor,GTP,Sebring,12,204.00",
+        "2026-08,Porsche 962C,Hurley Haywood,LMDh,Daytona,3,59.97",
         "",
       ].join("\\r\\n"),
     );
@@ -451,9 +451,9 @@ describe("reportsCsv", () => {
       ]),
     ]);
     expect(csv).toContain(
-      \`2026-07,"Bread <b>& ""Ash"", $& 'n' more",'=cmd|' /C calc'!A0,Paperback\`,
+      \`2026-07,"Porsche <b>& 963, $& 'n' more",'=cmd|' /C calc'!A0,GTP\`,
     );
-    expect(toCsv([[AWKWARD]])).toBe(\`"Bread <b>& ""Ash"", $& 'n' more"\\r\\n\`);
+    expect(toCsv([[AWKWARD]])).toBe(\`"Porsche <b>& 963, $& 'n' more"\\r\\n\`);
   });
 });
 
@@ -600,7 +600,7 @@ describe("figureList", () => {
       '<dt>Revenue</dt><dd class="figure-value">$1.00</dd><dd class="figure-note">Up 5.0%</dd>',
     );
     expect(list).toContain('<dd class="figure-value">&lt;3</dd></div>');
-    expect(list).toContain("<dt>Bread &lt;b&gt;&amp;");
+    expect(list).toContain("<dt>Porsche &lt;b&gt;&amp;");
     expect(list.split("figure-note")).toHaveLength(2);
   });
 });
@@ -1011,8 +1011,8 @@ describe("adding up", () => {
   it("groups by a field, highest revenue first, and every grouping adds up to the same total", () => {
     const { sales } = twoReports()[1];
     expect(groupBy(sales, "format")).toEqual([
-      { label: "Paperback", units: 12, revenueCents: 20400 },
-      { label: "Audiobook", units: 3, revenueCents: 5997 },
+      { label: "GTP", units: 12, revenueCents: 20400 },
+      { label: "LMDh", units: 3, revenueCents: 5997 },
     ]);
     for (const key of ["title", "author", "format", "channel"] as const)
       expect(totals(groupBy(sales, key) as never)).toEqual(totals(sales));
@@ -1104,7 +1104,7 @@ const REPORTS_TS = `// src/lib/reports.ts: the one place that reads, checks, sor
 //     "period": "2026-07",
 //     "notes": ["The shop was closed on July 3 and July 4."],
 //     "sales": [
-//       { "title": "Understory", "author": "Imogen Vale", "format": "Paperback", "channel": "Online",
+//       { "title": "Porsche 911 RSR", "author": "Jordan Taylor", "format": "GTP", "channel": "Sebring",
 //         "units": 12, "revenueCents": 20400 }
 //     ]
 //   }
@@ -1349,7 +1349,7 @@ import { AWKWARD } from "./testing.ts";
 afterEach(() => vi.unstubAllEnvs());
 
 const page = {
-  title: "July 2026 sales report",
+  title: "July 2026 racing report",
   description: "Revenue and units.",
 };
 
@@ -1371,12 +1371,12 @@ describe("pageHead", () => {
   it("writes the title with the site name, the description and the social tags", () => {
     vi.stubEnv("BASCIK_SITE_URL", "");
     const head = String(pageHead(page));
-    expect(head).toContain("<title>July 2026 sales report - ");
+    expect(head).toContain("<title>July 2026 racing report - ");
     expect(head).toContain(
       '<meta name="description" content="Revenue and units." />',
     );
     expect(head).toContain(
-      '<meta property="og:title" content="July 2026 sales report - ',
+      '<meta property="og:title" content="July 2026 racing report - ',
     );
     expect(head).toContain('<meta property="og:site_name"');
     expect(head).not.toContain("canonical");
@@ -1404,9 +1404,9 @@ describe("pageHead", () => {
 
   it("escapes the title and the description", () => {
     const head = String(pageHead({ title: AWKWARD, description: AWKWARD }));
-    expect(head).toContain("<title>Bread &lt;b&gt;&amp; &quot;Ash&quot;");
+    expect(head).toContain("<title>Porsche &lt;b&gt;&amp; 963");
     expect(head).toContain(
-      'content="Bread &lt;b&gt;&amp; &quot;Ash&quot;, $&amp; &#39;n&#39; more"',
+      'content="Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more"',
     );
     expect(head).not.toContain("<b>");
   });
@@ -1474,8 +1474,8 @@ describe("dataTable", () => {
       testId: "formats",
       columns: [{ header: "Format" }, { header: "Units", numeric: true }],
       rows: [
-        ["Hardcover", "12"],
-        ["Ebook", "3"],
+        ["Vintage", "12"],
+        ["GT3", "3"],
       ],
       totals: ["Total", "15"],
     }),
@@ -1486,7 +1486,7 @@ describe("dataTable", () => {
     expect(table).toContain('<th scope="col">Format</th>');
     expect(table).toContain('<th scope="col" class="num">Units</th>');
     expect(table).toContain(
-      '<th scope="row">Hardcover</th><td class="num">12</td>',
+      '<th scope="row">Vintage</th><td class="num">12</td>',
     );
     expect(table).toContain('data-testid="formats"');
   });
@@ -1526,7 +1526,7 @@ describe("dataTable", () => {
       }),
     );
     expect(awkward).toContain(
-      '<th scope="row">Bread &lt;b&gt;&amp; &quot;Ash&quot;, $&amp; &#39;n&#39; more</th>',
+      '<th scope="row">Porsche &lt;b&gt;&amp; 963, $&amp; &#39;n&#39; more</th>',
     );
     expect(awkward).toContain('<td><time datetime="2026-07">July</time></td>');
     expect(awkward).not.toContain("<b>");
@@ -1539,7 +1539,7 @@ describe("salesTable", () => {
       salesTable(twoReports()[1].sales, "title", "By title", "titles"),
     );
     expect(table).toContain(
-      '<th scope="row">Understory</th><td>Imogen Vale</td><td class="num">12</td><td class="num">$204.00</td><td class="num">77.3%</td>',
+      '<th scope="row">Porsche 911 RSR</th><td>Jordan Taylor</td><td class="num">12</td><td class="num">$204.00</td><td class="num">77.3%</td>',
     );
     expect(table).toContain(
       '<th scope="row">Total</th><td></td><td class="num">15</td><td class="num">$263.97</td><td class="num">100.0%</td>',
@@ -1554,7 +1554,7 @@ describe("salesTable", () => {
       '<th scope="col">Format</th><th scope="col" class="num">Units</th>',
     );
     expect(table).toContain(
-      '<th scope="row">Audiobook</th><td class="num">3</td>',
+      '<th scope="row">LMDh</th><td class="num">3</td>',
     );
   });
 
@@ -1707,10 +1707,10 @@ import {
 
 /** One sales line, with any field replaced. */
 export const sale = (fields: Partial<Sale> = {}): Sale => ({
-  title: "Understory",
-  author: "Imogen Vale",
-  format: "Paperback",
-  channel: "Online",
+  title: "Porsche 911 RSR",
+  author: "Jordan Taylor",
+  format: "GTP",
+  channel: "Sebring",
   units: 2,
   revenueCents: 3400,
   ...fields,
@@ -1730,10 +1730,10 @@ export const twoReports = (): Report[] => [
     [
       sale({ units: 12, revenueCents: 20400 }),
       sale({
-        title: "Night Ferry to Halvard",
-        author: "Tobias Renn",
-        format: "Audiobook",
-        channel: "In store",
+        title: "Porsche 962C",
+        author: "Hurley Haywood",
+        format: "LMDh",
+        channel: "Daytona",
         units: 3,
         revenueCents: 5997,
       }),
@@ -1749,7 +1749,7 @@ export const routeOf = (
 ): ReportRoute => reportRoutes(reports)[index];
 
 /** Text that would break HTML, SVG or CSV if it were not escaped for each. */
-export const AWKWARD = \`Bread <b>& "Ash", $& 'n' more\`;
+export const AWKWARD = \`Porsche <b>& 963, $& 'n' more\`;
 
 /**
  * Markup on one line, with no space next to a tag, so a test never depends on how a template or a component file
