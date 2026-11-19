@@ -38,9 +38,17 @@ html { scroll-padding-top: 76px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* A page whose content is not one full-width section: the book page and the checkout. */
-.page { max-width: 1140px; margin: 0 auto; padding: 72px 28px; }
+.page {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: clamp(24px, 5vw, 52px);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface) var(--panel);
+  box-shadow: var(--sheen), var(--shadow);
+}
 @media (max-width: 640px) {
-  .page { padding: 48px 28px; }
+  .page { padding: 28px 20px; border-radius: 16px; }
 }
 
 .status { min-height: 1.7em; color: var(--accent); }
@@ -86,7 +94,7 @@ ${SITE_HEADER_CSS}
   padding: 0 6px;
   border-radius: 999px;
   background: var(--accent);
-  color: #18191b;
+  color: var(--on-accent);
   font-size: 0.75rem;
   font-weight: 700;
   text-align: center;
@@ -264,9 +272,10 @@ One book in a list, linking to its page. The cover goes in the default slot.
     gap: 10px;
     height: 100%;
     padding: 16px;
-    background: var(--elevated);
+    background: var(--surface) var(--panel);
     border: 1px solid var(--border);
-    border-radius: var(--r);
+    border-radius: 18px;
+    box-shadow: var(--sheen), 0 16px 36px -24px rgb(36 53 89 / 32%);
   }
   h3 { margin: 6px 0 0; font-size: 1rem; }
   h3 a { color: var(--text); }
@@ -729,8 +738,8 @@ One required text field with its label and its error message.
     font: inherit;
     font-size: 0.9rem;
   }
-  input[aria-invalid="true"] { border-color: #ff8f8f; }
-  .error { margin: 6px 0 0; font-size: 0.85rem; color: #ff8f8f; }
+  input[aria-invalid="true"] { border-color: var(--error); }
+  .error { margin: 6px 0 0; font-size: 0.85rem; color: var(--error); }
 </style>
 <div class="field" data-testid="form-field">
   <label for="input" data-bascik-prop-label></label>
@@ -761,7 +770,7 @@ One required text field with its label and its error message.
 export const CHECKOUT_FORM_HTML = `<style>
   form { max-width: 560px; }
   .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
-  .alert { color: #ff8f8f; }
+  .alert { color: var(--error); }
   @media (max-width: 480px) {
     .pair { grid-template-columns: minmax(0, 1fr); }
   }

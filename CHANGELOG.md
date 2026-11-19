@@ -18,6 +18,8 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
+- `create-bascik`: shop pages and book cards now use the shared raised light/dark surfaces, with responsive padding and theme-aware form errors.
+
 - `create-bascik`: the starter and adapter variants use a shared light/dark design system, with a neutral canvas, raised cards, restrained periwinkle accents, visible keyboard focus, and motion that respects reader preferences.
 - Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).
 
