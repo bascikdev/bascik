@@ -1,0 +1,145 @@
+name: Template Workers
+
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/**"
+      - ".github/workflows/template-workers.yml"
+      - ".nvmrc"
+      - ".yarnrc.yml"
+      - "package.json"
+      - "yarn.lock"
+      - "create/**"
+      - "pkg/**"
+      - "adapters/cloudflare/**"
+  workflow_dispatch:
+    inputs:
+      template:
+        description: Template to roll out
+        type: choice
+        required: true
+        options:
+          - default
+          - blog
+          - docs
+          - landing
+          - portfolio
+          - corporate
+          - shop
+          - reports
+          - dashboard
+      production:
+        description: Promote to the custom domain only if the preview passes
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  template:
+    name: Build and verify template Workers
+    if: github.event_name == 'pull_request' || (github.repository == 'bascikdev/bascik' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+    # Preview and production share this per-template lock, including the smoke checks.
+    concurrency:
+      group: template-workers-${{ github.event_name == 'workflow_dispatch' && inputs.template || github.run_id }}
+      cancel-in-progress: false
+    env:
+      SLUG: ${{ inputs.template }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --immutable
+      - name: Test the deployment helpers
+        run: node --test .github/scripts/template-workers.test.mts
+      - name: Build the tools from this commit
+        run: |
+          yarn pkg:build
+          yarn adapter:cf:build
+          yarn workspace create-bascik build
+      - name: Build and smoke-test all registered templates on pull requests
+        if: github.event_name == 'pull_request'
+        run: |
+          templates="$(node .github/scripts/template-workers.mts list)"
+          for slug in $templates; do
+            node .github/scripts/template-workers.mts build "$slug" "$RUNNER_TEMP/template-workers"
+            node .github/scripts/template-workers.mts local-smoke "$slug" "$RUNNER_TEMP/template-workers"
+          done
+      - name: Build and smoke-test the selected template
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          node .github/scripts/template-workers.mts build "$SLUG" "$RUNNER_TEMP/template-workers"
+          node .github/scripts/template-workers.mts local-smoke "$SLUG" "$RUNNER_TEMP/template-workers"
+      - name: Check that the selected commit came from a merged pull request
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/template-workers.mts check-merged
+      - name: Seed the dedicated Reports preview database
+        if: github.event_name == 'workflow_dispatch' && inputs.template == 'reports'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TEMPLATE_REPORTS_D1_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          REPORTS_D1_ID: ${{ vars.TEMPLATE_REPORTS_PREVIEW_D1_ID }}
+        run: |
+          test "$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" = true
+          node .github/scripts/template-workers.mts seed-reports preview "$RUNNER_TEMP/template-workers"
+      # Use a separate route-free worker so the first preview can happen before
+      # a production Worker or custom domain exists.
+      - name: Publish to the dedicated preview Worker
+        if: github.event_name == 'workflow_dispatch'
+        id: preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/template-preview.ndjson
+        run: |
+          test "$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" = true
+          test -n "$CLOUDFLARE_API_TOKEN" && test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Cloudflare CI credentials are missing"; exit 1; }
+          yarn workspace @bascik/adapter-cloudflare wrangler deploy \
+            --config "$RUNNER_TEMP/template-workers/$SLUG/dist/.bascik/cloudflare/wrangler.preview.json" \
+            --message "Template preview at $GITHUB_SHA"
+          node .github/scripts/template-workers.mts preview-url "$SLUG" "$WRANGLER_OUTPUT_FILE_PATH"
+      - name: Smoke-test the preview
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          URL: ${{ steps.preview.outputs.url }}
+        run: node .github/scripts/template-workers.mts smoke "$SLUG" "$URL"
+      - name: Check the production custom domain
+        if: github.event_name == 'workflow_dispatch' && inputs.production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: node .github/scripts/template-workers.mts check-domain "$SLUG"
+      - name: Seed the dedicated Reports production database
+        if: github.event_name == 'workflow_dispatch' && inputs.production && inputs.template == 'reports'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TEMPLATE_REPORTS_D1_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          REPORTS_D1_ID: ${{ vars.TEMPLATE_REPORTS_PRODUCTION_D1_ID }}
+        run: |
+          test "$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" = true
+          node .github/scripts/template-workers.mts seed-reports production "$RUNNER_TEMP/template-workers"
+      - name: Promote to production
+        if: github.event_name == 'workflow_dispatch' && inputs.production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test "$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" = true
+          yarn workspace @bascik/adapter-cloudflare wrangler deploy \
+            --config "$RUNNER_TEMP/template-workers/$SLUG/dist/.bascik/cloudflare/wrangler.jsonc" \
+            --message "Template production at $GITHUB_SHA"
+      - name: Smoke-test production
+        if: github.event_name == 'workflow_dispatch' && inputs.production
+        run: node .github/scripts/template-workers.mts smoke "$SLUG" "https://template-$SLUG.bascik.dev"

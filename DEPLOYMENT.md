@@ -1,8 +1,37 @@
 # Deploying bascik.dev and the Adapter Demos
 
-This repo deploys two sites to Cloudflare. Everything that can live in the repo does: each Worker is defined by a `wrangler.jsonc`, GitHub Actions builds and deploys both (CI stage 5 in [.github/workflows/ci.yml](.github/workflows/ci.yml)), and root scripts build, check and preview each one locally. Nobody deploys by hand, and Cloudflare Workers Builds is not used. The steps that cannot live in the repo (credentials, the bascik.dev cutover, retiring the Pages project) are listed here with a check for each.
+The docs and adapter demo deploy to Cloudflare from CI stage 5 in [.github/workflows/ci.yml](.github/workflows/ci.yml). Each Worker is defined by a `wrangler.jsonc`, and root scripts build, check and preview each one locally. The [template showcase](#template-showcase-workers) and [independent shop](#independent-shop) use separate workflows. Nobody deploys by hand, and Cloudflare Workers Builds is not used.
 
 The user-facing version of the Cloudflare material is [docs/content/deployment/cloudflare.md](docs/content/deployment/cloudflare.md) (rendered at https://bascik.dev/deployment/cloudflare). The independent Netlify acceptance project is described below; it does not deploy through the Cloudflare jobs.
+
+## Template Showcase Workers
+
+[Template Workers](.github/workflows/template-workers.yml) builds from `create-bascik`'s current scaffold source, not a released npm starter. Each slug (`default`, `blog`, `docs`, `landing`, `portfolio`, `corporate`, `shop`, `reports`, `dashboard`) has its own `bascik-template-<slug>` Worker on `https://template-<slug>.bascik.dev`. The shop template is a simulated checkout with fixture data; it does not use `shop.bascik.dev` or any of the independent shop's secrets, bindings, or services.
+
+Pull requests build and run the registered templates in local workerd without Cloudflare credentials. A template not yet registered on `main` cannot be dispatched. Merge the scaffold foundation and template PRs before rolling out their demos, including #154 and #156 through #163.
+
+For rollout, dispatch from `main`. The workflow uses the commit from a merged PR, checks that it is still the branch tip immediately before each deploy, and uses the existing Cloudflare CI secret and account variable. It builds with the Cloudflare adapter and publishes to a separate, route-free `bascik-template-<slug>-preview` Worker on the existing account's `workers.dev` subdomain first. The preview is public, with crawler access discouraged by `robots.txt`. Unlike the adapter demo's version aliases, this shared preview can be created before the production Worker exists. The preview URL is in the run summary.
+
+```sh
+gh workflow run template-workers.yml --ref main -f template=default
+gh workflow run template-workers.yml --ref main -f template=default -f production=true
+```
+
+The second command rebuilds and checks the current preview before deploying the matching production bundle. The workflow checks Cloudflare custom-domain ownership and DNS before attaching a production domain. If either check reports a conflict, stop and coordinate with the domain owner; do not override it. The production smoke check verifies the home page, a representative template route, the edge API, a build-specific asset, and a 404. If a rollout fails after activation, use Cloudflare's deployment history to identify the last known good version and coordinate recovery for that dedicated Worker. Do not deploy from a workstation.
+
+Reports needs two dedicated D1 databases, `bascik-template-reports-preview-db` and `bascik-template-reports-db`. Set their IDs in `TEMPLATE_REPORTS_PREVIEW_D1_ID` and `TEMPLATE_REPORTS_PRODUCTION_D1_ID`, and set the separate `TEMPLATE_REPORTS_D1_TOKEN` CI secret with D1 edit and account read on the demo account. CI verifies the name matches the configured ID before loading the scaffold's synthetic data and binding `DB`. Only use these names for fixtures: the seed replaces the demo rows. No other showcase needs a remote database.
+
+For local verification after `yarn install --immutable`:
+
+```sh
+yarn pkg:build
+yarn adapter:cf:build
+yarn workspace create-bascik build
+node --test .github/scripts/template-workers.test.mts
+scratch="$(mktemp -d)"
+node .github/scripts/template-workers.mts build default "$scratch"
+node .github/scripts/template-workers.mts local-smoke default "$scratch"
+```
 
 ## Independent Shop
 
