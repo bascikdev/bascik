@@ -962,7 +962,7 @@ export const PROJECT_CARD_HTML = `<style>
     border: 1px solid var(--border);
     border-radius: 20px;
     background: var(--surface) var(--panel);
-    box-shadow: var(--sheen), 0 18px 38px -26px rgb(36 53 89 / 38%);
+    box-shadow: var(--sheen), var(--shadow);
   }
   .visual { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 12px; background: var(--elevated); }
   .visual[data-accent="amber"] { background: #9a5a18; }
