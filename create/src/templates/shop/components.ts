@@ -275,7 +275,7 @@ One book in a list, linking to its page. The cover goes in the default slot.
     background: var(--surface) var(--panel);
     border: 1px solid var(--border);
     border-radius: 18px;
-    box-shadow: var(--sheen), 0 16px 36px -24px rgb(36 53 89 / 32%);
+    box-shadow: var(--sheen), var(--shadow);
   }
   h3 { margin: 6px 0 0; font-size: 1rem; }
   h3 a { color: var(--text); }
