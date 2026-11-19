@@ -296,6 +296,8 @@ The script downloads from bascik.dev, maps files to the project's configured fol
 | `bascik-seo`           | Titles, descriptions, canonical URLs, social cards, JSON-LD, sitemap, `llms.txt`                                    |
 | `bascik-config`        | Creating or editing `bascik.config.ts`, monorepos, deploying, or running `bascik --server`                          |
 | `bascik-testing`       | Writing tests, debugging, validating output, or tuning Lighthouse scores                                            |
+| `bascik-ui`            | Designing a site's visual identity, hierarchy, typography, and colors                                               |
+| `bascik-ux`            | Designing interaction flows, feedback, accessible motion, and demo actions                                          |
 | `bascik-migrate`       | Moving a site from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                 |
 | `bascik-refactor`      | Opt-in: having coding agents refactor a live site to production parity and 100 in all five Lighthouse categories    |
 

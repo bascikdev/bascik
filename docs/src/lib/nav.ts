@@ -137,6 +137,10 @@ export const NAV: NavSection[] = [
       { href: "/how-to/templating", label: "Templating" },
       { href: "/how-to/interactivity", label: "Interactivity" },
       { href: "/how-to/theming", label: "Theming" },
+      {
+        href: "/how-to/visual-design",
+        label: "Visual Design and Interaction",
+      },
       { href: "/how-to/optimizing-images", label: "Optimizing Images" },
       { href: "/how-to/bundling-npm-packages", label: "Bundling npm Packages" },
       {

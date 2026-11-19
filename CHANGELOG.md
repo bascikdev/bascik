@@ -9,6 +9,14 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
+## [Unreleased]
+
+### Added
+
+- Public agent skills: `bascik-ui` and `bascik-ux` guide agents through
+  [visual design and interaction](https://bascik.dev/how-to/visual-design)
+  for Bascik sites.
+
 ## [1.0.0] - 2026-11-12
 
 Bascik launched!

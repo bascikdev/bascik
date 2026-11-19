@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build type="text/typescript">
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build type="text/typescript">
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build type="text/typescript">
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build type="text/typescript">
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Choose a distinctive visual direction and build accessible, HTML-first interactions for a Bascik site."
+    />
+    <title>Visual Design and Interaction - Bascik</title>
+  </head>
+  <body>
+    <docs-nav />
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build type="text/typescript">
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () =>
+              renderSectionLabel("/how-to/visual-design");
+          </script>
+          <script data-bascik-build type="text/typescript">
+            import { renderMd } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMd("./content/how-to/visual-design.md");
+          </script>
+          <docs-pagination />
+        </main>
+      </div>
+    </div>
+    <docs-footer />
+  </body>
+</html>
