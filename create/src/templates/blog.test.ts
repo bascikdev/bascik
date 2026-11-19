@@ -249,6 +249,19 @@ describe("blog template: pages and components", () => {
     );
   });
 
+  it("gives post cards deliberate editorial spacing and a quiet reading surface", () => {
+    const css = file("src/pages/css/blog.css");
+    const card = file("src/components/post-card/post-card.html");
+
+    expect(css).toMatch(
+      /\.post-cards\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1\.25rem;/s,
+    );
+    expect(css).toContain("font-family: Georgia, 'Times New Roman', serif;");
+    expect(css).toContain("background: transparent;");
+    expect(css).toContain("box-shadow: none;");
+    expect(card).toContain("border-top: 1px solid var(--border);");
+  });
+
   it("generates one page per post and per tag from dynamic routes, not from hand-written pages", () => {
     const post = file("src/pages/blog/[slug]/index.html");
     expect(post).toContain("<script data-bascik-routes");

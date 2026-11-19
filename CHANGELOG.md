@@ -18,7 +18,7 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
-- `create-bascik`: the blog template adds raised post cards and a softly surfaced, responsive reading column using the shared light/dark design tokens.
+- `create-bascik`: the blog template uses a calmer editorial masthead, a spacious post list with rule-led entries, and a clean, unboxed reading column.
 
 - `create-bascik`: the starter and adapter variants use a shared light/dark design system, with a neutral canvas, raised cards, restrained periwinkle accents, visible keyboard focus, and motion that respects reader preferences.
 - Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).

@@ -11,28 +11,50 @@ export const BLOG_CSS = `/* src/pages/css/blog.css: the blog's page column, post
    A global stylesheet, on purpose: build scripts print this markup, and a component's element selectors only
    reach elements written in its own template. Uses the tokens from styles.css. */
 
-/* ── Page column ── */
+/* ── Reading column ── */
 .page {
   width: 100%;
-  max-width: 760px;
+  max-width: 800px;
   margin: 0 auto;
-  padding: clamp(28px, 5vw, 56px);
-  background: var(--surface) var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  box-shadow: var(--sheen), var(--shadow);
+  padding: clamp(40px, 7vw, 80px) clamp(24px, 6vw, 68px);
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 /* ── Post lists (printed by postCards() in src/lib/posts.ts) ── */
 .post-cards {
   list-style: none;
+  display: grid;
+  gap: 1.25rem;
   margin: 0;
   padding: 0;
 }
+.post-cards > li { margin: 0; padding: 0; }
+
+/* The masthead arrives gently; the rest of the publication stays still and readable. */
+@keyframes editorial-enter {
+  from { scale: 0.97; opacity: 0; }
+  to { scale: 1; opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  section[data-testid="site-intro"] {
+    animation: editorial-enter 460ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+}
 
 /* ── A post's heading block (printed by <post-article>) ── */
-.post-header h1 { font-size: clamp(1.8rem, 4.5vw, 2.6rem); margin-bottom: 8px; }
-.post-meta { font-size: 0.9rem; margin-bottom: 12px; }
+.page h1,
+.post-header h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+.post-header h1 { margin-bottom: 12px; }
+.post-meta { font-size: 0.82rem; margin-bottom: 18px; letter-spacing: 0.035em; }
 .post-tags {
   list-style: none;
   display: flex;
@@ -43,16 +65,15 @@ export const BLOG_CSS = `/* src/pages/css/blog.css: the blog's page column, post
 }
 .post-tags a {
   display: block;
-  padding: 2px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  padding: 0;
   font-size: 0.8rem;
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
-.post-tags a:hover { border-color: var(--accent); opacity: 1; }
+.post-tags a:hover { opacity: 1; }
 
 /* ── Rendered Markdown ── */
-.prose { font-size: 1.05rem; }
+.prose { max-width: 68ch; font-size: 1.08rem; line-height: 1.8; }
 .prose p,
 .prose li { color: var(--text); }
 .prose h2 { font-size: 1.4rem; margin: 40px 0 12px; }
@@ -84,7 +105,8 @@ export const BLOG_CSS = `/* src/pages/css/blog.css: the blog's page column, post
 .prose th { background: var(--surface); }
 
 @media (max-width: 640px) {
-  .page { padding: 28px 20px; border-radius: 16px; }
+  .page { padding: 36px 20px 56px; }
+  .post-cards { gap: 0.75rem; }
 }
 `;
 

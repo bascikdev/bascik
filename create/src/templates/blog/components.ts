@@ -172,11 +172,17 @@ describe("site-footer component", () => {
 /** The home page's opening: the site name as the `<h1>` and its description. */
 export const SITE_INTRO_HTML = `<style>
 section {
-  padding: 72px 0 24px;
+  padding: clamp(72px, 9vw, 112px) 0 32px;
 }
-.container { max-width: 760px; margin: 0 auto; padding: 0 28px; }
-h1 { margin-bottom: 12px; }
-p { font-size: 1.1rem; max-width: 56ch; margin-bottom: 0; }
+.container { max-width: 800px; margin: 0 auto; padding: 0 28px; }
+h1 {
+  margin-bottom: 16px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(2.8rem, 7vw, 5rem);
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+}
+p { font-size: 1.1rem; max-width: 58ch; margin-bottom: 0; }
 </style>
 <section data-testid="site-intro">
   <div class="container">
@@ -211,17 +217,28 @@ describe("site-intro component", () => {
 export const POST_CARD_HTML = `<style>
 article {
   position: relative;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface) var(--panel);
-  box-shadow: var(--sheen), var(--shadow);
+  padding: 20px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
-h3 { margin: 0 0 4px; font-size: 1.2rem; }
+h3 {
+  margin: 0 0 8px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.25rem, 2.5vw, 1.55rem);
+  letter-spacing: -0.02em;
+}
 h3 a { color: var(--text); }
 h3 a:hover { color: var(--accent); opacity: 1; }
-.meta { margin: 0 0 8px; font-size: 0.85rem; }
-.summary { margin: 0; }
+.meta {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.045em;
+}
+.summary { max-width: 66ch; margin: 0; }
 </style>
 <article data-testid="post-card">
   <h3><a data-bascik-attr-href="href" data-bascik-prop-title data-testid="post-card-link">Post title</a></h3>
@@ -273,10 +290,15 @@ describe("post-card component", () => {
 
 /** The home page's list of the three newest posts. Its script prints `<post-card>` tags, which Bascik expands. */
 export const LATEST_POSTS_HTML = `<style>
-section { padding: 24px 0 72px; }
-.container { max-width: 760px; margin: 0 auto; padding: 0 28px; }
-h2 { margin-bottom: 4px; }
-.more { margin: 24px 0 0; }
+section { padding: 32px 0 clamp(72px, 10vw, 112px); }
+.container { max-width: 800px; margin: 0 auto; padding: 0 28px; }
+h2 {
+  margin: 0 0 24px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.8rem, 3vw, 2.35rem);
+  letter-spacing: -0.03em;
+}
+.more { margin: 32px 0 0; }
 </style>
 <section aria-labelledby="latest-heading" data-testid="latest-posts">
   <div class="container">
