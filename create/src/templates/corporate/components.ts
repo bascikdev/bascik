@@ -398,7 +398,7 @@ form.addEventListener("submit", (event: SubmitEvent): void => {
 The home page's opening: the company's one-line promise, two ways forward, and a drawing of a bookshelf. The drawing is inline SVG, so the page loads no image.
 -->
 <style>
-  .hero { padding: 88px 0 72px; background: var(--surface) var(--panel); border-bottom: 1px solid var(--border); }
+  .hero { padding: 88px 0 72px; background: var(--surface) var(--panel); border-bottom: 1px solid var(--border); animation: enter 480ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
   .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 48px; align-items: center; }
   h1 span { color: var(--brand); }
   /* The drawing is stroked and filled with currentColor, so it follows the brand color in both color schemes. */
@@ -409,6 +409,9 @@ The home page's opening: the company's one-line promise, two ways forward, and a
   @media (max-width: 760px) {
     .hero { padding: 56px 0 40px; }
     .layout { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero { animation: none; }
   }
 </style>
 <section class="hero" data-testid="home-hero">

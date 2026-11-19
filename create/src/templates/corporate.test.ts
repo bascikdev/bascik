@@ -429,6 +429,23 @@ describe("corporate template: house rules", () => {
     }
   });
 
+  it("uses an institutional navy, stone and copper palette with restrained, accessible motion", () => {
+    const css = read("src/pages/css/styles.css");
+
+    expect(css).toContain("--text:          #26313c;");
+    expect(css).toContain("--brand:         #754a32;");
+    expect(css).toContain("--brand:         #e2ae83;");
+    expect(css).toContain("--panel:         none;");
+    expect(css).toContain("transition: scale 150ms ease-out;");
+    expect(css).toContain("button:active, .btn:active { scale: 0.97; }");
+    expect(css).toContain(
+      ".theme-switching * { transition: none !important; }",
+    );
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(css).toContain("@keyframes enter");
+    expect(css).toContain("from { scale: 0.97; opacity: 0; }");
+  });
+
   it("reads only tokens the stylesheet declares, and no color outside it", () => {
     const declared = new Set(themes().light.keys());
     for (const [path, text] of siteSources()) {

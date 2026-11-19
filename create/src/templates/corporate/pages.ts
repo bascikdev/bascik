@@ -358,26 +358,26 @@ export const CORPORATE_CSS = `/* styles.css: the site's global stylesheet. The d
   color-scheme: light dark;
 
   /* Surfaces and lines */
-  --bg:            #e9edf3;
-  --surface:       #f8fafd;
+  --bg:            #f6f4ef;
+  --surface:       #fffdfa;
   --surface-top:   #ffffff;
-  --border:        #d6deea;
-  --border-strong: #616c80;
+  --border:        #e4ded5;
+  --border-strong: #72685e;
 
   /* Text */
-  --text:          #293247;
-  --text-muted:    #616c80;
+  --text:          #26313c;
+  --text-muted:    #5e6267;
 
-  /* The brand color, a darker shade for hover, a tint for panels, and the text color that sits on the brand color */
-  --brand:         #475cbd;
-  --brand-strong:  #394da9;
-  --brand-soft:    #edf0fc;
+  /* Deep navy text, stone surfaces, and a restrained copper brand */
+  --brand:         #754a32;
+  --brand-strong:  #603b28;
+  --brand-soft:    #eee4da;
   --on-brand:      #ffffff;
 
-  --danger:        #a32e42;
-  --shadow:        0 24px 48px -16px rgba(36, 53, 89, 0.24), 0 6px 12px -4px rgba(36, 53, 89, 0.12);
-  --panel:         linear-gradient(155deg, var(--surface-top), var(--surface) 72%);
-  --sheen:         inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --danger:        #963b37;
+  --shadow:        0 14px 36px -28px rgba(37, 43, 48, 0.24);
+  --panel:         none;
+  --sheen:         none;
 
   /* Type */
   --sans:  system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -385,26 +385,25 @@ export const CORPORATE_CSS = `/* styles.css: the site's global stylesheet. The d
   --mono:  ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   /* Shape */
-  --r:    22px;
-  --r-sm: 10px;
+  --r:    8px;
+  --r-sm: 4px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg:            #11151c;
-    --surface:       #222833;
-    --surface-top:   #363e4c;
-    --border:        #404957;
-    --border-strong: #b3bbcb;
-    --text:          #edf0f7;
-    --text-muted:    #b3bbcb;
-    --brand:         #b1bfff;
-    --brand-strong:  #c8d2ff;
-    --brand-soft:    #30394f;
-    --on-brand:      #202b4a;
-    --danger:        #ffabb7;
-    --shadow:        0 24px 48px -16px rgba(0, 0, 0, 0.55), 0 6px 12px -4px rgba(0, 0, 0, 0.3);
-    --sheen:         inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    --bg:            #14191f;
+    --surface:       #1c232a;
+    --surface-top:   #252e37;
+    --border:        #38414a;
+    --border-strong: #b9c0c6;
+    --text:          #edf0f2;
+    --text-muted:    #b9c0c6;
+    --brand:         #e2ae83;
+    --brand-strong:  #f0c99e;
+    --brand-soft:    #392f28;
+    --on-brand:      #22272d;
+    --danger:        #ffaaa0;
+    --shadow:        0 14px 36px -28px rgba(0, 0, 0, 0.48);
   }
 }
 
@@ -422,8 +421,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
-  font-size: 1.0625rem;
-  line-height: 1.65;
+  font-size: 1rem;
+  line-height: 1.7;
 }
 
 main { flex: 1; }
@@ -431,16 +430,16 @@ main { flex: 1; }
 :focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
 
 /* ── Layout ── */
-.container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
-.section { padding: 80px 0; }
+.container { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+.section { padding: clamp(64px, 8vw, 104px) 0; }
 .section + .section { border-top: 1px solid var(--border); }
 
 /* ── Typography ── */
 h1, h2, h3 { margin-top: 0; color: var(--text); line-height: 1.2; }
-h1, h2 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.01em; }
-h1 { font-size: clamp(2.25rem, 5vw, 3.5rem); margin-bottom: 16px; }
-h2 { font-size: clamp(1.6rem, 3vw, 2.125rem); margin-bottom: 12px; }
-h3 { font-size: 1.125rem; font-weight: 650; margin-bottom: 6px; }
+h1, h2 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.035em; }
+h1 { font-size: clamp(2.5rem, 5.5vw, 4.25rem); margin-bottom: 18px; }
+h2 { font-size: clamp(1.8rem, 3.2vw, 2.5rem); margin-bottom: 14px; }
+h3 { font-size: 1.1rem; font-weight: 650; margin-bottom: 6px; }
 p  { margin-top: 0; color: var(--text-muted); }
 
 a { color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
@@ -454,8 +453,8 @@ a:hover { color: var(--brand-strong); }
 /* ── Buttons ── */
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 12px 22px; border: 1px solid transparent; border-radius: var(--r-sm);
-  font: inherit; font-size: 0.95rem; font-weight: 600; line-height: 1.2;
+  min-height: 46px; padding: 13px 22px; border: 1px solid transparent; border-radius: var(--r-sm);
+  font: inherit; font-size: 0.92rem; font-weight: 650; line-height: 1.2;
   text-decoration: none; cursor: pointer;
 }
 .btn-primary { background: var(--brand); color: var(--on-brand); }
@@ -465,7 +464,7 @@ a:hover { color: var(--brand-strong); }
 .actions { display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* ── Cards ── */
-.card { padding: 28px; background: var(--surface) var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--sheen), var(--shadow); }
+.card { padding: 28px; background: var(--surface) var(--panel); border: 1px solid var(--border); border-radius: var(--r); box-shadow: none; }
 .card p { margin-bottom: 0; }
 
 /* For text a screen reader should read and the eye does not need, such as the end of a "Learn more" link. */
@@ -484,7 +483,7 @@ ul.prose strong { color: var(--text); }
 /* The contact page: the form beside the office details, stacked at phone width. */
 .contact-layout {
   display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 48px; align-items: start; padding-top: 40px; padding-bottom: 88px;
+  gap: 40px; align-items: start; padding-top: 40px; padding-bottom: 88px;
 }
 
 /* ── 404 ── */
@@ -496,8 +495,26 @@ ul.prose strong { color: var(--text); }
 .not-found-text { margin-bottom: 32px; }
 .not-found .actions { justify-content: center; }
 
+/* ── Motion ── */
+@keyframes enter {
+  from { scale: 0.97; opacity: 0; }
+  to { scale: 1; opacity: 1; }
+}
+.theme-switching * { transition: none !important; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn { transition: scale 150ms ease-out; }
+  button:active, .btn:active { scale: 0.97; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .btn { transition: none; }
+}
+
 /* ── Phone width ── */
 @media (max-width: 760px) {
+  .container { padding: 0 22px; }
   .section { padding: 56px 0; }
   .contact-layout { grid-template-columns: minmax(0, 1fr); }
 }

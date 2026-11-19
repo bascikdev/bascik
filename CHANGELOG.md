@@ -25,6 +25,8 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
+- `create-bascik`: the corporate template has a mature navy, stone and copper identity, quieter surfaces, and restrained motion while keeping its existing pages and content.
+
 - `create-bascik`: the default starter and adapter variants use a warm paper-and-ink design system with moss accents, quieter surfaces, clearer typography, and reduced-motion-aware button feedback.
 - Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).
 
