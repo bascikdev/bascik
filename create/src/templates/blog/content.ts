@@ -1,8 +1,7 @@
 /**
  * @module templates/blog/content
  *
- * The blog template's sample posts: invented books and authors, as the house rules ask of demo data. Each is
- * written to `content/posts/<slug>.md`, and its slug is its URL.
+ * The blog template's sample racing posts. Each is written to `content/posts/<slug>.md`, and its slug is its URL.
  */
 
 /** The sample posts, newest first, as `[slug, Markdown]`. The generated e2e spec names the same four. */
@@ -11,116 +10,121 @@ export const SAMPLE_POSTS: readonly (readonly [
   markdown: string,
 ])[] = [
   [
-    "the-second-chapter-problem",
+    "hurley-haywood-at-daytona",
     `---
-title: The Second Chapter Problem
-description: First chapters get all the attention. The second chapter is where a novel quietly decides whether you will finish it.
+title: Hurley Haywood at Daytona
+description: A driver profile tracing Hurley Haywood's Daytona endurance career, race craft, and lasting IMSA record.
 date: 2026-10-28
-author: Maren Okafor
-tags: [craft]
+author: Apex Racing Desk
+tags: [driver-profiles, imsa]
 ---
 
-Everyone polishes a first chapter. Workshops are built around them, agents ask for them, and readers sample them in the shop. The second chapter gets none of that care, and it shows.
+Hurley Haywood is a defining name in Porsche endurance racing. His career links Daytona, Sebring, and Le Mans through different cars and generations, making him a useful lens for understanding how a modern sports-car driver builds consistency.
 
-## What the second chapter has to do
+## The race craft that travelled
 
-A first chapter makes a promise. The second has to prove the promise was not a trick:
+Haywood's results came from pace that could survive a long stint. He could work traffic, preserve tires, and hand a car to the next driver with enough margin to attack rather than recover.
 
-- It slows down without going slack.
-- It introduces the person the first chapter only pointed at.
-- It gives you one reason to trust the narrator and one reason not to.
+## Daytona and the team around the car
 
-## A test you can run
+At Daytona, the 24-hour format rewards preparation: pit timing, night vision, weather, and clear communication between co-drivers. Haywood's record is tied closely to Porsche programs and IMSA competition, where shared stints turn one driver's speed into a team's result.
 
-Open any novel you abandoned and find the page where you stopped. For me it is nearly always between pages 20 and 40, which is second-chapter country.
+> Endurance speed is repeatable lap time, not one heroic lap.
 
-> A reader forgives a slow start. A reader does not forgive a second start.
+## The lesson for club racers
 
-Next time you draft, write chapter two first and see what it asks chapter one to set up.
+Use a repeatable reference for braking, then make only one change at a time. A clean stint at Laguna Seca or Sebring matters more than a qualifying lap that leaves the car outside the balance window.
 `,
   ],
   [
-    "an-afternoon-with-the-salt-road",
+    "porsche-prototypes-917-935-962-963",
     `---
-title: An Afternoon with The Salt Road
-description: A review of Tomas Lindqvist's short novel about a ferry pilot, her brother, and the one crossing neither of them will talk about.
+title: From the 917 to the 963
+description: A Porsche prototype history across the 917, 935, 962, and 963, with the engineering themes that shaped each era.
 date: 2026-09-14
-author: Idris Vale
-tags: [reviews]
+author: Apex Racing Desk
+tags: [porsche-history, prototypes]
 ---
 
-_The Salt Road_ is 148 pages long and I read it in one sitting, on a bench, getting slowly sunburned. That is the review. The rest is detail.
+Porsche's prototype story is a line of problems solved in public: aerodynamic stability, turbo heat, braking, hybrid efficiency, and the discipline of running across four distinct endurance eras.
 
-## What it is about
+## Porsche 917: outright speed arrives
 
-Tomas Lindqvist's fourth novel follows Runa, who pilots a small car ferry across a strait that is twelve minutes wide. Her brother returns after nine years away and takes the crossing every day for a week without once getting off on the far side.
+The Porsche 917 made the company's 1970 Le Mans breakthrough. Its exposed high-speed character demanded bravery and aerodynamic work, but it established a template for purpose-built Porsche prototypes.
 
-## What works
+## Porsche 935 and Porsche 962: turbo and team craft
 
-Lindqvist writes weather better than most people write people. The strait has moods, and by the third crossing you can read them as well as Runa can.
+The Porsche 935 turned the production-derived 911 silhouette into an international racing weapon. Later, the Porsche 962 carried the road-car-derived 962 identity through Group C and IMSA competition, where balance and reliability mattered as much as straight-line speed.
 
-## What does not
+| Model | Main racing theme |
+| ----- | ----------------- |
+| 917 | Aerodynamic top speed |
+| 935 | Turbocharged silhouette racing |
+| 962 | Group C and IMSA versatility |
+| 963 | Modern LMDh energy management |
 
-The final chapter explains a little too much. A book this good at silence did not need to break it.
+## Porsche 963: the new hybrid era
 
-**Rating:** 4.5 out of 5. Read it somewhere you can see water.
+The Porsche 963 competes in WEC and IMSA under the LMDh formula. Jordan Taylor is among the drivers who have represented Porsche in top-flight sports-car racing, and the 963's challenge is coordination of hybrid deployment, tire load, and pit-window strategy.
 `,
   ],
   [
-    "how-nora-carrow-outlines-on-index-cards",
+    "laguna-seca-set-up-notes",
     `---
-title: How Nora Carrow Outlines a Novel on Index Cards
-description: The author of the Harbor Quartet plans each book on 60 index cards and one long table. Here is the method, step by step.
+title: Laguna Seca Set-Up Notes
+description: A practical Porsche track report for Laguna Seca, covering brake balance, Corkscrew confidence, tire temperature, and stint setup.
 date: 2026-08-02
-author: Maren Okafor
-tags: [craft, authors]
+author: Ross Bentley
+tags: [set-ups, track-report, laguna-seca]
 ---
 
-Nora Carrow has written four novels on the same kitchen table, and each one began as a stack of 60 index cards. She walked me through the method over coffee.
+Laguna Seca asks a car to change direction at the start of the lap, brake uphill, manage camber through the Corkscrew, then settle its tires for the slower final sector. This is a baseline for a balanced GT or prototype test day, not a substitute for a team engineer's model.
 
-## The rules
+## Brake balance and turn-in
 
-1. One card is one scene, written as a single sentence.
-2. A card that needs a second sentence is two scenes.
-3. Cards are laid out in three rows, and no row may be longer than the table.
+Start with the manufacturer's recommended bias, then add one small step of rear bias only if the front axle is refusing to settle on the approach to Turn 2. Revisit after the first fully representative stint so track evolution is part of the result.
 
-## Why 60
+## Tire temperature budget
 
-"Fewer than 50 and I am writing a novella," she said. "More than 70 and I am hiding a second book inside the first."
+Log inside-to-middle-to-outside temperatures by corner and compare both axles. A useful setup change should improve both repeatability and tire drop-off, not merely make one timed lap look fast.
 
-## The part nobody copies
+- Use the bump at the Corkscrew as a balance check.
+- Watch rear temperatures after the long uphill section.
+- Compare a five-lap average rather than one flyer.
 
-When the outline is done, Carrow removes every fifth card and puts it in a drawer. If the story still makes sense, the cards stay in the drawer.
+## Paul Newman and the 911 school
 
-| Book               | Cards at the start | Cards kept |
-| ------------------ | ------------------ | ---------- |
-| _Low Tide_         | 61                 | 49         |
-| _The Harbor Clerk_ | 58                 | 47         |
+Paul Newman also raced Porsches and helped make motorsport a serious second act rather than a celebrity cameo. His measured approach is a reminder that seat time, feedback, and professional preparation are the setup tools that matter most.
 `,
   ],
   [
-    "five-short-novels-for-a-long-train-ride",
+    "le-mans-spa-race-preview",
     `---
-title: Five Short Novels for a Long Train Ride
-description: Five novels under 200 pages, each one the right length for a single journey, chosen from a year of reading on trains.
+title: Le Mans and Spa Race Preview
+description: A WEC race preview comparing the Le Mans and Spa demands, strategy windows, traffic, and Porsche 963 preparation.
 date: 2026-06-19
-author: Idris Vale
-tags: [reading-lists]
+author: Apex Racing Desk
+tags: [race-previews, wec]
 ---
 
-A long train ride wants a short book: one you can finish before the last station, with time left to look out of the window and think about it.
+Spa and Le Mans expose different parts of an endurance package. Spa demands repeatable speed through Eau Rouge and a fast-changing weather window. Le Mans stretches the driver, hybrid system, and traffic plan over a full 24-hour race.
 
-## The list
+## Spa: speed with limited recovery
 
-1. **_The Salt Road_** by Tomas Lindqvist. A ferry, a strait, and a brother who will not get off the boat.
-2. **_Low Tide_** by Nora Carrow. The first of the Harbor Quartet, and still the best place to start.
-3. **_A Field Guide to Leaving_** by Odalys Brennan. Twelve chapters, each named after a bird the narrator fails to see.
-4. **_The Night Proofreader_** by Kofi Adeyemi-Lund. A comedy about a typo that changes an election.
-5. **_Marginalia_** by Petra Solheim. A love story told in the notes two strangers leave in a library book.
+A strong Spa stint comes from stable aero and predictable braking into the medium-speed sequence. Rain risk raises the value of a wide usable tire window, and the strategy team must decide whether a stop is for weather or for fuel before the safety-car window closes.
 
-## How I chose
+## Le Mans: traffic and the full race
 
-Each book is under 200 pages, has chapters short enough to finish between stations, and survived being read in a seat with no table.
+At Le Mans, straight-line efficiency supports tire and fuel calculations, while traffic creates hundreds of small passing decisions. The Porsche 963 program must keep hybrid deployment inside the rules and avoid thermal penalties during the night cycle.
+
+## The race-week watch list
+
+1. Track evolution between qualifying and the opening stint.
+2. Energy deployment through the slowest Le Mans sections.
+3. Double-stint behavior on new and used tires.
+4. Night visibility and pit-lane handoffs.
+
+The IMSA calendar has its own five-sector stress test at Daytona and Sebring, but the WEC at Spa and Le Mans shows whether preparation survives a longer, less forgiving weekend.
 `,
   ],
 ];

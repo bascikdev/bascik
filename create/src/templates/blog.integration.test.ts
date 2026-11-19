@@ -55,8 +55,8 @@ afterEach(async () => {
 async function scaffoldBlog(label: string): Promise<string> {
   const parentDir = await mkdtemp(join(tmpdir(), `bascik-blog-test-${label}-`));
   tempDirs.push(parentDir);
-  const projectDir = join(parentDir, "book-notes");
-  const { notes } = await scaffold("book-notes", parentDir, {
+  const projectDir = join(parentDir, "apex-racing");
+  const { notes } = await scaffold("apex-racing", parentDir, {
     template: BLOG_TEMPLATE,
   });
   expect(notes).toEqual([]);
@@ -141,7 +141,7 @@ describe("blog template through the compiler", () => {
     for (const [slug, markdown] of SAMPLE_POSTS) {
       const page = await dist(`blog/${slug}/index.html`);
       const title = field(markdown, "title");
-      expect(page).toContain(`<title>${title} - book-notes</title>`);
+      expect(page).toContain(`<title>${title} - apex-racing</title>`);
       expect(page).toMatch(new RegExp(`<h1[^>]*>${title}</h1>`));
       expect(page).toMatch(
         new RegExp(`<time datetime="?${field(markdown, "date")}"?>`),
@@ -150,12 +150,12 @@ describe("blog template through the compiler", () => {
       expect(page).toMatch(/property="?og:type"? content="?article"?/);
     }
     // Markdown became HTML: a heading, a list and a table from the sample posts.
-    const outline = await dist(
-      "blog/how-nora-carrow-outlines-on-index-cards/index.html",
+    const history = await dist(
+      "blog/porsche-prototypes-917-935-962-963/index.html",
     );
-    expect(outline).toContain("<h2>The rules</h2>");
-    expect(outline).toContain("<table>");
-    expect(outline).not.toContain("## The rules");
+    expect(history).toContain("<h2>Porsche 917: outright speed arrives</h2>");
+    expect(history).toContain("<table>");
+    expect(history).not.toContain("## Porsche 917: outright speed arrives");
 
     // The lists are newest first: three on the home page, all of them on /blog/.
     const newestFirst = SAMPLE_POSTS.map(([slug]) => `/blog/${slug}/`);
@@ -164,9 +164,9 @@ describe("blog template through the compiler", () => {
     );
     expect(cardLinks(await dist("blog/index.html"))).toEqual(newestFirst);
     // A tag page holds only its tag's posts.
-    expect(cardLinks(await dist("blog/tags/craft/index.html"))).toEqual(
+    expect(cardLinks(await dist("blog/tags/imsa/index.html"))).toEqual(
       SAMPLE_POSTS.filter(([, markdown]) =>
-        /^tags: \[.*\bcraft\b.*\]$/m.test(markdown),
+        /^tags: \[.*\bimsa\b.*\]$/m.test(markdown),
       ).map(([slug]) => `/blog/${slug}/`),
     );
 
@@ -186,7 +186,7 @@ describe("blog template through the compiler", () => {
     const sitemap = await dist("sitemap.xml");
     for (const path of newestFirst)
       expect(sitemap).toContain(`<loc>${SITE_URL}${path}</loc>`);
-    expect(sitemap).toContain(`<loc>${SITE_URL}/blog/tags/craft/</loc>`);
+    expect(sitemap).toContain(`<loc>${SITE_URL}/blog/tags/imsa/</loc>`);
     expect(sitemap).not.toContain("404");
     expect(sitemap).not.toContain("[");
   }, 120_000);
@@ -206,7 +206,7 @@ describe("blog template through the compiler", () => {
     [
       "a line that is not key: value",
       (post: string) => post.replace(/^author: /m, () => "author "),
-      "unreadable front matter line: author Maren Okafor",
+      "unreadable front matter line: author Apex Racing Desk",
     ],
     [
       "front matter that is never closed",

@@ -337,7 +337,26 @@ describe("blog template: content pipeline", () => {
 });
 
 describe("blog template: sample posts", () => {
-  it("ships four posts, newest first, each with the front matter the reader requires", () => {
+  it("ships a racing blog with real posts and no invented book publishing themes", () => {
+    const combined = SAMPLE_POSTS.map(([, markdown]) => markdown).join("\n");
+    for (const reference of [
+      "Hurley Haywood",
+      "Paul Newman",
+      "Jordan Taylor",
+      "Ross Bentley",
+      "Porsche 917",
+      "Porsche 935",
+      "Porsche 962",
+      "Porsche 963",
+      "IMSA",
+      "WEC",
+      "Daytona",
+      "Sebring",
+      "Le Mans",
+      "Spa",
+      "Laguna Seca",
+    ])
+      expect(combined, reference).toContain(reference);
     expect(SAMPLE_POSTS).toHaveLength(4);
     const dates = SAMPLE_POSTS.map(
       ([, markdown]) => frontMatter(markdown).date,

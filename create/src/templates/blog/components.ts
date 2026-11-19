@@ -251,7 +251,7 @@ describe("post-card component", () => {
     const html = await readFile(path, "utf8");
     const post = toPost(
       "low-tide",
-      "---\\ntitle: Low Tide\\ndescription: A review.\\ndate: 2026-08-02\\nauthor: Maren Okafor\\n---\\n\\nBody.\\n",
+      "---\\ntitle: Laguna Seca Set-Up Notes\\ndescription: A race set-up report.\\ndate: 2026-08-02\\nauthor: Ross Bentley\\n---\\n\\nBody.\\n",
     );
     const passed = [
       ...String(postCards([post])).matchAll(/data-bascik-prop-([a-z]+)=/g),
@@ -462,7 +462,7 @@ import { toPost } from "../../lib/posts.ts";
 import { articleBody } from "./article-body.ts";
 
 const source = (title: string, extra = ""): string =>
-  \`---\\ntitle: \${title}\\ndescription: A review.\\ndate: 2026-08-02\\nauthor: Maren Okafor\\n\${extra}---\\n\\nA **short** novel.\\n\`;
+  \`---\\ntitle: \${title}\\ndescription: A track report.\\ndate: 2026-08-02\\nauthor: Ross Bentley\\n\${extra}---\\n\\nA **balanced** racing report.\\n\`;
 
 describe("post-article component", () => {
   it("is an article that reads its post from the route and links back to the list", async () => {
@@ -477,22 +477,22 @@ describe("post-article component", () => {
 
   it("prints the title, a machine-readable date, the author, the tags, and the rendered Markdown", () => {
     const markup = String(
-      articleBody(toPost("low-tide", source("Low Tide", "tags: [craft]\\n"))),
+      articleBody(toPost("laguna-seca-set-up-notes", source("Laguna Seca Set-Up Notes", "tags: [set-ups]\\n"))),
     );
-    expect(markup).toContain("<h1>Low Tide</h1>");
+    expect(markup).toContain("<h1>Laguna Seca Set-Up Notes</h1>");
     expect(markup).toContain(
       '<time datetime="2026-08-02">August 2, 2026</time>',
     );
-    expect(markup).toContain("Maren Okafor");
-    expect(markup).toContain('href="/blog/tags/craft/"');
+    expect(markup).toContain("Ross Bentley");
+    expect(markup).toContain('href="/blog/tags/set-ups/"');
     expect(markup).toContain(
-      '<div class="prose"><p>A <strong>short</strong> novel.</p>',
+      '<div class="prose"><p>A <strong>balanced</strong> racing report.</p>',
     );
   });
 
   it("leaves the tag list out of a post with no tags", () => {
     expect(
-      String(articleBody(toPost("low-tide", source("Low Tide")))),
+      String(articleBody(toPost("laguna-seca-set-up-notes", source("Laguna Seca Set-Up Notes")))),
     ).not.toContain("post-tags");
   });
 
@@ -502,7 +502,7 @@ describe("post-article component", () => {
     );
     expect(markup).not.toContain("<img");
     expect(markup).toContain("&lt;img src=x onerror=alert(1)&gt;");
-    expect(markup).toContain("<strong>short</strong>");
+    expect(markup).toContain("<strong>balanced</strong>");
   });
 
   it("says what is wrong when the page has no post to give it", () => {

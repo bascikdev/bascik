@@ -114,7 +114,7 @@ export const BLOG_INDEX_PAGE = `<!doctype html>
   <script data-bascik-build type="text/typescript">
     import { seo } from "@/lib/seo.ts";
     export default () =>
-      seo({ title: "Blog", description: "Every post, newest first: reviews, reading lists, and notes on how novels get written." });
+      seo({ title: "Blog", description: "Every racing report, driver profile, Porsche history, setup note, and race preview, newest first." });
   </script>
 </head>
 <body>
@@ -221,7 +221,7 @@ export const ABOUT_PAGE = `<!doctype html>
     <p class="page-intro">This is the about page. Tell readers who you are and what you write about.</p>
     <div class="prose">
       <h2>Who writes here</h2>
-      <p>Maren Okafor writes about how novels are made. Idris Vale reviews the short ones and reads them on trains.</p>
+      <p>Apex Racing Desk follows endurance racing, Porsche history, driver craft, and the preparation behind race weekends.</p>
       <h2>How this blog works</h2>
       <ul>
         <li>Each post is a Markdown file in <code>content/posts/</code>. Its file name is its URL.</li>
@@ -270,10 +270,10 @@ export const e2eAppSpec = (
 
 // The sample posts, newest first. Change these with the files in content/posts/.
 const POSTS = [
-  { slug: 'the-second-chapter-problem', title: 'The Second Chapter Problem', date: '2026-10-28' },
-  { slug: 'an-afternoon-with-the-salt-road', title: 'An Afternoon with The Salt Road', date: '2026-09-14' },
-  { slug: 'how-nora-carrow-outlines-on-index-cards', title: 'How Nora Carrow Outlines a Novel on Index Cards', date: '2026-08-02' },
-  { slug: 'five-short-novels-for-a-long-train-ride', title: 'Five Short Novels for a Long Train Ride', date: '2026-06-19' },
+      { slug: 'hurley-haywood-at-daytona', title: 'Hurley Haywood at Daytona', date: '2026-10-28' },
+  { slug: 'porsche-prototypes-917-935-962-963', title: 'From the 917 to the 963', date: '2026-09-14' },
+  { slug: 'laguna-seca-set-up-notes', title: 'Laguna Seca Set-Up Notes', date: '2026-08-02' },
+  { slug: 'le-mans-spa-race-preview', title: 'Le Mans and Spa Race Preview', date: '2026-06-19' },
 ];
 
 test.describe('Blog E2E Tests', () => {
@@ -307,8 +307,8 @@ test.describe('Blog E2E Tests', () => {
     const article = page.getByTestId('post-article');
     await expect(article.getByRole('heading', { level: 1 })).toHaveText(post.title);
     await expect(article.locator('time')).toHaveAttribute('datetime', post.date);
-    await expect(article.getByRole('heading', { level: 2, name: 'A test you can run' })).toBeVisible();
-    await expect(article.locator('blockquote')).toContainText('A reader forgives a slow start.');
+    await expect(article.getByRole('heading', { level: 2, name: 'The race craft that travelled' })).toBeVisible();
+    await expect(article.locator('blockquote')).toContainText('Endurance speed is repeatable lap time');
 
     // The canonical URL and og:url are this post's, built from the site URL the build was given.
     const canonical = await page.locator('link[rel="canonical"]').getAttribute('href');
@@ -316,15 +316,15 @@ test.describe('Blog E2E Tests', () => {
     await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', canonical!);
     await expect(page.locator('meta[property="og:type"]')).toHaveAttribute('content', 'article');
     await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', new RegExp(\`^\${post.title}\`));
-    await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /second chapter/);
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /Daytona/);
   });
 
   test('a tag page lists only the posts with that tag', async ({ page }) => {
     await page.goto(\`/blog/\${POSTS[2].slug}/\`);
-    await page.getByTestId('post-article-tag').filter({ hasText: 'craft' }).click();
-    await expect(page).toHaveURL('/blog/tags/craft/');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Posts tagged craft');
-    await expect(page.getByTestId('post-card-link')).toHaveText([POSTS[0].title, POSTS[2].title]);
+    await page.getByTestId('post-article-tag').filter({ hasText: 'imsa' }).click();
+    await expect(page).toHaveURL('/blog/tags/imsa/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Posts tagged imsa');
+    await expect(page.getByTestId('post-card-link')).toHaveText([POSTS[0].title]);
   });
 
   test('feed is Atom with an absolute link for every post', async ({ page, request }) => {

@@ -19,10 +19,10 @@ export const siteModule = (
 export const SITE = {
   name: ${JSON.stringify(siteName)},
   /** A few words after the name in the home page's title. */
-  tagline: "Notes on novels and the people who write them",
+  tagline: "Track reports, Porsche history, and race preparation",
   /** One or two sentences: the home page's introduction and description, and the feed's subtitle. */
   description:
-    "Reviews of short novels, reading lists, and notes on the habits that get a book finished.",
+    "Endurance racing reports, driver profiles, Porsche history, and practical set-up notes.",
 } as const;
 `;
 
@@ -57,11 +57,11 @@ export const POSTS_TS = `// src/lib/posts.ts: the one place that reads, validate
 // A post is content/posts/<slug>.md, and its file name is its URL (/blog/<slug>/). It starts with front matter:
 //
 //   ---
-//   title: The Second Chapter Problem
+//   title: Hurley Haywood at Daytona
 //   description: One or two sentences for the post list, search results, and the feed.
 //   date: 2026-10-28
-//   author: Maren Okafor
-//   tags: [craft, reviews]   (optional)
+//   author: Apex Racing Desk
+//   tags: [driver-profiles, wec]   (optional)
 //   draft: true              (optional: shown by the dev server, left out of bascik --build)
 //   ---
 //
@@ -290,24 +290,24 @@ const post = (frontMatter: string, body = "Body text."): string =>
   \`---\\n\${frontMatter}\\n---\\n\\n\${body}\\n\`;
 
 const VALID = [
-  "title: The Second Chapter Problem",
-  "description: Where a novel decides whether you will finish it.",
+  "title: Hurley Haywood at Daytona",
+  "description: A driver profile and endurance racing lessons from Daytona.",
   "date: 2026-10-28",
-  "author: Maren Okafor",
+  "author: Apex Racing Desk",
 ].join("\\n");
 
 describe("toPost", () => {
   it("reads the front matter and renders the Markdown body", () => {
     const result = toPost(
-      "second-chapter",
-      post(\`\${VALID}\\ntags: [Craft, reviews]\`, "A **bold** claim."),
+      "daytona-profile",
+      post(\`\${VALID}\ntags: [Driver-profiles, reviews]\`, "A **bold** claim."),
     );
     expect(result).toMatchObject({
-      slug: "second-chapter",
-      title: "The Second Chapter Problem",
+      slug: "daytona-profile",
+      title: "Hurley Haywood at Daytona",
       date: "2026-10-28",
-      author: "Maren Okafor",
-      tags: ["craft", "reviews"],
+      author: "Apex Racing Desk",
+      tags: ["driver-profiles", "reviews"],
       draft: false,
     });
     expect(result.html).toContain("<strong>bold</strong>");
@@ -318,12 +318,12 @@ describe("toPost", () => {
       "quoted",
       post(
         VALID.replace(
-          "title: The Second Chapter Problem",
-          'title: "Low Tide: a \\\\"quiet\\\\" novel"',
+          "title: Hurley Haywood at Daytona",
+          'title: "Porsche 963: a \\\\"fast\\\\" prototype"',
         ),
       ),
     );
-    expect(result.title).toBe('Low Tide: a "quiet" novel');
+    expect(result.title).toBe('Porsche 963: a "fast" prototype');
   });
 
   it.each(["title", "description", "author", "date"])(
@@ -351,8 +351,8 @@ describe("toPost", () => {
   });
 
   it("names the file and the line when a front matter line is not key: value", () => {
-    expect(() => toPost("typo", post(\`\${VALID}\\ntags [craft]\`))).toThrow(
-      "content/posts/typo.md: unreadable front matter line: tags [craft]",
+    expect(() => toPost("typo", post(\`\${VALID}\ntags [imsa]\`))).toThrow(
+      "content/posts/typo.md: unreadable front matter line: tags [imsa]",
     );
   });
 
@@ -380,12 +380,12 @@ describe("toPost", () => {
 describe("parseFrontMatter", () => {
   it("reads dash lists, booleans, and Windows line endings", () => {
     const { data, body } = parseFrontMatter(
-      "---\\r\\ntitle: Low Tide\\r\\ndraft: true\\r\\ntags:\\r\\n  - craft\\r\\n  - authors\\r\\n---\\r\\nBody\\r\\n",
+      "---\\r\\ntitle: Laguna Seca Set-Up Notes\\r\\ndraft: true\\r\\ntags:\\r\\n  - set-ups\\r\\n  - track-report\\r\\n---\\r\\nBody\\r\\n",
     );
     expect(data).toEqual({
-      title: "Low Tide",
+      title: "Laguna Seca Set-Up Notes",
       draft: true,
-      tags: ["craft", "authors"],
+      tags: ["set-ups", "track-report"],
     });
     expect(body).toBe("Body\\r\\n");
   });
@@ -411,16 +411,16 @@ describe("getPosts", () => {
 
 describe("grouping and display", () => {
   const sample = [
-    toPost("b", post(\`\${VALID}\\ntags: [craft]\`)),
-    toPost("a", post(\`\${VALID.replace("2026", "2025")}\\ntags: [authors, craft]\`)),
+    toPost("b", post(\`\${VALID}\ntags: [set-ups]\`)),
+    toPost("a", post(\`\${VALID.replace("2026", "2025")}\ntags: [wec, set-ups]\`)),
   ];
 
   it("groups by tag in name order and by year in the order given", () => {
     expect(
       groupByTag(sample).map((group) => [group.tag, group.posts.length]),
     ).toEqual([
-      ["authors", 1],
-      ["craft", 2],
+      ["set-ups", 2],
+      ["wec", 1],
     ]);
     expect(groupByYear(sample).map((group) => group.year)).toEqual([
       "2026",
@@ -439,8 +439,8 @@ describe("grouping and display", () => {
           "markup",
           post(
             VALID.replace(
-              "The Second Chapter Problem",
-              '<script>alert("x")</script> & Sons',
+              "Hurley Haywood at Daytona",
+              '<script>alert("x")</script> & Co.',
             ),
           ),
         ),
@@ -448,7 +448,7 @@ describe("grouping and display", () => {
     );
     expect(cards).not.toContain("<script>");
     expect(cards).toContain("&lt;script&gt;");
-    expect(cards).toContain("&amp; Sons");
+    expect(cards).toContain("&amp; Co.");
     expect(cards).toContain('data-bascik-prop-href="/blog/markup/"');
   });
 
@@ -572,26 +572,26 @@ describe("seo", () => {
 
   it("writes the title, description, canonical URL, and Open Graph tags for the page being built", () => {
     vi.stubEnv("BASCIK_SITE_URL", "https://example.com/");
-    vi.stubEnv("BASCIK_PAGE_PATH", "/blog/low-tide/");
+    vi.stubEnv("BASCIK_PAGE_PATH", "/blog/laguna-seca-set-up-notes/");
     const tags = String(
       seo({
-        title: "Low Tide",
-        description: "A review of the first Harbor Quartet novel.",
+        title: "Laguna Seca Set-Up Notes",
+        description: "A practical endurance racing setup and track report.",
         type: "article",
         publishedTime: "2026-08-02",
-        author: "Maren Okafor",
+        author: "Ross Bentley",
       }),
     );
-    expect(tags).toContain(\`<title>\${pageTitle("Low Tide")}</title>\`);
+    expect(tags).toContain(\`<title>\${pageTitle("Laguna Seca Set-Up Notes")}</title>\`);
     expect(tags).toContain(
-      '<link rel="canonical" href="https://example.com/blog/low-tide/" />',
+      'link rel="canonical" href="https://example.com/blog/laguna-seca-set-up-notes/" />',
     );
     expect(tags).toContain('property="og:type" content="article"');
     expect(tags).toContain(
-      'property="og:url" content="https://example.com/blog/low-tide/"',
+      'property="og:url" content="https://example.com/blog/laguna-seca-set-up-notes/"',
     );
     expect(tags).toContain('content="2026-08-02"');
-    expect(tags).toContain('property="article:author" content="Maren Okafor"');
+    expect(tags).toContain('property="article:author" content="Ross Bentley"');
   });
 
   it("uses the site name and tagline as the home page title", () => {
@@ -631,8 +631,8 @@ describe("absoluteUrl", () => {
 
   it("adds the site URL and the deployment base", () => {
     vi.stubEnv("BASCIK_SITE_URL", "https://example.com");
-    vi.stubEnv("BASCIK_BASE", "/books/");
-    expect(absoluteUrl("/blog/")).toBe("https://example.com/books/blog/");
+    vi.stubEnv("BASCIK_BASE", "/racing/");
+    expect(absoluteUrl("/blog/")).toBe("https://example.com/racing/blog/");
   });
 });
 
@@ -643,7 +643,7 @@ describe("articleJsonLd", () => {
         title: "</script><script>alert(1)</script>",
         description: "A description.",
         date: "2026-08-02",
-        author: "Maren Okafor",
+        author: "Apex Racing Desk",
       }),
     );
     expect(block.match(/<\\/script>/g)).toHaveLength(1);
@@ -708,38 +708,38 @@ export const FEED_TEST = `import { describe, expect, it } from "vitest";
 import { FEED_SIZE, atomFeed } from "./feed.ts";
 import { toPost, type Post } from "./posts.ts";
 
-const post = (slug: string, date: string, title = "Low Tide"): Post =>
+const post = (slug: string, date: string, title = "Laguna Seca Set-Up Notes"): Post =>
   toPost(
     slug,
-    \`---\\ntitle: \${title}\\ndescription: A description.\\ndate: \${date}\\nauthor: Maren Okafor\\n---\\n\\nBody with <em>markup</em> & more.\\n\`,
+    \`---\\ntitle: \${title}\\ndescription: A description.\\ndate: \${date}\\nauthor: Apex Racing Desk\\n---\\n\\nBody with <em>markup</em> & more.\\n\`,
   );
 
 describe("atomFeed", () => {
   it("lists each post with an absolute URL, its date, and its author", () => {
     const xml = atomFeed(
-      [post("low-tide", "2026-08-02"), post("salt-road", "2026-06-19")],
+      [post("laguna-seca-set-up-notes", "2026-08-02"), post("le-mans-spa-race-preview", "2026-06-19")],
       { siteUrl: "https://example.com/" },
     );
     expect(xml.startsWith('<?xml version="1.0" encoding="utf-8"?>')).toBe(true);
     expect(xml).toContain('<feed xmlns="http://www.w3.org/2005/Atom">');
-    expect(xml).toContain('<link href="https://example.com/blog/low-tide/" />');
-    expect(xml).toContain("<id>https://example.com/blog/salt-road/</id>");
+    expect(xml).toContain('<link href="https://example.com/blog/laguna-seca-set-up-notes/" />');
+    expect(xml).toContain("<id>https://example.com/blog/le-mans-spa-race-preview/</id>");
     expect(xml).toContain(
       '<link rel="self" type="application/atom+xml" href="https://example.com/feed.xml" />',
     );
     expect(xml).toContain("<published>2026-08-02T00:00:00Z</published>");
-    expect(xml).toContain("<name>Maren Okafor</name>");
+    expect(xml).toContain("<name>Apex Racing Desk</name>");
     // The feed's own date is its newest post's.
     expect(xml).toContain("<updated>2026-08-02T00:00:00Z</updated>\\n  <entry>");
   });
 
   it("puts the deployment base in every URL", () => {
-    const xml = atomFeed([post("low-tide", "2026-08-02")], {
+    const xml = atomFeed([post("laguna-seca-set-up-notes", "2026-08-02")], {
       siteUrl: "https://example.com",
-      base: "/books/",
+      base: "/racing/",
     });
-    expect(xml).toContain("https://example.com/books/blog/low-tide/");
-    expect(xml).toContain("https://example.com/books/feed.xml");
+    expect(xml).toContain("https://example.com/racing/blog/laguna-seca-set-up-notes/");
+    expect(xml).toContain("https://example.com/racing/feed.xml");
   });
 
   it("writes root-relative URLs without a site URL, for the dev server", () => {
