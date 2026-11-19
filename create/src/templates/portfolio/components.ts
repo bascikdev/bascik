@@ -211,7 +211,7 @@ export const HOME_INTRO_HTML = `<section class="hero" data-testid="home-intro">
           <p>\${site.tagline}</p>\`;
     </script>
     <div class="hero-actions">
-      <a href="/work" class="btn btn-primary">See the books</a>
+      <a href="/work" class="btn btn-primary">See race projects</a>
       <a href="/contact" class="btn btn-ghost">Get in touch</a>
     </div>
   </div>
@@ -220,13 +220,13 @@ export const HOME_INTRO_HTML = `<section class="hero" data-testid="home-intro">
 
 export const HOME_INTRO_TEST = `${testHead("home-intro")}
 describe("home-intro component", () => {
-  it("writes the author's name as the page's h1 from src/lib/site.ts", async () => {
+  it("writes the racing site name as the page's h1 from src/lib/site.ts", async () => {
     const html = await source();
     expect(html).toContain("<h1>\${site.author}</h1>");
     expect(html).toContain("site.tagline");
   });
 
-  it("links to the books and to the contact page", async () => {
+  it("links to the race projects and to the contact page", async () => {
     const html = await source();
     expect(html).toContain('href="/work"');
     expect(html).toContain('href="/contact"');
@@ -752,42 +752,18 @@ export const AUTHOR_BIO_HTML = `<style>
     }
   }
 </style>
-<section data-testid="author-bio">
+<section data-testid="racing-bio">
   <div class="prose">
-    <h2>The short version</h2>
-    <p>
-      I grew up in a harbor town where the weather forecast was read aloud twice
-      a day, and I have been writing about coastlines, forecasts, and the people
-      who live by them ever since.
-    </p>
-    <p>
-      My first novel came out in 2015. Since then I have written three more
-      books of fiction, a collection of stories, and a book of essays composed
-      entirely between midnight and five in the morning.
-    </p>
-    <h2>What I am working on</h2>
-    <p>
-      A novel about a tide mill and the two families who have shared its wheel
-      for three hundred years. It is due when it is done.
-    </p>
-    <p>
-      For readings, interviews, and book club visits,
-      <a href="/contact">send me a note</a>.
-    </p>
+    <h2>Built around the stopwatch</h2>
+    <p>Race engineering starts with clear feedback, repeatable setup changes, and a plan for every session.</p>
+    <h2>Classic machinery, present purpose</h2>
+    <p>Restoration and track work covers Porsche 917, 935, 962, and 963 history with a modern standard of preparation.</p>
+    <p><a href="/contact">Discuss a race project</a></p>
   </div>
   <dl class="facts">
-    <div class="fact">
-      <dt>Writes</dt>
-      <dd>Novels, short stories, essays</dd>
-    </div>
-    <div class="fact">
-      <dt>Lives</dt>
-      <dd>On the coast, within earshot of a foghorn</dd>
-    </div>
-    <div class="fact">
-      <dt>Reads</dt>
-      <dd>Almanacs, shipping forecasts, other people's margins</dd>
-    </div>
+    <div class="fact"><dt>Circuits</dt><dd>Daytona, Sebring, Le Mans, Spa, Laguna Seca</dd></div>
+    <div class="fact"><dt>Specialties</dt><dd>Engineering, restoration, photography</dd></div>
+    <div class="fact"><dt>References</dt><dd>Hurley Haywood, Paul Newman, Jordan Taylor, Ross Bentley</dd></div>
   </dl>
 </section>
 `;
@@ -971,6 +947,182 @@ describe("contact-form component", () => {
     expect(html).toContain('<script type="text/typescript">');
     expect(html).toContain("preventDefault");
     expect(html).toContain("validationMessage");
+  });
+});
+`;
+
+export const PROJECT_CARD_HTML = `<style>
+  article { display: flex; flex-direction: column; gap: 14px; height: 100%; }
+  .visual { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 6px; background: var(--elevated); }
+  .visual[data-accent="amber"] { background: #9a5a18; }
+  .visual[data-accent="tide"] { background: #2a6584; }
+  .visual[data-accent="moss"] { background: #4f6b3a; }
+  .visual[data-accent="rust"] { background: #9c412c; }
+  .visual[data-accent="slate"] { background: #566270; }
+  .visual[data-accent="plum"] { background: #6d3f73; }
+  .visual::after { content: ""; position: absolute; inset: 18% 12%; border: 1px solid rgba(255,255,255,.65); }
+  h3 { margin: 0 0 6px; }
+  a { color: var(--text); text-decoration: none; }
+  a::after { content: ""; position: absolute; inset: 0; }
+  .meta { margin: 0 0 4px; font-size: .72rem; font-weight: 700; text-transform: uppercase; color: var(--accent); }
+  .summary { margin: 0; font-size: .88rem; }
+</style>
+<article data-testid="project-card">
+  <div class="visual" data-bascik-attr-data-accent="accent" aria-hidden="true"></div>
+  <div>
+    <p class="meta" data-bascik-prop-meta></p>
+    <h3><a data-bascik-attr-href="href" data-bascik-prop-title data-testid="project-card-link"></a></h3>
+    <p class="summary" data-bascik-prop-summary></p>
+  </div>
+</article>
+`;
+
+export const PROJECT_CARD_TEST = `${testHead("project-card")}
+describe("project-card component", () => {
+  it("is an article linking to a race project", async () => {
+    const html = await source();
+    expect(html).toContain('<article data-testid="project-card">');
+    expect(html).toContain('data-bascik-attr-href="href"');
+  });
+});
+`;
+
+export const PROJECT_LIST_HTML = `<section data-testid="project-list">
+  <h2>All race projects</h2>
+  <script data-bascik-build-once type="text/typescript">
+    import { projectCards } from "@/lib/project-cards.ts";
+    import { projects } from "@/lib/projects.ts";
+    export default () => projectCards(projects);
+  </script>
+</section>
+`;
+
+export const PROJECT_LIST_TEST = `${testHead("project-list")}
+describe("project-list component", () => {
+  it("lists every project under an h2", async () => {
+    const html = await source();
+    expect(html).toContain("<h2>All race projects</h2>");
+    expect(html).toContain("projectCards(projects)");
+  });
+});
+`;
+
+export const FEATURED_PROJECTS_HTML = `<section class="section" data-testid="featured-projects">
+  <div class="container">
+    <p class="section-label">Selected work</p>
+    <h2>From the paddock</h2>
+    <script data-bascik-build-once type="text/typescript">
+      import { projectCards } from "@/lib/project-cards.ts";
+      import { featuredProjects } from "@/lib/projects.ts";
+      export default () => projectCards(featuredProjects());
+    </script>
+    <p class="more"><a href="/work">See all race projects</a></p>
+  </div>
+</section>
+`;
+
+export const FEATURED_PROJECTS_TEST = `${testHead("featured-projects")}
+describe("featured-projects component", () => {
+  it("builds featured race cards and links to the full list", async () => {
+    const html = await source();
+    expect(html).toContain("projectCards(featuredProjects())");
+    expect(html).toContain('href="/work"');
+  });
+});
+`;
+
+export const PROJECT_DETAIL_HTML = `<style>
+  .detail { display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr); gap: 48px; align-items: start; }
+  .visual { aspect-ratio: 4 / 5; border-radius: 6px; background: var(--elevated); }
+  .visual[data-accent="amber"] { background: #9a5a18; }
+  .visual[data-accent="tide"] { background: #2a6584; }
+  .visual[data-accent="moss"] { background: #4f6b3a; }
+  .visual[data-accent="rust"] { background: #9c412c; }
+  .visual[data-accent="slate"] { background: #566270; }
+  .visual[data-accent="plum"] { background: #6d3f73; }
+  .text { max-width: 65ch; }
+  .lead { font-size: 1.15rem; }
+  .facts { display: flex; gap: 12px 40px; margin: 32px 0 0; padding-top: 20px; border-top: 1px solid var(--border); }
+  .pager { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 12px 24px; padding-top: 24px; border-top: 1px solid var(--border); }
+  @media (max-width: 640px) { .detail { grid-template-columns: minmax(0, 1fr); gap: 28px; } }
+</style>
+<article class="detail" data-testid="project-detail">
+  <script data-bascik-build type="text/typescript">
+    import { projectDetail } from "./detail.ts";
+    export default () => projectDetail(JSON.parse(process.env.BASCIK_ROUTE || "{}").data);
+  </script>
+</article>
+`;
+
+export const PROJECT_DETAIL_TEST = `${testHead("project-detail")}
+describe("project-detail component", () => {
+  it("reads a project from the dynamic route", async () => {
+    const html = await source();
+    expect(html).toContain('data-testid="project-detail"');
+    expect(html).toContain("BASCIK_ROUTE");
+  });
+});
+`;
+
+export const PROJECT_DETAIL_TS = `import { html, raw, type SafeHtml } from "@bascik/bascik/html";
+import { projectPath, projects, type Project } from "../../lib/projects.ts";
+
+export function projectDetail(project: Project | undefined): SafeHtml {
+  if (!project?.slug) throw new Error("<project-detail> found no project in BASCIK_ROUTE.");
+  const index = projects.findIndex((other) => other.slug === project.slug);
+  const previous = index > 0 ? projects[index - 1] : undefined;
+  const next = index >= 0 ? projects[index + 1] : undefined;
+  return html\`<div class="visual" data-accent="\${project.accent}" aria-label="\${project.title} project" role="img"></div>
+    <div class="text">
+      <p class="section-label">\${project.category}</p>
+      <h1>\${project.title}</h1>
+      <p class="lead">\${project.summary}</p>
+      \${raw(String(project.html))}
+      <dl class="facts">
+        <div><dt>Year</dt><dd>\${String(project.year)}</dd></div>
+        <div><dt>Disciplines</dt><dd>\${project.tags.join(" / ")}</dd></div>
+      </dl>
+    </div>
+    <nav class="pager" aria-label="More race projects" data-testid="project-detail-pager">
+      \${previous ? html\`<a href="\${projectPath(previous)}" data-testid="project-detail-newer">Newer: \${previous.title}</a>\` : ""}
+      <a href="/work" data-testid="project-detail-all">All race projects</a>
+      \${next ? html\`<a href="\${projectPath(next)}" data-testid="project-detail-older">Older: \${next.title}</a>\` : ""}
+    </nav>\`;
+}
+`;
+
+export const RACING_BIO_HTML = `<style>
+  section { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); gap: 48px; }
+  .prose { max-width: 65ch; }
+  h2 { margin-top: 36px; } h2:first-child { margin-top: 0; }
+  .facts { margin: 0; padding: 24px; border: 1px solid var(--border); border-radius: var(--r); background: var(--elevated); }
+  .fact + .fact { margin-top: 16px; } .fact dt { font-weight: 700; color: var(--accent); }
+  .fact dd { margin: 0; }
+  @media (max-width: 760px) { section { grid-template-columns: 1fr; gap: 28px; } }
+</style>
+<section data-testid="racing-bio">
+  <div class="prose">
+    <h2>Built around the stopwatch</h2>
+    <p>Hayden Vale Racing brings race engineering discipline to historic and modern programs: clear driver feedback, repeatable setup work, and a plan for every session.</p>
+    <h2>Classic machinery, present purpose</h2>
+    <p>Work spans restoration planning for Porsche 917, 935, 962, and 963 programs, from workshop provenance to track-day preparation.</p>
+    <p><a href="/contact">Discuss a race project</a></p>
+  </div>
+  <dl class="facts">
+    <div class="fact"><dt>Circuits</dt><dd>Daytona, Sebring, Le Mans, Spa, Laguna Seca</dd></div>
+    <div class="fact"><dt>Specialties</dt><dd>Race engineering, restoration, photography</dd></div>
+    <div class="fact"><dt>References</dt><dd>Hurley Haywood, Paul Newman, Jordan Taylor, Ross Bentley</dd></div>
+  </dl>
+</section>
+`;
+
+export const RACING_BIO_TEST = `${testHead("racing-bio")}
+describe("racing-bio component", () => {
+  it("covers racing specialties and references", async () => {
+    const html = await source();
+    expect(html).toContain("Hurley Haywood");
+    expect(html).toContain("Porsche 917");
+    expect(html).toContain("Laguna Seca");
   });
 });
 `;

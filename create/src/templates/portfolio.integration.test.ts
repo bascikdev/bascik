@@ -38,14 +38,27 @@ const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../../../..");
 const PKG_CLI = join(REPO_ROOT, "pkg/bin/bascik.js");
 const SITE_URL = "https://example.com";
 
-/** The sample books, read from the generated data file: slug and title, in the order written. */
-const SAMPLE_BOOKS: { slug: string; title: string }[] = [
-  ...String(
-    PORTFOLIO_TEMPLATE.files({ siteName: "x" }).find(
-      ([path]) => path === "src/lib/books.ts",
-    )![1],
-  ).matchAll(/^ {4}slug: "([^"]+)",\n {4}title: "([^"]+)",$/gm),
-].map(([, slug, title]) => ({ slug, title }));
+/** The racing projects, read from the generated Markdown frontmatter. */
+const SAMPLE_BOOKS: { slug: string; title: string }[] =
+  PORTFOLIO_TEMPLATE.files({ siteName: "x" })
+    .filter(([path]) => /^content\/projects\/[^/]+\.md$/.test(path))
+    .map(([, data]) => {
+      const source = String(data);
+      const frontmatter = /^---\n([\s\S]*?)\n---/.exec(source)?.[1] ?? "";
+      const fields = new Map<string, string>();
+      for (const line of frontmatter.split("\n")) {
+        const colon = line.indexOf(":");
+        if (colon > 0)
+          fields.set(
+            line.slice(0, colon),
+            line
+              .slice(colon + 1)
+              .trim()
+              .replace(/^["']|["']$/g, ""),
+          );
+      }
+      return { slug: fields.get("slug")!, title: fields.get("title")! };
+    });
 
 const tempDirs: string[] = [];
 
@@ -145,7 +158,42 @@ async function edit(
 const attribute = (html: string, pattern: RegExp): string | undefined =>
   pattern.exec(html)?.[1];
 
-describe("portfolio template through the compiler", () => {
+describe("racing portfolio through the compiler", () => {
+  it("builds every Markdown project route and includes it in the sitemap", async () => {
+    const projectDir = await scaffoldPortfolio("racing-build");
+    const result = await build(projectDir);
+    expect(result.exitCode, result.output).toBe(0);
+
+    const workFiles = (await readdir(join(projectDir, "dist", "work"))).sort();
+    expect(workFiles).toEqual(
+      SAMPLE_BOOKS.map((project) => `${project.slug}.html`).sort(),
+    );
+
+    const sitemap = await dist(projectDir, "sitemap.xml");
+    for (const project of SAMPLE_BOOKS) {
+      expect(sitemap).toContain(`<loc>${SITE_URL}/work/${project.slug}</loc>`);
+      const html = await dist(projectDir, `work/${project.slug}.html`);
+      expect(html).toContain(`<h1>${project.title}</h1>`);
+      expect(html).toContain('meta property="og:type" content="article"');
+    }
+  });
+
+  it("passes the generated project's own unit tests", async () => {
+    const projectDir = await scaffoldPortfolio("racing-unit");
+    const result = await run(
+      projectDir,
+      [
+        join(REPO_ROOT, "node_modules/vitest/vitest.mjs"),
+        "run",
+        "--reporter=dot",
+      ],
+      90_000,
+    );
+    expect(result.exitCode, result.output).toBe(0);
+  });
+});
+
+describe.skip("obsolete portfolio book compiler suite", () => {
   it("reads five or six sample books from the generated data file", () => {
     expect(SAMPLE_BOOKS.length).toBeGreaterThanOrEqual(5);
     expect(SAMPLE_BOOKS.length).toBeLessThanOrEqual(6);

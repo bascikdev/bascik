@@ -1,15 +1,15 @@
 /**
  * @module templates/portfolio
  *
- * The `portfolio` template: the site of an invented author and her books. A home page with a short introduction
- * and a grid of featured books, a list of every book, one page per book, an about page, a contact page with a
+ * The `portfolio` template: a racing professional portfolio. A home page with a short introduction
+ * and a grid of featured projects, a list of every project, one page per project, an about page, a contact page with a
  * form that checks its fields, a 404 page, and a title, description, canonical URL and Open Graph tags on
  * every page.
  *
- * How a book becomes a page, the way docs/content/scripts/dynamic-routes.md describes:
+ * How a project becomes a page, the way docs/content/scripts/dynamic-routes.md describes:
  *
- * 1. `src/lib/books.ts` is the collection: a typed array. For a handful of items with short text the docs keep
- *    data in a `.ts` module (docs/content/component-best-practices.md, "Keep Data with Its Component"); Markdown
+ * 1. `src/lib/projects.ts` reads `content/projects/*.md` as the one collection and validates frontmatter.
+ *    data in Markdown files because project pages contain long-form race context.
  *    files are for long-form content. `checkBooks()` runs when the module loads, so an entry with a missing
  *    field or a slug used twice stops the build with an error that names it.
  * 2. `src/pages/work/[slug].html` is a dynamic route template. Its `data-bascik-routes` script returns one route
@@ -32,21 +32,19 @@ import type {
   TemplateFile,
 } from "../scaffold.js";
 import {
-  AUTHOR_BIO_HTML,
-  AUTHOR_BIO_TEST,
-  BOOK_CARD_HTML,
-  BOOK_CARD_TEST,
-  BOOK_COVER_HTML,
-  BOOK_COVER_TEST,
-  BOOK_DETAIL_HTML,
-  BOOK_DETAIL_TEST,
-  BOOK_DETAIL_TS,
-  BOOK_LIST_HTML,
-  BOOK_LIST_TEST,
+  PROJECT_CARD_HTML,
+  PROJECT_CARD_TEST,
+  PROJECT_LIST_HTML,
+  PROJECT_LIST_TEST,
+  PROJECT_DETAIL_HTML,
+  PROJECT_DETAIL_TEST,
+  PROJECT_DETAIL_TS,
+  FEATURED_PROJECTS_HTML,
+  FEATURED_PROJECTS_TEST,
+  RACING_BIO_HTML,
+  RACING_BIO_TEST,
   CONTACT_FORM_HTML,
   CONTACT_FORM_TEST,
-  FEATURED_BOOKS_HTML,
-  FEATURED_BOOKS_TEST,
   HOME_INTRO_HTML,
   HOME_INTRO_TEST,
   PAGE_INTRO_HTML,
@@ -60,17 +58,16 @@ import {
 } from "./portfolio/components.js";
 import {
   BASCIK_CONFIG,
-  BOOKS_TEST,
-  BOOKS_TS,
-  BOOK_CARDS_TEST,
-  BOOK_CARDS_TS,
+  PROJECT_MARKDOWN,
+  PROJECTS_TEST,
+  PROJECTS_TS,
   SEO_TEST,
   SEO_TS,
   siteModule,
 } from "./portfolio/lib.js";
 import {
   ABOUT_PAGE,
-  BOOK_PAGE,
+  PROJECT_PAGE,
   CONTACT_PAGE,
   INDEX_PAGE,
   NOT_FOUND_PAGE,
@@ -90,12 +87,11 @@ const COMPONENTS: readonly (readonly [
   ["site-footer", SITE_FOOTER_HTML, SITE_FOOTER_TEST],
   ["page-intro", PAGE_INTRO_HTML, PAGE_INTRO_TEST],
   ["home-intro", HOME_INTRO_HTML, HOME_INTRO_TEST],
-  ["book-cover", BOOK_COVER_HTML, BOOK_COVER_TEST],
-  ["book-card", BOOK_CARD_HTML, BOOK_CARD_TEST],
-  ["featured-books", FEATURED_BOOKS_HTML, FEATURED_BOOKS_TEST],
-  ["book-list", BOOK_LIST_HTML, BOOK_LIST_TEST],
-  ["book-detail", BOOK_DETAIL_HTML, BOOK_DETAIL_TEST],
-  ["author-bio", AUTHOR_BIO_HTML, AUTHOR_BIO_TEST],
+  ["project-card", PROJECT_CARD_HTML, PROJECT_CARD_TEST],
+  ["featured-projects", FEATURED_PROJECTS_HTML, FEATURED_PROJECTS_TEST],
+  ["project-list", PROJECT_LIST_HTML, PROJECT_LIST_TEST],
+  ["project-detail", PROJECT_DETAIL_HTML, PROJECT_DETAIL_TEST],
+  ["racing-bio", RACING_BIO_HTML, RACING_BIO_TEST],
   ["contact-form", CONTACT_FORM_HTML, CONTACT_FORM_TEST],
 ];
 
@@ -104,6 +100,7 @@ const portfolioDirectories = (): string[] => [
   "src/lib",
   "src/pages/css",
   "src/pages/work",
+  "content/projects",
   ...COMPONENTS.map(([name]) => `src/components/${name}`),
 ];
 
@@ -112,40 +109,63 @@ const portfolioFiles = ({
   siteName,
   adapter,
 }: TemplateContext): TemplateFile[] => [
-  // The project config: the dev server's watch on src/lib/
+  // The project config: watch shared modules and Markdown content.
   ["bascik.config.ts", BASCIK_CONFIG],
 
   ["e2e/app.spec.ts", e2eAppSpec({ adapter: adapter !== undefined })],
 
-  // Shared modules. site.ts is the only file that holds the site's name; books.ts is the collection.
+  // Shared modules. site.ts is the only file that holds the site's name; projects.ts reads Markdown.
   ["src/lib/site.ts", siteModule(siteName)],
-  ["src/lib/books.ts", BOOKS_TS],
-  ["src/lib/books.test.ts", BOOKS_TEST],
-  ["src/lib/book-cards.ts", BOOK_CARDS_TS],
-  ["src/lib/book-cards.test.ts", BOOK_CARDS_TEST],
+  ["src/lib/projects.ts", PROJECTS_TS],
+  ["src/lib/projects.test.ts", PROJECTS_TEST],
+  [
+    "src/lib/project-cards.ts",
+    `import { html, type SafeHtml } from "@bascik/bascik/html";
+import { projectPath, type Project } from "./projects.ts";
+
+export const projectCards = (list: readonly Project[]): SafeHtml =>
+  html\`<ul class="project-grid">
+    \${list.map((project) => {
+      const href = projectPath(project);
+      return html\`<li>
+        <project-card
+          data-bascik-prop-title="\${project.title}"
+          data-bascik-prop-meta="\${project.category} · \${String(project.year)}"
+          data-bascik-prop-summary="\${project.summary}"
+          data-bascik-prop-href="\${href}"
+          data-bascik-prop-accent="\${project.accent}"
+        />
+      </li>\`;
+    })}
+  </ul>\`;`,
+  ],
   ["src/lib/seo.ts", SEO_TS],
   ["src/lib/seo.test.ts", SEO_TEST],
+  ...Object.entries(PROJECT_MARKDOWN).map(([slug, markdown]): TemplateFile => [
+    `content/projects/${slug}.md`,
+    markdown,
+  ]),
 
   // Global CSS: the default template's design tokens, then the portfolio's own rules
   ["src/pages/css/styles.css", PORTFOLIO_STYLES_CSS],
 
-  // Pages. work/[slug].html becomes one page per book.
+  // Pages. work/[slug].html becomes one page per Markdown project.
   ["src/pages/index.html", INDEX_PAGE],
   ["src/pages/work.html", WORK_PAGE],
-  ["src/pages/work/[slug].html", BOOK_PAGE],
+  ["src/pages/work/[slug].html", PROJECT_PAGE],
   ["src/pages/about.html", ABOUT_PAGE],
   ["src/pages/contact.html", CONTACT_PAGE],
   ["src/pages/404.html", NOT_FOUND_PAGE],
 
-  // Components, and the module book-detail keeps beside its markup
+  // Components, and the project-detail module kept beside its markup
   ...COMPONENTS.flatMap(([name, html, test]): TemplateFile[] => [
     [`src/components/${name}/${name}.html`, html],
     [`src/components/${name}/${name}.test.ts`, test],
   ]),
-  ["src/components/book-detail/detail.ts", BOOK_DETAIL_TS],
+  ["src/components/project-detail/detail.ts", PROJECT_DETAIL_TS],
 ];
 
-/** `--template portfolio`: an author's site, with a page per book generated from one data file. */
+/** `--template portfolio`: a racing portfolio, with one page per Markdown project. */
 export const PORTFOLIO_TEMPLATE: StarterTemplate = {
   name: "portfolio",
   summary:

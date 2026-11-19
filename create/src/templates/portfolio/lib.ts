@@ -18,13 +18,13 @@ export const site = {
   /** The site's name: the header logo, og:site_name, and the end of every page title. */
   name: ${JSON.stringify(siteName)},
   /** Who the site is about. */
-  author: "Odalys Venn",
-  role: "Novelist and essayist",
+  author: "Hayden Vale Racing",
+  role: "Motorsport engineering and race programs",
   tagline:
-    "Novels, stories, and essays about coastlines, weather, and the people who stay put.",
+    "Race engineering, classic Porsche restoration, photography, and driver development from Daytona to Le Mans.",
   /** The home page's description in search results: one or two sentences. */
   description:
-    "The books of Odalys Venn: novels, short stories, and essays about coastlines, weather, and the people who stay put.",
+    "Motorsport portfolio covering race engineering, Porsche restoration, race photography, driver development, and track programs.",
 } as const;
 `;
 
@@ -33,9 +33,14 @@ export const BASCIK_CONFIG = `import { defineConfig } from "@bascik/bascik/confi
 
 export default defineConfig({
   pipeline: {
-    // Rebuild pages in dev when the books or a shared helper change.
+    // Rebuild pages in dev when project Markdown or shared helpers change.
     // Component and page folders are watched already.
-    watchPaths: ["src/lib/"],
+    watchPaths: ["src/lib/", "content/projects/"],
+  },
+  scripts: {
+    cache: {
+      exclude: ["@/lib/projects.ts", "src/pages/work/[slug].html", "src/pages/work.html", "src/pages/index.html"],
+    },
   },
 });
 `;
@@ -337,6 +342,312 @@ describe("books", () => {
 });
 `;
 
+/** The racing project's Markdown collection reader. */
+export const PROJECTS_TS = `import { readdir, readFile } from "node:fs/promises";
+import { raw, type SafeHtml } from "@bascik/bascik/html";
+
+export interface Project {
+  slug: string;
+  title: string;
+  year: number;
+  category: string;
+  tags: string[];
+  summary: string;
+  accent: "amber" | "tide" | "moss" | "rust" | "slate" | "plum";
+  featured?: boolean;
+  html: SafeHtml;
+}
+
+function scalar(value: string | undefined, field: string, file: string): string {
+  if (!value?.trim()) throw new Error(\`\${file}: missing "\${field}" in frontmatter.\`);
+  return value.trim();
+}
+
+function markdownToHtml(markdown: string): SafeHtml {
+  const rendered = markdown.trim().split(/\\n\\s*\\n/).map((block) => {
+    if (block.startsWith("## ")) return \`<h2>\${block.slice(3)}</h2>\`;
+    if (block.startsWith("### ")) return \`<h3>\${block.slice(4)}</h3>\`;
+    return \`<p>\${block.replace(/\\n/g, " ")}</p>\`;
+  }).join("\\n");
+  return raw(rendered);
+}
+
+export async function listProjects(): Promise<Project[]> {
+  const names = (await readdir("./content/projects")).filter((name) => name.endsWith(".md")).sort();
+  const projects: Project[] = [];
+  for (const name of names) {
+    const file = \`content/projects/\${name}\`;
+    const source = await readFile(file, "utf8");
+    const match = /^---\\n([\\s\\S]*?)\\n---\\n([\\s\\S]*)$/.exec(source);
+    if (!match) throw new Error(\`\${file} is missing frontmatter\`);
+    const fields = new Map<string, string>();
+    for (const line of match[1].split("\\n")) {
+      const colon = line.indexOf(":");
+      if (colon > 0) fields.set(line.slice(0, colon).trim(), line.slice(colon + 1).trim().replace(/^["']|["']$/g, ""));
+    }
+    const slug = scalar(fields.get("slug"), "slug", file);
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error(\`\${file}: invalid slug "\${slug}"\`);
+    const year = Number(fields.get("year"));
+    if (!Number.isInteger(year)) throw new Error(\`\${file}: "year" must be a whole number\`);
+    const category = scalar(fields.get("category"), "category", file);
+    const summary = scalar(fields.get("summary"), "summary", file);
+    const accentValue = scalar(fields.get("accent"), "accent", file);
+    if (!["amber", "tide", "moss", "rust", "slate", "plum"].includes(accentValue))
+      throw new Error(\`\${file}: invalid accent "\${accentValue}"\`);
+    const tags = (fields.get("tags") || "").split("|").map((tag) => tag.trim()).filter(Boolean);
+    if (tags.length === 0) throw new Error(\`\${file}: missing "tags"\`);
+    projects.push({
+      slug,
+      title: scalar(fields.get("title"), "title", file),
+      year,
+      category,
+      tags,
+      summary,
+      accent: accentValue as Project["accent"],
+      featured: fields.get("featured") === "true",
+      html: markdownToHtml(match[2]),
+    });
+  }
+  const slugs = new Set<string>();
+  for (const project of projects) {
+    if (slugs.has(project.slug)) throw new Error(\`duplicate project slug: \${project.slug}\`);
+    slugs.add(project.slug);
+  }
+  return projects.sort((a, b) => b.year - a.year);
+}
+
+export const projects = await listProjects();
+export const featuredProjects = (): Project[] => projects.filter((project) => project.featured);
+export const projectPath = (project: Pick<Project, "slug">): string => \`/work/\${project.slug}\`;
+`;
+
+/** Legacy draft removed: */
+export const DISABLED_PROJECTS_DRAFT = `import { readdir, readFile } from "node:fs/promises";
+import { raw, type SafeHtml } from "@bascik/bascik/html";
+
+export interface Project {
+  slug: string;
+  title: string;
+  year: number;
+  category: string;
+  tags: string[];
+  summary: string;
+  accent: "amber" | "tide" | "moss" | "rust" | "slate" | "plum";
+  featured?: boolean;
+  html: SafeHtml;
+}
+
+function scalar(value: string | undefined, field: string, file: string): string {
+  if (!value?.trim()) throw new Error(
+    \`content/projects/: missing "" in frontmatter.
+
+\
+      .replace("\u0004", file)
+      .replace("\u0004", field)
+      .replace(/[\\u0000-\\u001f\\u007f]/g, "")
+  );
+  return value.trim();
+}
+
+function markdownToHtml(markdown: string): SafeHtml {
+  const blocks = markdown.trim().split(/\\n\\s*\\n/);
+  const rendered = blocks.map((block) => {
+    if (block.startsWith("## "))
+      return \`<h2></h2>\`.replace("\u0004", block.slice(3).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+    if (block.startsWith("### "))
+      return \`<h3></h3>\`.replace("\u0004", block.slice(4).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+    return \`<p></p>\`.replace("\u0004", block.replace(/\\n/g, " ").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+  }).join("\\n");
+  return raw(rendered);
+}
+
+export async function listProjects(): Promise<Project[]> {
+  const names = (await readdir("./content/projects")).filter((name) => name.endsWith(".md")).sort();
+  const projects: Project[] = [];
+  for (const name of names) {
+    const file = \`content/projects/\`.replace("\u0004", name);
+    const source = await readFile(file, "utf8");
+    const match = /^---\\n([\\s\\S]*?)\\n---\\n([\\s\\S]*)$/.exec(source);
+    if (!match) throw new Error(\` is missing frontmatter\`.replace("\u0004", file));
+    const fields = new Map<string, string>();
+    for (const line of match[1].split("\\n")) {
+      const colon = line.indexOf(":");
+      if (colon > 0) fields.set(line.slice(0, colon).trim(), line.slice(colon + 1).trim().replace(/^["']|["']$/g, ""));
+    }
+    const slug = scalar(fields.get("slug"), "slug", file);
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug))
+      throw new Error(\`: invalid slug ""\`.replace("\u0004", file).replace("\u0004", slug));
+    const year = Number(fields.get("year"));
+    if (!Number.isInteger(year)) throw new Error(\`: "year" must be a whole number\`.replace("\u0004", file));
+    const category = scalar(fields.get("category"), "category", file);
+    const summary = scalar(fields.get("summary"), "summary", file);
+    const accentValue = scalar(fields.get("accent"), "accent", file);
+    if (!["amber", "tide", "moss", "rust", "slate", "plum"].includes(accentValue))
+      throw new Error(\`: invalid accent ""\`.replace("\u0004", file).replace("\u0004", accentValue));
+    const tags = (fields.get("tags") || "").split("|").map((tag) => tag.trim()).filter(Boolean);
+    if (tags.length === 0) throw new Error(\`: missing "tags"\`.replace("\u0004", file));
+    projects.push({
+      slug,
+      title: scalar(fields.get("title"), "title", file),
+      year,
+      category,
+      tags,
+      summary,
+      accent: accentValue as Project["accent"],
+      featured: fields.get("featured") === "true",
+      html: markdownToHtml(match[2]),
+    });
+  }
+  const slugs = new Set<string>();
+  for (const project of projects) {
+    if (slugs.has(project.slug)) throw new Error(\`duplicate project slug: \`.replace("\u0004", project.slug));
+    slugs.add(project.slug);
+  }
+  return projects.sort((a, b) => b.year - a.year);
+}
+
+export const projects = await listProjects();
+export const featuredProjects = (): Project[] => projects.filter((project) => project.featured);
+export const projectPath = (project: Pick<Project, "slug">): string => \`/work/\`.replace("\u0004", project.slug);
+`;
+
+export const PROJECT_MARKDOWN = {
+  "porsche-917-endurance-plan": `---
+slug: "porsche-917-endurance-plan"
+title: "Porsche 917 Endurance Plan"
+date: "2026-05-02"
+year: 2026
+category: "Race Engineering"
+tags: "Endurance|Porsche 917|Driver Development"
+summary: "A complete endurance program built around the Porsche 917, balancing performance, reliability, and a disciplined pit strategy."
+accent: "rust"
+featured: "true"
+---
+## The objective
+
+A focused test and race plan for the Porsche 917 across Daytona and Spa, with the same engineering rhythm used for modern endurance programs.
+
+## The approach
+
+Hurley Haywood's era of preparation sets the standard: consistent driver feedback, measured setup changes, and no wasted run in the program.
+`,
+  "classic-porsche-restoration": `---
+slug: "classic-porsche-restoration"
+title: "Classic Porsche Restoration"
+date: "2026-03-18"
+year: 2026
+category: "Restoration"
+tags: "Porsche 935|Porsche 962|Workshop"
+summary: "Workshop and provenance planning for historic Porsche cars, with period-correct details and a return-to-track build standard."
+accent: "amber"
+featured: "true"
+---
+## Restoring purpose
+
+The project covers a Porsche 935 and 962 build program, preserving the details that make each car feel correct in the paddock and competitive on circuit.
+
+## Track readiness
+
+Every subsystem is inspected, documented, and tested for Sebring and Laguna Seca use without losing the car's history.
+`,
+  "race-photography": `---
+slug: "race-photography"
+title: "Race Photography"
+date: "2025-10-07"
+year: 2025
+category: "Photography"
+tags: "Le Mans|Spa|Race Photography"
+summary: "A motorsport image library covering the paddock, pit wall, and decisive moments at Le Mans and Spa."
+accent: "tide"
+---
+## Story in motion
+
+The work follows teams and drivers through setup, start, and sunset, from a quiet garage to the final lap.
+
+## Published work
+
+Images document machinery, people, and atmosphere without staging the race or interrupting the job.
+`,
+  "jordan-taylor-driver-development": `---
+slug: "jordan-taylor-driver-development"
+title: "Jordan Taylor Driver Development"
+date: "2025-08-14"
+year: 2025
+category: "Driver Development"
+tags: "Jordan Taylor|Porsche 963|Data Coaching"
+summary: "A data-led coaching program translating on-track references into repeatable pace for prototype and GT drivers."
+accent: "plum"
+featured: "true"
+---
+## Coaching method
+
+The program pairs clear debriefs with stint data, helping drivers build repeatable laps around traffic, tire degradation, and endurance rhythm.
+
+## Modern prototype reference
+
+Porsche 963 sessions use the same measurement discipline that supports Jordan Taylor's factory-level prototype work.
+`,
+  "ross-bentley-track-program": `---
+slug: "ross-bentley-track-program"
+title: "Ross Bentley Track Program"
+date: "2024-11-22"
+year: 2024
+category: "Track Programs"
+tags: "Ross Bentley|Laguna Seca|Driver Coaching"
+summary: "A structured track program inspired by clear fundamentals, calm coaching, and measurable improvement."
+accent: "moss"
+---
+## The framework
+
+Students learn braking references, visual planning, and consistent setup communication through short, specific sessions.
+
+## The circuit
+
+Laguna Seca provides the test: enough elevation, commitment, and technical corners to make progress visible.
+`,
+  "962-paul-newman-tribute": `---
+slug: "962-paul-newman-tribute"
+title: "962 Paul Newman Tribute"
+date: "2024-06-30"
+year: 2024
+category: "Program Campaign"
+tags: "Paul Newman|Porsche 962|Daytona"
+summary: "A concise campaign and track program celebrating Paul Newman's competition spirit through the Porsche 962 era."
+accent: "slate"
+---
+## A measured tribute
+
+The program connects Paul Newman with the engineering and endurance discipline of Porsche 962 competition at Daytona.
+
+## Community focus
+
+Track sessions, paddock stories, and historical context bring the car's racing history to a new audience.
+`,
+} as const;
+
+/** `src/lib/projects.test.ts`: checks the reader's frontmatter contract. */
+export const PROJECTS_TEST = `import { describe, expect, it } from "vitest";
+import { projectPath, projects, featuredProjects } from "./projects.ts";
+
+describe("projects", () => {
+  it("loads a racing Markdown collection with unique slugs", () => {
+    expect(projects.length).toBeGreaterThanOrEqual(5);
+    expect(new Set(projects.map((project) => project.slug)).size).toBe(projects.length);
+    expect(featuredProjects().length).toBeGreaterThan(0);
+  });
+
+  it("gives each project a valid work route", () => {
+    for (const project of projects) {
+      expect(project.slug).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+      expect(project.title.length).toBeGreaterThan(0);
+      expect(project.summary.length).toBeGreaterThanOrEqual(50);
+      expect(project.tags.length).toBeGreaterThan(0);
+      expect(projectPath(project)).toBe(\`/work/\${project.slug}\`);
+    }
+  });
+});
+`;
+
 /** `src/lib/seo.ts`: each page's title, description, canonical URL, and Open Graph tags. */
 export const SEO_TS = `// The head tags each page needs: title, description, canonical URL, and Open Graph tags. A page calls it from
 // a build script in its <head>:
@@ -356,8 +667,8 @@ export interface SeoOptions {
   title: string;
   /** One or two sentences for search results. */
   description: string;
-  /** "book" on a book's page, otherwise "website". */
-  type?: "website" | "book";
+  /** "article" on a project page, otherwise "website". */
+  type?: "website" | "article";
   /** Keep the page out of search results, as the 404 page does. */
   noindex?: boolean;
 }
@@ -430,11 +741,11 @@ describe("seo", () => {
     expect(tags).toContain("<title>About - ");
   });
 
-  it("ends each title with the site's name and marks a book's page", () => {
+  it("ends each title with the site's name and marks a project page", () => {
     const tags = String(
-      seo({ title: "A Test Book", description: "About it.", type: "book" }),
+      seo({ title: "Porsche 962 Endurance", description: "About it.", type: "article" }),
     );
-    expect(tags).toContain('<meta property="og:type" content="book" />');
+    expect(tags).toContain('<meta property="og:type" content="article" />');
     expect(tags).toContain('<meta property="og:site_name" content="');
     expect(site.name.length).toBeGreaterThan(0);
   });

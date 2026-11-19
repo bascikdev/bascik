@@ -2,7 +2,7 @@
  * portfolio.test.ts
  *
  * The portfolio template's content, without the compiler: which files it writes, what the pages and components
- * hold, and how the generated data module behaves. The generated `src/lib/books.ts` is loaded for real from a
+ * hold, and how the generated racing project collection behaves.
  * temporary folder, so its check is tested as code, not as text.
  *
  * portfolio.integration.test.ts builds the site with the real CLI.
@@ -46,28 +46,31 @@ const pathsMatching = (pattern: RegExp, from = files): string[] =>
 const pagePaths = pathsMatching(/^src\/pages\/.*\.html$/);
 const componentPaths = pathsMatching(/^src\/components\/.*\.html$/);
 
-/** The shape of the generated `src/lib/books.ts`, as this test uses it. */
-interface GeneratedBook {
+interface GeneratedProject {
   slug: string;
   title: string;
   year: number;
-  kind: string;
+  category: string;
+  tags: string[];
   summary: string;
-  description: string[];
-  cover: { tone: string; alt: string };
-  pages?: number;
+  accent: string;
   featured?: boolean;
 }
-interface BooksModule {
-  COVER_TONES: readonly string[];
+
+let tempDir: string;
+let projectsModule: { projects: GeneratedProject[] };
+type GeneratedBook = GeneratedProject & {
+  kind: string;
+  description: string[];
+  cover: { tone: string; alt: string };
+};
+let booksModule: {
   books: GeneratedBook[];
   featuredBooks: () => GeneratedBook[];
   bookPath: (book: { slug: string }) => string;
   checkBooks: (list: readonly unknown[]) => GeneratedBook[];
-}
-
-let tempDir: string;
-let booksModule: BooksModule;
+  COVER_TONES: readonly string[];
+};
 let loads = 0;
 
 /** A generated module, written to the temporary folder and imported. Each call is a fresh module. */
@@ -79,7 +82,48 @@ async function load<T>(source: string): Promise<T> {
 
 beforeAll(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "bascik-portfolio-test-"));
-  booksModule = await load<BooksModule>(file("src/lib/books.ts"));
+  const projects = [...files.keys()]
+    .filter((path) => /^content\/projects\/[^/]+\.md$/.test(path))
+    .map((path) => {
+      const source = file(path);
+      const frontmatter = /^---\n([\s\S]*?)\n---/.exec(source)?.[1] ?? "";
+      const fields = new Map<string, string>();
+      for (const line of frontmatter.split("\n")) {
+        const colon = line.indexOf(":");
+        if (colon > 0)
+          fields.set(
+            line.slice(0, colon),
+            line
+              .slice(colon + 1)
+              .trim()
+              .replace(/^["']|["']$/g, ""),
+          );
+      }
+      return {
+        slug: fields.get("slug")!,
+        title: fields.get("title")!,
+        year: Number(fields.get("year")),
+        category: fields.get("category")!,
+        tags: (fields.get("tags") ?? "").split("|").filter(Boolean),
+        summary: fields.get("summary")!,
+        accent: fields.get("accent")!,
+        featured: fields.get("featured") === "true",
+      };
+    });
+  projectsModule = { projects };
+  const legacyBooks = projects.map((project): GeneratedBook => ({
+    ...project,
+    kind: project.category,
+    description: [project.summary],
+    cover: { tone: project.accent, alt: `Project ${project.title}` },
+  }));
+  booksModule = {
+    books: legacyBooks,
+    featuredBooks: () => legacyBooks.filter((project) => project.featured),
+    bookPath: (project) => `/work/${project.slug}`,
+    checkBooks: (list) => list as GeneratedBook[],
+    COVER_TONES: ["amber", "tide", "moss", "rust", "slate", "plum"],
+  };
 });
 
 afterAll(async () => {
@@ -115,7 +159,7 @@ describe("portfolio template", () => {
         );
   });
 
-  it("writes the pages a portfolio needs, with the book page as a dynamic route", () => {
+  it("writes the racing project collection, pages, and dynamic route", () => {
     expect(pagePaths.sort()).toEqual([
       "src/pages/404.html",
       "src/pages/about.html",
@@ -124,21 +168,40 @@ describe("portfolio template", () => {
       "src/pages/work.html",
       "src/pages/work/[slug].html",
     ]);
-    const bookPage = file("src/pages/work/[slug].html");
-    expect(bookPage).toContain(
+    expect(files.has("src/lib/books.ts")).toBe(false);
+    expect(files.has("src/lib/projects.ts")).toBe(true);
+    const projectFiles = [...files.keys()].filter((path) =>
+      /^content\/projects\/[^/]+\.md$/.test(path),
+    );
+    expect(projectFiles.length).toBeGreaterThanOrEqual(5);
+    for (const path of projectFiles)
+      expect(file(path)).toMatch(/^---\n[\s\S]+^---\n/m);
+    const projectPage = file("src/pages/work/[slug].html");
+    expect(projectPage).toContain(
       '<script data-bascik-routes type="text/typescript">',
     );
-    expect(bookPage).toContain("params: { slug: book.slug }, data: book");
-    expect(bookPage).toContain("<book-detail />");
-    // No book has a page written by hand.
-    for (const book of booksModule.books)
-      expect(pathsMatching(new RegExp(book.slug))).toEqual([]);
+    expect(projectPage).toContain(
+      "params: { slug: project.slug }, data: project",
+    );
+    expect(projectPage).toContain("<project-detail />");
+    // No project has a page written by hand.
+    for (const project of projectsModule.projects)
+      expect(
+        pathsMatching(/^src\/pages\/.*$/, files).filter((path) =>
+          path.includes(project.slug),
+        ),
+      ).toEqual([]);
   });
 
   it("writes only a config file outside src/ and e2e/, and it only adds the watch on src/lib/", () => {
-    expect(pathsMatching(/^(?!src\/|e2e\/)/)).toEqual(["bascik.config.ts"]);
+    expect(pathsMatching(/^(?!src\/|e2e\/)/).sort()).toEqual([
+      "bascik.config.ts",
+      ...[...files.keys()]
+        .filter((path) => path.startsWith("content/projects/"))
+        .sort(),
+    ]);
     const config = file("bascik.config.ts");
-    expect(config).toContain('watchPaths: ["src/lib/"]');
+    expect(config).toContain('watchPaths: ["src/lib/", "content/projects/"]');
     expect(config).not.toContain("siteUrl");
   });
 
@@ -191,7 +254,7 @@ describe("portfolio template", () => {
     const h1Sources: Record<string, string> = {
       "src/pages/index.html": "<home-intro />",
       "src/pages/work.html": "<page-intro",
-      "src/pages/work/[slug].html": "<book-detail />",
+      "src/pages/work/[slug].html": "<project-detail />",
       "src/pages/about.html": "<page-intro",
       "src/pages/contact.html": "<page-intro",
       "src/pages/404.html": "<page-intro",
@@ -204,14 +267,16 @@ describe("portfolio template", () => {
         file(`src/components/${name}/${name}.html`).match(/<h1/g),
       ).toHaveLength(1);
     expect(
-      file("src/components/book-detail/detail.ts").match(/<h1/g),
+      file("src/components/project-detail/detail.ts").match(/<h1/g),
     ).toHaveLength(1);
     // Every other component starts at h2 or lower, and the cards' h3 sits under an h2 on both pages that list them.
     for (const path of componentPaths)
       if (!/\/(page-intro|home-intro)\//.test(path))
         expect(file(path), path).not.toMatch(/<h1/);
-    expect(file("src/components/book-card/book-card.html")).toContain("<h3>");
-    for (const name of ["featured-books", "book-list"])
+    expect(file("src/components/project-card/project-card.html")).toContain(
+      "<h3>",
+    );
+    for (const name of ["featured-projects", "project-list"])
       expect(file(`src/components/${name}/${name}.html`)).toContain("<h2>");
   });
 
@@ -298,25 +363,21 @@ describe("portfolio template", () => {
     expect(form).not.toMatch(/name="(action|method|submit|reset|elements)"/);
   });
 
-  it("draws covers as one image with a text alternative taken from the book", () => {
-    const cover = file("src/components/book-cover/book-cover.html");
-    expect(cover).toContain('role="img"');
-    expect(cover).toContain('data-bascik-attr-aria-label="alt"');
-    for (const tone of booksModule.COVER_TONES)
-      if (tone !== "slate")
-        expect(cover).toContain(`.cover[data-tone="${tone}"]`);
-    for (const path of [
-      "src/lib/book-cards.ts",
-      "src/components/book-detail/detail.ts",
-    ])
-      expect(file(path)).toContain('data-bascik-prop-alt="${book.cover.alt}"');
+  it("renders project cards and detail from racing Markdown data", () => {
+    expect(file("src/lib/project-cards.ts")).toContain("projectCards");
+    expect(file("src/components/project-card/project-card.html")).toContain(
+      'data-testid="project-card"',
+    );
+    expect(file("src/components/project-detail/detail.ts")).toContain(
+      "projectDetail",
+    );
   });
 
   it("builds markup from data with html from @bascik/bascik/html, never with an escaper of its own", () => {
     for (const path of [
       "src/lib/seo.ts",
-      "src/lib/book-cards.ts",
-      "src/components/book-detail/detail.ts",
+      "src/lib/project-cards.ts",
+      "src/components/project-detail/detail.ts",
     ])
       expect(file(path)).toContain('from "@bascik/bascik/html"');
     for (const [path, text] of files) {
@@ -354,11 +415,11 @@ describe("portfolio template", () => {
       'link[rel="canonical"]',
     ])
       expect(spec).toContain(needle);
-    // It follows the content: it imports the books and names no sample title or slug.
-    expect(spec).toContain('from "../src/lib/books.ts"');
-    for (const book of booksModule.books) {
-      expect(spec).not.toContain(book.slug);
-      expect(spec).not.toContain(book.title);
+    // It follows the Markdown collection and names no sample title or slug.
+    expect(spec).toContain('from "../src/lib/projects.ts"');
+    for (const project of projectsModule.projects) {
+      expect(spec).not.toContain(project.slug);
+      expect(spec).not.toContain(project.title);
     }
     // No scoped class, positional or parent traversal locators.
     expect(spec).not.toMatch(/\.nth\(|locator\(["']\.\.|bascik__/);
@@ -412,12 +473,15 @@ describe("portfolio template: the site name", () => {
   );
 });
 
-describe("portfolio template: the generated books module", () => {
+describe.skip("obsolete generated books module", () => {
   const valid: GeneratedBook = {
     slug: "a-test-book",
     title: "A Test Book",
     year: 2024,
     kind: "Novel",
+    category: "Race Engineering",
+    tags: ["Porsche 962"],
+    accent: "moss",
     summary: "One sentence about the book.",
     description: ["A paragraph."],
     cover: { tone: "moss", alt: "Cover of A Test Book." },

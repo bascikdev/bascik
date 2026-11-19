@@ -56,80 +56,80 @@ export const INDEX_PAGE = page({
         seo({ title: site.author, description: site.description });
     </script>`,
   body: `      <home-intro />
-      <featured-books />`,
+      <featured-projects />`,
 });
 
 export const WORK_PAGE = page({
   name: "work",
   head: seoScript(
     "Work",
-    "Every book so far, newest first: novels, a novella, short stories, and essays. Each has a page of its own.",
+    "Race engineering, restoration, photography, driver development, and track programs with pages for every project.",
   ),
   mainClass: "container page",
   body: `      <page-intro
-        data-bascik-prop-label="Work"
-        data-bascik-prop-title="Books"
-        data-bascik-prop-text="Every book so far, newest first. Each has a page of its own."
+        data-bascik-prop-label="Selected work"
+        data-bascik-prop-title="Race projects"
+        data-bascik-prop-text="Engineering and program work across endurance racing, classic Porsche history, photography, and driver development."
       />
-      <book-list />`,
+      <project-list />`,
 });
 
 /**
- * The dynamic route: one page per book. The routes script returns a route for each entry in `src/lib/books.ts`,
- * with the book as the route's data; the head script and `<book-detail>` read it from `BASCIK_ROUTE`.
+ * The dynamic route: one page per project. The routes script returns a route for each entry in `src/lib/projects.ts`,
+ * with the project as the route's data; the head script and `<project-detail>` read it from `BASCIK_ROUTE`.
  */
-export const BOOK_PAGE = page({
-  name: "book",
-  head: `    <!-- One page per book at /work/<slug>. The routes script hands each page its book as the route's data. -->
+export const PROJECT_PAGE = page({
+  name: "project",
+  head: `    <!-- One page per project at /work/<slug>. The routes script hands each page its project as the route's data. -->
     <script data-bascik-routes type="text/typescript">
-      import { books } from "@/lib/books.ts";
+      import { projects } from "@/lib/projects.ts";
       export default () =>
-        books.map((book) => ({ params: { slug: book.slug }, data: book }));
+        projects.map((project) => ({ params: { slug: project.slug }, data: project }));
     </script>
     <script data-bascik-build type="text/typescript">
-      import type { Book } from "@/lib/books.ts";
+      import type { Project } from "@/lib/projects.ts";
       import { seo } from "@/lib/seo.ts";
       export default () => {
-        const { data: book }: { data: Book } = JSON.parse(
+        const { data: project }: { data: Project } = JSON.parse(
           process.env.BASCIK_ROUTE || "{}",
         );
         return seo({
-          title: book.title,
-          description: book.summary,
-          type: "book",
+          title: project.title,
+          description: project.summary,
+          type: "article",
         });
       };
     </script>`,
   mainClass: "container page",
-  body: `      <book-detail />`,
+  body: `      <project-detail />`,
 });
 
 export const ABOUT_PAGE = page({
   name: "about",
   head: seoScript(
     "About",
-    "Who writes these books, where, and what comes next: a short biography and a few facts.",
+    "Race engineering, classic Porsche restoration, photography, and driver development across iconic circuits.",
   ),
   mainClass: "container page",
   body: `      <page-intro
         data-bascik-prop-label="About"
-        data-bascik-prop-title="About the author"
-        data-bascik-prop-text="Who writes these books, where, and what comes next."
+        data-bascik-prop-title="Race craft, from paddock to podium"
+        data-bascik-prop-text="An endurance-focused motorsport portfolio shaped by preparation, precision, and fast feedback."
       />
-      <author-bio />`,
+      <racing-bio />`,
 });
 
 export const CONTACT_PAGE = page({
   name: "contact",
   head: seoScript(
     "Contact",
-    "Get in touch about readings, interviews, book club visits, or anything one of the books left you wondering.",
+    "Enquire about race engineering, Porsche restoration, photography, driver development, or track programs.",
   ),
   mainClass: "container page",
   body: `      <page-intro
         data-bascik-prop-label="Contact"
-        data-bascik-prop-title="Get in touch"
-        data-bascik-prop-text="Readings, interviews, book club visits, or a question a book left you with."
+        data-bascik-prop-title="Start a motorsport project"
+        data-bascik-prop-text="Race engineering, restoration, photography, driver coaching, or a custom track program."
       />
       <contact-form />`,
 });
@@ -152,12 +152,12 @@ export const NOT_FOUND_PAGE = page({
         data-bascik-prop-title="Page not found"
         data-bascik-prop-text="This page does not exist or has moved."
       />
-      <p><a href="/work" class="btn btn-primary">See the books</a></p>`,
+      <p><a href="/work" class="btn btn-primary">See race projects</a></p>`,
 });
 
 /**
  * The global stylesheet: the default template's design tokens and helpers, then the few rules the portfolio's
- * pages share. `.book-grid` is global because two components build the same grid.
+ * pages share. `.project-grid` is global because project components build the same grid.
  */
 export const PORTFOLIO_STYLES_CSS = `${STYLES_CSS}
 /* ── Portfolio ── */
@@ -170,8 +170,8 @@ export const PORTFOLIO_STYLES_CSS = `${STYLES_CSS}
 
 @media (max-width: 640px) {
   .page { padding-top: 48px; padding-bottom: 48px; }
-  /* Two covers side by side on a phone. */
-  .book-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 28px 16px; }
+  /* Two project cards side by side on a phone. */
+  .project-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 28px 16px; }
 }
 `;
 
@@ -185,27 +185,26 @@ const API_ROUTE_E2E_TEST = `
 `;
 
 /**
- * The Playwright spec. It imports the books, so it follows the content: adding, removing or renaming a book
- * does not break it.
+ * The Playwright spec imports the Markdown projects, so project changes update the fixture automatically.
  */
 const E2E_APP_SPEC_TESTS = `import { test, expect } from "@playwright/test";
-import { books, featuredBooks } from "../src/lib/books.ts";
+import { projects, featuredProjects } from "../src/lib/projects.ts";
 
-const [book] = books;
+const [project] = projects;
 
 test.describe("Portfolio E2E Tests", () => {
-  test("home page introduces the author and shows the featured books", async ({
+  test("home page introduces the racing portfolio and shows featured projects", async ({
     page,
   }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    const cards = page.getByTestId("featured-books").getByTestId("book-card");
-    await expect(cards).toHaveCount(featuredBooks().length);
+    const cards = page.getByTestId("featured-projects").getByTestId("project-card");
+    await expect(cards).toHaveCount(featuredProjects().length);
 
-    const [featured] = featuredBooks();
+    const [featured] = featuredProjects();
     await cards
       .filter({ hasText: featured.title })
-      .getByTestId("book-card-link")
+      .getByTestId("project-card-link")
       .click();
     await expect(page).toHaveURL(\`/work/\${featured.slug}\`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
@@ -213,37 +212,33 @@ test.describe("Portfolio E2E Tests", () => {
     );
   });
 
-  test("work page lists every book, each linking to its own page", async ({
+  test("work page lists every project, each linking to its own page", async ({
     page,
   }) => {
     await page.goto("/work");
     await expect(page).toHaveTitle(/^Work - /);
-    const cards = page.getByTestId("book-list").getByTestId("book-card");
-    await expect(cards).toHaveCount(books.length);
-    for (const each of books) {
+    const cards = page.getByTestId("project-list").getByTestId("project-card");
+    await expect(cards).toHaveCount(projects.length);
+    for (const each of projects) {
       const card = cards.filter({ hasText: each.title });
-      await expect(card.getByTestId("book-card-link")).toHaveAttribute(
+      await expect(card.getByTestId("project-card-link")).toHaveAttribute(
         "href",
         \`/work/\${each.slug}\`,
       );
-      // The drawn cover is one image, named by its text alternative.
-      await expect(
-        card.getByRole("img", { name: each.cover.alt }),
-      ).toBeVisible();
     }
   });
 
-  test("every book has a page with its title, text and absolute SEO URLs", async ({
+  test("every project has a page with its title, text and absolute SEO URLs", async ({
     page,
   }) => {
-    for (const each of books) {
+    for (const each of projects) {
       const response = await page.goto(\`/work/\${each.slug}\`);
       expect(response?.status(), each.slug).toBe(200);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(
         each.title,
       );
-      await expect(page.getByTestId("book-detail")).toContainText(
-        each.description[0],
+      await expect(page.getByTestId("project-detail")).toContainText(
+        each.summary,
       );
       await expect(page.locator('meta[name="description"]')).toHaveAttribute(
         "content",
@@ -259,17 +254,17 @@ test.describe("Portfolio E2E Tests", () => {
     }
   });
 
-  test("a book page links to the books on either side of it", async ({
+  test("a project page links to adjacent projects", async ({
     page,
   }) => {
-    test.skip(books.length < 2, "needs two books");
-    await page.goto(\`/work/\${book.slug}\`);
-    await expect(page.getByTestId("book-detail-newer")).toHaveCount(0);
-    await page.getByTestId("book-detail-older").click();
-    await expect(page).toHaveURL(\`/work/\${books[1].slug}\`);
-    await page.getByTestId("book-detail-newer").click();
-    await expect(page).toHaveURL(\`/work/\${book.slug}\`);
-    await page.getByTestId("book-detail-all").click();
+    test.skip(projects.length < 2, "needs two projects");
+    await page.goto(\`/work/\${project.slug}\`);
+    await expect(page.getByTestId("project-detail-newer")).toHaveCount(0);
+    await page.getByTestId("project-detail-older").click();
+    await expect(page).toHaveURL(\`/work/\${projects[1].slug}\`);
+    await page.getByTestId("project-detail-newer").click();
+    await expect(page).toHaveURL(\`/work/\${project.slug}\`);
+    await page.getByTestId("project-detail-all").click();
     await expect(page).toHaveURL("/work");
   });
 
@@ -279,7 +274,7 @@ test.describe("Portfolio E2E Tests", () => {
     await expect(page).toHaveURL("/about");
     await expect(page).toHaveTitle(/^About - /);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-      "About the author",
+      "Race craft, from paddock to podium",
     );
     await page.getByTestId("site-header-logo").click();
     await expect(page).toHaveURL("/");
@@ -327,7 +322,7 @@ test.describe("Portfolio E2E Tests", () => {
     for (const path of [
       "/",
       "/work",
-      \`/work/\${book.slug}\`,
+      \`/work/\${project.slug}\`,
       "/about",
       "/contact",
     ]) {
@@ -372,7 +367,7 @@ test.describe("Portfolio E2E Tests", () => {
     await submit.click();
     await expect(status).toContainText("Message:");
 
-    await message.fill("I would like to invite you to our book club.");
+    await message.fill("I would like to discuss a race engineering program.");
     await submit.click();
     await expect(page).toHaveURL("/contact");
     await expect(status).toContainText("Thanks");
@@ -380,7 +375,7 @@ test.describe("Portfolio E2E Tests", () => {
   });
 
   test("unknown URL gets the 404 page with a way back", async ({ page }) => {
-    const response = await page.goto("/work/no-such-book");
+    const response = await page.goto("/work/no-such-project");
     expect(response?.status()).toBe(404);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
       "Page not found",
@@ -389,7 +384,7 @@ test.describe("Portfolio E2E Tests", () => {
       "content",
       "noindex",
     );
-    await page.getByRole("link", { name: "See the books" }).click();
+    await page.getByRole("link", { name: "See race projects" }).click();
     await expect(page).toHaveURL("/work");
   });
 `;
