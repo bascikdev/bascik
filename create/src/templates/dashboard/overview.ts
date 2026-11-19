@@ -26,8 +26,9 @@ One figure: its name, its value, and how it changed. The change is written in wo
     gap: var(--space-1);
     padding: var(--space-3);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    background: var(--color-surface);
+    border-radius: 1rem;
+    background: var(--color-surface) var(--surface-panel);
+    box-shadow: var(--surface-sheen), 0 16px 36px -24px light-dark(rgb(36 53 89 / 32%), rgb(0 0 0 / 45%));
   }
 
   .label {

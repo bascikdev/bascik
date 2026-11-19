@@ -20,13 +20,20 @@ export const PAGE_FILES: TemplateFile[] = [
   /* light-dark() picks the first value in light mode and the second in dark mode, following color-scheme. */
   color-scheme: light dark;
 
-  --color-bg: light-dark(#f5f6f8, #111317);
-  --color-surface: light-dark(#ffffff, #1a1d23);
-  --color-text: light-dark(#1b1d21, #e8e9ec);
-  --color-muted: light-dark(#555b67, #a5abb7);
-  --color-border: light-dark(#d5d9e0, #343842);
-  --color-accent: light-dark(#1f4fc4, #8ab0ff);
-  --color-accent-contrast: light-dark(#ffffff, #0b1530);
+  --color-bg: light-dark(#e9edf3, #11151c);
+  --color-surface: light-dark(#f8fafd, #222833);
+  --color-surface-top: light-dark(#ffffff, #363e4c);
+  --color-elevated: light-dark(#f0f3f8, #282f3b);
+  --color-text: light-dark(#293247, #edf0f7);
+  --color-muted: light-dark(#616c80, #b3bbcb);
+  --color-border: light-dark(#d6deea, #404957);
+  --color-accent: light-dark(#475cbd, #b1bfff);
+  --color-accent-contrast: light-dark(#ffffff, #202b4a);
+  --color-accent-wash: light-dark(#edf0fc, #30394f);
+  --surface-panel: linear-gradient(155deg, var(--color-surface-top), var(--color-surface) 72%);
+  --surface-sheen: inset 0 1px 0 light-dark(rgb(255 255 255 / 90%), rgb(255 255 255 / 15%));
+  --surface-shadow: 0 24px 48px -16px light-dark(rgb(36 53 89 / 24%), rgb(0 0 0 / 55%)),
+    0 6px 12px -4px light-dark(rgb(36 53 89 / 12%), rgb(0 0 0 / 30%));
   --color-up: light-dark(#17693a, #7ddc9f);
   --color-down: light-dark(#b42318, #ff9a8f);
   --color-warn: light-dark(#7a4f00, #f2c66d);
@@ -40,7 +47,8 @@ export const PAGE_FILES: TemplateFile[] = [
   --space-4: 1.5rem;
   --space-5: 2.5rem;
 
-  --radius: 0.5rem;
+  --radius: 1.25rem;
+  --control-radius: 0.625rem;
   --sidebar-width: 14rem;
 }
 
@@ -67,7 +75,7 @@ html {
 /* ── App shell: the header on top, the sidebar beside the page ── */
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   grid-template-rows: auto 1fr;
@@ -94,7 +102,9 @@ main {
   align-content: start;
   gap: var(--space-4);
   padding: var(--space-4);
-  max-width: 76rem;
+  max-width: 82rem;
+  min-width: 0;
+  width: 100%;
 }
 
 /* At phone width the sidebar becomes a row under the header, collapsed behind its Menu button. */
@@ -162,7 +172,8 @@ code {
   padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  background: var(--color-surface);
+  background: var(--color-surface) var(--surface-panel);
+  box-shadow: var(--surface-sheen), var(--surface-shadow);
 }
 
 /* Two cards, one above the other, and side by side when the window has room for both. */
@@ -191,8 +202,9 @@ code {
 .button {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
+  border-radius: var(--control-radius);
+  background: var(--color-surface) var(--surface-panel);
+  box-shadow: var(--surface-sheen), 0 5px 12px -8px rgb(36 53 89 / 40%);
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -201,6 +213,17 @@ code {
 .button:disabled {
   color: var(--color-muted);
   cursor: not-allowed;
+}
+
+.button:not(:disabled):hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.button-primary:not(:disabled):hover {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  filter: brightness(1.06);
 }
 
 .button-primary {
@@ -213,7 +236,7 @@ code {
 .field {
   padding: var(--space-2) 0.75rem;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  border-radius: var(--control-radius);
   background: var(--color-bg);
   color: inherit;
   font: inherit;

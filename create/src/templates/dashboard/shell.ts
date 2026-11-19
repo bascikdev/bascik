@@ -243,7 +243,8 @@ The top bar of every page: the skip link, the site's name, and the theme toggle.
     gap: var(--space-3);
     padding: var(--space-2) var(--space-4);
     border-bottom: 1px solid var(--color-border);
-    background: var(--color-surface);
+    background: var(--color-surface) var(--surface-panel);
+    box-shadow: var(--surface-sheen), 0 12px 28px -24px light-dark(rgb(36 53 89 / 42%), rgb(0 0 0 / 60%));
   }
 
   .skip-link {
@@ -348,7 +349,7 @@ The sidebar navigation. It marks the link to the page being built with aria-curr
   .sidebar {
     padding: var(--space-3);
     border-inline-end: 1px solid var(--color-border);
-    background: var(--color-surface);
+    background: var(--color-surface) var(--surface-panel);
   }
 
   .toggle {
