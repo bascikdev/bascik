@@ -312,7 +312,7 @@ describe("corporate template: house rules", () => {
       // site-head is a list of head tags: it has no root element to mark.
       if (name !== "site-head") {
         expect(read(`${folder}/${name}.html`), name).toContain(
-          `data-testid="${name}"`,
+          `data-testid="${name === "theme-toggle" ? "theme-toggle-button" : name}"`,
         );
       }
     }
@@ -370,7 +370,7 @@ describe("corporate template: house rules", () => {
     const css = read("src/pages/css/styles.css");
     const light = /^:root \{([^}]*)\}/m.exec(css)?.[1];
     const dark =
-      /@media \(prefers-color-scheme: dark\) \{\s*:root \{([^}]*)\}/.exec(
+      /@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme="light"\]\) \{([^}]*)\}/.exec(
         css,
       )?.[1];
     expect(light, "the :root block").toBeDefined();
@@ -423,7 +423,11 @@ describe("corporate template: house rules", () => {
     const colors = [...light].filter(([, value]) => value.startsWith("#"));
     for (const [name] of colors) {
       expect(
-        tokensIn(/dark\) \{\s*:root \{([^}]*)\}/.exec(css)![1]).has(name),
+        tokensIn(
+          /dark\) \{\s*:root:not\(\[data-theme="light"\]\) \{([^}]*)\}/.exec(
+            css,
+          )![1],
+        ).has(name),
         name,
       ).toBe(true);
     }
@@ -442,8 +446,8 @@ describe("corporate template: house rules", () => {
       ".theme-switching * { transition: none !important; }",
     );
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(css).toContain("@keyframes enter");
-    expect(css).toContain("from { scale: 0.97; opacity: 0; }");
+    expect(css).not.toContain("@keyframes enter");
+    expect(css).not.toContain("from { scale: 0.97; opacity: 0; }");
   });
 
   it("reads only tokens the stylesheet declares, and no color outside it", () => {

@@ -18,14 +18,12 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
-- `create-bascik`: the corporate template adopts the shared periwinkle light/dark palette and softly raised service, team, contact, and news surfaces.
-
 - `create-bascik`: the starter and adapter variants use a shared light/dark design system, with a neutral canvas, raised cards, restrained periwinkle accents, visible keyboard focus, and motion that respects reader preferences.
 - Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).
 
 ### Changed
 
-- `create-bascik`: the corporate template has a mature navy, stone and copper identity, quieter surfaces, and restrained motion while keeping its existing pages and content.
+- `create-bascik`: the corporate template keeps its navy, stone, and copper identity with an accessible icon-only light/dark toggle, saved theme restoration before paint, a borderless Services disclosure that works with hover, keyboard, and touch, and inlined global CSS. Initial page content no longer animates or flashes, and the favicon keeps the original Bascik colors.
 
 - `create-bascik`: the default starter and adapter variants use a warm paper-and-ink design system with moss accents, quieter surfaces, clearer typography, and reduced-motion-aware button feedback.
 - Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).

@@ -350,6 +350,20 @@ export const PAGE_FILES: TemplateFile[] = [
  * `src/pages/css/styles.css`: the template's own global stylesheet. Light by default, with a dark variant under
  * `prefers-color-scheme: dark`. Every color is a token on `:root` that the components read.
  */
+const DARK_TOKENS = `    --bg:            #14191f;
+    --surface:       #1c232a;
+    --surface-top:   #252e37;
+    --border:        #38414a;
+    --border-strong: #b9c0c6;
+    --text:          #edf0f2;
+    --text-muted:    #b9c0c6;
+    --brand:         #e2ae83;
+    --brand-strong:  #f0c99e;
+    --brand-soft:    #392f28;
+    --on-brand:      #22272d;
+    --danger:        #ffaaa0;
+    --shadow:        0 14px 36px -28px rgba(0, 0, 0, 0.48);`;
+
 export const CORPORATE_CSS = `/* styles.css: the site's global stylesheet. The design tokens are declared once, on :root, and every component
    reads them with var(). To rebrand the site, change --brand and its three companions in both blocks below. */
 
@@ -390,21 +404,14 @@ export const CORPORATE_CSS = `/* styles.css: the site's global stylesheet. The d
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg:            #14191f;
-    --surface:       #1c232a;
-    --surface-top:   #252e37;
-    --border:        #38414a;
-    --border-strong: #b9c0c6;
-    --text:          #edf0f2;
-    --text-muted:    #b9c0c6;
-    --brand:         #e2ae83;
-    --brand-strong:  #f0c99e;
-    --brand-soft:    #392f28;
-    --on-brand:      #22272d;
-    --danger:        #ffaaa0;
-    --shadow:        0 14px 36px -28px rgba(0, 0, 0, 0.48);
+  :root:not([data-theme="light"]) {
+${DARK_TOKENS}
   }
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+${DARK_TOKENS}
 }
 
 /* ── Base ── */
@@ -496,10 +503,6 @@ ul.prose strong { color: var(--text); }
 .not-found .actions { justify-content: center; }
 
 /* ── Motion ── */
-@keyframes enter {
-  from { scale: 0.97; opacity: 0; }
-  to { scale: 1; opacity: 1; }
-}
 .theme-switching * { transition: none !important; }
 
 @media (prefers-reduced-motion: no-preference) {

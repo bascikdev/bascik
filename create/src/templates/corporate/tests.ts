@@ -7,6 +7,34 @@ import type { TemplateFile } from "../../scaffold.js";
 
 export const TEST_FILES: TemplateFile[] = [
   [
+    "src/components/theme-init/theme-init.test.ts",
+    `import { readFile } from "node:fs/promises";
+import { expect, it } from "vitest";
+
+it("restores only valid saved themes synchronously before paint", async () => {
+  const source = await readFile("src/components/theme-init/theme-init.html", "utf8");
+  expect(source).toContain('localStorage.getItem("corporate-theme")');
+  expect(source).toContain('theme === "light" || theme === "dark"');
+  expect(source).not.toContain("requestAnimationFrame");
+  expect(source).toContain("catch");
+});
+`,
+  ],
+  [
+    "src/components/theme-toggle/theme-toggle.test.ts",
+    `import { readFile } from "node:fs/promises";
+import { expect, it } from "vitest";
+
+it("names its icon-only dark-mode button and exposes pressed state", async () => {
+  const source = await readFile("src/components/theme-toggle/theme-toggle.html", "utf8");
+  expect(source).toContain('aria-label="Toggle dark mode"');
+  expect(source).toContain('aria-pressed="false"');
+  expect(source).toContain('aria-hidden="true"');
+  expect(source).toContain('data-testid="theme-toggle-button"');
+});
+`,
+  ],
+  [
     "e2e/app.spec.ts",
     `import { test, expect, type Page } from '@playwright/test';
 
@@ -1069,7 +1097,8 @@ describe('site-head component', () => {
     expect(html).toContain('favicon.ico');
     expect(html).toContain('favicon.svg');
     expect(html).toContain('apple-touch-icon.png');
-    expect(html).toContain('href="/css/styles.css"');
+    expect(html).not.toContain('href="/css/styles.css"');
+    expect(html).toContain('<theme-init />');
     // pageHead() writes these per page: a second copy here would ship twice.
     expect(html).not.toContain('<title');
     expect(html).not.toContain('name="description"');
@@ -1108,20 +1137,20 @@ describe('site-header component', () => {
 
   it('prints every top-level link, and a hidden button and a list for an entry with children', () => {
     const markup = String(primaryNav('/'));
-    for (const item of PRIMARY_NAV) expect(markup).toContain(\`<a href="\${item.href}">\${item.label}</a>\`);
+    for (const item of PRIMARY_NAV) expect(markup).toContain(\`<a href="\${item.href}" data-testid="site-header-link">\${item.label}</a>\`);
     const withChildren = PRIMARY_NAV.filter((item) => item.children?.length);
     expect(withChildren).toHaveLength(1);
     expect(markup.match(/<button/g)).toHaveLength(1);
     expect(markup).toMatch(/<button[^>]*aria-expanded="false"[^>]*aria-label="Services menu"[^>]*hidden/);
-    for (const child of withChildren[0].children!) expect(markup).toContain(\`<a href="\${child.href}">\${child.label}</a>\`);
+    for (const child of withChildren[0].children!) expect(markup).toContain(\`<a href="\${child.href}" data-testid="site-header-link">\${child.label}</a>\`);
   });
 
   it('marks the current page, and the section a deeper page is in', () => {
-    expect(String(primaryNav('/about'))).toContain('<a href="/about" aria-current="page">About</a>');
+    expect(String(primaryNav('/about'))).toContain('<a href="/about" aria-current="page" data-testid="site-header-link">About</a>');
     const service = PRIMARY_NAV[0].children![0];
     const markup = String(primaryNav(service.href));
-    expect(markup).toContain('<a href="/services/" aria-current="true">Services</a>');
-    expect(markup).toContain(\`<a href="\${service.href}" aria-current="page">\${service.label}</a>\`);
+    expect(markup).toContain('<a href="/services/" aria-current="true" data-testid="site-header-link">Services</a>');
+    expect(markup).toContain(\`<a href="\${service.href}" aria-current="page" data-testid="site-header-link">\${service.label}</a>\`);
     // The home page marks nothing: no link in the menu points at it.
     expect(String(primaryNav('/'))).not.toContain('aria-current');
   });
@@ -1130,7 +1159,7 @@ describe('site-header component', () => {
     const items: NavItem[] = [{ label: 'R&D <lab>', href: '/lab', children: [] }];
     const markup = String(primaryNav('/', items));
     expect(markup).not.toContain('<button');
-    expect(markup).toContain('<li><a href="/lab">R&amp;D &lt;lab&gt;</a></li>');
+    expect(markup).toContain('<li><a href="/lab" data-testid="site-header-link">R&amp;D &lt;lab&gt;</a></li>');
   });
 });
 `,

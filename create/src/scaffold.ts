@@ -564,6 +564,13 @@ export const FAVICON_SVG = `<svg viewBox="0 0 32 32" width="32" height="32" xmln
 </svg>
 `;
 
+/** Original Bascik mark, not a template palette variant. */
+export const CANONICAL_FAVICON_SVG = `<svg viewBox="0 0 32 32" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+  <polygon points="10,3 28,3 23,29 4,29" fill="#d3ff8d" />
+  <rect x="15" y="9" width="2" height="14" rx="1" fill="#0e0f10" />
+</svg>
+`;
+
 export const FAVICON_ICO_B64 = `AAABAAMAEBAAAAEAIADIAAAANgAAACAgAAABACAACAEAAP4AAAAwMAAAAQAgAGcBAAAGAgAiVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAeklEQVQ4jWNgoDa4/L93/uX/vf8J4577OAzouU+cAb3zMTSf/9+vQKTm/xf/9yRgGHDxf08CsqINV8vBGJsBIMsI+r+g3Q+MyfZ/AU4DiPR/AQ4DiPL/ZTwGEOX/yzgNICH+C7C7gPj434AlGon2/2UcmGj/0y/9UwoAAEX+8tkvEHwAAAAASUVORK5CYIKJUE5HDQoaCgAAAA1JSERSAAAAIAAAACAIBgAAAHN6evQAAAAJcEhZcwAACxMAAAsTAQCanBgAAAC6SURBVFiF7ZbRDYMwDEQzwcEIDFC6QJXf0jEYKBEjMBJCGYBRXNEFepZshaqx5O+8+HQ+h9DqS22yDEWy2HY6Alu7pNkeIK80QJG8WgOcn1IApMMa4JSVenxr+svF9X88bxKnsZ7+6PpPV/M/1ADG/ocSwNz/UAKY+x8qAIf9D90E7Pc/FAAu+x8KAJf9DxrAKf/BT8An/0ECuOU/SAC3/I/TKPF1r6N/4bvdf4OL/oXqpn/6kfv/r+sNLlrC+A4T1ksAAAAASUVORK5CYIKJUE5HDQoaCgAAAA1JSERSAAAAMAAAADAIBgAAAFcC+YcAAAAJcEhZcwAACxMAAAsTAQCanBgAAAEZSURBVGiB7ZjBDcJADARTAVBCKKKGSwfpgo+PlHDfQDOWSQGpBIwuD/7EVpYIr2Qpr+hGXln2Nk0otL0mzWXSrJii2QGAZhxALqbHsw4t8PEqSskEUH+ABGAdWhNA+F/D/+sV/teY/9vNf3mS0piWerxof/OfxqSH42mpfOv2N//7y/kDUL935//eFSBvv/94Aghi//EEYMT+4wdAmP3fsQMFsv97AQhq//cCYNT+7wNAuPvXqQMFdv96AAjy/vUAYOT9awcgAANi40iAAAn3/00EAB2U7f56m/2eQf30E14yR/0AAAABJRU5ErkJggg==`;
 
 export const FAVICON_32_PNG_B64 = `iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAuklEQVRYhe2W0Q2DMAxEM8HBCAxQukCV39IxGCgRIzASQhmAUVzRBXqWbIWqseTvvPh0PofQ6kttsgxFsth2OgJbu6TZHiCvNECRvFoDnJ9SAKTDGuCUlXp8a/rLxfV/PG8Sp7Ge/uj6T1fzP9QAxv6HEsDc/1ACmPsfKgCH/Q/dBOz3PxQALvsfCgCX/Q8awCn/wU/AJ/9BArjlP0gAt/yP0yjxda+jf+G73X+Di/6F6qZ/+pH7/6/rDS5awvgOE9ZLAAAAAElFTkSuQmCC`;
@@ -1452,7 +1459,10 @@ const sharedFiles = (
     "src/pages/assets/apple-touch-icon.png",
     Buffer.from(APPLE_TOUCH_ICON_PNG_B64, "base64"),
   ],
-  ["src/pages/assets/favicon.svg", FAVICON_SVG],
+  [
+    "src/pages/assets/favicon.svg",
+    template.name === "corporate" ? CANONICAL_FAVICON_SVG : FAVICON_SVG,
+  ],
 
   ...(adapter
     ? ([["src/api/hello.ts", HELLO_API_ROUTE]] as TemplateFile[])

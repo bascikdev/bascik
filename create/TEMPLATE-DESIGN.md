@@ -4,6 +4,8 @@ This is the visual contract for the templates shipped by `create-bascik`. Read i
 
 ## Shared principles
 
+Use the repository-only [UI guidance](../.github/skills/bascik-ui/SKILL.md) and [UX guidance](../.github/skills/bascik-ux/SKILL.md), not public or generated-site skills.
+
 - Use semantic HTML and CSS first. Keep native links, buttons, forms, tables, figures, and disclosure elements. Add JavaScript only where HTML and CSS do not provide the needed behavior.
 - Pages read like a list of purposeful component tags. Keep components at a useful size, and do not pass props through components that do not use them.
 - Set global tokens in `src/pages/css/styles.css`; read them from components. Do not copy a single palette into every template or declare private `:root` tokens in component styles.
@@ -30,7 +32,7 @@ These are different design systems, not a checklist to force onto every branch. 
 
 ## Motion and interaction
 
-- Entrances start at `scale: 0.97` with `opacity: 0`, never at zero scale. Keep entrances brief and opt them out under `prefers-reduced-motion: reduce`.
+- Initial above-fold content never animates, including view transitions. For user-triggered entrances elsewhere, start at `scale: 0.97` with `opacity: 0` and opt out under `prefers-reduced-motion: reduce`.
 - Pressable buttons use `button:active { scale: 0.97; }` with `transition: scale 150ms ease-out`. Apply the same behavior to button-styled links when appropriate.
 - A rejected password shakes horizontally through `0, -10, 10, -6, 6, -3, 0px` over 360ms and also changes to an error state.
 - Steppers slide the next step from the direction of travel instead of crossfading.
@@ -47,6 +49,16 @@ These are different design systems, not a checklist to force onto every branch. 
 - The table of contents links to preserved Markdown heading IDs. `IntersectionObserver` updates the visible current link and its `aria-current`; fragment links work without JavaScript.
 - The sidebar marks the current page and remains usable without JavaScript. At small widths, a labeled button progressively enhances it into a collapsible navigation.
 - Use native `<dialog>` behavior for focus, Escape, and the top layer. Do not rebuild those browser features with a custom overlay or focus trap.
+
+## Corporate-template feedback
+
+- Keep its institutional navy, stone, and copper palette, editorial serif headings, and bookshelf illustration. The scaffold folder slug is the brand; the verification project is named `corporate`.
+- Use an icon-only light/dark button with an accessible name and pressed state. Restore the saved choice synchronously in the head and suspend transitions while changing themes.
+- Initial above-the-fold content must be immediately visible and static on every route. Do not add opacity, flash, scale entrances, or cross-document view transitions. This overrides the general entrance guidance above for corporate initial content. Keep useful interaction feedback and any intentional below-fold motion, with reduced-motion alternatives.
+- Keep the original Bascik favicon geometry and colors, not a copper or navy recoloring. Inline the global stylesheet through `assets.inlineStyles`, not a blocking stylesheet link or a second inline copy.
+- Style navigation explicitly. The Services link and its borderless, adjacent 44px disclosure share one cohesive surface. Fine-pointer hover opens it across a transparent bridge; keyboard and touch activation work without hover. Escape dismisses the submenu and restores its button's focus without reopening it; a subsequent Escape closes mobile navigation and restores the mobile toggle.
+- Warning: `https://bascik.dev/how-to/visual-design` returned HTTP 404 during feedback verification on November 19, 2026. The local UI and UX guidance was read, but the missing page is not evidence of live documentation coverage.
+- Focused source regressions and fresh production Playwright checks live in `src/templates/corporate-feedback.test.ts` and `e2e/corporate-feedback.spec.ts`. Verification output stays in ignored `create/dist/`; the browser server uses only `127.0.0.1:9413` and is stopped after testing.
 
 ## Verification
 

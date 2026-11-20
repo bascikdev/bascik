@@ -12,6 +12,9 @@ export const LIB_FILES: TemplateFile[] = [
     `import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
+  assets: {
+    inlineStyles: ["src/pages/css/styles.css"],
+  },
   pipeline: {
     // The services, the navigation and the head tags live in src/lib/. Rebuild pages in dev when one changes.
     watchPaths: ["src/lib/"],

@@ -398,7 +398,7 @@ form.addEventListener("submit", (event: SubmitEvent): void => {
 The home page's opening: the company's one-line promise, two ways forward, and a drawing of a bookshelf. The drawing is inline SVG, so the page loads no image.
 -->
 <style>
-  .hero { padding: 88px 0 72px; background: var(--surface) var(--panel); border-bottom: 1px solid var(--border); animation: enter 480ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .hero { padding: 88px 0 72px; background: var(--surface) var(--panel); border-bottom: 1px solid var(--border); }
   .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 48px; align-items: center; }
   h1 span { color: var(--brand); }
   /* The drawing is stroked and filled with currentColor, so it follows the brand color in both color schemes. */
@@ -409,9 +409,6 @@ The home page's opening: the company's one-line promise, two ways forward, and a
   @media (max-width: 760px) {
     .hero { padding: 56px 0 40px; }
     .layout { grid-template-columns: minmax(0, 1fr); gap: 32px; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .hero { animation: none; }
   }
 </style>
 <section class="hero" data-testid="home-hero">
@@ -1032,16 +1029,16 @@ The site footer: the company's name and contact line, link columns grouped under
   [
     "src/components/site-head/site-head.html",
     `<!-- @bascik
-The head tags every page shares: charset, viewport, icons and the global stylesheet. Put it first in <head>, then the page's own tags, which pageHead() in src/lib/seo.ts writes.
+The head tags every page shares: charset, viewport, icons and the saved-theme initializer. The config inlines the global stylesheet. Put this first in <head>, then the page's own tags, which pageHead() in src/lib/seo.ts writes.
 -->
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="color-scheme" content="light dark" />
+<theme-init />
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="/css/styles.css" />
 `,
   ],
   [
@@ -1061,8 +1058,8 @@ import {
 function navLink(link: NavLink, pagePath: string): SafeHtml {
   const current = currentState(link.href, pagePath);
   return current
-    ? html\`<a href="\${link.href}" aria-current="\${current}">\${link.label}</a>\`
-    : html\`<a href="\${link.href}">\${link.label}</a>\`;
+    ? html\`<a href="\${link.href}" aria-current="\${current}" data-testid="site-header-link">\${link.label}</a>\`
+    : html\`<a href="\${link.href}" data-testid="site-header-link">\${link.label}</a>\`;
 }
 
 function navItem(item: NavItem, pagePath: string): SafeHtml {
@@ -1159,24 +1156,29 @@ nav {
 /* The current page, or the section it is in: marked by color and by a line, not by color alone. */
 .menu a[aria-current] { color: var(--brand); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 6px; }
 
-.group { position: relative; display: flex; align-items: center; }
+.group { position: relative; display: flex; align-items: center; border-radius: var(--r-sm); }
+.group > a { padding-right: 2px; }
+.group[data-state="open"] { background: var(--surface); }
+@media (hover: hover) and (pointer: fine) {
+  .group:hover { background: var(--surface); }
+}
 
 .caret {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   padding: 0;
-  border: 1px solid var(--border-strong);
+  border: 0;
   border-radius: var(--r-sm);
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
   cursor: pointer;
 }
 .caret[hidden] { display: none; }
 .caret:hover,
-.caret[aria-expanded="true"] { color: var(--brand); border-color: var(--brand); }
+.caret[aria-expanded="true"] { color: var(--brand); }
 .caret[aria-expanded="true"] svg { transform: rotate(180deg); }
 
 /* The services menu. Closed means display: none, which also takes its links out of the Tab order. */
@@ -1195,6 +1197,15 @@ nav {
   box-shadow: var(--shadow);
 }
 .submenu[data-state="open"] { display: block; }
+/* A transparent hit area joins the panel to its control across the visual gap. */
+.submenu::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -12px;
+  height: 12px;
+}
 /* Without JavaScript there is no button: pointing at the group or tabbing into it shows the links. The menu then
    touches the link above it, so the pointer can reach it without leaving the group. */
 .bar:not(.enhanced) .submenu { top: 100%; }
@@ -1220,13 +1231,14 @@ nav {
   .toggle:not([hidden]) { display: flex; }
 
   /* One column, full width. Without JavaScript it is always shown, services included. */
-  .menu { flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0; padding-bottom: 12px; }
+  .menu { order: 1; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0; padding-bottom: 12px; }
   .bar.enhanced .menu { display: none; }
   .bar.enhanced .menu[data-state="open"] { display: flex; }
   .menu a { padding: 12px 4px; }
 
   .group { flex-wrap: wrap; }
   .group > a { flex: 1; }
+  .submenu::before { display: none; }
   .submenu,
   .bar:not(.enhanced) .submenu {
     display: block;
@@ -1268,6 +1280,7 @@ The site header: a skip link, the company name and the main navigation, with one
           export default () => primaryNav(process.env.BASCIK_PAGE_PATH);
         </script>
       </ul>
+      <theme-toggle />
     </nav>
   </div>
 </header>
@@ -1279,8 +1292,9 @@ The site header: a skip link, the company name and the main navigation, with one
     `// site-header.ts: the header's behavior. The markup works as plain links without it. With it:
 //   - each menu button opens and closes the list after it (click, Enter or Space);
 //   - Arrow Down opens the menu and moves through its links, Arrow Up moves back, Home and End jump;
-//   - Escape closes the menu and returns focus to its button; so does moving focus or clicking elsewhere;
-//   - at phone width the toggle button shows and hides the whole menu.
+//   - fine-pointer hover opens the menu across the CSS bridge without requiring a click;
+//   - Escape closes the submenu and returns focus to its button; focus or clicks elsewhere close without stealing focus;
+//   - at phone width the toggle shows and hides the whole menu, with Escape restoring toggle focus.
 // State lives in aria-expanded and data-state, which the CSS reads.
 const header = document.getElementById("site-header") as HTMLElement;
 const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
@@ -1296,25 +1310,51 @@ const isOpen = (button: HTMLButtonElement): boolean =>
 function setSubmenu(caret: HTMLButtonElement, open: boolean): void {
   caret.setAttribute("aria-expanded", String(open));
   submenuOf(caret).setAttribute("data-state", open ? "open" : "closed");
+  caret.parentElement!.setAttribute("data-state", open ? "open" : "closed");
+  if (!open) caret.parentElement!.removeAttribute("data-trigger");
 }
 
 function setMenu(open: boolean): void {
   toggle.setAttribute("aria-expanded", String(open));
   menu.setAttribute("data-state", open ? "open" : "closed");
+  if (!open) for (const caret of carets) setSubmenu(caret, false);
 }
+
+const finePointer = matchMedia("(hover: hover) and (pointer: fine)");
+const desktop = matchMedia("(min-width: 761px)");
 
 for (const caret of carets) {
   const group = caret.parentElement as HTMLElement;
   const links = (): HTMLAnchorElement[] =>
     Array.from(submenuOf(caret).querySelectorAll("a"));
 
-  caret.addEventListener("click", (): void => setSubmenu(caret, !isOpen(caret)));
+  // Hover is an enhancement, not the only way to disclose links. No focus-based
+  // CSS reopens a menu dismissed with Escape while the pointer remains over it.
+  group.addEventListener("pointerenter", (event: PointerEvent): void => {
+    if (event.pointerType === "mouse" && finePointer.matches && desktop.matches) {
+      if (!isOpen(caret)) {
+        setSubmenu(caret, true);
+        group.setAttribute("data-trigger", "hover");
+      }
+    }
+  });
+  group.addEventListener("pointerleave", (): void => {
+    if (!group.contains(document.activeElement)) setSubmenu(caret, false);
+  });
+  const submenu = submenuOf(caret);
+  caret.addEventListener("click", (): void => {
+    const open = !isOpen(caret) || group.getAttribute("data-trigger") === "hover";
+    setSubmenu(caret, open);
+    if (open) group.setAttribute("data-trigger", "activation");
+  });
 
   group.addEventListener("keydown", (event: KeyboardEvent): void => {
     const items = links();
     const index = items.indexOf(document.activeElement as HTMLAnchorElement);
     const onCaret = document.activeElement === caret;
     if (event.key === "Escape" && isOpen(caret)) {
+      event.preventDefault();
+      event.stopPropagation();
       setSubmenu(caret, false);
       caret.focus();
     } else if (event.key === "ArrowDown" && (onCaret || index >= 0)) {
@@ -1340,6 +1380,9 @@ for (const caret of carets) {
   });
 
   setSubmenu(caret, false);
+  caret.setAttribute("id", menu.id + "-disclosure-" + carets.indexOf(caret));
+  submenu.setAttribute("id", caret.id + "-panel");
+  caret.setAttribute("aria-controls", submenu.id);
   caret.hidden = false;
 }
 
@@ -1352,10 +1395,80 @@ document.addEventListener("click", (event: MouseEvent): void => {
 });
 
 toggle.addEventListener("click", (): void => setMenu(!isOpen(toggle)));
+header.addEventListener("keydown", (event: KeyboardEvent): void => {
+  if (event.key === "Escape" && !desktop.matches && isOpen(toggle)) {
+    event.preventDefault();
+    setMenu(false);
+    toggle.focus();
+  }
+});
+desktop.addEventListener("change", (): void => setMenu(false));
 setMenu(false);
 toggle.hidden = false;
 // From here the CSS hides closed menus; before this line every link is visible.
 header.classList.add("enhanced");
+`,
+  ],
+  [
+    "src/components/theme-init/theme-init.html",
+    `<!-- @bascik
+Restore the saved scheme synchronously in the head, before the first paint.
+-->
+<script type="text/typescript" data-testid="theme-init">
+  try {
+    const theme = localStorage.getItem("corporate-theme");
+    if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  } catch { /* Storage can be unavailable; follow the system preference. */ }
+</script>
+`,
+  ],
+  [
+    "src/components/theme-toggle/theme-toggle.html",
+    `<!-- @bascik
+An icon-only light/dark toggle. The pressed state means dark mode is active.
+-->
+<style>
+  .control { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text); cursor: pointer; }
+  .control[hidden] { display: none; }
+  .control:hover { background: var(--surface); color: var(--brand); }
+  .sun { display: none; }
+  .control[aria-pressed="true"] .sun { display: block; }
+  .control[aria-pressed="true"] .moon { display: none; }
+</style>
+<button id="theme-button" class="control" type="button" aria-label="Toggle dark mode" aria-pressed="false" data-testid="theme-toggle-button" hidden>
+  <svg class="moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+    <path d="M20 15.4A8.5 8.5 0 0 1 8.6 4 8.5 8.5 0 1 0 20 15.4Z" />
+  </svg>
+  <svg class="sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+    <circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" />
+  </svg>
+</button>
+<script src="theme-toggle.ts"></script>
+`,
+  ],
+  [
+    "src/components/theme-toggle/theme-toggle.ts",
+    `const button = document.getElementById("theme-button") as HTMLButtonElement;
+const root = document.documentElement;
+const systemDark = matchMedia("(prefers-color-scheme: dark)");
+const dark = (): boolean => root.dataset.theme
+  ? root.dataset.theme === "dark"
+  : systemDark.matches;
+const sync = (): void => button.setAttribute("aria-pressed", String(dark()));
+button.addEventListener("click", (): void => {
+  const theme = dark() ? "light" : "dark";
+  root.classList.add("theme-switching");
+  root.dataset.theme = theme;
+  try { localStorage.setItem("corporate-theme", theme); } catch { /* Still works in memory. */ }
+  sync();
+  // Flush the new colors with transitions suspended before re-enabling feedback.
+  void root.offsetWidth;
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+});
+systemDark.addEventListener("change", sync);
+window.addEventListener("pageshow", sync);
+sync();
+button.hidden = false;
 `,
   ],
   [
