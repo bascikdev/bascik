@@ -1173,9 +1173,20 @@ test.describe('Docs site', () => {
     const article = page.getByTestId('docs-article');
     const lastSection = toc.getByRole('link', { name: 'Table of contents' });
 
-    await page.keyboard.press('End');
+    const scrollTo = async (edge: 'top' | 'bottom') => {
+      await page.evaluate((target) => {
+        const root = document.documentElement;
+        window.scrollTo({ top: target === 'top' ? 0 : root.scrollHeight, behavior: 'instant' });
+      }, edge);
+      await expect.poll(() => page.evaluate((target) => {
+        const root = document.documentElement;
+        return target === 'top' ? window.scrollY === 0 : root.scrollHeight - root.clientHeight - window.scrollY <= 1;
+      }, edge)).toBe(true);
+    };
+
+    await scrollTo('bottom');
     await expect(toc.locator('[aria-current="location"]')).toHaveText('Table of contents');
-    await page.keyboard.press('Home');
+    await scrollTo('top');
     await expect(toc.locator('[aria-current="location"]')).toHaveText('Sidebar');
 
     await lastSection.click();
