@@ -280,6 +280,9 @@ jobs:
       - name: Build package and adapters
         run: yarn pkg:build && yarn adapter:cf:build && yarn adapter:nf:build
 
+      - name: Install Chromium for template browser regressions
+        run: npx playwright install chromium
+
       - name: Run create-bascik unit tests
         run: yarn create:test:ci
 
@@ -381,6 +384,10 @@ jobs:
       - name: Build hosting adapters
         if: ${{ !cancelled() && needs.changes.outputs.run-create == 'true' }}
         run: yarn adapter:cf:build && yarn adapter:nf:build
+
+      - name: Install Chromium for template browser regressions
+        if: ${{ !cancelled() && needs.changes.outputs.run-create == 'true' }}
+        run: npx playwright install chromium
 
       - name: Create-Bascik unit tests
         if: ${{ !cancelled() && needs.changes.outputs.run-create == 'true' }}
