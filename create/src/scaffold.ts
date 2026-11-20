@@ -65,7 +65,8 @@ export type TemplateFile = [path: string, data: string | Buffer];
 /**
  * A kind of site create-bascik can scaffold (`--template`). A template owns
  * everything under `src/` except the favicons and `src/api/hello.ts`, plus
- * `e2e/app.spec.ts`. The root files (package.json, the Vite and Playwright
+ * `e2e/app.spec.ts`. It may also write a `bascik.config.ts` and top-level
+ * folders of its own, as the blog does with `content/` and `scripts/`. The root files (package.json, the Vite and Playwright
  * configs, .gitignore, netlify.toml), the favicons and, with an adapter, the
  * `/api/hello` route are written for every template by `scaffold`.
  *

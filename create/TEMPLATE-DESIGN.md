@@ -23,7 +23,7 @@ Use the repository-only [UI guidance](../.github/skills/bascik-ui/SKILL.md) to s
 | Landing   | Product-led SaaS, with Apple-like restraint rather than copied assets                                   | Oversized headline, focused value proposition, a convincing product preview, and generous space                                  |
 | Shop      | Purposeful performance retail                                                                           | Product-specific illustrations, strong product information, useful filters, and clear price and cart actions                     |
 | Portfolio | Expressive creator portfolio                                                                            | Large project imagery, editorial typography, asymmetry, and the creator's work before the chrome                                 |
-| Blog      | Contemporary editorial publication                                                                      | A readable article measure, a distinct masthead, calm page background, and deliberate spacing between posts                      |
+| Blog      | Author-led editorial publication                                                                        | A responsive author sidebar beside an unboxed reading column, plain slug brand, calm canvas, and rule-led post entries           |
 | Corporate | Mature institutional identity                                                                           | Trustworthy typography, restrained navy/stone/copper, and quiet authority while preserving the existing information architecture |
 | Dashboard | Focused operator workspace                                                                              | Dense but legible data, neutral surfaces, one accent, clear hierarchy, and no playful rainbow cards                              |
 | Reports   | Editorial analytics                                                                                     | A strong narrative hierarchy, accessible data tables, restrained chart color, and a single neutral card treatment in dark mode   |
@@ -32,7 +32,7 @@ These are different design systems, not a checklist to force onto every branch. 
 
 ## Motion and interaction
 
-- Never animate above-fold content on initial load, including root view-transition snapshots. Initial content is immediately opaque and static. User-triggered entrances and appropriate below-fold motion remain brief and opt out under `prefers-reduced-motion: reduce`.
+- Never animate above-fold content on initial load, including root view-transition snapshots. Initial content is immediately opaque and static. User-triggered entrances may start at `scale: 0.97` with `opacity: 0`, never zero scale. Keep triggered and appropriate below-fold motion brief and opt out under `prefers-reduced-motion: reduce`.
 - Pressable buttons use `button:active { scale: 0.97; }` with `transition: scale 150ms ease-out`. Apply the same behavior to button-styled links when appropriate.
 - A rejected password shakes horizontally through `0, -10, 10, -6, 6, -3, 0px` over 360ms and also changes to an error state.
 - Steppers slide the next step from the direction of travel instead of crossfading.
@@ -54,6 +54,15 @@ These are different design systems, not a checklist to force onto every branch. 
 - Browser configs export dynamic verification paths. Keep generated sources, builds, and browser output in `mkdtemp` directories under the OS `tmpdir`, never packaged `create/dist/`; remove fixtures on setup failure, validation failure, and Playwright teardown.
 - Integration fixtures must resolve the generated config's `@bascik/bascik` import through local workspace dependency links, using junctions on Windows and directory symlinks elsewhere. Plain builds must not silently install adapters; negative controls must fail for their injected error, not missing dependencies.
 - The public visual-design URL returned HTTP 404 during this work. Repository-only UI/UX guidance is the reference until that page is available.
+
+## Blog-template behavior
+
+- Use the project slug as a plain text brand. Keep the canonical Bascik favicon assets unchanged.
+- Place author identity and navigation in an editorial sidebar beside the article on desktop, stacked above it at 900px and below. Navigation stays visible without JavaScript and has no default underline; prose links retain their underline.
+- Use an icon-only light/dark toggle with a stable accessible name, `aria-pressed`, visible focus, and a 44px target. Hide it without JavaScript. Apply saved theme state in the head before paint, tolerate unavailable storage, and retain CSS press feedback and reduced-motion behavior.
+- Inline `src/pages/css/styles.css` and `src/pages/css/blog.css` through `assets.inlineStyles`, with no duplicate stylesheet links in the head. Never hide above-the-fold content for an entrance.
+- Include author bio/context with each article. The starter's John Doe byline is explicitly a placeholder, and sample racing guides are illustrative, not invented biographies, endorsements, or reports of actual track tests. Real reporting requires factual sources.
+- Verify a fresh scaffold with the local production compiler, both themes at desktop and phone widths, keyboard navigation, saved theme reload, first-paint visibility, and JavaScript disabled.
 
 ## Docs-template behavior
 
