@@ -6,7 +6,6 @@ import {
   ADAPTERS,
   PACKAGE_JSON,
   SITE_FOOTER_CSS,
-  SITE_HEADER_CSS,
   STYLES_CSS,
   type TemplateContext,
 } from "../scaffold.js";
@@ -43,12 +42,13 @@ const frontMatter = (markdown: string): Record<string, string> => {
   );
 };
 
-/** The object `src/lib/site.ts` exports, evaluated: the file is one object literal with `as const`. */
+/** Evaluate only SITE, leaving the separate placeholder AUTHOR export out of the test function. */
 const siteOf = (
   from: Map<string, string>,
 ): { name: string; tagline: string; description: string } =>
   new Function(
     file("src/lib/site.ts", from)
+      .split("// Replace this placeholder")[0]
       .replace("export const SITE =", () => "return")
       .replace("} as const;", () => "};"),
   )() as { name: string; tagline: string; description: string };
@@ -105,10 +105,10 @@ describe("blog template", () => {
     );
   });
 
-  it("reuses the default template's stylesheets instead of copying them", () => {
+  it("reuses the default tokens and footer while owning its editorial sidebar", () => {
     expect(file("src/pages/css/styles.css")).toBe(STYLES_CSS);
     expect(file("src/components/site-header/site-header.html")).toContain(
-      SITE_HEADER_CSS,
+      'data-testid="author-sidebar"',
     );
     expect(file("src/components/site-footer/site-footer.html")).toContain(
       SITE_FOOTER_CSS,
@@ -350,17 +350,10 @@ describe("blog template: content pipeline", () => {
 });
 
 describe("blog template: sample posts", () => {
-  it("ships a racing blog with real posts and no invented book publishing themes", () => {
+  it("ships illustrative racing guides without invented attribution", () => {
     const combined = SAMPLE_POSTS.map(([, markdown]) => markdown).join("\n");
     for (const reference of [
-      "Hurley Haywood",
-      "Paul Newman",
-      "Jordan Taylor",
-      "Ross Bentley",
-      "Porsche 917",
-      "Porsche 935",
-      "Porsche 962",
-      "Porsche 963",
+      "John Doe",
       "IMSA",
       "WEC",
       "Daytona",

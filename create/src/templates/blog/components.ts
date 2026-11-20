@@ -1,22 +1,28 @@
 /**
  * @module templates/blog/components
  *
- * The blog template's components and their tests. The header and footer reuse the default template's
- * stylesheets; their markup differs (the blog's navigation, and the site name read from `src/lib/site.ts`).
+ * The blog template's components and their tests. The author sidebar owns navigation and the theme toggle;
+ * the footer reuses the default stylesheet. Identity comes from `src/lib/site.ts`.
  */
 
-import { SITE_FOOTER_CSS, SITE_HEADER_CSS } from "../../scaffold.js";
+import { SITE_FOOTER_CSS } from "../../scaffold.js";
 
-/** Head component: charset, viewport, icons, both stylesheets and the feed link. Each page adds its own title and description with `seo()`, so there is no description here. */
+/** Head component: icons, feed and early theme state. Config inlines global styles; each page calls seo(). */
 export const SITE_META_HTML = `<meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="/css/styles.css" />
-<link rel="stylesheet" href="/css/blog.css" />
+<!-- Global styles.css and blog.css are inlined by assets.inlineStyles in bascik.config.ts. -->
 <link rel="alternate" type="application/atom+xml" title="Posts" href="/feed.xml" />
+<script type="text/typescript">
+  // The head runs before body content paints. Storage may be unavailable.
+  try {
+    const saved = localStorage.getItem("theme");
+    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+  } catch {}
+</script>
 `;
 
 export const SITE_META_TEST = `import { describe, it, expect } from "vitest";
@@ -26,15 +32,15 @@ import { join } from "node:path";
 describe("site-meta component", () => {
   const path = join(process.cwd(), "src/components/site-meta/site-meta.html");
 
-  it("holds the charset, viewport, icons, stylesheets, and the feed link", async () => {
+  it("holds the charset, viewport, icons, theme initialization, and feed link without duplicate CSS requests", async () => {
     const html = await readFile(path, "utf8");
     expect(html).toContain('charset="UTF-8"');
     expect(html).toContain('name="viewport"');
     expect(html).toContain("favicon.ico");
     expect(html).toContain("favicon.svg");
     expect(html).toContain("apple-touch-icon.png");
-    expect(html).toContain('href="/css/styles.css"');
-    expect(html).toContain('href="/css/blog.css"');
+    expect(html).not.toContain('rel="stylesheet"');
+    expect(html).toContain('localStorage.getItem("theme")');
     expect(html).toContain(
       '<link rel="alternate" type="application/atom+xml" title="Posts" href="/feed.xml" />',
     );
@@ -48,13 +54,39 @@ describe("site-meta component", () => {
 });
 `;
 
-/** Sticky header: the skip link first, the site name, and the navigation with its mobile toggle. */
+/** Editorial sidebar: plain slug brand, author context, always-available navigation and a theme toggle. */
 export const SITE_HEADER_HTML = `<style>
-${SITE_HEADER_CSS}</style>
+.skip-link { position: absolute; left: 8px; top: 8px; padding: 8px 14px; background: var(--accent); color: var(--on-accent); z-index: 200; }
+.skip-link:not(:focus) { width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+header { position: sticky; top: 40px; align-self: start; padding: 48px 0 32px; }
+.identity { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 32px; }
+.logo { color: var(--text); font-weight: 700; overflow-wrap: anywhere; }
+.author { border-top: 1px solid var(--border); padding-top: 24px; }
+.name { color: var(--text); font-family: Georgia, 'Times New Roman', serif; font-size: 1.4rem; margin-bottom: 8px; }
+.bio { font-size: 0.85rem; line-height: 1.65; }
+nav { margin-top: 24px; }
+.menu { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.menu a { display: block; padding: 8px 0; color: var(--text-muted); text-decoration: none; }
+.menu a:hover { color: var(--accent); }
+.theme { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 10px; border: 1px solid var(--border); border-radius: 50%; background: transparent; color: var(--text); cursor: pointer; }
+.theme[hidden] { display: none; }
+.theme svg { width: 22px; height: 22px; }
+.theme .sun { display: none; }
+.theme[aria-pressed="true"] .sun { display: block; }
+.theme[aria-pressed="true"] .moon { display: none; }
+.theme:hover { border-color: var(--accent); }
+@media (max-width: 900px) {
+  header { position: static; padding: 24px 0; border-bottom: 1px solid var(--border); }
+  .identity { margin-bottom: 16px; }
+  .author { padding-top: 16px; }
+  .bio { max-width: 60ch; margin-bottom: 0; }
+  nav { margin-top: 12px; }
+  .menu { display: flex; flex-wrap: wrap; gap: 24px; }
+}
+</style>
 <header data-testid="site-header">
   <a href="#main" class="skip-link" data-testid="site-header-skip-link">Skip to content</a>
-  <div class="container">
-    <nav aria-label="Main" data-testid="site-header-nav">
+  <div class="identity">
       <a href="/" class="logo" data-testid="site-header-logo">
         <script data-bascik-build-once type="text/typescript">
           import { html } from "@bascik/bascik/html";
@@ -62,24 +94,53 @@ ${SITE_HEADER_CSS}</style>
           export default () => html\`\${SITE.name}\`;
         </script>
       </a>
-      <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle">
-        <span></span><span></span><span></span>
+      <button id="theme-toggle" type="button" class="theme" aria-label="Dark mode" aria-pressed="false" data-testid="theme-toggle" hidden>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z" /></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg>
       </button>
-      <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
+  </div>
+  <aside class="author" aria-label="About the author" data-testid="author-sidebar">
+    <script data-bascik-build-once type="text/typescript">
+      import { html } from "@bascik/bascik/html";
+      import { AUTHOR } from "@/lib/site.ts";
+      export default () => html\`<p class="name">\${AUTHOR.name}</p><p class="bio">\${AUTHOR.context}</p>\`;
+    </script>
+  </aside>
+    <nav aria-label="Main" data-testid="site-header-nav">
+      <ul class="menu" data-testid="site-header-nav-menu">
         <li><a href="/" data-testid="site-header-home">Home</a></li>
         <li><a href="/blog/" data-testid="site-header-blog">Blog</a></li>
         <li><a href="/about" data-testid="site-header-about">About</a></li>
       </ul>
     </nav>
-  </div>
 </header>
 <script type="text/typescript">
-  const toggle = document.getElementById('nav-toggle') as HTMLButtonElement;
-  const menu = document.getElementById('nav-menu') as HTMLUListElement;
-  toggle.addEventListener('click', (): void => {
-    const open = toggle.getAttribute('aria-expanded') === 'true';
-    toggle.setAttribute('aria-expanded', String(!open));
-    menu.classList.toggle('is-open');
+  const toggle = document.getElementById("theme-toggle") as HTMLButtonElement;
+  const root = document.documentElement;
+  const system = matchMedia("(prefers-color-scheme: dark)");
+  const sync = (): void => {
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : system.matches;
+    toggle.setAttribute("aria-pressed", String(dark));
+  };
+  sync();
+  toggle.hidden = false;
+  system.addEventListener("change", sync);
+  window.addEventListener("pageshow", sync);
+  window.addEventListener("storage", (event): void => {
+    if (event.key !== "theme" && event.key !== null) return;
+    root.classList.add("theme-switching");
+    if (event.newValue === "light" || event.newValue === "dark") root.dataset.theme = event.newValue;
+    else delete root.dataset.theme;
+    sync();
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+  });
+  toggle.addEventListener("click", (): void => {
+    root.classList.add("theme-switching");
+    const theme = toggle.getAttribute("aria-pressed") === "true" ? "light" : "dark";
+    root.dataset.theme = theme;
+    try { localStorage.setItem("theme", theme); } catch {}
+    sync();
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
   });
 </script>
 `;
@@ -107,7 +168,8 @@ describe("site-header component", () => {
     expect(html).toContain('href="/"');
     expect(html).toContain('href="/blog/"');
     expect(html).toContain('href="/about"');
-    expect(html).toContain('id="nav-toggle"');
+    expect(html).toContain('data-testid="author-sidebar"');
+    expect(html).toContain('data-testid="theme-toggle"');
   });
 
   it("prints the site name from src/lib/site.ts, escaped by html", async () => {
@@ -172,7 +234,7 @@ describe("site-footer component", () => {
 /** The home page's opening: the site name as the `<h1>` and its description. */
 export const SITE_INTRO_HTML = `<style>
 section {
-  padding: clamp(72px, 9vw, 112px) 0 32px;
+  padding: 48px 0 32px;
 }
 .container { max-width: 800px; margin: 0 auto; padding: 0 28px; }
 h1 {
@@ -272,7 +334,7 @@ describe("post-card component", () => {
     const html = await readFile(path, "utf8");
     const post = toPost(
       "low-tide",
-      "---\\ntitle: Laguna Seca Set-Up Notes\\ndescription: A race set-up report.\\ndate: 2026-08-02\\nauthor: Ross Bentley\\n---\\n\\nBody.\\n",
+      "---\\ntitle: Laguna Seca Set-Up Notes\\ndescription: An illustrative notebook.\\ndate: 2026-08-02\\nauthor: John Doe\\n---\\n\\nBody.\\n",
     );
     const passed = [
       ...String(postCards([post])).matchAll(/data-bascik-prop-([a-z]+)=/g),
@@ -440,7 +502,7 @@ describe("post-list component", () => {
 
 /** One post: its build script reads the post the dynamic route page was generated for. */
 export const POST_ARTICLE_HTML = `<style>
-article { padding: 72px 0 40px; }
+article { padding: 0 0 40px; }
 .back { margin: 40px 0 0; }
 </style>
 <article data-testid="post-article">
@@ -457,6 +519,7 @@ article { padding: 72px 0 40px; }
 export const POST_ARTICLE_BODY_TS = `// The markup <post-article> prints for one post: its heading, date, author, tags, and rendered Markdown.
 import { html, raw, type SafeHtml } from "@bascik/bascik/html";
 import { formatDate, type Post } from "../../lib/posts.ts";
+import { AUTHOR } from "../../lib/site.ts";
 
 export function articleBody(post: Post | undefined): SafeHtml {
   if (!post)
@@ -477,7 +540,11 @@ export function articleBody(post: Post | undefined): SafeHtml {
       </p>
       \${tags.length ? html\`<ul class="post-tags" aria-label="Tags">\${tags}</ul>\` : ""}
     </header>
-    <div class="prose">\${raw(post.html)}</div>\`;
+    <div class="prose">\${raw(post.html)}</div>
+    <aside class="author-context" aria-label="Author context" data-testid="post-author-context">
+      <h2>About \${post.author}</h2>
+      <p>\${post.author === AUTHOR.name ? AUTHOR.context : "Add this author's bio and the reporting context here before publishing."}</p>
+    </aside>\`;
 }
 `;
 
@@ -488,7 +555,7 @@ import { toPost } from "../../lib/posts.ts";
 import { articleBody } from "./article-body.ts";
 
 const source = (title: string, extra = ""): string =>
-  \`---\\ntitle: \${title}\\ndescription: A track report.\\ndate: 2026-08-02\\nauthor: Ross Bentley\\n\${extra}---\\n\\nA **balanced** racing report.\\n\`;
+  \`---\\ntitle: \${title}\\ndescription: An illustrative notebook.\\ndate: 2026-08-02\\nauthor: John Doe\\n\${extra}---\\n\\nA **balanced** racing report.\\n\`;
 
 describe("post-article component", () => {
   it("is an article that reads its post from the route and links back to the list", async () => {
@@ -509,7 +576,9 @@ describe("post-article component", () => {
     expect(markup).toContain(
       '<time datetime="2026-08-02">August 2, 2026</time>',
     );
-    expect(markup).toContain("Ross Bentley");
+    expect(markup).toContain("John Doe");
+    expect(markup).toContain('data-testid="post-author-context"');
+    expect(markup).toContain("placeholder");
     expect(markup).toContain('href="/blog/tags/set-ups/"');
     expect(markup).toContain(
       '<div class="prose"><p>A <strong>balanced</strong> racing report.</p>',

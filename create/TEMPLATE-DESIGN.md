@@ -2,6 +2,8 @@
 
 This is the visual contract for the templates shipped by `create-bascik`. Read it before changing `src/scaffold.ts` or `src/templates/`. The templates share accessible foundations, not one visual skin. Each should look designed for its job rather than like a recolored admin theme.
 
+Consult the repository-only `.github/skills/bascik-ui/SKILL.md` and `.github/skills/bascik-ux/SKILL.md` guidance. Both skills have `metadata.internal: true` and are not public site-building skills.
+
 ## Shared principles
 
 - Use semantic HTML and CSS first. Keep native links, buttons, forms, tables, figures, and disclosure elements. Add JavaScript only where HTML and CSS do not provide the needed behavior.
@@ -21,7 +23,7 @@ This is the visual contract for the templates shipped by `create-bascik`. Read i
 | Landing   | Product-led SaaS, with Apple-like restraint rather than copied assets                                   | Oversized headline, focused value proposition, a convincing product preview, and generous space                                  |
 | Shop      | Purposeful performance retail                                                                           | Product-specific illustrations, strong product information, useful filters, and clear price and cart actions                     |
 | Portfolio | Expressive creator portfolio                                                                            | Large project imagery, editorial typography, asymmetry, and the creator's work before the chrome                                 |
-| Blog      | Contemporary editorial publication                                                                      | A readable article measure, a distinct masthead, calm page background, and deliberate spacing between posts                      |
+| Blog      | Author-led editorial publication                                                                        | A responsive author sidebar beside an unboxed reading column, plain slug brand, calm canvas, and rule-led post entries           |
 | Corporate | Mature institutional identity                                                                           | Trustworthy typography, restrained navy/stone/copper, and quiet authority while preserving the existing information architecture |
 | Dashboard | Focused operator workspace                                                                              | Dense but legible data, neutral surfaces, one accent, clear hierarchy, and no playful rainbow cards                              |
 | Reports   | Editorial analytics                                                                                     | A strong narrative hierarchy, accessible data tables, restrained chart color, and a single neutral card treatment in dark mode   |
@@ -30,7 +32,7 @@ These are different design systems, not a checklist to force onto every branch. 
 
 ## Motion and interaction
 
-- Entrances start at `scale: 0.97` with `opacity: 0`, never at zero scale. Keep entrances brief and opt them out under `prefers-reduced-motion: reduce`.
+- Above-the-fold content is fully visible at first paint. Do not use initial opacity, entrance animations, or flashes on the header, intro, or reading column. Triggered disclosures may enter at `scale: 0.97` with `opacity: 0`, never zero scale; keep them brief and opt them out under `prefers-reduced-motion: reduce`.
 - Pressable buttons use `button:active { scale: 0.97; }` with `transition: scale 150ms ease-out`. Apply the same behavior to button-styled links when appropriate.
 - A rejected password shakes horizontally through `0, -10, 10, -6, 6, -3, 0px` over 360ms and also changes to an error state.
 - Steppers slide the next step from the direction of travel instead of crossfading.
@@ -40,6 +42,15 @@ These are different design systems, not a checklist to force onto every branch. 
 - Delay only the first tooltip; show subsequent tooltips immediately while one is already open.
 - Drag and flick interactions hand their release velocity to a spring rather than snapping with a fixed-duration transition. Carousels resist pulls past either end, then spring back.
 - Do not add motion just to satisfy a rule. Respect reduced motion, avoid flashes, and provide pause controls for persistent automatically moving content.
+
+## Blog-template behavior
+
+- Use the project slug as a plain text brand. Keep the canonical Bascik favicon assets unchanged.
+- Place author identity and navigation in an editorial sidebar beside the article on desktop, stacked above it at 900px and below. Navigation stays visible without JavaScript and has no default underline; prose links retain their underline.
+- Use an icon-only light/dark toggle with a stable accessible name, `aria-pressed`, visible focus, and a 44px target. Hide it without JavaScript. Apply saved theme state in the head before paint, tolerate unavailable storage, and retain CSS press feedback and reduced-motion behavior.
+- Inline `src/pages/css/styles.css` and `src/pages/css/blog.css` through `assets.inlineStyles`, with no duplicate stylesheet links in the head. Never hide above-the-fold content for an entrance.
+- Include author bio/context with each article. The starter's John Doe byline is explicitly a placeholder, and sample racing guides are illustrative, not invented biographies, endorsements, or reports of actual track tests. Real reporting requires factual sources.
+- Verify a fresh scaffold with the local production compiler, both themes at desktop and phone widths, keyboard navigation, saved theme reload, first-paint visibility, and JavaScript disabled.
 
 ## Docs-template behavior
 

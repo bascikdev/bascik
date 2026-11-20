@@ -12,14 +12,27 @@ export const BLOG_CSS = `/* src/pages/css/blog.css: the blog's page column, post
    reach elements written in its own template. Uses the tokens from styles.css. */
 
 /* ── Reading column ── */
+html[data-theme="light"] { color-scheme: light; }
+html[data-theme="dark"] { color-scheme: dark; }
+body {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 800px);
+  grid-template-rows: 1fr auto;
+  column-gap: 64px;
+  max-width: 1160px;
+  padding: 0 28px;
+  margin: 0 auto;
+}
+body > main { min-width: 0; }
+body > footer { grid-column: 2; }
+nav a { text-decoration: none; }
 .page {
   width: 100%;
   max-width: 800px;
   margin: 0 auto;
-  padding: clamp(40px, 7vw, 80px) clamp(24px, 6vw, 68px);
+  padding: 48px 0 64px;
   background: transparent;
   border: 0;
-  border-top: 1px solid var(--border);
   border-radius: 0;
   box-shadow: none;
 }
@@ -34,16 +47,10 @@ export const BLOG_CSS = `/* src/pages/css/blog.css: the blog's page column, post
 }
 .post-cards > li { margin: 0; padding: 0; }
 
-/* The masthead arrives gently; the rest of the publication stays still and readable. */
-@keyframes editorial-enter {
-  from { scale: 0.97; opacity: 0; }
-  to { scale: 1; opacity: 1; }
-}
-@media (prefers-reduced-motion: no-preference) {
-  section[data-testid="site-intro"] {
-    animation: editorial-enter 460ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  }
-}
+/* Content is fully visible at first paint. Only CSS interaction feedback moves. */
+.author-context { border-top: 1px solid var(--border); margin-top: 40px; padding-top: 24px; }
+.author-context h2 { font-size: 1.2rem; }
+.author-context p { max-width: 60ch; font-size: 0.95rem; }
 
 /* ── A post's heading block (printed by <post-article>) ── */
 .page h1,
@@ -104,8 +111,12 @@ export const BLOG_CSS = `/* src/pages/css/blog.css: the blog's page column, post
 .prose td { padding: 8px 12px; border: 1px solid var(--border); text-align: left; }
 .prose th { background: var(--surface); }
 
+@media (max-width: 900px) {
+  body { display: flex; padding: 0 24px; }
+  .page { padding: 36px 0 56px; }
+}
 @media (max-width: 640px) {
-  .page { padding: 36px 20px 56px; }
+  body { padding: 0 20px; }
   .post-cards { gap: 0.75rem; }
 }
 `;
@@ -140,7 +151,7 @@ export const BLOG_INDEX_PAGE = `<!doctype html>
   <script data-bascik-build type="text/typescript">
     import { seo } from "@/lib/seo.ts";
     export default () =>
-      seo({ title: "Blog", description: "Every racing report, driver profile, Porsche history, setup note, and race preview, newest first." });
+      seo({ title: "Blog", description: "Every illustrative endurance racing guide, car-class checklist, track notebook, and race-preview example, newest first." });
   </script>
 </head>
 <body>
@@ -247,7 +258,7 @@ export const ABOUT_PAGE = `<!doctype html>
     <p class="page-intro">This is the about page. Tell readers who you are and what you write about.</p>
     <div class="prose">
       <h2>Who writes here</h2>
-      <p>Apex Racing Desk follows endurance racing, Porsche history, driver craft, and the preparation behind race weekends.</p>
+      <p>John Doe is a placeholder author. This starter uses illustrative endurance racing guides, not a real person's biography, reporting, or endorsement. Replace the author context in <code>src/lib/site.ts</code> and the sample bylines before publishing.</p>
       <h2>How this blog works</h2>
       <ul>
         <li>Each post is a Markdown file in <code>content/posts/</code>. Its file name is its URL.</li>
@@ -296,8 +307,8 @@ export const e2eAppSpec = (
 
 // The sample posts, newest first. Change these with the files in content/posts/.
 const POSTS = [
-      { slug: 'hurley-haywood-at-daytona', title: 'Hurley Haywood at Daytona', date: '2026-10-28' },
-  { slug: 'porsche-prototypes-917-935-962-963', title: 'From the 917 to the 963', date: '2026-09-14' },
+  { slug: 'reading-an-endurance-stint', title: 'Reading an Endurance Stint', date: '2026-10-28' },
+  { slug: 'understanding-racing-car-classes', title: 'Understanding Racing Car Classes', date: '2026-09-14' },
   { slug: 'laguna-seca-set-up-notes', title: 'Laguna Seca Set-Up Notes', date: '2026-08-02' },
   { slug: 'le-mans-spa-race-preview', title: 'Le Mans and Spa Race Preview', date: '2026-06-19' },
 ];
@@ -326,15 +337,15 @@ test.describe('Blog E2E Tests', () => {
   test('a post page renders its Markdown and its own head tags', async ({ page }) => {
     const [post] = POSTS;
     await page.goto('/blog/');
-    await page.getByRole('link', { name: post.title }).click();
+    await page.getByTestId('post-card-link').filter({ hasText: post.title }).click();
     await expect(page).toHaveURL(\`/blog/\${post.slug}/\`);
     await expect(page).toHaveTitle(new RegExp(\`^\${post.title} - \`));
 
     const article = page.getByTestId('post-article');
     await expect(article.getByRole('heading', { level: 1 })).toHaveText(post.title);
     await expect(article.locator('time')).toHaveAttribute('datetime', post.date);
-    await expect(article.getByRole('heading', { level: 2, name: 'The race craft that travelled' })).toBeVisible();
-    await expect(article.locator('blockquote')).toContainText('Endurance speed is repeatable lap time');
+    await expect(article.getByRole('heading', { level: 2, name: 'Look beyond the fastest lap' })).toBeVisible();
+    await expect(page.getByTestId('post-author-context')).toContainText('John Doe is a placeholder author');
 
     // The canonical URL and og:url are this post's, built from the site URL the build was given.
     const canonical = await page.locator('link[rel="canonical"]').getAttribute('href');
@@ -342,11 +353,11 @@ test.describe('Blog E2E Tests', () => {
     await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', canonical!);
     await expect(page.locator('meta[property="og:type"]')).toHaveAttribute('content', 'article');
     await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', new RegExp(\`^\${post.title}\`));
-    await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /Daytona/);
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /illustrative guide/);
   });
 
   test('a tag page lists only the posts with that tag', async ({ page }) => {
-    await page.goto(\`/blog/\${POSTS[2].slug}/\`);
+    await page.goto(\`/blog/\${POSTS[0].slug}/\`);
     await page.getByTestId('post-article-tag').filter({ hasText: 'imsa' }).click();
     await expect(page).toHaveURL('/blog/tags/imsa/');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Posts tagged imsa');
@@ -385,26 +396,28 @@ test.describe('Blog E2E Tests', () => {
     await expect(page).toHaveURL('/about#main');
   });
 
-  test('mobile navigation toggle expands and collapses menu', async ({ page }) => {
+  test('mobile editorial navigation is available without a menu toggle', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
 
-    const toggle = page.getByTestId('site-header-nav-toggle');
     const menu = page.getByTestId('site-header-nav-menu');
-
-    // Assert what the reader sees, not the class name: the build scopes
-    // .is-open (hashed under minify.identifiers), so the element never
-    // carries the literal class.
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(menu).toBeHidden();
-
-    await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(menu).toBeVisible();
+    await expect(page.getByTestId('author-sidebar')).toContainText('John Doe');
+    await page.getByTestId('site-header-blog').click();
+    await expect(page).toHaveURL('/blog/');
+  });
 
-    await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(menu).toBeHidden();
+  test('icon-only dark-mode button toggles and persists the theme', async ({ page }) => {
+    await page.goto('/');
+    const toggle = page.getByTestId('theme-toggle');
+    await expect(toggle).toHaveAccessibleName('Dark mode');
+    await expect(toggle).toHaveText('');
+    const before = await toggle.getAttribute('aria-pressed');
+    await toggle.focus();
+    await page.keyboard.press('Space');
+    await expect(toggle).toHaveAttribute('aria-pressed', String(before !== 'true'));
+    await page.reload();
+    await expect(toggle).toHaveAttribute('aria-pressed', String(before !== 'true'));
   });
 ${extraTests}});
 `;

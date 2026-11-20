@@ -19,10 +19,16 @@ export const siteModule = (
 export const SITE = {
   name: ${JSON.stringify(siteName)},
   /** A few words after the name in the home page's title. */
-  tagline: "Track reports, Porsche history, and race preparation",
+  tagline: "Notes on endurance racing",
   /** One or two sentences: the home page's introduction and description, and the feed's subtitle. */
   description:
-    "Endurance racing reports, driver profiles, Porsche history, and practical set-up notes.",
+    "Illustrative guides to endurance racing: reading a stint, comparing car classes, and keeping useful track notes.",
+} as const;
+
+// Replace this placeholder and the sample post bylines together before publishing.
+export const AUTHOR = {
+  name: "John Doe",
+  context: "John Doe is a placeholder author. These illustrative racing guides demonstrate the blog format, not a real biography, track test, or endorsement.",
 } as const;
 `;
 
@@ -30,6 +36,8 @@ export const SITE = {
 export const BASCIK_CONFIG = `import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
+  // Inline these global styles before first paint; other future stylesheets stay external.
+  assets: { inlineStyles: ["src/pages/css/styles.css", "src/pages/css/blog.css"] },
   pipeline: {
     // Rebuild pages in the dev server when a post or a shared helper changes.
     watchPaths: ["content/", "src/lib/"],
@@ -57,11 +65,11 @@ export const POSTS_TS = `// src/lib/posts.ts: the one place that reads, validate
 // A post is content/posts/<slug>.md, and its file name is its URL (/blog/<slug>/). It starts with front matter:
 //
 //   ---
-//   title: Hurley Haywood at Daytona
+//   title: Reading an Endurance Stint
 //   description: One or two sentences for the post list, search results, and the feed.
 //   date: 2026-10-28
-//   author: Apex Racing Desk
-//   tags: [driver-profiles, wec]   (optional)
+//   author: John Doe
+//   tags: [race-guides, wec]   (optional)
 //   draft: true              (optional: shown by the dev server, left out of bascik --build)
 //   ---
 //
@@ -290,24 +298,24 @@ const post = (frontMatter: string, body = "Body text."): string =>
   \`---\\n\${frontMatter}\\n---\\n\\n\${body}\\n\`;
 
 const VALID = [
-  "title: Hurley Haywood at Daytona",
-  "description: A driver profile and endurance racing lessons from Daytona.",
+  "title: Reading an Endurance Stint",
+  "description: An illustrative endurance racing guide.",
   "date: 2026-10-28",
-  "author: Apex Racing Desk",
+  "author: John Doe",
 ].join("\\n");
 
 describe("toPost", () => {
   it("reads the front matter and renders the Markdown body", () => {
     const result = toPost(
       "daytona-profile",
-      post(\`\${VALID}\ntags: [Driver-profiles, reviews]\`, "A **bold** claim."),
+      post(\`\${VALID}\ntags: [Race-guides, reviews]\`, "A **bold** claim."),
     );
     expect(result).toMatchObject({
       slug: "daytona-profile",
-      title: "Hurley Haywood at Daytona",
+      title: "Reading an Endurance Stint",
       date: "2026-10-28",
-      author: "Apex Racing Desk",
-      tags: ["driver-profiles", "reviews"],
+      author: "John Doe",
+      tags: ["race-guides", "reviews"],
       draft: false,
     });
     expect(result.html).toContain("<strong>bold</strong>");
@@ -318,7 +326,7 @@ describe("toPost", () => {
       "quoted",
       post(
         VALID.replace(
-          "title: Hurley Haywood at Daytona",
+          "title: Reading an Endurance Stint",
           'title: "Porsche 963: a \\\\"fast\\\\" prototype"',
         ),
       ),
@@ -439,7 +447,7 @@ describe("grouping and display", () => {
           "markup",
           post(
             VALID.replace(
-              "Hurley Haywood at Daytona",
+              "Reading an Endurance Stint",
               '<script>alert("x")</script> & Co.',
             ),
           ),
@@ -579,7 +587,7 @@ describe("seo", () => {
         description: "A practical endurance racing setup and track report.",
         type: "article",
         publishedTime: "2026-08-02",
-        author: "Ross Bentley",
+        author: "John Doe",
       }),
     );
     expect(tags).toContain(\`<title>\${pageTitle("Laguna Seca Set-Up Notes")}</title>\`);
@@ -591,7 +599,7 @@ describe("seo", () => {
       'property="og:url" content="https://example.com/blog/laguna-seca-set-up-notes/"',
     );
     expect(tags).toContain('content="2026-08-02"');
-    expect(tags).toContain('property="article:author" content="Ross Bentley"');
+    expect(tags).toContain('property="article:author" content="John Doe"');
   });
 
   it("uses the site name and tagline as the home page title", () => {
@@ -643,7 +651,7 @@ describe("articleJsonLd", () => {
         title: "</script><script>alert(1)</script>",
         description: "A description.",
         date: "2026-08-02",
-        author: "Apex Racing Desk",
+        author: "John Doe",
       }),
     );
     expect(block.match(/<\\/script>/g)).toHaveLength(1);
@@ -711,7 +719,7 @@ import { toPost, type Post } from "./posts.ts";
 const post = (slug: string, date: string, title = "Laguna Seca Set-Up Notes"): Post =>
   toPost(
     slug,
-    \`---\\ntitle: \${title}\\ndescription: A description.\\ndate: \${date}\\nauthor: Apex Racing Desk\\n---\\n\\nBody with <em>markup</em> & more.\\n\`,
+    \`---\\ntitle: \${title}\\ndescription: A description.\\ndate: \${date}\\nauthor: John Doe\\n---\\n\\nBody with <em>markup</em> & more.\\n\`,
   );
 
 describe("atomFeed", () => {
@@ -728,7 +736,7 @@ describe("atomFeed", () => {
       '<link rel="self" type="application/atom+xml" href="https://example.com/feed.xml" />',
     );
     expect(xml).toContain("<published>2026-08-02T00:00:00Z</published>");
-    expect(xml).toContain("<name>Apex Racing Desk</name>");
+    expect(xml).toContain("<name>John Doe</name>");
     // The feed's own date is its newest post's.
     expect(xml).toContain("<updated>2026-08-02T00:00:00Z</updated>\\n  <entry>");
   });

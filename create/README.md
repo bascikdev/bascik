@@ -95,6 +95,10 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 | `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static`                                                           |
 | `blog`    | A blog: Markdown posts in `content/posts/`, a post list, tag pages, an Atom feed, SEO tags for every post, an about page, and a 404 page |
 
+The blog uses your project slug as a plain brand, a responsive author sidebar, an unboxed reading column, and an accessible icon-only light/dark toggle. It retains the Bascik favicon. Global `styles.css` and `blog.css` are inlined through `assets.inlineStyles` in `bascik.config.ts`, without duplicate stylesheet links or above-the-fold entrance animations. Navigation remains visible without JavaScript.
+
+Its racing guides are explicitly illustrative, not biographies, endorsements, or actual track reports. Before publishing, replace the John Doe placeholder and author context in `src/lib/site.ts`, update the Markdown bylines and about page, and replace or source the sample content. Article pages include author context below the prose.
+
 `--template cloudflare` and `--template netlify`, the spelling before `create-bascik` 1.1.0, still work and mean the same as `--adapter`. Naming two different adapters with the two flags is an error.
 
 The Cloudflare template differs from the default in these files only:

@@ -24,7 +24,6 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { execFile } from "node:child_process";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -60,7 +59,9 @@ afterEach(async () => {
  * real path.
  */
 async function scaffoldBlog(label: string): Promise<string> {
-  const parentDir = await mkdtemp(join(tmpdir(), `bascik-blog-test-${label}-`));
+  const scratch = join(REPO_ROOT, ".headroom");
+  await mkdir(scratch, { recursive: true });
+  const parentDir = await mkdtemp(join(scratch, `bascik-blog-test-${label}-`));
   tempDirs.push(parentDir);
   const projectDir = join(parentDir, "apex-racing");
   const { notes } = await scaffold("apex-racing", parentDir, {
@@ -158,11 +159,11 @@ describe("blog template through the compiler", () => {
     }
     // Markdown became HTML: a heading, a list and a table from the sample posts.
     const history = await dist(
-      "blog/porsche-prototypes-917-935-962-963/index.html",
+      "blog/understanding-racing-car-classes/index.html",
     );
-    expect(history).toContain("<h2>Porsche 917: outright speed arrives</h2>");
+    expect(history).toContain("<h2>Start with the rulebook</h2>");
     expect(history).toContain("<table>");
-    expect(history).not.toContain("## Porsche 917: outright speed arrives");
+    expect(history).not.toContain("## Start with the rulebook");
 
     // The lists are newest first: three on the home page, all of them on /blog/.
     const newestFirst = SAMPLE_POSTS.map(([slug]) => `/blog/${slug}/`);
@@ -213,7 +214,7 @@ describe("blog template through the compiler", () => {
     [
       "a line that is not key: value",
       (post: string) => post.replace(/^author: /m, () => "author "),
-      "unreadable front matter line: author Apex Racing Desk",
+      "unreadable front matter line: author John Doe",
     ],
     [
       "front matter that is never closed",

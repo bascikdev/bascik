@@ -1,130 +1,128 @@
-/**
- * @module templates/blog/content
- *
- * The blog template's sample racing posts. Each is written to `content/posts/<slug>.md`, and its slug is its URL.
- */
-
-/** The sample posts, newest first, as `[slug, Markdown]`. The generated e2e spec names the same four. */
+/** Illustrative racing guides, not biographies, endorsements, or reports of real tests. */
 export const SAMPLE_POSTS: readonly (readonly [
   slug: string,
   markdown: string,
 ])[] = [
   [
-    "hurley-haywood-at-daytona",
+    "reading-an-endurance-stint",
     `---
-title: Hurley Haywood at Daytona
-description: A driver profile tracing Hurley Haywood's Daytona endurance career, race craft, and lasting IMSA record.
+title: Reading an Endurance Stint
+description: An illustrative guide to following lap consistency, traffic, and pit stops in an endurance race.
 date: 2026-10-28
-author: Apex Racing Desk
-tags: [driver-profiles, imsa]
+author: John Doe
+tags: [race-guides, imsa]
 ---
 
-Hurley Haywood is a defining name in Porsche endurance racing. His career links Daytona, Sebring, and Le Mans through different cars and generations, making him a useful lens for understanding how a modern sports-car driver builds consistency.
+This illustrative guide shows how to organize race-watching notes. It is not a report from a team or a driver. Use the official timing feed and event regulations when watching an IMSA race at Daytona or Sebring.
 
-## The race craft that travelled
+## Look beyond the fastest lap
 
-Haywood's results came from pace that could survive a long stint. He could work traffic, preserve tires, and hand a car to the next driver with enough margin to attack rather than recover.
+A single lap can hide traffic or a pit stop. Compare a sequence of laps and mark interruptions before deciding whether a car's pace changed.
 
-## Daytona and the team around the car
+## Keep a stint log
 
-At Daytona, the 24-hour format rewards preparation: pit timing, night vision, weather, and clear communication between co-drivers. Haywood's record is tied closely to Porsche programs and IMSA competition, where shared stints turn one driver's speed into a team's result.
+Record the lap number, the displayed time, and the event you observed. Separate observations from guesses: “entered the pits” is an observation; a reason for that stop needs confirmation.
 
-> Endurance speed is repeatable lap time, not one heroic lap.
+- Note when a car rejoins after a stop.
+- Mark caution periods separately.
+- Check the official results before describing a finishing position.
 
-## The lesson for club racers
+## Share the context
 
-Use a repeatable reference for braking, then make only one change at a time. A clean stint at Laguna Seca or Sebring matters more than a qualifying lap that leaves the car outside the balance window.
+A useful summary says which session, source, and time window it covers. Leave an unanswered question open rather than inventing a team explanation.
 `,
   ],
   [
-    "porsche-prototypes-917-935-962-963",
+    "understanding-racing-car-classes",
     `---
-title: From the 917 to the 963
-description: A Porsche prototype history across the 917, 935, 962, and 963, with the engineering themes that shaped each era.
+title: Understanding Racing Car Classes
+description: An illustrative reading checklist for comparing prototypes and production-derived racing cars.
 date: 2026-09-14
-author: Apex Racing Desk
-tags: [porsche-history, prototypes]
+author: John Doe
+tags: [car-classes, prototypes]
 ---
 
-Porsche's prototype story is a line of problems solved in public: aerodynamic stability, turbo heat, braking, hybrid efficiency, and the discipline of running across four distinct endurance eras.
+This illustrative guide demonstrates a comparison article. It is not a complete model history or a specification sheet. Class names and eligibility depend on the series and season, so begin with the organizer's published regulations.
 
-## Porsche 917: outright speed arrives
+## Start with the rulebook
 
-The Porsche 917 made the company's 1970 Le Mans breakthrough. Its exposed high-speed character demanded bravery and aerodynamic work, but it established a template for purpose-built Porsche prototypes.
+Separate the car's name from the class it entered. A recognizable badge does not tell you which technical regulations apply, and a road-car association does not make a race car production-derived.
 
-## Porsche 935 and Porsche 962: turbo and team craft
+## Compare like with like
 
-The Porsche 935 turned the production-derived 911 silhouette into an international racing weapon. Later, the Porsche 962 carried the road-car-derived 962 identity through Group C and IMSA competition, where balance and reliability mattered as much as straight-line speed.
+Use a table to track the source for each claim rather than filling gaps with assumptions.
 
-| Model | Main racing theme |
-| ----- | ----------------- |
-| 917 | Aerodynamic top speed |
-| 935 | Turbocharged silhouette racing |
-| 962 | Group C and IMSA versatility |
-| 963 | Modern LMDh energy management |
+| Question | Where to look |
+| -------- | ------------- |
+| Which class is entered? | Official event entry list |
+| Which technical rules apply? | Series regulations for that season |
+| Who drove in that session? | Official session results |
+| What changed between seasons? | Dated organizer announcements |
 
-## Porsche 963: the new hybrid era
+## Write a narrower conclusion
 
-The Porsche 963 competes in WEC and IMSA under the LMDh formula. Jordan Taylor is among the drivers who have represented Porsche in top-flight sports-car racing, and the 963's challenge is coordination of hybrid deployment, tire load, and pit-window strategy.
+Describe only what the sources establish. A comparison of regulations is different from a claim about performance, reliability, or a driver's career.
 `,
   ],
   [
     "laguna-seca-set-up-notes",
     `---
 title: Laguna Seca Set-Up Notes
-description: A practical Porsche track report for Laguna Seca, covering brake balance, Corkscrew confidence, tire temperature, and stint setup.
+description: An illustrative notebook format for separating track observations from setup decisions.
 date: 2026-08-02
-author: Ross Bentley
+author: John Doe
 tags: [set-ups, track-report, laguna-seca]
 ---
 
-Laguna Seca asks a car to change direction at the start of the lap, brake uphill, manage camber through the Corkscrew, then settle its tires for the slower final sector. This is a baseline for a balanced GT or prototype test day, not a substitute for a team engineer's model.
+These illustrative notes show a writing format, not advice for adjusting a car at Laguna Seca. Follow the vehicle manual, event rules, and qualified instructor or engineer guidance for any real track activity.
 
-## Brake balance and turn-in
+## Record the baseline
 
-Start with the manufacturer's recommended bias, then add one small step of rear bias only if the front axle is refusing to settle on the approach to Turn 2. Revisit after the first fully representative stint so track evolution is part of the result.
+Write down the session, conditions, and the approved configuration supplied by your team. A notebook should preserve context, not prescribe brake bias, tire pressure, or driving technique.
 
-## Tire temperature budget
+## Separate observation from diagnosis
 
-Log inside-to-middle-to-outside temperatures by corner and compare both axles. A useful setup change should improve both repeatability and tire drop-off, not merely make one timed lap look fast.
+An observation describes what happened. A diagnosis explains why and requires evidence. Keep separate columns so an uncertain explanation does not become an established fact.
 
-- Use the bump at the Corkscrew as a balance check.
-- Watch rear temperatures after the long uphill section.
-- Compare a five-lap average rather than one flyer.
+- Record the session date and conditions.
+- Keep timing notes separate from mechanical assumptions.
+- Ask a qualified professional to evaluate a suspected problem.
 
-## Paul Newman and the 911 school
+## Make the next report reproducible
 
-Paul Newman also raced Porsches and helped make motorsport a serious second act rather than a celebrity cameo. His measured approach is a reminder that seat time, feedback, and professional preparation are the setup tools that matter most.
+Name the source of each measurement and leave room for corrections. Clear records are more useful than a confident explanation without supporting information.
 `,
   ],
   [
     "le-mans-spa-race-preview",
     `---
 title: Le Mans and Spa Race Preview
-description: A WEC race preview comparing the Le Mans and Spa demands, strategy windows, traffic, and Porsche 963 preparation.
+description: An illustrative race-preview checklist for finding schedules, entry lists, and official rules.
 date: 2026-06-19
-author: Apex Racing Desk
+author: John Doe
 tags: [race-previews, wec]
 ---
 
-Spa and Le Mans expose different parts of an endurance package. Spa demands repeatable speed through the uphill section and a fast-changing weather window. Le Mans stretches the driver, hybrid system, and traffic plan over a full 24-hour race.
+This illustrative preview is a research checklist, not current event reporting or a prediction. For a WEC event at Le Mans or Spa, verify the year and consult the official event information before publishing.
 
-## Spa: speed with limited recovery
+## Establish the weekend
 
-A strong Spa stint comes from stable aero and predictable braking into the medium-speed sequence. Rain risk raises the value of a wide usable tire window, and the strategy team must decide whether a stop is for weather or for fuel before the safety-car window closes.
+Check the schedule, local time zone, and session names. A previous year's timetable is not evidence for the next event.
 
-## Le Mans: traffic and the full race
+## Read the entry list
 
-At Le Mans, straight-line efficiency supports tire and fuel calculations, while traffic creates hundreds of small passing decisions. The Porsche 963 program must keep hybrid deployment inside the rules and avoid thermal penalties during the night cycle.
+Use the published list to identify classes, cars, and drivers. Note its publication date, since an entry list can change before a session.
 
-## The race-week watch list
+## Build a watch list
 
-1. Track evolution between qualifying and the opening stint.
-2. Energy deployment through the slowest Le Mans sections.
-3. Double-stint behavior on new and used tires.
-4. Night visibility and pit-lane handoffs.
+1. Link to the official timetable.
+2. Record the date of the entry list.
+3. Check the event's sporting regulations.
+4. Confirm results before writing the recap.
 
-The IMSA calendar has its own five-sector stress test at Daytona and Sebring, but the WEC at Spa and Le Mans shows whether preparation survives a longer, less forgiving weekend.
+## Label uncertainty
+
+Keep a forecast separate from an observed result. Update the preview with a correction when an official source changes.
 `,
   ],
 ];

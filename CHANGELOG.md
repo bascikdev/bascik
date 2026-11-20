@@ -18,7 +18,7 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
-- `create-bascik`: the blog template uses a calmer editorial masthead, a spacious post list with rule-led entries, and a clean, unboxed reading column.
+- `create-bascik`: the blog template uses a responsive editorial author sidebar, a plain project-slug brand, rule-led post entries, and an unboxed reading column with article author context. An accessible icon-only light/dark toggle restores the saved theme before paint, while global styles are inlined through `assets.inlineStyles`. The Bascik favicon is unchanged; navigation has no default underline and above-the-fold content has no entrance animation. Sample racing guides are explicitly illustrative, with a John Doe placeholder instead of invented real-person biographies or endorsements.
 
 - `create-bascik`: the starter and adapter variants use a shared light/dark design system, with a neutral canvas, raised cards, restrained periwinkle accents, visible keyboard focus, and motion that respects reader preferences.
 - Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).
