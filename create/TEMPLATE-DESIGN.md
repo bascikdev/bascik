@@ -13,6 +13,7 @@ Use the repository-only [UI guidance](../.github/skills/bascik-ui/SKILL.md) to s
 - Prefer quiet, layered contrast and intentional whitespace over repeated bordered cards, gratuitous gradients, glass, gloss, bevels, pills, or Bootstrap-like grids.
 - Preserve routes, form behavior, data, keyboard access, test hooks, and useful no-JavaScript fallbacks.
 - Use data that is clearly illustrative. Do not attribute fictional work, products, quotes, or books to real people or companies.
+- Use plain template slug names, including `shop`, `reports`, and `dashboard`.
 - Use an accessible SVG-only light/dark control with an `aria-label`, no visible button text, and saved preference initialization before paint. Preserve the canonical Bascik favicon, not a recolored version.
 - Inline `src/pages/css/styles.css` with Bascik's `assets.inlineStyles` and omit its stylesheet link. Navigation has no resting underline; keep prose links identifiable.
 
@@ -116,6 +117,13 @@ These are different design systems, not a checklist to force onto every branch. 
 - Navigation links have no underline at rest, with deliberate hover and visible keyboard focus treatments.
 - Product detail uses a generous two-column, viewport-height desktop panel and a natural-height single column on phones. Give the product illustration meaningful space, not a thumbnail beside a short paragraph.
 - Keep composition, fit/dimensions, contents/care/intended use and demo availability in the typed catalog. Label specifications, ratings and stock as illustrative; never imply real customer reviews, vehicle safety certification, live inventory or shipping. Custom entries may omit the detail fields and get explicit fallbacks.
+
+## Reports-template behavior
+
+- Retain SQLite/D1 request-time report rendering and the static Netlify variant.
+- A navigable month table row has one real link whose pointer target fills the row. It navigates to the monthly report and never pins a chart selection.
+- Clicking a chart month pins inspection; Escape clears it. Hover and keyboard focus can temporarily highlight linked chart/table data without replacing navigation.
+- Keep the reports brand typographic, without a decorative square glyph.
 
 ## Verification
 

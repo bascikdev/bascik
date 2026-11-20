@@ -99,6 +99,7 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 | `portfolio` | An editorial creator portfolio: clearly labeled fictional sample work, a featured grid, a project index, a page per Markdown entry in `content/projects/` read by `src/lib/projects.ts`, about, contact, and 404 pages |
 | `corporate` | A company site: services, about, careers, news, and contact pages                                                                                                                                                      |
 | `shop`      | A shop: a product catalog, product pages, a cart, and a demo checkout                                                                                                                                                  |
+| `reports`   | A reporting site: SQLite/D1 data, SVG charts, CSV downloads, and print styles; Netlify renders at build time                                                                                                           |
 
 The blog uses your project slug as a plain brand, a responsive author sidebar, an unboxed reading column, and an accessible icon-only light/dark toggle. It retains the Bascik favicon. Global `styles.css` and `blog.css` are inlined through `assets.inlineStyles` in `bascik.config.ts`, without duplicate stylesheet links or above-the-fold entrance animations. Navigation remains visible without JavaScript.
 

@@ -95,6 +95,7 @@ Select **Y** for all three and you're live at `http://localhost:8080`. `npm run 
 | `portfolio` | A creator portfolio: featured work, a project index, a page per Markdown entry in `content/projects/`, about, contact, and a 404 page                            |
 | `corporate` | A company site: services, about, careers, news, and contact pages                                                                                                |
 | `shop`      | A shop: a product catalog, product pages, a cart, and a demo checkout                                                                                            |
+| `reports`   | A reporting site: SQLite/D1 data, SVG charts, CSV downloads, and print styles; Netlify renders at build time                                                     |
 
 Any template takes any adapter: `npm create bascik my-site -- --template default --adapter netlify`.
 
