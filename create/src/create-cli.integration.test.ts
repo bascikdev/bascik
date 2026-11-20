@@ -292,7 +292,7 @@ describe("npm create bascik and the agent skills", () => {
     expect(existsSync(join(parent, "bascik-app", "netlify.toml"))).toBe(false);
   });
 
-  it("never asks where the site will be deployed: without --template the starter is the default one", async () => {
+  it("never asks where the site will be deployed: without --adapter or --template the starter is the default one", async () => {
     // Answers that would have chosen an adapter when the question existed.
     const { status, output, parent } = await create(
       ["my-site", "--no-skills", ...QUIET],
@@ -313,22 +313,37 @@ describe("npm create bascik and the agent skills", () => {
     expect(existsSync(join(parent, "my-site", "wrangler.jsonc"))).toBe(false);
   });
 
-  it("--template still chooses an adapter starter, with no question asked", async () => {
-    for (const [template, adapter] of [
-      ["cloudflare", "@bascik/adapter-cloudflare"],
-      ["netlify", "@bascik/adapter-netlify"],
-    ] as const) {
-      const { status, output, parent } = await create(
-        [`site-${template}`, "--template", template, "--no-skills", ...QUIET],
-        { input: "" },
-      );
-      expect(status, output).toBe(0);
-      expect(output).not.toMatch(/Deploy to .*\?/i);
-      const manifest = JSON.parse(
-        readFileSync(join(parent, `site-${template}`, "package.json"), "utf8"),
-      ) as { devDependencies: Record<string, string> };
-      expect(manifest.devDependencies[adapter]).toBe("^1.0.0");
+  it("--adapter, and the older --template spelling, choose an adapter starter with no question asked", async () => {
+    for (const flag of ["--adapter", "--template"]) {
+      for (const [name, adapter] of [
+        ["cloudflare", "@bascik/adapter-cloudflare"],
+        ["netlify", "@bascik/adapter-netlify"],
+      ] as const) {
+        const site = `site${flag}-${name}`;
+        const { status, output, parent } = await create(
+          [site, flag, name, "--no-skills", ...QUIET],
+          { input: "" },
+        );
+        expect(status, output).toBe(0);
+        expect(output).not.toMatch(/Deploy to .*\?/i);
+        const manifest = JSON.parse(
+          readFileSync(join(parent, site, "package.json"), "utf8"),
+        ) as { devDependencies: Record<string, string> };
+        expect(manifest.devDependencies[adapter]).toBe("^1.0.0");
+      }
     }
+  });
+
+  it("misuse: --adapter and --template naming different adapters exits 1 and writes nothing", async () => {
+    const { status, output, parent } = await create(
+      ["my-site", "--template", "cloudflare", "--adapter", "netlify"],
+      { input: "" },
+    );
+    expect(status).toBe(1);
+    expect(output).toContain(
+      "--template cloudflare and --adapter netlify ask for different adapters. Pass only --adapter.",
+    );
+    expect(readdirSync(parent)).toEqual([]);
   });
 
   it("misuse: a skills install that fails still scaffolds, exits 0 and prints the command to run later", async () => {
@@ -353,6 +368,7 @@ describe("npm create bascik and the agent skills", () => {
       expect(status).toBe(0);
       expect(output).toContain("Usage: npm create bascik");
       expect(output).toContain("--template <name>");
+      expect(output).toContain("--adapter <name>");
       expect(output).not.toContain("Project name");
       expect(readdirSync(parent)).toEqual([]);
     },

@@ -36,13 +36,13 @@ It does not create `bascik.config.ts` because the starter uses Bascik's built-in
 
 For coding assistants, it writes an `AGENTS.md` brief with the project's commands and house rules, and a `CLAUDE.md` that imports it for Claude Code. It then asks whether to install the [Bascik agent skills](/agent-skills#new-projects) (yes by default, and with `-y`); pass `--no-skills` to skip them. See [Project Brief](/agent-skills#project-brief) for what the brief says.
 
-To start a site that deploys to Cloudflare Workers, pass `--template cloudflare`. You get the same starter plus the [Cloudflare adapter](/deployment/cloudflare) and Wrangler as dev dependencies, a `build` script that emits the Workers bundle, `preview` and `deploy` scripts, and a demo page with a server script and an API route that run in the Worker. `--template netlify` is the same for Netlify: the [Netlify adapter](/deployment/netlify), a `netlify.toml`, and the demo page and API route running in a Netlify Function. Without `--template`, the interactive prompts ask the same questions.
+To start a site that deploys to Cloudflare Workers, pass `--adapter cloudflare`. You get the same starter plus the [Cloudflare adapter](/deployment/cloudflare) and Wrangler as dev dependencies, a `build` script that emits the Workers bundle, `preview` and `deploy` scripts, and a demo page with a server script and an API route that run in the Worker. `--adapter netlify` is the same for Netlify: the [Netlify adapter](/deployment/netlify), a `netlify.toml`, and the demo page and API route running in a Netlify Function. Without `--adapter`, the interactive prompts ask the same questions, and an adapter can be added to the project later ([Cloudflare](/deployment/cloudflare#prerequisites), [Netlify](/deployment/netlify#prerequisites)).
 
 ```sh
-npm create bascik my-site -- --template cloudflare
+npm create bascik my-site -- --adapter cloudflare
 ```
 
-The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--template` has to follow a `--`. `-y` works on either side of it because `create-bascik` also reads npm's own `yes` setting, so `npm create bascik my-site -y -- --template cloudflare` scaffolds, installs, and starts the dev server without a single prompt. `--no-skills` and `--no-install` work on either side too, but `--no-dev` has to follow the `--`: npm treats it as one of its own settings and does not pass it on.
+The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--adapter` has to follow a `--`. `-y` works on either side of it because `create-bascik` also reads npm's own `yes` setting, so `npm create bascik my-site -y -- --adapter cloudflare` scaffolds, installs, and starts the dev server without a single prompt. `--no-skills` and `--no-install` work on either side too, but `--no-dev` has to follow the `--`: npm treats it as one of its own settings and does not pass it on.
 
 ## Manual Setup
 
