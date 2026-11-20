@@ -46,6 +46,8 @@ These are different design systems, not a checklist to force onto every branch. 
 
 ## Landing-template details
 
+- Keep source and browser verification fixtures in `mkdtemp` directories under the OS `tmpdir`, with cleanup on setup failure, validation failure, and Playwright teardown. The browser config exports dynamic paths and uses port 9412; never retain generated projects in packaged `create/dist/` or repository `test-results/`.
+
 - Retain the landing-specific editorial layout, workspace preview, and blue-accent light/dark tokens. Do not replace them with another template's styling.
 - Use the project slug as the brand through `src/lib/site.ts`, including the preview and product questions. Keep illustrative project data separate from the brand.
 - Provide a 44px icon-only theme button with an accessible name, pressed state, keyboard activation, and saved light/dark preference. Apply the preference in the head before paint; fall back to the system scheme when storage is unavailable. Hide the button without JavaScript.

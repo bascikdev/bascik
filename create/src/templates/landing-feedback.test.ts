@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { scaffold } from "../scaffold.ts";
 import { LANDING_TEMPLATE } from "./landing.ts";
 
@@ -72,10 +73,11 @@ describe("landing feedback regressions", () => {
   });
 
   it("scaffolds unchanged canonical Bascik icons in every format", async () => {
-    const parent = join(root, "test-results");
-    await mkdir(parent, { recursive: true });
-    const temp = await mkdtemp(join(parent, "landing-source-"));
+    const temp = await mkdtemp(
+      join(tmpdir(), "bascik-feedback-landing-source-"),
+    );
     try {
+      expect(dirname(temp)).toBe(tmpdir());
       await scaffold("landing", temp, { template: LANDING_TEMPLATE });
       for (const path of [
         "favicon.ico",
