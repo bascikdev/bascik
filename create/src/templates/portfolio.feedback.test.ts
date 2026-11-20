@@ -92,6 +92,8 @@ describe("portfolio feedback contract", () => {
       .filter(([path]) => path.endsWith(".html") || path.endsWith(".css"))
       .map(([, text]) => String(text))
       .join("\n");
-    expect(styles).not.toMatch(/opacity:\s*0[;} ]|@keyframes|animation:/);
+    expect(styles).not.toMatch(
+      /opacity:\s*0[;} ]|@keyframes|animation:\s*(?!none\b)\S/,
+    );
   });
 });

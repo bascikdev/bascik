@@ -80,6 +80,7 @@ const reportsDirectories = (context: TemplateContext): string[] => [
 /** A reporting site: one report page per data file, with charts, tables, CSV downloads and print styles. */
 export const REPORTS_TEMPLATE: StarterTemplate = {
   name: "reports",
+  gitignoreEntries: ["data/racing.db"],
   scripts: {
     "db:seed": "node scripts/seed-database.ts",
     predev: "npm run db:seed",

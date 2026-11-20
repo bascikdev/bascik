@@ -143,7 +143,6 @@ export const PACKAGE_JSON = (
             deploy: "npx --yes netlify-cli deploy --build --prod",
           }),
           lint: "bascik --check",
-          ...extra.scripts,
           test: "vitest run",
           "test:watch": "vitest",
           "test:coverage": "vitest run --coverage",
@@ -405,7 +404,6 @@ hint-report/
 .env
 .env.*
 !.env.example
-data/racing.db
 `;
 
 /** Wrangler keeps its local state (workerd cache, dev vars) in `.wrangler/`. */
@@ -596,7 +594,12 @@ code {
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
-export const FAVICON_SVG = `<svg viewBox="0 0 32 32" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+export const FAVICON_SVG = `<svg
+  viewBox="0 0 32 32"
+  width="32"
+  height="32"
+  xmlns="http://www.w3.org/2000/svg"
+>
   <polygon points="10,3 28,3 23,29 4,29" fill="#d3ff8d" />
   <rect x="15" y="9" width="2" height="14" rx="1" fill="#0e0f10" />
 </svg>

@@ -30,7 +30,8 @@ const source = (): Promise<string> =>
  * through `seo()`. Global CSS is injected by assets.inlineStyles, so do not ship a dangling stylesheet link.
  */
 export const SITE_META_HTML_PORTFOLIO =
-  SITE_META_HTML.split("\n")
+  SITE_META_HTML.split("<script")[0]
+    .split("\n")
     .filter(
       (line) =>
         !line.includes('name="description"') &&

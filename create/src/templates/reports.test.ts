@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ADAPTERS, GITIGNORE, scaffold, SITE_HEADER_CSS } from "../scaffold.js";
+import { ADAPTERS, scaffold, SITE_HEADER_CSS } from "../scaffold.js";
 import { templateNamed, TEMPLATES } from "../templates.js";
 import { REPORTS_TEMPLATE, siteModule } from "./reports.js";
 import { DATA_FILES, DEMO_PERIODS, demoSales } from "./reports/data.js";
@@ -139,7 +139,6 @@ describe("reports template", () => {
     expect(file("data/racing.sql")).not.toMatch(
       /Porsche|Hurley Haywood|Paul Newman|Jordan Taylor|Ross Bentley|Martini Racing/,
     );
-    expect(GITIGNORE).toContain("data/racing.db");
   });
 
   it("renders reports on Node and Cloudflare and keeps the Netlify variant static", () => {
@@ -462,6 +461,9 @@ it("renders the Cloudflare bundle using a local D1 binding, without a local SQLi
       template: REPORTS_TEMPLATE,
       adapter: "cloudflare",
     });
+    expect(await readFile(join(root, ".gitignore"), "utf8")).toMatch(
+      /^data\/racing\.db$/m,
+    );
     const scope = join(root, "node_modules", "@bascik");
     await mkdir(scope, { recursive: true });
     await symlink(join(REPO_ROOT, "pkg"), join(scope, "bascik"), "dir");

@@ -347,12 +347,14 @@ describe("portfolio template", () => {
     const meta = file("src/components/site-meta/site-meta.html");
     expect(SITE_META_HTML).toContain('name="description"');
     expect(meta).not.toContain('name="description"');
-    const sharedTags = meta.split("<script")[0];
-    expect(sharedTags.split("\n").length).toBe(
-      SITE_META_HTML.split("\n").length - 2,
+    const sharedTags = SITE_META_HTML.match(/<(?:meta|link)\b[^>]*>/g)!.filter(
+      (tag) =>
+        !tag.includes('name="description"') &&
+        !tag.includes('rel="stylesheet"'),
     );
-    for (const line of sharedTags.split("\n"))
-      expect(SITE_META_HTML).toContain(line);
+    expect(meta.match(/<(?:meta|link)\b[^>]*>/g)).toEqual(sharedTags);
+    expect(meta.match(/<script\b/g)).toHaveLength(1);
+    expect(meta).not.toContain("localStorage.getItem('theme')");
     expect(meta).toContain('localStorage.getItem("portfolio-theme")');
     expect(meta).not.toContain('rel="stylesheet"');
     expect(file("bascik.config.ts")).toContain("inlineStyles: true");

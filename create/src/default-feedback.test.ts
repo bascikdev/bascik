@@ -59,7 +59,7 @@ describe("default starter feedback", () => {
     );
   });
   it("ships the canonical SVG without recoloring the brand", () => {
-    expect(FAVICON_SVG.replace(/\s+/g, " ").trim()).toBe(
+    expect(FAVICON_SVG.replace(/\s+/g, " ").replace(" >", ">").trim()).toBe(
       readFileSync(
         new URL("../../docs/src/pages/assets/favicon.svg", import.meta.url),
         "utf8",

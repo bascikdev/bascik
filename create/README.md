@@ -105,10 +105,13 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 The blog uses your project slug as a plain brand, a responsive author sidebar, an unboxed reading column, and an accessible icon-only light/dark toggle. It retains the Bascik favicon. Global `styles.css` and `blog.css` are inlined through `assets.inlineStyles` in `bascik.config.ts`, without duplicate stylesheet links or above-the-fold entrance animations. Navigation remains visible without JavaScript.
 
 Its racing guides are explicitly illustrative, not biographies, endorsements, or actual track reports. Before publishing, replace the John Doe placeholder and author context in `src/lib/site.ts`, update the Markdown bylines and about page, and replace or source the sample content. Article pages include author context below the prose.
+
 For a plain slug brand, scaffold with `npm create bascik docs -- --template docs`. The folder name is used unchanged as the site name. The first sidebar entry in `src/lib/sidebar.ts` becomes `/`; the remaining guides use `/docs/<slug>`. The sample guides explain how to customize the template, rather than sending readers through a separate landing page.
 
 The docs template includes an accessible icon-only theme control, initializes the saved theme before paint, and keeps the canonical Bascik favicon. Global `src/pages/css/styles.css` is inlined through `assets.inlineStyles` in its config, without a stylesheet link or request. Navigation has no resting underline, and content appears immediately without entrance animations; interaction motion respects reduced motion.
+
 The portfolio uses an inset editorial masthead, a plain project-slug brand (`portfolio` for that project name), non-underlined navigation, and an accessible icon-only theme toggle with saved light/dark preference. Its global `src/pages/css/styles.css` is inlined through `assets.inlineStyles: true`; above-fold content is visible immediately without entrance animations. Bascik's shared favicons are unchanged. Replace the sample work and biography before publishing; the contact form validates locally and does not send a message.
+
 The shop's default brand is the plain slug `shop`. Its icon-only theme button
 restores a saved light/dark preference before paint. Global CSS is inlined,
 and initial content has no entrance animation. Edit `catalog/books.ts` to

@@ -320,6 +320,7 @@ const shopFiles = (context: TemplateContext): TemplateFile[] => [
 export const SHOP_TEMPLATE: StarterTemplate = {
   name: "shop",
   netlifyIncludedFiles: ["data/racing.db"],
+  gitignoreEntries: ["data/racing.db"],
   scripts: {
     "db:seed": "node scripts/seed-database.ts",
   },

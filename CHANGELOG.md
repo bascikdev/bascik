@@ -49,6 +49,7 @@ it is not `@bascik/bascik`.
 
 ### Fixed
 
+- `create-bascik`: portfolio restores only its own saved theme, and generated database ignore entries stay specific to the selected template.
 - `create-bascik`: default's icon-only theme toggle follows Contact at the far right of desktop navigation and in keyboard order.
 - `create-bascik`: the default starter welcomes your project name, includes an accessible icon-only theme toggle that remembers both themes without flashing, inlines global CSS, and retains the canonical Bascik favicon. Navigation has deliberate resting styles, initial content stays static including view transitions, and independent counters demonstrate scoped CSS monitoring the raw numeric `data-value` to turn negative values red without JavaScript sign classification.
 
