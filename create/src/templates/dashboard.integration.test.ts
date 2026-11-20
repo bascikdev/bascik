@@ -98,12 +98,14 @@ async function filesUnder(dir: string): Promise<string[]> {
     .sort();
 }
 
-/** A page's markup without its inline scripts and styles, where "undefined" is ordinary code. */
+/** Mask non-markup blocks without joining fragments into new HTML tokens. */
 const markupOf = (html: string): string =>
   html
-    .replace(/<script\b[\s\S]*?<\/script>/g, () => "")
-    .replace(/<style\b[\s\S]*?<\/style>/g, () => "")
-    .replace(/<!--[\s\S]*?-->/g, () => "");
+    .replace(/<script\b[\s\S]*?<\/script>/gi, (match) =>
+      " ".repeat(match.length),
+    )
+    .replace(/<style\b[\s\S]*?<\/style>/gi, (match) => " ".repeat(match.length))
+    .replace(/<!--[\s\S]*?-->/g, (match) => " ".repeat(match.length));
 
 /** The live tile a host rendered for one request, or null. */
 const liveTileIn = (html: string): string | null =>

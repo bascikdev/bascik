@@ -43,12 +43,12 @@ const MODULES = pathsMatching(/^src\/.*\.ts$/).filter(
   (path) => !path.endsWith(".test.ts"),
 );
 
-/** A file without its comments, so a rule can be checked against the code alone. */
+/** Mask comments without joining code fragments into new tokens. */
 const code = (text: string): string =>
   text
-    .replace(/<!--[\s\S]*?-->/g, () => "")
-    .replace(/\/\*[\s\S]*?\*\//g, () => "")
-    .replace(/(^|\s)\/\/[^\n]*/g, () => "");
+    .replace(/<!--[\s\S]*?-->/g, (match) => " ".repeat(match.length))
+    .replace(/\/\*[\s\S]*?\*\//g, (match) => " ".repeat(match.length))
+    .replace(/(^|\s)\/\/[^\n]*/g, (match) => " ".repeat(match.length));
 
 /** The opening tag of the element with this id, however its attributes are ordered or wrapped. */
 const tagWithId = (text: string, id: string): string =>
@@ -56,7 +56,7 @@ const tagWithId = (text: string, id: string): string =>
 
 /** The opening tag of each `<script>` in a file. */
 const scriptTags = (text: string): string[] =>
-  code(text).match(/<script\b[^>]*>/g) ?? [];
+  code(text).match(/<script\b[^>]*>/gi) ?? [];
 
 // ─── The generated modules, loaded and run ────────────────────────────────────
 
@@ -358,8 +358,12 @@ describe("house rules", () => {
     for (const path of COMPONENTS) {
       const name = path.split("/")[2];
       const markup = code(file(path))
-        .replace(/<style>[\s\S]*?<\/style>/g, () => "")
-        .replace(/<script\b[\s\S]*?<\/script>/g, () => "");
+        .replace(/<style\b[\s\S]*?<\/style>/gi, (match) =>
+          " ".repeat(match.length),
+        )
+        .replace(/<script\b[\s\S]*?<\/script>/gi, (match) =>
+          " ".repeat(match.length),
+        );
       if (!head.has(name))
         expect(markup.trimStart(), path).toMatch(
           new RegExp(`^<[a-z]+\\b[^>]*data-testid="${name}"`),
@@ -375,8 +379,8 @@ describe("house rules", () => {
     const roots = new Map<string, string>();
     for (const path of COMPONENTS) {
       const markup = code(file(path)).replace(
-        /<style>[\s\S]*?<\/style>/g,
-        () => "",
+        /<style\b[\s\S]*?<\/style>/gi,
+        (match) => " ".repeat(match.length),
       );
       roots.set(path.split("/")[2], /<([a-z]+)\b/.exec(markup)![1]);
     }

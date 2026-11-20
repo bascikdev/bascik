@@ -235,7 +235,7 @@ describe("corporate template: house rules", () => {
     expect(paths.filter((path) => /\.(js|mjs|cjs)$/.test(path))).toEqual([]);
     for (const [path, text] of siteSources()) {
       if (!path.endsWith(".html")) continue;
-      for (const [tag] of text.matchAll(/<script\b[^>]*>/g)) {
+      for (const [tag] of text.matchAll(/<script\b[^>]*>/gi)) {
         expect(
           /type="text\/typescript"/.test(tag) || /src="[\w-]+\.ts"/.test(tag),
           `${path}: ${tag}`,

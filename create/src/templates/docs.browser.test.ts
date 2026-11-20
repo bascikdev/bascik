@@ -130,7 +130,15 @@ describe("freshly scaffolded production docs", () => {
         "--reporter=dot",
       ],
       { cwd: projectRoot, timeout: 120_000 },
-    );
+    ).catch((error: unknown) => {
+      if (error instanceof Error && "stdout" in error && "stderr" in error) {
+        throw new Error(
+          `${error.message}\n${String(error.stdout)}\n${String(error.stderr)}`,
+          { cause: error },
+        );
+      }
+      throw error;
+    });
     console.info(
       result.stdout
         .split("\n")
