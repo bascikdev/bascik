@@ -171,11 +171,12 @@ const shopComponents = ({ adapter }: TemplateContext): ShopComponent[] => [
     name: "book-detail",
     html: BOOK_DETAIL_HTML,
     companions: { "book-detail.ts": BOOK_DETAIL_TS },
-    claim: "shows a book and an add-to-cart button that waits for its script",
+    claim:
+      "shows a product and a visible add-to-cart button disabled until ready",
     parts: [
       "<h1 data-bascik-prop-title>",
       'data-bascik-attr-data-book="slug"',
-      'data-testid="book-detail-add" hidden',
+      'data-testid="book-detail-add" disabled',
       'role="status"',
       "<noscript>",
     ],

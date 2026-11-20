@@ -592,7 +592,9 @@ test.describe("Shop", () => {
 
     await page.getByRole("link", { name: JACKET.title }).click();
     await expect(page.getByRole("heading", { level: 1, name: JACKET.title })).toBeVisible();
-    await expect(page.getByTestId("book-detail-add")).toBeHidden();
+    await expect(page.getByTestId("book-detail-add")).toBeVisible();
+    await expect(page.getByTestId("book-detail-add")).toBeDisabled();
+    await expect(page.getByTestId("book-detail-view-cart")).toBeVisible();
     await context.close();
   });
 
@@ -620,8 +622,9 @@ test.describe("Shop", () => {
   test("adding a product updates the cart count in the header", async ({ page }) => {
     await page.goto(\`/products/\${JACKET.slug}\`);
     const count = page.getByTestId("site-header-cart-count");
-    await expect(count).toBeHidden();
-    await expect(page.getByTestId("book-detail-view-cart")).toBeHidden();
+    await expect(count).toBeVisible();
+    await expect(count).toHaveText("0");
+    await expect(page.getByTestId("book-detail-view-cart")).toBeVisible();
 
     await page.getByTestId("book-detail-add").click();
     await expect(count).toHaveText("1");
@@ -674,7 +677,7 @@ test.describe("Shop", () => {
     await cartLine(page, AERO.title).getByTestId("cart-list-remove").click();
     await expect(page.getByTestId("cart-list-empty")).toBeVisible();
     await expect(page.getByTestId("cart-list-checkout")).toBeHidden();
-    await expect(page.getByTestId("site-header-cart-count")).toBeHidden();
+    await expect(page.getByTestId("site-header-cart-count")).toHaveText("0");
   });
 
   test("the cart survives a reload and a visit to another page", async ({ page }) => {
@@ -693,7 +696,7 @@ test.describe("Shop", () => {
     await page.evaluate(() => localStorage.setItem("cart", "{not json"));
     await page.goto("/cart");
     await expect(page.getByTestId("cart-list-empty")).toBeVisible();
-    await expect(page.getByTestId("site-header-cart-count")).toBeHidden();
+    await expect(page.getByTestId("site-header-cart-count")).toHaveText("0");
 
     // An unknown product, a stored price and a bad quantity are all ignored; the one good line stays.
     await page.evaluate(() =>
@@ -759,7 +762,7 @@ test.describe("Shop", () => {
     );
     // The address was never put in the URL, and the cart is empty again.
     expect(page.url()).not.toContain("Ada");
-    await expect(page.getByTestId("site-header-cart-count")).toBeHidden();
+    await expect(page.getByTestId("site-header-cart-count")).toHaveText("0");
     await page.getByTestId("order-confirmation-continue").click();
     await expect(page).toHaveURL("/");
   });

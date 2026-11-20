@@ -154,13 +154,12 @@ ${SITE_HEADER_CSS}
   margin-left: 4px;
   padding: 0 6px;
   border-radius: 999px;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--elevated);
+  color: var(--text-muted);
   font-size: 0.75rem;
   font-weight: 700;
   text-align: center;
 }
-.count[hidden] { display: inline-block !important; visibility: hidden; }
 </style>
 <header data-testid="site-header">
   <a href="#main" class="skip-link" data-testid="site-header-skip-link">Skip to content</a>
@@ -172,8 +171,7 @@ ${SITE_HEADER_CSS}
       </button>
       <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
         <li><a href="/" data-testid="site-header-books">Shop</a></li>
-        <!-- Reserve the saved cart count's footprint before its module loads. -->
-        <li><a id="cart-link" href="/cart" data-testid="site-header-cart">Cart <span id="cart-count" class="count" data-testid="site-header-cart-count" hidden></span></a></li>
+        <li><a id="cart-link" href="/cart" aria-label="Cart, 0 items" data-testid="site-header-cart">Cart <span id="cart-count" class="count" data-testid="site-header-cart-count">0</span></a></li>
       </ul>
       <button id="theme" type="button" class="theme" aria-label="Switch to dark mode" data-testid="site-header-theme" hidden>
         <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4a8.5 8.5 0 1 0 11.5 11.5Z" /></svg>
@@ -222,13 +220,10 @@ import { CART_CHANGED, cartCount, loadCart } from "/js/cart.js";
 const link = document.getElementById("cart-link") as HTMLAnchorElement;
 const count = document.getElementById("cart-count") as HTMLSpanElement;
 
-/** Show how many products the saved cart holds. An empty cart shows no count. */
 function showCount(): void {
   const items = cartCount(loadCart(books));
   count.textContent = items > 999 ? "999+" : String(items);
-  count.hidden = items === 0;
-  if (items === 0) link.removeAttribute("aria-label");
-  else link.setAttribute("aria-label", \`Cart, \${items} \${items === 1 ? "item" : "items"}\`);
+  link.setAttribute("aria-label", \`Cart, \${items} \${items === 1 ? "item" : "items"}\`);
 }
 
 // Another component saved the cart, another tab did, or the page came back from the back/forward cache.
@@ -634,9 +629,8 @@ One product's detail page and add-to-cart button. Its illustration goes in the s
     <p class="price" data-bascik-prop-price data-testid="book-detail-price"></p>
     <noscript><p>Adding a product to the cart needs JavaScript.</p></noscript>
     <div class="actions">
-      <!-- Hidden until the script runs, so there is no button that does nothing. -->
-      <button id="add" type="button" class="btn btn-primary" data-bascik-attr-data-book="slug" data-testid="book-detail-add" hidden>Add to cart</button>
-      <a id="view-cart" href="/cart" class="btn btn-ghost" data-testid="book-detail-view-cart" hidden>View cart</a>
+      <button id="add" type="button" class="btn btn-primary" data-bascik-attr-data-book="slug" data-testid="book-detail-add" disabled>Add to cart</button>
+      <a id="view-cart" href="/cart" class="btn btn-ghost" data-testid="book-detail-view-cart">View cart</a>
     </div>
     <p id="status" class="status" role="status" data-testid="book-detail-status"></p>
   </div>
@@ -648,12 +642,8 @@ export const BOOK_DETAIL_TS = `import { books } from "/js/books.js";
 import { addToCart, loadCart, saveCart } from "/js/cart.js";
 
 const add = document.getElementById("add") as HTMLButtonElement;
-const viewCart = document.getElementById("view-cart") as HTMLAnchorElement;
 const status = document.getElementById("status") as HTMLParagraphElement;
 const id = add.dataset.book ?? "";
-
-add.hidden = false;
-viewCart.hidden = !loadCart(books).some((line) => line.id === id);
 
 add.addEventListener("click", (): void => {
   const cart = addToCart(loadCart(books), id);
@@ -664,8 +654,8 @@ add.addEventListener("click", (): void => {
   }
   const copies = cart.find((line) => line.id === id)?.quantity ?? 0;
   status.textContent = \`Added. Your cart has \${copies} \${copies === 1 ? "item" : "items"}.\`;
-  viewCart.hidden = false;
 });
+add.disabled = false;
 `;
 
 // ─── Cart ─────────────────────────────────────────────────────────────────────

@@ -185,6 +185,88 @@ db.close();`,
         await stable.close();
       }
     }
+    for (const viewport of [
+      { width: 1280, height: 800 },
+      { width: 1440, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      const stable = await browser.newContext({ viewport });
+      const paint = await stable.newPage();
+      let modules = Promise.withResolvers<void>();
+      try {
+        await paint.goto(`${baseURL}/products/pit-lane-coach-jacket`);
+        await paint.route("**/js/*.js", async (route) => {
+          await modules.promise;
+          await route.continue();
+        });
+        const layout = () =>
+          paint.evaluate(`(() => ({
+            scroll: scrollY,
+            height: document.documentElement.scrollHeight,
+            boxes: ["site-header-nav", "site-header-theme", "site-header-cart-count", "book-detail", "product-art", "book-detail-price", "book-detail-add", "book-detail-view-cart"]
+              .map(id => document.querySelector('[data-testid="' + id + '"]').getBoundingClientRect().toJSON()),
+          }))()`);
+        for (const position of ["top", "bottom", "saved-cart"]) {
+          if (position === "saved-cart") {
+            const badge = paint.getByTestId("site-header-cart-count");
+            const before = await badge.evaluate(
+              (el) =>
+                el.ownerDocument.defaultView!.getComputedStyle(el)
+                  .backgroundColor,
+            );
+            await paint.getByTestId("book-detail-add").click();
+            await expect.poll(() => badge.textContent()).toBe("1");
+            expect(
+              await badge.evaluate(
+                (el) =>
+                  el.ownerDocument.defaultView!.getComputedStyle(el)
+                    .backgroundColor,
+              ),
+            ).toBe(before);
+          }
+          await paint.evaluate(
+            position === "top"
+              ? "scrollTo(0, 0)"
+              : "scrollTo(0, document.documentElement.scrollHeight)",
+          );
+          await paint.reload({ waitUntil: "commit" });
+          await paint.getByRole("contentinfo").waitFor({ state: "attached" });
+          await paint.evaluate(
+            "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+          );
+          const initial = await layout();
+          expect(await paint.getByTestId("book-detail-add").isDisabled()).toBe(
+            true,
+          );
+          expect(
+            await paint.getByTestId("book-detail-view-cart").isVisible(),
+          ).toBe(true);
+          if (viewport.width > 640) {
+            expect(
+              await paint.getByTestId("site-header-cart-count").isVisible(),
+            ).toBe(true);
+            expect(
+              await paint.getByTestId("site-header-cart-count").textContent(),
+            ).toBe("0");
+          }
+          modules.resolve();
+          await paint.waitForLoadState("load");
+          await expect
+            .poll(() => paint.getByTestId("book-detail-add").isEnabled())
+            .toBe(true);
+          await expect
+            .poll(() =>
+              paint.getByTestId("site-header-cart-count").textContent(),
+            )
+            .toBe(position === "saved-cart" ? "1" : "0");
+          expect(await layout()).toEqual(initial);
+          modules = Promise.withResolvers<void>();
+        }
+      } finally {
+        modules.resolve();
+        await stable.close();
+      }
+    }
     const page = await browser.newPage({
       viewport: { width: 1440, height: 900 },
       colorScheme: "light",
@@ -319,8 +401,17 @@ db.close();`,
       "Material",
     );
     expect(await fallback.getByTestId("book-detail-add").isVisible()).toBe(
-      false,
+      true,
     );
+    expect(await fallback.getByTestId("book-detail-add").isDisabled()).toBe(
+      true,
+    );
+    expect(
+      await fallback.getByTestId("book-detail-view-cart").isVisible(),
+    ).toBe(true);
+    expect(
+      await fallback.getByTestId("site-header-cart-count").textContent(),
+    ).toBe("0");
     expect(await fallback.getByTestId("site-header-theme").isVisible()).toBe(
       false,
     );

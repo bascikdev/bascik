@@ -101,6 +101,9 @@ and initial content has no entrance animation. Edit `catalog/books.ts` to
 change each product's material, fit, specification and demo availability.
 All products, ratings and stock counts are illustrative; nothing is sold or
 shipped by the demo checkout. The favicon remains the canonical Bascik asset.
+Product actions render at their final size before scripts load: Add to cart
+starts disabled, and View cart is always a working link. The navigation keeps
+a visible neutral cart-count pill, including `0` for an empty cart.
 
 The all-products catalog is `/`; product details use `/products/<slug>`.
 Sorting and filtering are native GET forms, so they work without JavaScript.

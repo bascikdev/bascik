@@ -482,7 +482,7 @@ describe("shop template markup", () => {
     );
   });
 
-  it("hides script-only controls until the script runs, so nothing is dead without JavaScript", () => {
+  it("keeps script-only controls inert until ready without moving product actions", () => {
     expect(file("src/components/book-catalog/listing.ts")).toContain(
       'method="get"',
     );
@@ -490,7 +490,7 @@ describe("shop template markup", () => {
       " hidden",
     );
     expect(file("src/components/book-detail/book-detail.html")).toMatch(
-      /<button id="add"[^>]*\bhidden\b/,
+      /<button id="add"[^>]*\bdisabled\b/,
     );
     expect(file("src/components/checkout-form/checkout-form.html")).toMatch(
       /<form id="form"[^>]*\bhidden\b/,

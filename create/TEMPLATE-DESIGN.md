@@ -55,7 +55,7 @@ These are different design systems, not a checklist to force onto every branch. 
 
 - The root `/` is the all-products catalog, not a landing page. Product URLs use `/products/<slug>`; there is no `/books/` catalog.
 - A non-streamed server script reads SQLite or Cloudflare D1 and returns the sorted, filtered cards before the response starts. Native GET controls are visible and usable without JavaScript; never reorder cards on initial load.
-- Reserve theme-button and cart-badge footprints before paint. Critical theme/menu initialization must not depend on browser cart-module downloads. Product SVGs stay inline with explicit aspect ratios.
+- Reserve theme-button and cart-badge footprints before paint. Render a visible neutral `0` cart pill, not an empty or hidden badge. Product actions keep their final geometry before scripts load: disable Add to cart until ready and always show the View cart link. Critical theme/menu initialization must not depend on browser cart-module downloads. Product SVGs stay inline with explicit aspect ratios.
 - The demo seed runs before builds and dev startup and is the only catalog writer. Production uses `bascik --server` or an adapter, not a plain static host. For Cloudflare, bind a dedicated D1 database as `DB` and seed it with `node scripts/seed-database.ts --sql`; never point the demo seed at an application's database.
 - Use the plain slug `shop` for default branding. Keep the canonical create-template Bascik favicon files unmodified.
 - Inline the global `src/pages/css/styles.css` through `assets.inlineStyles`; omit its external stylesheet link from the shop head component.
