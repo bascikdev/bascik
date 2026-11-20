@@ -11,6 +11,9 @@ import { STYLES_CSS } from "../../scaffold.js";
 export const BASCIK_CONFIG_TS = `import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
+  assets: {
+    inlineStyles: ["src/pages/css/styles.css"],
+  },
   pipeline: {
     // Components and pages are watched already. src/lib/ holds the site facts and the SEO helper that
     // build scripts import, so the dev server rebuilds the pages that use them when one changes.
@@ -373,6 +376,15 @@ export const LANDING_STYLES_CSS = `${STYLES_CSS}
   --r: 12px;
   --r-sm: 8px;
 }
+
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* Initial content is always fully painted, including navigation snapshots. */
+::view-transition-group(root),
+::view-transition-image-pair(root),
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;

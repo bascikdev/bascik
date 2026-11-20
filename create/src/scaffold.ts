@@ -9,6 +9,7 @@ import { lstat, mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { agentFilesReportLines, writeAgentFiles } from "./agent-setup.js";
 import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
+import { LANDING_ICONS } from "./templates/landing/icons.js";
 
 /**
  * The `@bascik/bascik` release a new project depends on. The agent skills are
@@ -1443,16 +1444,33 @@ const sharedFiles = (
   // E2E: the web server is \`bascik --server\`, which renders request-time pages on Node
   ["e2e/playwright.config.ts", PLAYWRIGHT_CONFIG],
 
-  ["src/pages/favicon.ico", Buffer.from(FAVICON_ICO_B64, "base64")],
+  [
+    "src/pages/favicon.ico",
+    Buffer.from(
+      template.name === "landing" ? LANDING_ICONS.ico : FAVICON_ICO_B64,
+      "base64",
+    ),
+  ],
   [
     "src/pages/assets/favicon-32x32.png",
-    Buffer.from(FAVICON_32_PNG_B64, "base64"),
+    Buffer.from(
+      template.name === "landing" ? LANDING_ICONS.png32 : FAVICON_32_PNG_B64,
+      "base64",
+    ),
   ],
   [
     "src/pages/assets/apple-touch-icon.png",
-    Buffer.from(APPLE_TOUCH_ICON_PNG_B64, "base64"),
+    Buffer.from(
+      template.name === "landing"
+        ? LANDING_ICONS.touch
+        : APPLE_TOUCH_ICON_PNG_B64,
+      "base64",
+    ),
   ],
-  ["src/pages/assets/favicon.svg", FAVICON_SVG],
+  [
+    "src/pages/assets/favicon.svg",
+    template.name === "landing" ? LANDING_ICONS.svg : FAVICON_SVG,
+  ],
 
   ...(adapter
     ? ([["src/api/hello.ts", HELLO_API_ROUTE]] as TemplateFile[])

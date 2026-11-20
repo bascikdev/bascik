@@ -4,6 +4,8 @@ This is the visual contract for the templates shipped by `create-bascik`. Read i
 
 ## Shared principles
 
+Use the repository-only [UI guidance](../.github/skills/bascik-ui/SKILL.md) and [UX guidance](../.github/skills/bascik-ux/SKILL.md), not public or generated-site skills.
+
 - Use semantic HTML and CSS first. Keep native links, buttons, forms, tables, figures, and disclosure elements. Add JavaScript only where HTML and CSS do not provide the needed behavior.
 - Pages read like a list of purposeful component tags. Keep components at a useful size, and do not pass props through components that do not use them.
 - Set global tokens in `src/pages/css/styles.css`; read them from components. Do not copy a single palette into every template or declare private `:root` tokens in component styles.
@@ -30,7 +32,8 @@ These are different design systems, not a checklist to force onto every branch. 
 
 ## Motion and interaction
 
-- Entrances start at `scale: 0.97` with `opacity: 0`, never at zero scale. Keep entrances brief and opt them out under `prefers-reduced-motion: reduce`.
+- Landing has no initial opacity, flash, or entrance animation above the fold on any route. Its root view-transition snapshots do not fade. Keep useful hover, press, disclosure, and below-fold behavior, with reduced-motion opt-outs.
+- Initial above-fold content never animates, including view transitions. For user-triggered entrances elsewhere, start at `scale: 0.97` with `opacity: 0` and opt out under `prefers-reduced-motion: reduce`.
 - Pressable buttons use `button:active { scale: 0.97; }` with `transition: scale 150ms ease-out`. Apply the same behavior to button-styled links when appropriate.
 - A rejected password shakes horizontally through `0, -10, 10, -6, 6, -3, 0px` over 360ms and also changes to an error state.
 - Steppers slide the next step from the direction of travel instead of crossfading.
@@ -40,6 +43,15 @@ These are different design systems, not a checklist to force onto every branch. 
 - Delay only the first tooltip; show subsequent tooltips immediately while one is already open.
 - Drag and flick interactions hand their release velocity to a spring rather than snapping with a fixed-duration transition. Carousels resist pulls past either end, then spring back.
 - Do not add motion just to satisfy a rule. Respect reduced motion, avoid flashes, and provide pause controls for persistent automatically moving content.
+
+## Landing-template details
+
+- Retain the landing-specific editorial layout, workspace preview, and blue-accent light/dark tokens. Do not replace them with another template's styling.
+- Use the project slug as the brand through `src/lib/site.ts`, including the preview and product questions. Keep illustrative project data separate from the brand.
+- Provide a 44px icon-only theme button with an accessible name, pressed state, keyboard activation, and saved light/dark preference. Apply the preference in the head before paint; fall back to the system scheme when storage is unavailable. Hide the button without JavaScript.
+- Inline the global stylesheet with Bascik's `assets.inlineStyles: ["src/pages/css/styles.css"]` and omit the redundant stylesheet link. Keep menu links deliberately styled without default list-link underlines.
+- Ship the canonical Bascik SVG, ICO, PNG favicon, and touch icon bytes with their original geometry and colors, not a landing-palette recoloring. Leave other templates unchanged.
+- Warning: the design skills' reference URL, `https://bascik.dev/how-to/visual-design`, currently returns 404. Use the local UI/UX guidance and this contract without claiming the unavailable page was verified.
 
 ## Docs-template behavior
 

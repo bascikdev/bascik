@@ -101,6 +101,7 @@ describe('faq-list component', () => {
 export const FAQS_TS = `// The questions <faq-list> shows. The component prints one <details> per
 // entry at build time.
 import { html, type SafeHtml } from "@bascik/bascik/html";
+import { site } from "../../lib/site.ts";
 
 export interface Faq {
   question: string;
@@ -119,7 +120,7 @@ export const faqs: readonly Faq[] = [
       "No. Start with one project, bring in the people involved, and shape the workspace around your process.",
   },
   {
-    question: "Can I move an existing project into Fieldnote?",
+    question: \`Can I move an existing project into \${site.name}?\`,
     answer:
       "You can add the brief, files, milestones, and open decisions yourself. We keep the starting point simple.",
   },
@@ -331,7 +332,7 @@ h1 span { color: var(--accent); }
   color: var(--text-muted);
   font-size: 0.7rem;
 }
-.window-bar::after { content: "FIELDNOTE / STUDIO"; margin-left: auto; letter-spacing: 0.08em; }
+.window-bar::after { content: "STUDIO"; margin-left: auto; letter-spacing: 0.08em; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-hover); }
 .workspace { display: grid; grid-template-columns: minmax(92px, 0.3fr) minmax(0, 1fr); min-height: 350px; }
 .sidebar { padding: 24px 12px; border-right: 1px solid var(--border); background: var(--surface); }
@@ -381,14 +382,6 @@ h1 span { color: var(--accent); }
   .workspace-main { padding: 18px 14px; }
   .metric { padding: 10px 8px; }
 }
-@media (prefers-reduced-motion: no-preference) {
-  .copy { animation: settle-in 620ms ease-out both; }
-  .preview { animation: settle-in 720ms 90ms ease-out both; }
-  @keyframes settle-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
-}
-@media (prefers-reduced-motion: reduce) {
-  .copy, .preview { animation: none; }
-}
 </style>
 <section class="hero" data-testid="home-hero">
   <div class="container layout">
@@ -402,12 +395,17 @@ h1 span { color: var(--accent); }
       </div>
       <p class="reassurance">A little more clarity. A lot less chasing.</p>
     </div>
-    <figure class="preview" data-testid="home-hero-preview" aria-label="A preview of the Fieldnote project workspace">
+    <figure class="preview" data-testid="home-hero-preview" aria-label="A preview of the project workspace">
       <div class="window" aria-hidden="true">
         <div class="window-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
         <div class="workspace">
           <aside class="sidebar" data-testid="home-hero-sidebar">
-            <p class="mark">Fieldnote</p>
+            <p class="mark">
+              <script data-bascik-build-once type="text/typescript">
+                import { siteName } from "@/lib/site.ts";
+                export default siteName;
+              </script>
+            </p>
             <p class="side-link current">Overview</p>
             <p class="side-link">Projects</p>
             <p class="side-link">Feedback</p>
@@ -895,7 +893,7 @@ The testimonials section: a heading and one figure per entry in quotes.ts, print
     <section-head
       data-bascik-prop-label="Studio notes"
       data-bascik-prop-title="Built around the moments between the big ones"
-      data-bascik-prop-text="These illustrative perspectives are the small frictions we want Fieldnote to make easier."
+      data-bascik-prop-text="These illustrative perspectives are the small frictions we want this workspace to make easier."
     />
     <div class="grid">
       <script data-bascik-build-once type="text/typescript">
@@ -1026,17 +1024,25 @@ describe('site-footer component', () => {
 
 /** `src/components/site-head/site-head.html` */
 export const SITE_HEAD_HTML = `<!-- @bascik
-The head tags every page shares: charset, viewport, icons, and the global stylesheet. Put it first in <head>. Each page then writes its own title, description, and social tags with seo() from src/lib/seo.ts.
+The head tags every page shares: charset, viewport, theme initialization, and icons. Put it first in <head>. Bascik injects the global styles.css through assets.inlineStyles in bascik.config.ts. Each page then writes its own title, description, and social tags with seo() from src/lib/seo.ts.
 -->
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script type="text/typescript">
+  // Apply the saved choice before first paint. Storage may be unavailable.
+  const root = document.documentElement;
+  let saved: string | null = null;
+  try { saved = localStorage.getItem('theme'); } catch {}
+  root.dataset.theme = saved === 'light' || saved === 'dark'
+    ? saved
+    : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+</script>
 <meta name="theme-color" content="#f6f7fb" />
 <meta name="theme-color" content="#151a26" media="(prefers-color-scheme: dark)" />
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="/css/styles.css" />
 `;
 
 /** `src/components/site-head/site-head.test.ts` */
@@ -1047,7 +1053,7 @@ import { join } from 'node:path';
 describe('site-head component', () => {
   const path = join(process.cwd(), 'src/components/site-head/site-head.html');
 
-  it('contains charset, viewport, favicon, and stylesheet link tags', async () => {
+  it('contains charset, viewport, favicon tags, and config-inlined global CSS', async () => {
     const html = await readFile(path, 'utf8');
     expect(html).toContain('charset="UTF-8"');
     expect(html).toContain('name="viewport"');
@@ -1055,7 +1061,9 @@ describe('site-head component', () => {
     expect(html).toContain('favicon-32x32.png');
     expect(html).toContain('favicon.svg');
     expect(html).toContain('apple-touch-icon.png');
-    expect(html).toContain('styles.css');
+    expect(html).not.toMatch(/<link[^>]*rel="stylesheet"/);
+    const config = await readFile(join(process.cwd(), 'bascik.config.ts'), 'utf8');
+    expect(config).toContain('inlineStyles: ["src/pages/css/styles.css"]');
   });
 
   it('leaves the title and description to each page, so no two pages share them', async () => {
@@ -1077,6 +1085,27 @@ ${SITE_HEADER_CSS}
 
 /* The last link is the page's call to action. */
 .menu .cta { color: var(--accent); font-weight: 600; }
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.theme-toggle:hover { background: var(--elevated); border-color: var(--border-hover); }
+.theme-toggle[hidden] { display: none; }
+.theme-toggle svg { width: 20px; height: 20px; }
+.sun { display: none; }
+.theme-toggle[aria-pressed="true"] .sun { display: block; }
+.theme-toggle[aria-pressed="true"] .moon { display: none; }
 
 /* Without JavaScript the toggle stays hidden and the menu stays open: at phone
    width it wraps under the logo instead of dropping down. The script below
@@ -1121,6 +1150,10 @@ ${SITE_HEADER_CSS}
         <li><a href="/#faq" data-testid="site-header-faq">FAQ</a></li>
         <li><a href="/#signup" class="cta" data-testid="site-header-signup">Request access</a></li>
       </ul>
+      <button id="theme-toggle" type="button" class="theme-toggle" aria-label="Toggle dark mode" aria-pressed="false" data-testid="site-header-theme-toggle" hidden>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.9 13a9 9 0 0 1-9.9-9.9A9 9 0 1 0 20.9 13Z" /></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+      </button>
     </nav>
   </div>
 </header>
@@ -1146,6 +1179,37 @@ ${SITE_HEADER_CSS}
   menu.addEventListener('click', (event: MouseEvent): void => {
     if (event.target instanceof HTMLAnchorElement) setOpen(false);
   });
+
+  const themeToggle = document.getElementById('theme-toggle') as HTMLButtonElement;
+  const root = document.documentElement;
+  const systemTheme = matchMedia('(prefers-color-scheme: dark)');
+  const savedTheme = (): string | null => {
+    try { return localStorage.getItem('theme'); } catch { return null; }
+  };
+  const applyTheme = (theme: string): void => {
+    root.classList.add('theme-switching');
+    root.dataset.theme = theme;
+    themeToggle.setAttribute('aria-pressed', String(theme === 'dark'));
+    // Flush the new colors while transitions are suspended.
+    void root.offsetHeight;
+    requestAnimationFrame(() => root.classList.remove('theme-switching'));
+  };
+  const syncTheme = (): void => {
+    const saved = savedTheme();
+    applyTheme(saved === 'light' || saved === 'dark'
+      ? saved
+      : systemTheme.matches ? 'dark' : 'light');
+  };
+  syncTheme();
+  themeToggle.hidden = false;
+  themeToggle.addEventListener('click', (): void => {
+    const theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('theme', theme); } catch {}
+    applyTheme(theme);
+  });
+  systemTheme.addEventListener('change', syncTheme);
+  window.addEventListener('storage', syncTheme);
+  window.addEventListener('pageshow', syncTheme);
 </script>
 `;
 
@@ -1253,7 +1317,7 @@ The sign-up section: a heading and the waitlist form. Its script checks the emai
     <section-head
       data-bascik-prop-label="Early access"
       data-bascik-prop-title="Give your next project a clearer home"
-      data-bascik-prop-text="Leave your email and we will send one note when Fieldnote is ready to try."
+      data-bascik-prop-text="Leave your email and we will send one note when the workspace is ready to try."
     />
     <form id="form" class="form" data-testid="waitlist-signup-form">
       <div class="field">
