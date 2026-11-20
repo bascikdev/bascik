@@ -52,7 +52,7 @@ type Worker = ReturnType<typeof templateWorker>;
 const routes: Record<(typeof TEMPLATE_SLUGS)[number], string> = {
   default: "/edge",
   blog: "/blog/",
-  docs: "/docs/getting-started",
+  docs: "/docs/navigation-and-search",
   landing: "/privacy",
   portfolio: "/work",
   corporate: "/contact",
