@@ -163,7 +163,7 @@ export const TONES = ["plum", "rust", "teal", "ink", "moss", "sand"] as const;
 export type Tone = (typeof TONES)[number];
 
 export interface Book {
-  /** The last part of the product URL (/books/<slug>) and its id in the cart. */
+  /** The last part of the product URL (/products/<slug>) and its id in the cart. */
   slug: string;
   title: string;
   description: string;
@@ -243,7 +243,7 @@ export const findBook = (slug: string | undefined): Book | undefined =>
 
 /** The book's page. Build the path here so every link agrees. */
 export const bookPath = (book: Pick<Book, "slug">): string =>
-  \`/books/\${book.slug}\`;
+  \`/products/\${book.slug}\`;
 `;
 
 export const RACING_SQL = `CREATE TABLE IF NOT EXISTS products (
@@ -252,50 +252,66 @@ export const RACING_SQL = `CREATE TABLE IF NOT EXISTS products (
   category TEXT NOT NULL,
   price_cents INTEGER NOT NULL,
   rating REAL NOT NULL,
-  description TEXT NOT NULL
+  description TEXT NOT NULL,
+  details_json TEXT NOT NULL
 );
-
-DELETE FROM products;
-
-INSERT INTO products (slug, title, category, price_cents, rating, description) VALUES
-  ('pit-lane-coach-jacket', 'Pit Lane Coach Jacket', 'Racewear', 24000, 4.9, 'A lightweight coach jacket with a clean trackside silhouette and considered everyday details.'),
-  ('gridline-driver-suit', 'Gridline Driver Suit', 'Racewear', 16500, 4.8, 'A relaxed-fit one-piece suit in durable cotton twill, finished with a subtle contrast seam.'),
-  ('brake-cooling-duct-kit', 'Brake Cooling Duct Kit', 'Parts', 28000, 4.7, 'A precision-finished cooling duct set designed for a tidy, functional garage installation.'),
-  ('aero-display-panel', 'Aero Display Panel', 'Parts', 14999, 4.6, 'A sculptural composite panel for a workshop wall, with a satin finish and mounting hardware.'),
-  ('helmet-number-decal-set', 'Helmet Number Decal Set', 'Accessories', 9999, 4.5, 'A set of durable, removable helmet decals in a restrained palette for a personal finish.'),
-  ('interval-chronograph', 'Interval Chronograph', 'Accessories', 32000, 4.9, 'A compact analog stopwatch with a brushed steel case, tactile crown and clear elapsed-time dial.'),
-  ('door-number-decal-pack', 'Door Number Decal Pack', 'Parts', 15000, 4.4, 'Weather-resistant number decals for display builds and track-day projects, supplied as a matched pair.'),
-  ('wheel-fastener-kit', 'Wheel Fastener Kit', 'Parts', 8500, 4.3, 'A neatly packed set of durable wheel fasteners with a corrosion-resistant finish for the garage.');
 `;
 
-export const RACING_DB_TS = `import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+export const RACING_DB_TS = `import { validateCatalog, type Book } from "./catalog.ts";
 
-export interface RacingDatabase {
-  db: DatabaseSync;
-  path: string;
+export interface CatalogContext {
+  platform?: { env?: { DB?: {
+    prepare(sql: string): { all<T>(): Promise<{ results: T[] }> };
+  } } };
 }
+export const catalogQuery = "SELECT slug, title, category AS format, price_cents AS priceCents, rating, description, details_json FROM products";
 
-export function openRacingDatabase(): RacingDatabase {
-  const path = join(process.cwd(), "data", "racing.db");
-  mkdirSync(dirname(path), { recursive: true });
-  return { db: new DatabaseSync(path), path };
+export async function readCatalog(context: CatalogContext): Promise<Book[]> {
+  const binding = context.platform?.env?.DB;
+  let rows: Record<string, unknown>[];
+  if (binding) {
+    rows = (await binding.prepare(catalogQuery).all<Record<string, unknown>>()).results;
+  } else {
+    const sqlite = process.getBuiltinModule("node:sqlite") as typeof import("node:sqlite") | undefined;
+    if (!sqlite) throw new Error("The shop requires a DB binding on Cloudflare or Node SQLite.");
+    const db = new sqlite.DatabaseSync("data/racing.db", { readOnly: true });
+    try { rows = db.prepare(catalogQuery).all(); }
+    finally { db.close(); }
+  }
+  return validateCatalog(rows.map(({ details_json, ...fields }) => {
+    if (typeof details_json !== "string") throw new Error("Catalog details_json must be JSON text.");
+    const details: unknown = JSON.parse(details_json);
+    if (typeof details !== "object" || details === null || Array.isArray(details))
+      throw new Error("Catalog details_json must contain an object.");
+    return { ...details, ...fields };
+  }));
 }
 `;
 
 export const SEED_DATABASE_TS = `import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { openRacingDatabase } from "../src/lib/racing-db.ts";
+import { DatabaseSync } from "node:sqlite";
+import { books } from "../src/lib/catalog.ts";
 
 const sql = await readFile(join(process.cwd(), "data", "racing.sql"), "utf8");
-const { db, path } = openRacingDatabase();
-try {
-  db.exec(sql);
-  const count = db.prepare("SELECT COUNT(*) AS count FROM products").get() as { count: number };
-  console.log(\`Seeded \${count.count} products in \${path}\`);
-} finally {
-  db.close();
+const insert = "INSERT INTO products (slug, title, category, price_cents, rating, description, details_json) VALUES (?, ?, ?, ?, ?, ?, ?)";
+const values = books.map(book => [book.slug, book.title, book.format, book.priceCents, book.rating, book.description, JSON.stringify(book)]);
+if (process.argv.includes("--sql")) {
+  const quote = (value: string | number): string => typeof value === "number" ? String(value) : "'" + value.replaceAll("'", "''") + "'";
+  console.log(sql + "\\nDELETE FROM products;\\n" + values.map(row =>
+    "INSERT INTO products (slug, title, category, price_cents, rating, description, details_json) VALUES (" + row.map(quote).join(", ") + ");"
+  ).join("\\n"));
+} else {
+  const path = join(process.cwd(), "data", "racing.db");
+  const db = new DatabaseSync(path);
+  try {
+    db.exec(sql);
+    db.exec("BEGIN; DELETE FROM products;");
+    const statement = db.prepare(insert);
+    for (const row of values) statement.run(...row);
+    db.exec("COMMIT;");
+    console.log(\`Seeded \${books.length} products in \${path}\`);
+  } finally { db.close(); }
 }
 `;
 
@@ -577,12 +593,12 @@ export const CART_API_ROUTE = `// POST /api/cart: the cart, priced by the server
 // charge these totals, never a number the browser sent.
 // An API route is a module file, so its imports are relative: the @/ alias is for <script> blocks.
 import { checkCart, priceCart } from "../browser/cart.ts";
-import { books } from "../lib/catalog.ts";
+import { readCatalog, type CatalogContext } from "../lib/racing-db.ts";
 
 const refuse = (error: string): Response =>
   Response.json({ error }, { status: 400 });
 
-export const POST = async (request: Request): Promise<Response> => {
+export const POST = async (request: Request, context: CatalogContext): Promise<Response> => {
   let body: unknown;
   try {
     body = await request.json();
@@ -592,6 +608,7 @@ export const POST = async (request: Request): Promise<Response> => {
   if (typeof body !== "object" || body === null) {
     return refuse('Send an object with a "lines" array.');
   }
+  const books = await readCatalog(context);
   const checked = checkCart((body as { lines?: unknown }).lines, books);
   if ("error" in checked) return refuse(checked.error);
   return Response.json(priceCart(checked.lines, books));
@@ -650,6 +667,12 @@ export default defineConfig({
     // Rebuild pages in dev when the catalog or a shared helper changes.
     watchPaths: ["catalog/", "src/lib/", "src/browser/"],
     exec: [
+      {
+        // The demo seed is the only writer. Request handlers open SQLite read-only.
+        script: "scripts/seed-database.ts",
+        phase: "pre",
+        watch: ["catalog/", "data/racing.sql"],
+      },
       {
         // Publishes /js/books.js, /js/cart.js and /js/money.js for browser scripts.
         script: "scripts/browser-modules.ts",

@@ -62,20 +62,14 @@ ${body}
 `;
 
 export const SHOP_INDEX_PAGE = page({
-  name: "home",
-  title: "Motorsport-inspired apparel and goods",
-  description:
-    "Original apparel, workshop pieces and practical accessories with a motorsport point of view.",
-  body: `      <home-hero />
-      <featured-books />`,
-});
-
-export const SHOP_BOOKS_PAGE = page({
-  name: "books",
-  title: "Shop the collection",
+  name: "products",
+  title: "All products",
   description:
     "Browse original apparel, workshop pieces and practical accessories. Sort by name, price or rating, or filter by category.",
-  body: `      <book-catalog />`,
+  body: `      <script data-bascik-server type="text/typescript">
+        import { catalogPage } from "@/components/book-catalog/listing.ts";
+        export default catalogPage;
+      </script>`,
 });
 
 /**
@@ -96,11 +90,11 @@ export const SHOP_BOOK_PAGE = `<!doctype html>
     <main id="main" class="shop-main" data-testid="book-main">
       <script data-bascik-routes type="text/typescript">
         import { books } from "@/lib/catalog.ts";
-        // One page per book in catalog/books.ts, at /books/<slug>.
+        // One page per book in catalog/books.ts, at /products/<slug>.
         export default () => books.map((book) => ({ params: { slug: book.slug } }));
       </script>
       <div class="product-page">
-        <p><a href="/books/" data-testid="book-back">← All products</a></p>
+        <p><a href="/" data-testid="book-back">← All products</a></p>
         <script data-bascik-build type="text/typescript">
           import { bookBody } from "./book-page.ts";
           export default bookBody;
@@ -112,7 +106,7 @@ export const SHOP_BOOK_PAGE = `<!doctype html>
 </html>
 `;
 
-export const SHOP_BOOK_PAGE_TS = `// What src/pages/books/[slug].html prints for each product: its head tags and detail.
+export const SHOP_BOOK_PAGE_TS = `// What src/pages/products/[slug].html prints for each product: its head tags and detail.
 import { html, type SafeHtml } from "@bascik/bascik/html";
 import { productArt } from "../../components/product-art/art.ts";
 import { findBook, type Book } from "../../lib/catalog.ts";
@@ -216,7 +210,7 @@ export const SHOP_NOT_FOUND_PAGE = page({
           <p class="not-found-code">404</p>
           <h1>Page not found</h1>
           <p class="not-found-text">That page is not in the collection.</p>
-          <a href="/books/" class="btn btn-primary">Browse the products</a>
+          <a href="/" class="btn btn-primary">Browse the products</a>
         </section>
       </div>`,
 });

@@ -102,6 +102,18 @@ change each product's material, fit, specification and demo availability.
 All products, ratings and stock counts are illustrative; nothing is sold or
 shipped by the demo checkout. The favicon remains the canonical Bascik asset.
 
+The all-products catalog is `/`; product details use `/products/<slug>`.
+Sorting and filtering are native GET forms, so they work without JavaScript.
+A non-streamed Bascik server script reads `data/racing.db` read-only, or the
+Cloudflare D1 `DB` binding, before sending the catalog HTML. The demo seed
+runs before dev/build and resets the catalog from `catalog/books.ts`.
+Production therefore needs `bascik --server` or an adapter, not a static host.
+Cloudflare projects need a dedicated D1 database bound as `DB`; generate its
+fixture SQL with `node scripts/seed-database.ts --sql`. Never run the demo seed
+against an application's database.
+The Netlify variant includes the seeded, read-only SQLite fixture in its
+function bundle through `functions.included_files`.
+
 `--template cloudflare` and `--template netlify`, the spelling before `create-bascik` 1.1.0, still work and mean the same as `--adapter`. Naming two different adapters with the two flags is an error.
 
 The Cloudflare template differs from the default in these files only:

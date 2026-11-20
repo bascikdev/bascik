@@ -14,10 +14,11 @@ it is not `@bascik/bascik`.
 ### Added
 
 - `create-bascik` 1.1.0: `--adapter <name>` adds a deploy adapter to the starter (`cloudflare`, `netlify`, or `none`), as in `npm create bascik my-site -- --adapter cloudflare`. `--template cloudflare` and `--template netlify` still work and mean the same thing; naming two different adapters with the two flags is an error. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
-- `create-bascik` 1.1.0: `--template shop` scaffolds a small bookshop: a typed catalog file (`catalog/books.ts`) that becomes a catalog page and one page per book, a cart kept in the browser, and a checkout form that ends on a demo confirmation page (no payment is taken; the source marks where to connect a payment provider). With `--adapter`, the server prices the cart from the catalog at `POST /api/cart`. Try it with `npm create bascik my-shop -- --template shop`.
+- `create-bascik` 1.1.0: `--template shop` scaffolds a retail catalog, product pages, a cart kept in the browser, and a demo checkout (no payment is taken). Edit `catalog/books.ts` to change the illustrative products. With `--adapter`, the server prices the cart at `POST /api/cart`. Try it with `npm create bascik my-shop -- --template shop`.
 
 ### Changed
 
+- `create-bascik`: shop opens directly on the all-products catalog at `/`, with product pages under `/products/<slug>`. A Bascik server script reads SQLite (or Cloudflare D1), and native GET filters work without JavaScript. Use `bascik --server` or a deploy adapter in production.
 - `create-bascik`: the shop template uses plain `shop` branding, original product-matched illustrations and a roomier editorial storefront, without associating its fictional catalog with real people or companies.
 - `create-bascik`: shop adds an accessible icon-only theme toggle with pre-paint preference restoration, keeps the canonical Bascik favicon, inlines global CSS through `assets.inlineStyles`, and removes initial entrance animations. Resting navigation is deliberately not underlined. Product pages now have viewport-sized desktop panels and clearly illustrative material, fit, specification and availability details.
 - `create-bascik`: shop pages and book cards now use the shared raised light/dark surfaces, with responsive padding and theme-aware form errors.
@@ -32,6 +33,7 @@ it is not `@bascik/bascik`.
 
 ### Fixed
 
+- `create-bascik`: shop reserves navigation and cart-count space before paint, initializes theme/menu controls without network-loaded cart modules, and no longer reveals or reorders the catalog after load.
 - `create-bascik`: the starter's "Skip to content" link stays hidden when you put something above `<site-header>`, such as a banner or another nav. It was hidden with a fixed offset that only worked while the header was first on the page; it is now clipped until it has keyboard focus. Existing sites: in `src/components/site-header/site-header.html`, set `.skip-link` to `top: 8px` and replace the `.skip-link:focus` rule with `.skip-link:not(:focus) { width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }`.
 
 ## [1.0.0] - 2026-11-12

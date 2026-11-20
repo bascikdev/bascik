@@ -122,6 +122,69 @@ it("fresh production shop: first paint, theme, product detail, mobile and cart",
         { timeout: 15000 },
       )
       .toBe(200);
+    const response = await fetch(baseURL).then((r) => r.text());
+    expect(response.match(/data-testid="book-card"/g)).toHaveLength(8);
+    expect(response).toContain("All products");
+    expect(response).not.toContain('href="/books/');
+    await run(cwd, [
+      "--input-type=module",
+      "-e",
+      `import { DatabaseSync } from "node:sqlite";
+const db = new DatabaseSync("data/racing.db");
+db.exec("UPDATE products SET price_cents = 24123 WHERE slug = 'pit-lane-coach-jacket'");
+db.close();`,
+    ]);
+    expect(await fetch(baseURL).then((r) => r.text())).toContain("$241.23");
+    await run(cwd, ["scripts/seed-database.ts"]);
+    for (const width of [1440, 390]) {
+      const stable = await browser.newContext({
+        viewport: { width, height: 900 },
+      });
+      await stable.addInitScript(() => {
+        localStorage.setItem(
+          "cart",
+          JSON.stringify([{ id: "pit-lane-coach-jacket", quantity: 2 }]),
+        );
+      });
+      const paint = await stable.newPage();
+      let release!: () => void;
+      const modules = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await paint.route("**/js/*.js", async (route) => {
+        await modules;
+        await route.continue();
+      });
+      try {
+        await paint.goto(baseURL, { waitUntil: "commit" });
+        await expect.poll(() => paint.getByTestId("book-card").count()).toBe(8);
+        await expect
+          .poll(() => paint.getByTestId("site-header-theme").isVisible())
+          .toBe(true);
+        await expect
+          .poll(() => paint.getByTestId("book-catalog-controls").isVisible())
+          .toBe(true);
+        const layout = () =>
+          paint.evaluate(`(() => {
+            return ["site-header-nav", "site-header-theme", "book-catalog-controls", "book-card"]
+              .flatMap(id => Array.from(document.querySelectorAll('[data-testid="' + id + '"]')).map(element => ({
+                id,
+                box: element.getBoundingClientRect().toJSON(),
+                text: id === "book-card" ? element.querySelector("h3").textContent : null,
+              })));
+          })()`);
+        const initial = await layout();
+        release();
+        await paint.waitForLoadState("load");
+        await expect
+          .poll(() => paint.getByTestId("site-header-cart-count").textContent())
+          .toBe("2");
+        expect(await layout()).toEqual(initial);
+      } finally {
+        release();
+        await stable.close();
+      }
+    }
     const page = await browser.newPage({
       viewport: { width: 1440, height: 900 },
       colorScheme: "light",
@@ -153,7 +216,7 @@ it("fresh production shop: first paint, theme, product detail, mobile and cart",
         ),
     ).toBe("none");
     expect(
-      await page.getByTestId("home-hero").evaluate((el) => ({
+      await page.getByTestId("book-catalog").evaluate((el) => ({
         opacity: el.ownerDocument.defaultView!.getComputedStyle(el).opacity,
         animations: el.getAnimations({ subtree: true }).length,
       })),
@@ -181,7 +244,7 @@ it("fresh production shop: first paint, theme, product detail, mobile and cart",
         "getComputedStyle(document.documentElement).colorScheme",
       ),
     ).toBe("light");
-    await page.goto(`${baseURL}/books/pit-lane-coach-jacket`);
+    await page.goto(`${baseURL}/products/pit-lane-coach-jacket`);
     expect(await page.locator('link[rel="stylesheet"]').count()).toBe(0);
     const detail = page.getByTestId("book-detail");
     const box = await detail.boundingBox();
@@ -217,7 +280,7 @@ it("fresh production shop: first paint, theme, product detail, mobile and cart",
       )
         await toggle.click();
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.goto(`${baseURL}/books/pit-lane-coach-jacket`);
+      await page.goto(`${baseURL}/products/pit-lane-coach-jacket`);
       expect(
         await page.evaluate(
           "getComputedStyle(document.documentElement).colorScheme",
@@ -234,13 +297,24 @@ it("fresh production shop: first paint, theme, product detail, mobile and cart",
           .getByTestId("site-header-nav-toggle")
           .getAttribute("aria-expanded"),
       ).toBe("true");
+      expect(await page.getByTestId("site-header-nav-menu").isVisible()).toBe(
+        true,
+      );
     }
     const noJS = await browser.newContext({
       javaScriptEnabled: false,
       viewport: { width: 390, height: 844 },
     });
     const fallback = await noJS.newPage();
-    await fallback.goto(`${baseURL}/books/pit-lane-coach-jacket`);
+    await fallback.goto(baseURL);
+    expect(await fallback.getByTestId("book-card").count()).toBe(8);
+    expect(await fallback.getByTestId("site-header-books").isVisible()).toBe(
+      true,
+    );
+    await fallback.getByLabel("Category").selectOption("Parts");
+    await fallback.getByTestId("book-catalog-apply").click();
+    expect(await fallback.getByTestId("book-card").count()).toBe(4);
+    await fallback.goto(`${baseURL}/products/pit-lane-coach-jacket`);
     expect(await fallback.getByTestId("book-detail").innerText()).toContain(
       "Material",
     );
@@ -295,7 +369,7 @@ export default defineConfig({ testDir: "./e2e", testMatch: "app.spec.ts", worker
     );
     for (const width of [768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto(`${baseURL}/books/pit-lane-coach-jacket`);
+      await page.goto(`${baseURL}/products/pit-lane-coach-jacket`);
       expect(
         await page.evaluate(
           "document.documentElement.scrollWidth <= innerWidth",

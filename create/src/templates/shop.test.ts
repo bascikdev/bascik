@@ -46,8 +46,8 @@ describe("shop feedback regressions", () => {
     expect(file("bascik.config.ts")).toContain(
       'inlineStyles: ["src/pages/css/styles.css"]',
     );
-    expect(file("src/components/home-hero/home-hero.html")).not.toContain(
-      "Bascik Example Shop",
+    expect(textFiles().has("src/components/home-hero/home-hero.html")).toBe(
+      false,
     );
   });
 
@@ -81,7 +81,9 @@ describe("shop feedback regressions", () => {
       expect(file("src/components/book-detail/book-detail.html")).toContain(
         `data-bascik-prop-${field}`,
       );
-      expect(file("src/pages/books/book-page.ts")).toContain(`book.${field}`);
+      expect(file("src/pages/products/book-page.ts")).toContain(
+        `book.${field}`,
+      );
     }
   });
 });
@@ -89,10 +91,8 @@ const COMPONENTS = [
   "site-meta",
   "site-header",
   "site-footer",
-  "home-hero",
   "product-art",
   "book-card",
-  "featured-books",
   "book-catalog",
   "book-detail",
   "cart-list",
@@ -103,8 +103,7 @@ const COMPONENTS = [
 ];
 const PAGES = [
   "src/pages/index.html",
-  "src/pages/books/index.html",
-  "src/pages/books/[slug].html",
+  "src/pages/products/[slug].html",
   "src/pages/cart.html",
   "src/pages/checkout.html",
   "src/pages/order-confirmed.html",
@@ -201,8 +200,6 @@ describe("shop template", () => {
     expect(SHOP_TEMPLATE.devDependencies).toBeUndefined();
     expect(SHOP_TEMPLATE.scripts).toEqual({
       "db:seed": "node scripts/seed-database.ts",
-      predev: "npm run db:seed",
-      prebuild: "npm run db:seed",
     });
   });
 
@@ -226,7 +223,7 @@ describe("shop template", () => {
         "src/browser/money.ts",
         "src/browser/money.test.ts",
         "src/pages/css/styles.css",
-        "src/pages/books/book-page.ts",
+        "src/pages/products/book-page.ts",
         "e2e/app.spec.ts",
         ...PAGES,
         ...COMPONENTS.flatMap((name) => [
@@ -393,16 +390,16 @@ describe("shop template markup", () => {
       );
       expect(page, path).toContain("noindex: true");
     }
-    for (const path of ["src/pages/index.html", "src/pages/books/index.html"]) {
+    for (const path of ["src/pages/index.html"]) {
       expect(file(path), path).not.toContain("noindex");
     }
   });
 
   it("pages read as lists of component tags", () => {
+    expect(file("src/pages/index.html")).toContain("data-bascik-server");
     expect(file("src/pages/index.html")).toContain(
-      "<home-hero />\n      <featured-books />",
+      "export default catalogPage",
     );
-    expect(file("src/pages/books/index.html")).toContain("<book-catalog />");
     expect(file("src/pages/cart.html")).toContain("<cart-list />");
     expect(file("src/pages/checkout.html")).toMatch(
       /<h1>Checkout<\/h1>[\s\S]*<checkout-form \/>\s*<order-summary \/>/,
@@ -457,11 +454,9 @@ describe("shop template markup", () => {
   });
 
   it("labels every form control", () => {
-    const catalog = file("src/components/book-catalog/book-catalog.html");
-    for (const id of ["sort", "format"]) {
-      expect(catalog).toContain(`<label for="${id}">`);
-      expect(catalog).toContain(`<select id="${id}"`);
-    }
+    const catalog = file("src/components/book-catalog/listing.ts");
+    expect(catalog).toContain('<label>Sort by<select name="sort"');
+    expect(catalog).toContain('<label>Category<select name="format"');
     expect(file("src/components/form-field/form-field.html")).toMatch(
       /<label for="input"[^>]*><\/label>[\s\S]*<input id="input" required/,
     );
@@ -479,7 +474,7 @@ describe("shop template markup", () => {
       "book-catalog",
     ]) {
       expect(file(`src/components/${name}/${name}.html`), name).toMatch(
-        /<p id="status"[^>]*role="status"/,
+        /<p[^>]*role="status"/,
       );
     }
     expect(file("src/components/checkout-form/checkout-form.html")).toMatch(
@@ -488,8 +483,11 @@ describe("shop template markup", () => {
   });
 
   it("hides script-only controls until the script runs, so nothing is dead without JavaScript", () => {
-    expect(file("src/components/book-catalog/book-catalog.html")).toMatch(
-      /<form id="controls"[^>]*\bhidden\b/,
+    expect(file("src/components/book-catalog/listing.ts")).toContain(
+      'method="get"',
+    );
+    expect(file("src/components/book-catalog/listing.ts")).not.toContain(
+      " hidden",
     );
     expect(file("src/components/book-detail/book-detail.html")).toMatch(
       /<button id="add"[^>]*\bhidden\b/,
@@ -568,11 +566,10 @@ describe("shop template output safety", () => {
       "src/components/book-card/card.ts",
       "src/components/book-catalog/listing.ts",
       "src/components/cart-list/lines.ts",
-      "src/components/featured-books/featured.ts",
       "src/components/order-summary/lines.ts",
       "src/components/product-art/art.ts",
       "src/lib/seo.ts",
-      "src/pages/books/book-page.ts",
+      "src/pages/products/book-page.ts",
     ]);
     for (const [path, content] of builders) {
       expect(content, path).toMatch(
@@ -597,16 +594,14 @@ describe("shop template output safety", () => {
   });
 
   it("browser scripts write text, never markup, from what the cart holds", () => {
-    for (const name of [
-      "site-header",
-      "book-detail",
-      "cart-list",
-      "order-summary",
-    ]) {
+    for (const name of ["book-detail", "cart-list", "order-summary"]) {
       const script = file(`src/components/${name}/${name}.ts`, "cloudflare");
       expect(script, name).toContain("textContent");
       expect(script, name).not.toMatch(/createElement|cloneNode/);
     }
+    expect(file("src/components/site-header/cart-count.ts")).toContain(
+      "textContent",
+    );
   });
 
   it.each([
@@ -693,14 +688,14 @@ describe("shop template catalog", () => {
   });
 
   it("makes one page per book from the catalog with a dynamic route", () => {
-    const page = file("src/pages/books/[slug].html");
+    const page = file("src/pages/products/[slug].html");
     expect(page).toMatch(
       /<script data-bascik-routes type="text\/typescript">\s*import \{ books \} from "@\/lib\/catalog\.ts";/,
     );
     expect(page).toContain(
       "books.map((book) => ({ params: { slug: book.slug } }))",
     );
-    const helper = file("src/pages/books/book-page.ts");
+    const helper = file("src/pages/products/book-page.ts");
     expect(helper).toContain('"@type": "Product"');
     expect(helper).toContain("price: (book.priceCents / 100).toFixed(2),");
     expect(helper).toContain("<book-detail");

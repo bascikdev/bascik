@@ -1,15 +1,15 @@
 /**
  * @module templates/shop
  *
- * `--template shop`: a small bookshop. A typed catalog file becomes the home
- * page's featured books, a catalog page with client-side sort and filter, and
- * one page per book through a dynamic route. The cart lives in the browser's
+ * `--template shop`: a retail catalog at the root, rendered per request from
+ * SQLite or a Cloudflare D1 binding, and one product page per dynamic route.
+ * The cart lives in the browser's
  * localStorage, and the checkout is a validated address form that ends on a
  * demo confirmation page: no payment is taken.
  *
  * With an adapter the site also gets `POST /api/cart`, which prices the cart
  * from the catalog on the server; the checkout's order summary asks it instead
- * of pricing in the browser. Without one the site is fully static.
+ * of pricing in the browser. Production needs `bascik --server` or an adapter.
  *
  * The content is split by kind under `./shop/`: data and logic, components,
  * pages, and the tests the scaffolded project gets.
@@ -32,16 +32,14 @@ import {
   CART_LIST_TS,
   CHECKOUT_FORM_HTML,
   CHECKOUT_FORM_TS,
-  FEATURED_BOOKS_HELPER_TS,
-  FEATURED_BOOKS_HTML,
   FORM_FIELD_HTML,
-  HOME_HERO_HTML,
   ORDER_CONFIRMATION_HTML,
   ORDER_SUMMARY_HELPER_TS,
   ORDER_SUMMARY_HTML,
   SHOP_SITE_FOOTER_HTML,
   SHOP_SITE_HEADER_HTML,
   SHOP_SITE_HEADER_TS,
+  SHOP_CART_COUNT_TS,
   SHOP_SITE_META_HTML,
   SHOP_STYLES_CSS,
   PRODUCT_ART_HELPER_TS,
@@ -67,7 +65,6 @@ import {
 import {
   SHOP_BOOK_PAGE,
   SHOP_BOOK_PAGE_TS,
-  SHOP_BOOKS_PAGE,
   SHOP_CART_PAGE,
   SHOP_CHECKOUT_PAGE,
   SHOP_INDEX_PAGE,
@@ -105,12 +102,15 @@ const shopComponents = ({ adapter }: TemplateContext): ShopComponent[] => [
   {
     name: "site-header",
     html: SHOP_SITE_HEADER_HTML,
-    companions: { "site-header.ts": SHOP_SITE_HEADER_TS },
+    companions: {
+      "site-header.ts": SHOP_SITE_HEADER_TS,
+      "cart-count.ts": SHOP_CART_COUNT_TS,
+    },
     claim:
       "starts with the skip link and links to the catalog and the cart with a count",
     parts: [
       'href="#main"',
-      'href="/books/"',
+      'href="/"',
       'href="/cart"',
       'data-testid="site-header-cart-count"',
       'src="site-header.ts"',
@@ -121,12 +121,6 @@ const shopComponents = ({ adapter }: TemplateContext): ShopComponent[] => [
     html: SHOP_SITE_FOOTER_HTML,
     claim: "prints the year and the shop's name at build time",
     parts: ["data-bascik-build-once", "getFullYear", "siteName"],
-  },
-  {
-    name: "home-hero",
-    html: HOME_HERO_HTML,
-    claim: "has the page's heading and a link to the catalog",
-    parts: ["<h1>", 'href="/books/"'],
   },
   {
     name: "product-art",
@@ -161,23 +155,15 @@ const shopComponents = ({ adapter }: TemplateContext): ShopComponent[] => [
     ],
   },
   {
-    name: "featured-books",
-    html: FEATURED_BOOKS_HTML,
-    companions: { "featured.ts": FEATURED_BOOKS_HELPER_TS },
-    claim: "lists the featured books from the catalog at build time",
-    parts: ['data-bascik-build-once src="./featured.ts"', "<h2>"],
-  },
-  {
     name: "book-catalog",
     html: BOOK_CATALOG_HTML,
     companions: { "listing.ts": BOOK_CATALOG_HELPER_TS },
     claim:
-      "lists every product at build time and keeps its controls hidden until the script runs",
+      "lays out request-rendered products and native GET filters without client relocation",
     parts: [
-      'id="controls" class="controls" aria-label="Sort and filter" hidden',
-      '<label for="sort">',
-      '<label for="format">',
-      "catalogItems",
+      "<h1>All products</h1>",
+      'data-bascik-slot="controls"',
+      "data-bascik-slot",
       'role="status"',
     ],
   },
@@ -268,7 +254,7 @@ const shopDirectories = (context: TemplateContext): string[] => [
   "src/lib",
   "src/browser",
   "src/pages/css",
-  "src/pages/books",
+  "src/pages/products",
   ...shopComponents(context).map(({ name }) => `src/components/${name}`),
 ];
 
@@ -304,9 +290,8 @@ const shopFiles = (context: TemplateContext): TemplateFile[] => [
 
   // Pages
   ["src/pages/index.html", SHOP_INDEX_PAGE],
-  ["src/pages/books/index.html", SHOP_BOOKS_PAGE],
-  ["src/pages/books/[slug].html", SHOP_BOOK_PAGE],
-  ["src/pages/books/book-page.ts", SHOP_BOOK_PAGE_TS],
+  ["src/pages/products/[slug].html", SHOP_BOOK_PAGE],
+  ["src/pages/products/book-page.ts", SHOP_BOOK_PAGE_TS],
   ["src/pages/cart.html", SHOP_CART_PAGE],
   ["src/pages/checkout.html", SHOP_CHECKOUT_PAGE],
   ["src/pages/order-confirmed.html", SHOP_ORDER_CONFIRMED_PAGE],
@@ -333,10 +318,9 @@ const shopFiles = (context: TemplateContext): TemplateFile[] => [
 /** `--template shop`: a racing-inspired retail store with a catalog, cart and demo checkout. */
 export const SHOP_TEMPLATE: StarterTemplate = {
   name: "shop",
+  netlifyIncludedFiles: ["data/racing.db"],
   scripts: {
     "db:seed": "node scripts/seed-database.ts",
-    predev: "npm run db:seed",
-    prebuild: "npm run db:seed",
   },
   summary:
     "A shop: a product catalog, product pages, a cart, and a demo checkout",

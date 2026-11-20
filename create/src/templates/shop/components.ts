@@ -64,6 +64,14 @@ html[data-theme="dark"] { color-scheme: dark; }
 }
 
 .status { min-height: 1.7em; color: var(--accent); }
+.filters { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; margin-block: 24px; }
+.filters label { display: grid; gap: 6px; font-size: 0.88rem; font-weight: 600; }
+.filters select, .filters button { padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--elevated); color: var(--text); font: inherit; }
+@media (max-width: 640px) {
+  html[data-interactive] [data-testid="site-header-nav-toggle"] { display: flex !important; }
+  html[data-interactive] [data-testid="site-header-nav-toggle"][hidden] { visibility: hidden; }
+  html[data-interactive] [data-testid="site-header-nav-menu"] { display: none; }
+}
 .checkout-columns {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
@@ -96,6 +104,7 @@ ${SITE_META_HTML.split("\n")
   )
   .join("\n")}
 <script type="text/typescript">
+  document.documentElement.dataset.interactive = "true";
   // Apply a valid saved preference before the page paints; storage may be blocked.
   try {
     const theme = localStorage.getItem("shop-theme");
@@ -112,6 +121,12 @@ const SITE_NAME_SCRIPT = `<script data-bascik-build-once type="text/typescript">
 
 export const SHOP_SITE_HEADER_HTML = `<style>
 ${SITE_HEADER_CSS}
+@media (max-width: 640px) {
+  .menu { display: flex; position: static; flex-direction: row; padding: 0; border: 0; background: none; }
+  .menu li { width: auto; }
+  .toggle:not([hidden]) + .menu { display: none; position: absolute; top: 60px; left: 0; right: 0; flex-direction: column; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .toggle:not([hidden]) + .menu.is-open { display: flex; }
+}
 .menu a { text-decoration: none; }
 .menu a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .theme {
@@ -129,12 +144,13 @@ ${SITE_HEADER_CSS}
   cursor: pointer;
 }
 .theme svg { width: 22px; height: 22px; }
+.theme[hidden] { display: inline-flex !important; visibility: hidden; }
 .theme .sun { display: none; }
 .theme[data-dark="true"] .sun { display: block; }
 .theme[data-dark="true"] .moon { display: none; }
 .count {
   display: inline-block;
-  min-width: 1.6em;
+  width: 3.5em;
   margin-left: 4px;
   padding: 0 6px;
   border-radius: 999px;
@@ -144,18 +160,19 @@ ${SITE_HEADER_CSS}
   font-weight: 700;
   text-align: center;
 }
+.count[hidden] { display: inline-block !important; visibility: hidden; }
 </style>
 <header data-testid="site-header">
   <a href="#main" class="skip-link" data-testid="site-header-skip-link">Skip to content</a>
   <div class="container">
     <nav aria-label="Main" data-testid="site-header-nav">
       <a href="/" class="logo" data-testid="site-header-logo">${SITE_NAME_SCRIPT}</a>
-      <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle">
+      <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
         <span></span><span></span><span></span>
       </button>
       <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
-        <li><a href="/books/" data-testid="site-header-books">Shop</a></li>
-        <!-- The link works without JavaScript. The count stays hidden until the saved cart is read. -->
+        <li><a href="/" data-testid="site-header-books">Shop</a></li>
+        <!-- Reserve the saved cart count's footprint before its module loads. -->
         <li><a id="cart-link" href="/cart" data-testid="site-header-cart">Cart <span id="cart-count" class="count" data-testid="site-header-cart-count" hidden></span></a></li>
       </ul>
       <button id="theme" type="button" class="theme" aria-label="Switch to dark mode" data-testid="site-header-theme" hidden>
@@ -165,13 +182,11 @@ ${SITE_HEADER_CSS}
     </nav>
   </div>
 </header>
-<script type="module" src="site-header.ts"></script>
+<script src="site-header.ts"></script>
+<script type="module" src="cart-count.ts"></script>
 `;
 
-export const SHOP_SITE_HEADER_TS = `import { books } from "/js/books.js";
-import { CART_CHANGED, cartCount, loadCart } from "/js/cart.js";
-
-const themeButton = document.getElementById("theme") as HTMLButtonElement;
+export const SHOP_SITE_HEADER_TS = `const themeButton = document.getElementById("theme") as HTMLButtonElement;
 const root = document.documentElement;
 const systemTheme = matchMedia("(prefers-color-scheme: dark)");
 function showTheme(): void {
@@ -193,11 +208,16 @@ themeButton.addEventListener("click", (): void => {
 
 const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
 const menu = document.getElementById("nav-menu") as HTMLUListElement;
+toggle.hidden = false;
 toggle.addEventListener("click", (): void => {
   const open = toggle.getAttribute("aria-expanded") === "true";
   toggle.setAttribute("aria-expanded", String(!open));
   menu.classList.toggle("is-open");
 });
+`;
+
+export const SHOP_CART_COUNT_TS = `import { books } from "/js/books.js";
+import { CART_CHANGED, cartCount, loadCart } from "/js/cart.js";
 
 const link = document.getElementById("cart-link") as HTMLAnchorElement;
 const count = document.getElementById("cart-count") as HTMLSpanElement;
@@ -205,7 +225,7 @@ const count = document.getElementById("cart-count") as HTMLSpanElement;
 /** Show how many products the saved cart holds. An empty cart shows no count. */
 function showCount(): void {
   const items = cartCount(loadCart(books));
-  count.textContent = String(items);
+  count.textContent = items > 999 ? "999+" : String(items);
   count.hidden = items === 0;
   if (items === 0) link.removeAttribute("aria-label");
   else link.setAttribute("aria-label", \`Cart, \${items} \${items === 1 ? "item" : "items"}\`);
@@ -235,7 +255,7 @@ ${SITE_FOOTER_CSS}</style>
       </span>
       <nav aria-label="Footer navigation" data-testid="site-footer-nav">
         <a href="/" data-testid="site-footer-home">Home</a>
-        <a href="/books/" data-testid="site-footer-books">Shop</a>
+        <a href="/" data-testid="site-footer-books">Shop</a>
         <a href="/cart" data-testid="site-footer-cart">Cart</a>
       </nav>
     </div>
@@ -268,7 +288,7 @@ export const HOME_HERO_HTML = `<style>
     <h1>Made for <span>the long way around.</span></h1>
     <p>Considered apparel, useful garage pieces and everyday accessories with a motorsport point of view.</p>
     <div class="hero-actions">
-      <a href="/books/" class="btn btn-primary" data-testid="home-hero-browse">Explore the collection</a>
+      <a href="/" class="btn btn-primary" data-testid="home-hero-browse">Explore the collection</a>
     </div>
   </div>
 </section>
@@ -472,7 +492,7 @@ export const FEATURED_BOOKS_HTML = `<style>
     <ul class="grid" data-testid="featured-books-list">
       <script data-bascik-build-once src="./featured.ts"></script>
     </ul>
-    <a href="/books/" class="btn btn-ghost" data-testid="featured-books-all">See every product →</a>
+    <a href="/" class="btn btn-ghost" data-testid="featured-books-all">See every product →</a>
   </div>
 </section>
 `;
@@ -490,119 +510,65 @@ export default (): SafeHtml =>
 
 export const BOOK_CATALOG_HTML = `<style>
   ${BOOK_GRID_CSS}
-  .controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px 14px;
-    margin-bottom: 32px;
-  }
-  label { font-size: 0.88rem; font-weight: 600; }
-  select {
-    padding: 8px 12px;
-    background: var(--elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--r-sm);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.9rem;
-  }
 </style>
 <section class="section" data-testid="book-catalog">
   <div class="container">
     <p class="section-label">Catalog</p>
-    <h1>Shop the collection</h1>
+    <h1>All products</h1>
     <p class="page-intro">Original apparel, workshop pieces and practical accessories with a motorsport point of view.</p>
-    <!-- Hidden until the script runs: without JavaScript every product is listed and no control is dead. -->
-    <form id="controls" class="controls" aria-label="Sort and filter" hidden data-testid="book-catalog-controls">
-      <label for="sort">Sort by</label>
-      <select id="sort" data-testid="book-catalog-sort">
-        <option value="title">Title</option>
-        <option value="price-low">Price: low to high</option>
-        <option value="price-high">Price: high to low</option>
-        <option value="rating">Rating</option>
-      </select>
-      <label for="format">Category</label>
-      <select id="format" data-testid="book-catalog-format">
-        <option value="all">All categories</option>
-        <script data-bascik-build-once type="text/typescript">
-          import { formatOptions } from "./listing.ts";
-          export default formatOptions;
-        </script>
-      </select>
-    </form>
-    <h2>All products</h2>
-    <p id="status" class="status" role="status" data-testid="book-catalog-status"></p>
-    <ul id="list" class="grid" data-testid="book-catalog-list">
-      <script data-bascik-build-once type="text/typescript">
-        import { catalogItems } from "./listing.ts";
-        export default catalogItems;
-      </script>
+    <div data-bascik-slot="controls"></div>
+    <p class="status" role="status" data-bascik-prop-status data-testid="book-catalog-status"></p>
+    <ul class="grid" data-testid="book-catalog-list">
+      <div data-bascik-slot></div>
     </ul>
   </div>
 </section>
-<script type="text/typescript">
-  const controls = document.getElementById("controls") as HTMLFormElement;
-  const sort = document.getElementById("sort") as HTMLSelectElement;
-  const format = document.getElementById("format") as HTMLSelectElement;
-  const status = document.getElementById("status") as HTMLParagraphElement;
-  const list = document.getElementById("list") as HTMLUListElement;
-  // Each item carries its book's facts in data- attributes, written at build time.
-  const items = Array.from(list.children) as HTMLLIElement[];
-
-  const byNumber = (name: string, direction: 1 | -1) =>
-    (a: HTMLLIElement, b: HTMLLIElement): number =>
-      direction * (Number(a.dataset[name]) - Number(b.dataset[name]));
-  const orders: Record<string, (a: HTMLLIElement, b: HTMLLIElement) => number> = {
-    title: (a, b) => (a.dataset.title ?? "").localeCompare(b.dataset.title ?? ""),
-    "price-low": byNumber("price", 1),
-    "price-high": byNumber("price", -1),
-    rating: byNumber("rating", -1),
-  };
-
-  /** Put the items in the chosen order and hide the ones the format filter leaves out. */
-  function apply(announce: boolean): void {
-    list.append(...[...items].sort(orders[sort.value] ?? orders.title));
-    let shown = 0;
-    for (const item of items) {
-      const match = format.value === "all" || item.dataset.format === format.value;
-      item.hidden = !match;
-      if (match) shown += 1;
-    }
-    if (announce) status.textContent = \`Showing \${shown} of \${items.length} products\`;
-  }
-
-  controls.hidden = false;
-  controls.addEventListener("change", (): void => apply(true));
-  controls.addEventListener("submit", (event: SubmitEvent): void => event.preventDefault());
-  // The browser restores the selects on back and reload: match the list to them.
-  window.addEventListener("pageshow", (): void => apply(false));
-</script>
 `;
 
 export const BOOK_CATALOG_HELPER_TS = `import { html, type SafeHtml } from "@bascik/bascik/html";
-import { books, FORMATS } from "../../lib/catalog.ts";
+import { FORMATS, type Book } from "../../lib/catalog.ts";
+import { readCatalog, type CatalogContext } from "../../lib/racing-db.ts";
 import { bookCard } from "../book-card/card.ts";
 
-/** One <option> per format the catalog allows. */
-export const formatOptions = (): SafeHtml =>
-  html\`\${FORMATS.map(
-    (format) => html\`<option value="\${format}">\${format}</option>\`,
-  )}\`;
+const orders: Record<string, (a: Book, b: Book) => number> = {
+  title: (a, b) => a.title.localeCompare(b.title),
+  "price-low": (a, b) => a.priceCents - b.priceCents,
+  "price-high": (a, b) => b.priceCents - a.priceCents,
+  rating: (a, b) => b.rating - a.rating,
+};
+const option = (value: string, label: string, selected: string): SafeHtml =>
+  value === selected
+    ? html\`<option value="\${value}" selected>\${label}</option>\`
+    : html\`<option value="\${value}">\${label}</option>\`;
 
-/** Every book as a list item. The data- attributes are what the sort and filter script reads. */
-export const catalogItems = (): SafeHtml =>
-  html\`\${books.map(
-    (book) =>
-      html\`<li
-        data-title="\${book.title}"
-        data-price="\${book.priceCents}"
-        data-rating="\${book.rating}"
-        data-format="\${book.format}"
-      >
-        \${bookCard(book)}
-      </li>\`,
-  )}\`;
+export async function catalogPage(request: Request, context: CatalogContext): Promise<SafeHtml> {
+  const query = new URL(request.url).searchParams;
+  const sort = query.get("sort") ?? "title";
+  const format = query.get("format") ?? "all";
+  if (!Object.hasOwn(orders, sort)) throw new Error("Unknown catalog sort order: " + sort);
+  if (format !== "all" && !(FORMATS as readonly string[]).includes(format))
+    throw new Error("Unknown catalog category: " + format);
+  const books = await readCatalog(context);
+  const selected = books.filter(book => format === "all" || book.format === format).sort(orders[sort]);
+  return html\`<book-catalog data-bascik-prop-status="\${'Showing ' + selected.length + ' of ' + books.length + ' products'}">
+    <div data-bascik-slot="controls">
+      <form class="filters" action="/" method="get" aria-label="Sort and filter" data-testid="book-catalog-controls">
+        <label>Sort by<select name="sort" data-testid="book-catalog-sort">
+          \${option("title", "Title", sort)}
+          \${option("price-low", "Price: low to high", sort)}
+          \${option("price-high", "Price: high to low", sort)}
+          \${option("rating", "Rating", sort)}
+        </select></label>
+        <label>Category<select name="format" data-testid="book-catalog-format">
+          \${option("all", "All categories", format)}
+          \${FORMATS.map(value => option(value, value, format))}
+        </select></label>
+        <button type="submit" data-testid="book-catalog-apply">Apply filters</button>
+      </form>
+    </div>
+    \${selected.map(book => html\`<li>\${bookCard(book)}</li>\`)}
+  </book-catalog>\`;
+}
 `;
 
 export const BOOK_DETAIL_HTML = `<!-- @bascik
@@ -745,7 +711,7 @@ export const CART_LIST_HTML = `<style>
   <div class="container">
     <h1>Your cart</h1>
     <noscript><p>The cart is kept in your browser, so it needs JavaScript.</p></noscript>
-    <p id="empty" data-testid="cart-list-empty" hidden>Your cart is empty. <a href="/books/">Browse the products</a>.</p>
+    <p id="empty" data-testid="cart-list-empty" hidden>Your cart is empty. <a href="/">Browse the products</a>.</p>
     <!-- One hidden line per book in the catalog, written at build time. The script shows the
          lines that are in the cart and fills in their quantities: it never builds markup. -->
     <ul id="lines" class="lines" data-testid="cart-list-lines">
@@ -934,7 +900,7 @@ export const CHECKOUT_FORM_HTML = `<style>
 <section data-testid="checkout-form">
   <h2>Delivery address</h2>
   <noscript><p>The cart is kept in your browser, so the checkout needs JavaScript.</p></noscript>
-  <p id="empty" data-testid="checkout-form-empty" hidden>There is nothing to check out yet. <a href="/books/">Choose a product first</a>.</p>
+  <p id="empty" data-testid="checkout-form-empty" hidden>There is nothing to check out yet. <a href="/">Choose a product first</a>.</p>
   <!-- Shown by the script when the cart has something in it. novalidate turns off the browser's
        pop-up bubbles: the script checks the fields and each one shows its message in the page. -->
   <form id="form" novalidate data-testid="checkout-form-form" hidden>
@@ -1128,7 +1094,7 @@ export const ORDER_CONFIRMATION_HTML = `<!--
     <div class="callout">
       <p data-testid="order-confirmation-notice">No payment is taken; connect a payment provider here. Nothing was ordered, charged or sent, and your cart has been emptied.</p>
     </div>
-    <a href="/books/" class="btn btn-primary mt-28" data-testid="order-confirmation-continue">Keep browsing</a>
+    <a href="/" class="btn btn-primary mt-28" data-testid="order-confirmation-continue">Keep browsing</a>
   </div>
 </section>
 `;

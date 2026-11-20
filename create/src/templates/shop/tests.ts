@@ -83,7 +83,7 @@ describe("the catalog", () => {
   });
 
   it("builds each product's path from its slug", () => {
-    expect(bookPath({ slug: "pit-lane-coach-jacket" })).toBe("/books/pit-lane-coach-jacket");
+    expect(bookPath({ slug: "pit-lane-coach-jacket" })).toBe("/products/pit-lane-coach-jacket");
   });
 });
 
@@ -518,7 +518,7 @@ const PRODUCT_COUNT = 8;
 
 /** Open a product's page and add it to the cart, once per item. */
 async function addToCart(page: Page, slug: string, items = 1): Promise<void> {
-  await page.goto(\`/books/\${slug}\`);
+  await page.goto(\`/products/\${slug}\`);
   for (let added = 1; added <= items; added += 1) {
     await page.getByTestId("book-detail-add").click();
     await expect(page.getByTestId("book-detail-status")).toContainText(
@@ -541,48 +541,54 @@ test.describe("Shop", () => {
     await toggle.focus();
     await page.keyboard.press("Enter");
     await expect(toggle).toHaveAccessibleName("Switch to light mode");
-    await page.goto(\`/books/\${JACKET.slug}\`);
+    await page.goto(\`/products/\${JACKET.slug}\`);
     await expect(toggle).toHaveAccessibleName("Switch to light mode");
     await expect(page.getByTestId("book-detail-specs")).toContainText("Material");
     await expect(page.getByTestId("book-detail-specs")).toContainText("Availability");
     await expect(page.getByTestId("book-detail")).toContainText("Illustrative product");
   });
 
-  test("home page features racing products and leads to the catalog", async ({ page }) => {
+  test("root opens directly on all products with no landing page", async ({ page, request }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/Motorsport-inspired apparel and goods/);
-    await expect(page.getByTestId("featured-books").getByTestId("book-card")).toHaveCount(3);
-
-    await page.getByTestId("home-hero-browse").click();
-    await expect(page).toHaveURL("/books/");
-    await expect(page.getByRole("heading", { level: 1, name: "Shop the collection" })).toBeVisible();
+    await expect(page).toHaveTitle(/All products/);
+    await expect(page.getByTestId("book-card")).toHaveCount(PRODUCT_COUNT);
+    await expect(page).toHaveURL("/");
+    await expect(page.getByRole("heading", { level: 1, name: "All products" })).toBeVisible();
+    expect((await request.get("/books/")).status()).toBe(404);
   });
 
   test("catalog sorts by price and filters by format", async ({ page }) => {
-    await page.goto("/books/");
+    await page.goto("/");
     const cards = page.getByTestId("book-catalog").getByTestId("book-card");
     await expect(cards).toHaveCount(PRODUCT_COUNT);
 
     await page.getByLabel("Sort by").selectOption("price-low");
+    await page.getByTestId("book-catalog-apply").click();
     await expect(cards.first()).toContainText("Wheel Fastener Kit");
     await page.getByLabel("Sort by").selectOption("price-high");
+    await page.getByTestId("book-catalog-apply").click();
     await expect(cards.first()).toContainText("Interval Chronograph");
 
     await page.getByLabel("Category").selectOption("Parts");
+    await page.getByTestId("book-catalog-apply").click();
     await expect(cards.filter({ visible: true })).toHaveCount(4);
     await expect(page.getByTestId("book-catalog-status")).toHaveText(
       \`Showing 4 of \${PRODUCT_COUNT} products\`,
     );
     await page.getByLabel("Category").selectOption("all");
+    await page.getByTestId("book-catalog-apply").click();
     await expect(cards.filter({ visible: true })).toHaveCount(PRODUCT_COUNT);
   });
 
   test("catalog lists every product without JavaScript, with no dead controls", async ({ browser }) => {
     const context = await browser.newContext({ javaScriptEnabled: false });
     const page = await context.newPage();
-    await page.goto("/books/");
+    await page.goto("/");
     await expect(page.getByTestId("book-card").filter({ visible: true })).toHaveCount(PRODUCT_COUNT);
-    await expect(page.getByTestId("book-catalog-controls")).toBeHidden();
+    await expect(page.getByTestId("book-catalog-controls")).toBeVisible();
+    await page.getByLabel("Category").selectOption("Racewear");
+    await page.getByTestId("book-catalog-apply").click();
+    await expect(page.getByTestId("book-card")).toHaveCount(2);
 
     await page.getByRole("link", { name: JACKET.title }).click();
     await expect(page.getByRole("heading", { level: 1, name: JACKET.title })).toBeVisible();
@@ -591,9 +597,9 @@ test.describe("Shop", () => {
   });
 
   test("product page shows the product, its cover text alternative and structured data", async ({ page }) => {
-    await page.goto("/books/");
+    await page.goto("/");
     await page.getByRole("link", { name: JACKET.title }).click();
-    await expect(page).toHaveURL(\`/books/\${JACKET.slug}\`);
+    await expect(page).toHaveURL(\`/products/\${JACKET.slug}\`);
     await expect(page).toHaveTitle(/Pit Lane Coach Jacket/);
 
     const detail = page.getByTestId("book-detail");
@@ -612,7 +618,7 @@ test.describe("Shop", () => {
   });
 
   test("adding a product updates the cart count in the header", async ({ page }) => {
-    await page.goto(\`/books/\${JACKET.slug}\`);
+    await page.goto(\`/products/\${JACKET.slug}\`);
     const count = page.getByTestId("site-header-cart-count");
     await expect(count).toBeHidden();
     await expect(page.getByTestId("book-detail-view-cart")).toBeHidden();
@@ -755,7 +761,7 @@ test.describe("Shop", () => {
     expect(page.url()).not.toContain("Ada");
     await expect(page.getByTestId("site-header-cart-count")).toBeHidden();
     await page.getByTestId("order-confirmation-continue").click();
-    await expect(page).toHaveURL("/books/");
+    await expect(page).toHaveURL("/");
   });
 
   test("mobile navigation toggle expands and collapses the menu", async ({ page }) => {
@@ -771,13 +777,13 @@ test.describe("Shop", () => {
   });
 
   test("an unknown URL, or a product that is not in the catalog, is the 404 page", async ({ page }) => {
-    for (const path of ["/no-such-page", "/books/no-such-product"]) {
+    for (const path of ["/no-such-page", "/products/no-such-product"]) {
       const response = await page.goto(path);
       expect(response?.status()).toBe(404);
       await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
     }
     await page.getByRole("link", { name: "Browse the products" }).click();
-    await expect(page).toHaveURL("/books/");
+    await expect(page).toHaveURL("/");
   });
 ${adapter ? CART_API_E2E : ""}});
 `;

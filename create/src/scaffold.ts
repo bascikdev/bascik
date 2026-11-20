@@ -85,6 +85,8 @@ export interface StarterTemplate {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   scripts?: Record<string, string>;
+  /** Read-only fixture files that Netlify must include in its function bundle. */
+  netlifyIncludedFiles?: readonly string[];
 }
 
 // ─── Root files ───────────────────────────────────────────────────────────────
@@ -1448,7 +1450,15 @@ const sharedFiles = (
         : GITIGNORE,
   ],
   ...(adapter === "netlify"
-    ? ([["netlify.toml", NETLIFY_TOML]] as TemplateFile[])
+    ? ([
+        [
+          "netlify.toml",
+          NETLIFY_TOML +
+            (template.netlifyIncludedFiles?.length
+              ? `\n[functions]\n  included_files = ${JSON.stringify(template.netlifyIncludedFiles)}\n`
+              : ""),
+        ],
+      ] as TemplateFile[])
     : []),
 
   // E2E: the web server is \`bascik --server\`, which renders request-time pages on Node

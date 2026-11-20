@@ -27,7 +27,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { scaffold } from "../scaffold.ts";
+import { scaffold, type Adapter } from "../scaffold.ts";
 import { SHOP_TEMPLATE } from "./shop.ts";
 
 const execFileAsync = promisify(execFile);
@@ -54,10 +54,13 @@ afterEach(async () => {
 });
 
 /** A scaffolded shop with `@bascik/bascik` linked to the workspace package. */
-async function scaffoldShop(projectName: string): Promise<string> {
+async function scaffoldShop(
+  projectName: string,
+  adapter?: Adapter,
+): Promise<string> {
   const parentDir = await mkdtemp(join(tmpdir(), "bascik-shop-test-"));
   tempDirs.push(parentDir);
-  await scaffold(projectName, parentDir, { template: SHOP_TEMPLATE });
+  await scaffold(projectName, parentDir, { template: SHOP_TEMPLATE, adapter });
   const projectDir = join(parentDir, projectName);
   const scope = join(projectDir, "node_modules", "@bascik");
   await mkdir(scope, { recursive: true });
@@ -114,6 +117,16 @@ describe("shop template build", () => {
     }
   });
 
+  it("includes the seeded SQLite fixture in Netlify functions without broad data globs", async () => {
+    const project = await scaffoldShop("netlify-shop", "netlify");
+    const config = await readFile(join(project, "netlify.toml"), "utf8");
+    expect(config).toContain('included_files = ["data/racing.db"]');
+    expect(config).not.toContain("data/**");
+    const result = await build(project);
+    expect(result.exitCode, result.output).toBe(0);
+    expect(existsSync(join(project, "data/racing.db"))).toBe(true);
+  }, 120_000);
+
   it("builds one page per product, lists them in the sitemap, and publishes the browser modules", async () => {
     const projectDir = await scaffoldShop("bascik-example-shop");
     const result = await build(projectDir);
@@ -126,26 +139,20 @@ describe("shop template build", () => {
     const { books } = (await import(
       pathToFileURL(join(projectDir, "catalog", "books.ts")).href
     )) as { books: { slug: string; title: string }[] };
-    const pages = (await readdir(join(dist, "books"))).sort();
-    expect(pages).toEqual(
-      ["index.html", ...books.map((book) => `${book.slug}.html`)].sort(),
-    );
+    const pages = (await readdir(join(dist, "products"))).sort();
+    expect(pages).toEqual(books.map((book) => `${book.slug}.html`).sort());
 
     // The sitemap lists the home page, the catalog and every book, and none of the checkout pages.
     const sitemap = await read("sitemap.xml");
-    for (const path of [
-      "/",
-      "/books/",
-      ...books.map((b) => `/books/${b.slug}`),
-    ])
+    for (const path of ["/", ...books.map((b) => `/products/${b.slug}`)])
       expect(sitemap).toContain(`<loc>https://example.com${path}</loc>`);
     for (const path of ["cart", "checkout", "order-confirmed", "404"])
       expect(sitemap).not.toContain(`https://example.com/${path}<`);
 
     // A product page: an absolute canonical URL, Product data, the product's own heading, and no leftover tags.
-    const page = await read("books/pit-lane-coach-jacket.html");
+    const page = await read("products/pit-lane-coach-jacket.html");
     expect(page).toContain(
-      '<link rel="canonical" href="https://example.com/books/pit-lane-coach-jacket"',
+      '<link rel="canonical" href="https://example.com/products/pit-lane-coach-jacket"',
     );
     const data = JSON.parse(
       /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(
@@ -158,7 +165,7 @@ describe("shop template build", () => {
       offers: {
         price: "240.00",
         priceCurrency: "USD",
-        url: "https://example.com/books/pit-lane-coach-jacket",
+        url: "https://example.com/products/pit-lane-coach-jacket",
       },
     });
     expect(page).toMatch(/<h1[^>]*>Pit Lane Coach Jacket<\/h1>/);
@@ -168,18 +175,20 @@ describe("shop template build", () => {
     );
     expect(page).not.toMatch(/<book-|<site-|data-bascik-/);
 
-    // The catalog page lists every book in the HTML itself, before any script runs.
-    const catalog = await read("books/index.html");
-    for (const book of books) expect(catalog).toContain(book.title);
-    expect(catalog.match(/data-testid="book-card"/g)).toHaveLength(
-      books.length,
-    );
+    // The root's request script and component templates are retained for SSR.
+    expect(
+      await readFile(
+        join(projectDir, ".bascik/dist/server-scripts.json"),
+        "utf8",
+      ),
+    ).toContain("catalogPage");
+    expect(existsSync(join(dist, "books"))).toBe(false);
+    expect(existsSync(join(dist, "products/index.html"))).toBe(false);
 
     // The specified brand is the same in the page title and header.
     const home = await read("index.html");
     expect(home).toContain("shop</title>");
     expect(home).toContain(">shop</a>");
-    expect(home.match(/<h1\b/g)).toHaveLength(1);
 
     // The cart and checkout pages are static and marked noindex.
     for (const path of ["cart.html", "checkout.html", "order-confirmed.html"])
