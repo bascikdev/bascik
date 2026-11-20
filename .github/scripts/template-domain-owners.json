@@ -1,0 +1,11 @@
+{
+  "default": "preview",
+  "blog": "preview",
+  "docs": "preview",
+  "landing": "preview",
+  "portfolio": "preview",
+  "corporate": "preview",
+  "shop": "preview",
+  "reports": "preview",
+  "dashboard": "preview"
+}

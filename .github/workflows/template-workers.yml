@@ -99,8 +99,8 @@ jobs:
         env:
           SHOP_D1_ID: ${{ vars.TEMPLATE_SHOP_PREVIEW_D1_ID }}
         run: node .github/scripts/template-workers.mts bind-shop-preview "$RUNNER_TEMP/template-workers"
-      # Use a separate route-free worker so the first preview can happen before
-      # a production Worker or custom domain exists.
+      # A reviewed ownership policy assigns each showcase alias to one lane.
+      # Never allow a preview deploy to take a hostname from another Worker.
       - name: Publish to the dedicated preview Worker
         if: github.event_name == 'workflow_dispatch'
         id: preview
@@ -111,6 +111,7 @@ jobs:
         run: |
           test "$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" = true
           test -n "$CLOUDFLARE_API_TOKEN" && test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Cloudflare CI credentials are missing"; exit 1; }
+          node .github/scripts/template-workers.mts check-domain "$SLUG" preview
           yarn workspace @bascik/adapter-cloudflare wrangler deploy \
             --config "$RUNNER_TEMP/template-workers/$SLUG/dist/.bascik/cloudflare/wrangler.preview.json" \
             --message "Template preview at $GITHUB_SHA"

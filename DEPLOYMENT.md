@@ -6,18 +6,29 @@ The user-facing version of the Cloudflare material is [docs/content/deployment/c
 
 ## Template Showcase Workers
 
-[Template Workers](.github/workflows/template-workers.yml) builds from `create-bascik`'s current scaffold source, not a released npm starter. Each slug (`default`, `blog`, `docs`, `landing`, `portfolio`, `corporate`, `shop`, `reports`, `dashboard`) has its own `bascik-template-<slug>` Worker on `https://template-<slug>.bascik.dev`. The shop template is a simulated checkout with fixture data; it does not use `shop.bascik.dev` or any of the independent shop's secrets, bindings, or services.
+[Template Workers](.github/workflows/template-workers.yml) builds from `create-bascik`'s current scaffold source, not a released npm starter. Each slug (`default`, `blog`, `docs`, `landing`, `portfolio`, `corporate`, `shop`, `reports`, `dashboard`) currently serves `https://template-<slug>.bascik.dev` from its already deployed `bascik-template-<slug>-preview` Worker. The shop template is a simulated checkout with fixture data; it does not use `shop.bascik.dev` or any of the independent shop's secrets, bindings, or services.
 
 Pull requests build and run the registered templates in local workerd without Cloudflare credentials. A template not yet registered on `main` cannot be dispatched. Merge the scaffold foundation and template PRs before rolling out their demos, including #154 and #156 through #163.
 
-For rollout, dispatch from `main`. The workflow uses the commit from a merged PR, checks that it is still the branch tip immediately before each deploy, and uses the existing Cloudflare CI secret and account variable. It builds with the Cloudflare adapter and publishes to a separate, route-free `bascik-template-<slug>-preview` Worker on the existing account's `workers.dev` subdomain first. The preview is public, with crawler access discouraged by `robots.txt`. Unlike the adapter demo's version aliases, this shared preview can be created before the production Worker exists. The preview URL is in the run summary.
+For rollout, dispatch from `main`. The workflow uses the commit from a merged PR, checks that it is still the branch tip immediately before each deploy, and uses the existing Cloudflare CI secret and account variable. It builds with the Cloudflare adapter and publishes to the dedicated preview Worker, preserving the alias declared in [.github/scripts/template-domain-owners.json](.github/scripts/template-domain-owners.json). Only the designated lane includes the custom domain in its generated Wrangler configuration. The preview also keeps its existing `workers.dev` URL, with crawler access discouraged by `robots.txt`. The preview URL is in the run summary.
 
 ```sh
 gh workflow run template-workers.yml --ref main -f template=default
-gh workflow run template-workers.yml --ref main -f template=default -f production=true
 ```
 
-The second command rebuilds and checks the current preview before deploying the matching production bundle. The workflow checks Cloudflare custom-domain ownership and DNS before attaching a production domain. If either check reports a conflict, stop and coordinate with the domain owner; do not override it. The production smoke check verifies the home page, a representative template route, the edge API, a build-specific asset, and a 404. If a rollout fails after activation, use Cloudflare's deployment history to identify the last known good version and coordinate recovery for that dedicated Worker. Do not deploy from a workstation.
+**Alias lifecycle:** all nine aliases currently belong to the preview lane. Every preview publish checks ownership first. `production=true` is blocked while an alias is assigned to preview; the main-only merged-PR guard remains in force. A future handoff requires an owner-approved PR changing that slug's policy and tests, retirement of the pinned `template-preview-rollout` workflow, and a coordinated release of the old preview attachment before production claims it. A policy change alone does not authorize taking over an attached hostname: the ownership check still refuses another Worker. Do not run both lanes with the same alias or override an ownership/DNS conflict.
+
+The initial alias attachment uses the authenticated `cf` CLI's native trigger-only path, without rebuilding or uploading code:
+
+```sh
+scratch="$(mktemp -d)"
+node .github/scripts/template-workers.mts domain-triggers default "$scratch"
+(cd "$scratch" && cf workers triggers deploy --prebuilt --worker bascik-template-default-preview --dry-run)
+# After verifying account, existing Worker ownership and absence of DNS conflicts:
+(cd "$scratch" && cf workers triggers deploy --prebuilt --worker bascik-template-default-preview)
+```
+
+Set `CLOUDFLARE_ACCOUNT_ID` to the existing demo account before generating this output. The helper writes native Build Output v0 with `domains`, `workersDev: true`, and `previewUrls: false`. It has no code bundle or D1 bindings and an empty assets directory required by the CLI reader. **Never use this trigger-only output with `cf deploy`, Wrangler deploy/upload/preview, or another code deployment command.** Trigger application preserves the active Worker version and database. Verify all nine HTTPS roots, representative routes, APIs, crawler policy, ownership, and unchanged active deployments. Future code deployments remain CI-only.
 
 Reports needs two dedicated D1 databases, `bascik-template-reports-preview-db` and `bascik-template-reports-db`. Set their IDs in `TEMPLATE_REPORTS_PREVIEW_D1_ID` and `TEMPLATE_REPORTS_PRODUCTION_D1_ID`, and set the separate `TEMPLATE_REPORTS_D1_TOKEN` CI secret with D1 edit and account read on the demo account. CI verifies the name matches the configured ID before loading the scaffold's synthetic data and binding `DB`. Only use these names for fixtures: the seed replaces the demo rows.
 

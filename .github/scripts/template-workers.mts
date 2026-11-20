@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { mergedPullRequest } from "./merged-pull-request.mjs";
 import { parseChecks, smokeTest } from "./smoke-test.mjs";
+import domainOwners from "./template-domain-owners.json" with { type: "json" };
 
 export const TEMPLATE_SLUGS = [
   "default",
@@ -38,11 +39,14 @@ export function templateWorker(slug: string, lane: string) {
     throw new Error(`Unknown deployment lane: ${lane}`);
   const preview = lane === "preview";
   const hostname = `template-${slug}.bascik.dev`;
+  const owner = domainOwners[slug as keyof typeof domainOwners];
+  if (owner !== "preview" && owner !== "production")
+    throw new Error(`Invalid custom domain owner for ${slug}`);
   return {
     name: `bascik-template-${slug}${preview ? "-preview" : ""}`,
     compatibility_date: "2026-08-01",
     compatibility_flags: ["nodejs_compat"],
-    routes: preview ? [] : [{ pattern: hostname, custom_domain: true }],
+    routes: owner === lane ? [{ pattern: hostname, custom_domain: true }] : [],
     workers_dev: preview,
     preview_urls: false,
   };
@@ -163,7 +167,12 @@ export function assertDomainOwner(records: unknown, worker: Worker) {
 
 async function checkDomain(worker: Worker) {
   const [route] = worker.routes;
-  if (!route) throw new Error("Expected a production custom domain");
+  if (!route) {
+    if (worker.workers_dev) return;
+    throw new Error(
+      "Custom domain is not assigned to this Worker; coordinate an explicit ownership handoff",
+    );
+  }
   const { CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: account } =
     process.env;
   if (!token || !account || !/^[a-f0-9]{32}$/i.test(account))
@@ -272,7 +281,7 @@ async function build(slug: string, directory: string) {
     cwd: project,
     env: {
       ...process.env,
-      BASCIK_SITE_URL: `https://${production.routes[0].pattern}`,
+      BASCIK_SITE_URL: `https://template-${slug}.bascik.dev`,
     },
     stdio: "inherit",
   });
@@ -298,6 +307,42 @@ async function build(slug: string, directory: string) {
     }),
   );
   console.log(`Built ${production.name} in ${out}`);
+}
+
+// Build Output v0 for `cf workers triggers deploy --prebuilt` only.
+// No bundle, assets, bindings, or code are uploaded by that command.
+async function domainTriggers(slug: string, directory: string) {
+  const worker = templateWorker(slug, "preview");
+  if (worker.routes.length !== 1)
+    throw new Error("Custom domain is not assigned to this Worker");
+  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+  if (!account || !/^[a-f0-9]{32}$/i.test(account))
+    throw new Error("Cloudflare account ID is missing or invalid");
+  const output = join(directory, ".cloudflare/output/v0");
+  const target = join(output, "workers/default");
+  if (existsSync(join(directory, ".cloudflare")))
+    throw new Error("Trigger-only output requires a fresh directory");
+  // The native reader requires an assets or bundle directory. Leave assets
+  // empty, and never use this output with any code deployment command.
+  await mkdir(join(target, "assets"), { recursive: true });
+  await writeFile(
+    join(output, "config.json"),
+    JSON.stringify({
+      accountId: account,
+      buildContext: { isPreview: false },
+    }),
+  );
+  await writeFile(
+    join(target, "worker.config.json"),
+    JSON.stringify({
+      name: worker.name,
+      compatibilityDate: worker.compatibility_date,
+      compatibilityFlags: worker.compatibility_flags,
+      domains: worker.routes.map((route) => route.pattern),
+      workersDev: worker.workers_dev,
+      previewUrls: worker.preview_urls,
+    }),
+  );
 }
 
 function buildSha() {
@@ -458,8 +503,10 @@ if (import.meta.main) {
         config,
         JSON.stringify({ ...payload, d1_databases: [database] }),
       );
-    } else if (command === "check-domain")
-      await checkDomain(templateWorker(slug, "production"));
+    } else if (command === "domain-triggers" && argument)
+      await domainTriggers(slug, resolve(argument));
+    else if (command === "check-domain")
+      await checkDomain(templateWorker(slug, argument ?? "production"));
     else if (command === "list") {
       const registry = join(repo, "create/dist/templates.js");
       const templates = existsSync(registry)
