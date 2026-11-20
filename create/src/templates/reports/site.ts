@@ -13,6 +13,7 @@ const BASCIK_CONFIG_TS = (
 ) => `import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
+  assets: { inlineStyles: ["src/pages/css/styles.css"] },
   pipeline: {
     // Rebuild pages in dev when a data file or a shared helper changes.
     watchPaths: ["data/reports/", "src/lib/"],
@@ -406,7 +407,7 @@ ${
     expect(await bar.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
   });
 
-  test("touch inspection pins and releases a period without replacing its navigation link", async ({ browser, baseURL }) => {
+  test("touch chart months pin while linked table rows navigate", async ({ browser, baseURL }) => {
     const context = await browser.newContext({ baseURL, hasTouch: true, viewport: { width: 390, height: 844 } });
     const page = await context.newPage();
     await page.goto("/compare");
@@ -415,12 +416,13 @@ ${
     const row = chart.getByRole("row", { name: /^September 2026/ });
     const bounds = (await row.boundingBox())!;
     const position = { x: Math.min(bounds.width - 12, 250), y: bounds.height / 2 };
-    await row.tap({ position });
+    await button.tap();
     await expect(button).toHaveAttribute("aria-pressed", "true");
     await expect(chart.locator('svg > g[data-active="true"]')).toHaveAttribute("data-chart-key", "2026-09");
-    await row.tap({ position });
+    await button.tap();
     await expect(button).toHaveAttribute("aria-pressed", "false");
-    await chart.getByRole("link", { name: "September 2026", exact: true }).tap();
+    await expect(row.getByRole("button")).toHaveCount(0);
+    await row.tap({ position });
     await expect(page).toHaveURL("/reports/2026-09");
     await context.close();
   });
@@ -478,7 +480,7 @@ ${
     );
     const comparison = page.getByTestId("period-comparison");
     await expect(
-      comparison.getByRole("img", { name: /^Revenue by period/ }),
+      comparison.getByRole("group", { name: /^Revenue by period/ }),
     ).toBeVisible();
 
     const periods = page.getByTestId("period-comparison-periods");
@@ -674,6 +676,9 @@ const CSS_STYLES_CSS = `/* ── Tokens ── */
   --r-sm: 8px;
   --page: 1200px;
 }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+.theme-switching * { transition: none !important; }
 
 /* ── Base ── */
 body {
@@ -998,6 +1003,10 @@ cite {
     outline: 2px solid var(--link);
     outline-offset: -2px;
   }
+    .chart g:has(.chart-inspect:focus-visible) .chart-bar {
+      stroke: var(--text);
+      stroke-width: 3;
+    }
 }
 .chart-bar-muted {
   fill: var(--chart-muted);
@@ -1032,7 +1041,8 @@ cite {
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
-.chart-figure .data-table tr:has(.chart-inspect) {
+.chart-figure .data-table tr:has(.chart-inspect),
+.chart-figure .data-table tr:has(.period-link) {
   position: relative;
   cursor: pointer;
 }
@@ -1047,8 +1057,10 @@ cite {
   opacity: 0;
   cursor: pointer;
 }
-.chart-figure .data-table a {
-  position: relative;
+.chart-figure .data-table .period-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
   z-index: 2;
 }
 
@@ -1177,17 +1189,6 @@ cite {
 }
 
 @media screen and (prefers-reduced-motion: no-preference) {
-  @keyframes settle-in {
-    from {
-      scale: 0.97;
-      opacity: 0;
-    }
-    to {
-      scale: 1;
-      opacity: 1;
-    }
-  }
-
   a,
   button {
     transition:
@@ -1199,9 +1200,6 @@ cite {
   button:active,
   .button:active {
     scale: 0.97;
-  }
-  .masthead {
-    animation: settle-in 420ms ease-out both;
   }
 }
 

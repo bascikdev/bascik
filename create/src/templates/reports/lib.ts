@@ -101,7 +101,7 @@ describe("barChart", () => {
   it("cuts a long label and keeps the whole of it in the tooltip", () => {
     const label = "Bascik Prototype 63 and Other Places";
     const svg = flat(barChart("Long", [item(label, 1)]));
-    expect(svg).toContain(">A Field Guide to Qu…</text>");
+    expect(svg).toContain(">Bascik Prototype 63…</text>");
     expect(svg).toContain(\`<title>\${label}: $1</title>\`);
   });
 });

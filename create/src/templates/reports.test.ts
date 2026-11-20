@@ -65,6 +65,21 @@ const flat = (markup: unknown): string =>
 // ─── The template as text ─────────────────────────────────────────────────────
 
 describe("reports template", () => {
+  it("inlines global styles and does not animate initial content", () => {
+    expect(file("bascik.config.ts")).toContain(
+      'inlineStyles: ["src/pages/css/styles.css"]',
+    );
+    expect(file("src/pages/css/styles.css")).not.toContain("settle-in");
+  });
+
+  it("provides an icon-only theme control without a decorative brand square", () => {
+    const header = file("src/components/site-header/site-header.html");
+    expect(header).toContain('data-testid="site-header-theme"');
+    expect(header).not.toContain(".brand::before");
+    expect(file("src/components/site-meta/site-meta.html")).toContain(
+      "localStorage",
+    );
+  });
   it("is registered under its name with the documented summary", () => {
     expect(templateNamed("reports")).toBe(REPORTS_TEMPLATE);
     expect(TEMPLATES).toContain(REPORTS_TEMPLATE);
@@ -259,7 +274,7 @@ describe("reports template pages", () => {
     const meta = file("src/components/site-meta/site-meta.html");
     expect(meta).toContain('charset="UTF-8"');
     expect(meta).toContain('href="/assets/favicon.svg"');
-    expect(meta).toContain('href="/css/styles.css"');
+    expect(meta).not.toContain('href="/css/styles.css"');
     expect(meta).not.toContain('name="description"');
   });
 

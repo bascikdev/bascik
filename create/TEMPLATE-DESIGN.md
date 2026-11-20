@@ -2,6 +2,8 @@
 
 This is the visual contract for the templates shipped by `create-bascik`. Read it before changing `src/scaffold.ts` or `src/templates/`. The templates share accessible foundations, not one visual skin. Each should look designed for its job rather than like a recolored admin theme.
 
+Repository-only design guidance lives in `.github/skills/bascik-ui/SKILL.md` and `.github/skills/bascik-ux/SKILL.md`. These internal skills are not part of public skill installation.
+
 ## Shared principles
 
 - Use semantic HTML and CSS first. Keep native links, buttons, forms, tables, figures, and disclosure elements. Add JavaScript only where HTML and CSS do not provide the needed behavior.
@@ -11,6 +13,8 @@ This is the visual contract for the templates shipped by `create-bascik`. Read i
 - Prefer quiet, layered contrast and intentional whitespace over repeated bordered cards, gratuitous gradients, glass, gloss, bevels, pills, or Bootstrap-like grids.
 - Preserve routes, form behavior, data, keyboard access, test hooks, and useful no-JavaScript fallbacks.
 - Use data that is clearly illustrative. Do not attribute fictional work, products, quotes, or books to real people or companies.
+- Use plain template slug names, including `shop`, `reports`, and `dashboard`. Preserve the canonical Bascik favicon without recoloring it.
+- Provide an accessible icon-only light/dark toggle, restore the saved scheme before paint, and inline global `styles.css` through Bascik's `assets.inlineStyles` option. Navigation has no resting underline; retain clear hover and keyboard-focus feedback.
 
 ## Template directions
 
@@ -30,7 +34,7 @@ These are different design systems, not a checklist to force onto every branch. 
 
 ## Motion and interaction
 
-- Entrances start at `scale: 0.97` with `opacity: 0`, never at zero scale. Keep entrances brief and opt them out under `prefers-reduced-motion: reduce`.
+- Above-fold content paints immediately with no initial opacity, entrance, or flash animation. Reserve entrances for user-triggered panels or appropriate below-fold content; keep them brief and opt them out under `prefers-reduced-motion: reduce`.
 - Pressable buttons use `button:active { scale: 0.97; }` with `transition: scale 150ms ease-out`. Apply the same behavior to button-styled links when appropriate.
 - A rejected password shakes horizontally through `0, -10, 10, -6, 6, -3, 0px` over 360ms and also changes to an error state.
 - Steppers slide the next step from the direction of travel instead of crossfading.
@@ -47,6 +51,13 @@ These are different design systems, not a checklist to force onto every branch. 
 - The table of contents links to preserved Markdown heading IDs. `IntersectionObserver` updates the visible current link and its `aria-current`; fragment links work without JavaScript.
 - The sidebar marks the current page and remains usable without JavaScript. At small widths, a labeled button progressively enhances it into a collapsible navigation.
 - Use native `<dialog>` behavior for focus, Escape, and the top layer. Do not rebuild those browser features with a custom overlay or focus trap.
+
+## Reports-template behavior
+
+- Retain SQLite/D1 request-time report rendering and the static Netlify variant.
+- A navigable month table row has one real link whose pointer target fills the row. It navigates to the monthly report and never pins a chart selection.
+- Clicking a chart month pins inspection; Escape clears it. Hover and keyboard focus can temporarily highlight linked chart/table data without replacing navigation.
+- Keep the reports brand typographic, without a decorative square glyph.
 
 ## Verification
 

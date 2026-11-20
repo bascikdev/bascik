@@ -67,13 +67,29 @@ const entries = Array.from(root.querySelectorAll<SVGGElement>("svg > g"), (bar) 
   if (!row) throw new Error("Chart item has no matching table row: " + bar.dataset.chartKey);
   const label = bar.querySelector("title")!.textContent!;
   const header = row.cells[0];
+  const link = header.querySelector<HTMLAnchorElement>("a");
   const button = document.createElement("button");
   button.type = "button";
   button.className = "chart-inspect";
   button.setAttribute("aria-label", label + " (inspect)");
   button.setAttribute("aria-pressed", "false");
   button.setAttribute("data-testid", "chart-explorer-inspect");
-  header.append(button);
+  if (link) {
+    link.classList.add("period-link");
+    // A native HTML button over the SVG month owns inspection. The table keeps
+    // exactly one ordinary link, whose stretched target navigates the whole row.
+    const bounds = bar.getBBox();
+    const overlay = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
+    overlay.setAttribute("x", String(bounds.x));
+    overlay.setAttribute("y", String(bounds.y));
+    overlay.setAttribute("width", String(bounds.width));
+    overlay.setAttribute("height", String(bounds.height));
+    overlay.append(button);
+    bar.append(overlay);
+    bar.parentElement!.setAttribute("role", "group");
+  } else {
+    header.append(button);
+  }
   return { bar, row, button, label };
 });
 
@@ -81,7 +97,7 @@ type Entry = (typeof entries)[number];
 let hovered: Entry | undefined;
 let focused: Entry | undefined;
 let pinned: Entry | undefined;
-const hint = "Hover bars. Select a row to pin; Escape to clear.";
+const hint = "Hover to inspect. Select a chart month to pin; linked rows open reports. Escape to clear.";
 const render = () => {
   const active = pinned ?? hovered ?? focused;
   root.dataset.inspecting = String(Boolean(active));
@@ -111,6 +127,20 @@ for (const entry of entries) {
   });
   entry.button.addEventListener("click", () => {
     pinned = pinned === entry ? undefined : entry;
+    render();
+  });
+  entry.bar.addEventListener("click", (event) => {
+    if (event.target instanceof Node && entry.button.contains(event.target)) return;
+    pinned = pinned === entry ? undefined : entry;
+    render();
+  });
+  entry.button.addEventListener("focus", () => {
+    focused = entry;
+    hovered = undefined;
+    render();
+  });
+  entry.button.addEventListener("blur", () => {
+    focused = undefined;
     render();
   });
 }
@@ -1217,9 +1247,8 @@ describe("tables", () => {
 
   it("ends every table with the same total, which is the report's headline figure", () => {
     expect(markup.split("<tfoot>")).toHaveLength(4);
-    expect(
-      markup.split('<td class="num">15</td><td class="num">$263.97</td>'),
-    ).toHaveLength(4);
+    for (const [footer] of markup.matchAll(/<tfoot>[\\s\\S]*?<\\/tfoot>/g))
+      expect(footer).toContain('<td class="num">15</td><td class="num">$263.97</td>');
   });
 
   it("lists each line with its format and channel", () => {
@@ -1366,17 +1395,24 @@ ${SKIP_LINK_CSS}
     overflow-wrap: anywhere;
     text-decoration: none;
   }
-  .brand::before {
-    content: "";
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    margin-right: 12px;
-    border: 0;
-    border-radius: 2px;
-    vertical-align: middle;
-    background: var(--chart);
+  .theme {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    color: var(--text);
+    background: var(--surface);
+    cursor: pointer;
   }
+  .theme[hidden] { display: none; }
+  .theme:focus-visible { outline: 3px solid var(--link); outline-offset: 3px; }
+  .theme svg { width: 20px; height: 20px; }
+  .moon { display: none; }
+  .theme[aria-pressed="true"] .sun { display: none; }
+  .theme[aria-pressed="true"] .moon { display: block; }
 
   ul {
     display: flex;
@@ -1438,8 +1474,39 @@ ${SKIP_LINK_CSS}
         <a href="/compare" data-testid="site-header-compare">Compare periods</a>
       </li>
     </ul>
+    <button id="theme" class="theme" type="button" hidden aria-label="Switch to dark theme"
+      aria-pressed="false" data-testid="site-header-theme">
+      <svg class="sun" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4L19 5" />
+      </svg>
+      <svg class="moon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7">
+        <path d="M20 15.5A8.5 8.5 0 0 1 8.5 4a8.5 8.5 0 1 0 11.5 11.5Z" />
+      </svg>
+    </button>
   </nav>
 </header>
+<script type="text/typescript">
+  const toggle = document.getElementById("theme") as HTMLButtonElement;
+  const root = document.documentElement;
+  const preference = matchMedia("(prefers-color-scheme: dark)");
+  const render = () => {
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : preference.matches;
+    toggle.setAttribute("aria-pressed", String(dark));
+    toggle.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+  };
+  toggle.addEventListener("click", () => {
+    const theme = toggle.getAttribute("aria-pressed") === "true" ? "light" : "dark";
+    root.classList.add("theme-switching");
+    root.dataset.theme = theme;
+    try { localStorage.setItem("bascik-reports-theme", theme); } catch { /* Still switch this page. */ }
+    render();
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+  });
+  preference.addEventListener("change", render);
+  render();
+  toggle.hidden = false;
+</script>
 `;
 
 /** `src/components/site-header/site-header.test.ts` */
@@ -1495,16 +1562,16 @@ const html = flat(
 );
 
 describe("site-meta component", () => {
-  it("has the charset, viewport, icons and stylesheet every page shares", () => {
+  it("has the charset, viewport and canonical icons without an external CSS link", () => {
     for (const part of [
       'charset="UTF-8"',
       'name="viewport"',
       "favicon.ico",
       "favicon.svg",
       "apple-touch-icon.png",
-      "/css/styles.css",
     ])
       expect(html).toContain(part);
+    expect(html).not.toContain('rel="stylesheet"');
   });
 
   it("leaves the title and description to each page's pageHead()", () => {
