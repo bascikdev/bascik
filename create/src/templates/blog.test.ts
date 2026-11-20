@@ -205,7 +205,7 @@ describe("blog template: pages and components", () => {
 
   it("writes every script in TypeScript", () => {
     for (const path of [...pages, ...components])
-      for (const [tag] of file(path).matchAll(/<script\b[^>]*>/g))
+      for (const [tag] of file(path).matchAll(/<script\b[^>]*>/gi))
         expect(tag, path).toContain('type="text/typescript"');
     expect(pathsMatching(/\.(m?js|cjs)$/)).toEqual([]);
   });
