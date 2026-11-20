@@ -128,5 +128,5 @@ export const DOCS_TEMPLATE: StarterTemplate = {
     "A documentation site: searchable Markdown pages, responsive navigation, and an active table of contents",
   directories: docsDirectories,
   files: docsFiles,
-  dependencies: { marked: "^18.1.3" },
+  dependencies: { marked: "^18.2.0" },
 };

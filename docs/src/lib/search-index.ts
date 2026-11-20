@@ -70,8 +70,10 @@ export const SEARCH_INDEX_FILE_PATTERN = /^search-index\.[0-9a-f]{10}\.json$/;
  * and the custom adapter tutorial's job runner handles them (the index measures 1,475,024 bytes).
  * 1.50 MB: the throw-non-error rule, on the Linter, Troubleshooting, Build Scripts and VS Code
  * extension pages (the index measures 1,490,629 bytes).
+ * 1.52 MB: the 1.0.1 release docs merged with the create-bascik 1.1.0 templates on the CLI page
+ * (the index measures 1,501,707 bytes).
  */
-export const SEARCH_INDEX_MAX_BYTES = 1_500_000;
+export const SEARCH_INDEX_MAX_BYTES = 1_520_000;
 
 /** The longest text kept for one section, in characters. */
 const MAX_TEXT = 2000;
