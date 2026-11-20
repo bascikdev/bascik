@@ -75,6 +75,10 @@ The `feature-card` component demonstrates named slots and semantic selectors, wi
 
 After scaffolding, the CLI asks whether to install the agent skills, then offers to run `npm install` and `npm run dev`. All three default to yes, `-y` answers yes to each, and `--no-skills`, `--no-install` and `--no-dev` skip one. The dev server question is skipped when the install is, and `npm run dev` runs only when `npm install` exits 0; otherwise the CLI prints the next steps, `npm install` included.
 
+## Documentation template
+
+The `docs` starter opens its first Markdown guide directly at `/`; subsequent guides use `/docs/<slug>`. All docs pages share the same searchable shell, scroll-aware table of contents, and previous/next navigation. Its config inlines global CSS with `assets.inlineStyles`, watches Markdown and helpers, and excludes directory-reading scripts from the build cache. The head initializes a saved theme before paint, and an icon-only button updates it. Content has no initial entrance animation.
+
 ## Agent skills
 
 The skills are not bundled in the package. On yes, the CLI runs the pinned skills CLI in the new project:

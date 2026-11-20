@@ -2,20 +2,16 @@
  * @module templates/docs
  *
  * The `docs` template: a documentation site. Each Markdown file in
- * `content/docs/` becomes a page through one dynamic route template,
+ * `content/docs/` becomes a page. The first guide is the root; the rest use a dynamic route template,
  * `src/pages/docs/[slug].html`, whose routes script reads the files with
  * `getDocs()` from `src/lib/docs.ts`. The sidebar order is `SIDEBAR` in
  * `src/lib/sidebar.ts`; search and the active table of contents come from each
  * page's content and headings.
  *
- * It writes two things outside `src/`: the Markdown in `content/docs/` and a
- * `bascik.config.ts` whose only setting is `pipeline.watchPaths`, so the dev
- * server rebuilds when a Markdown page or a `src/lib/` helper changes.
+ * Its config inlines global CSS, watches content, and disables caching for directory readers.
  */
 
 import {
-  FEATURE_CARD_HTML,
-  FEATURE_CARD_TEST,
   type StarterTemplate,
   type TemplateContext,
   type TemplateFile,
@@ -26,6 +22,8 @@ import {
   DOCS_CONTENT_DIR,
   DOCS_MODULE,
   DOCS_MODULE_TEST,
+  CURRENT_DOC_MODULE,
+  CURRENT_DOC_MODULE_TEST,
   HEAD_MODULE,
   HEAD_MODULE_TEST,
   MARKDOWN_MODULE,
@@ -56,24 +54,17 @@ import {
   DOCS_TOC_HTML,
   DOCS_TOC_SCRIPT_TS,
   DOCS_TOC_TEST,
-  HOME_FEATURES_TEST,
-  HOME_HERO_HTML,
-  HOME_HERO_TEST,
+  DOCS_THEME_TOGGLE_HTML,
+  DOCS_THEME_TOGGLE_TEST,
   docsE2eSpec,
-  homeFeatures,
 } from "./docs/site.js";
 
 /** The template's components: each is a folder with its template and a test. */
-const components = ({ adapter }: Pick<TemplateContext, "adapter"> = {}): Record<
-  string,
-  [template: string, test: string]
-> => ({
+const components = (): Record<string, [template: string, test: string]> => ({
   "site-meta": [DOCS_SITE_META_HTML, DOCS_SITE_META_TEST],
   "site-header": [DOCS_SITE_HEADER_HTML, DOCS_SITE_HEADER_TEST],
   "site-footer": [DOCS_SITE_FOOTER_HTML, DOCS_SITE_FOOTER_TEST],
-  "home-hero": [HOME_HERO_HTML, HOME_HERO_TEST],
-  "home-features": [homeFeatures({ adapter }), HOME_FEATURES_TEST],
-  "feature-card": [FEATURE_CARD_HTML, FEATURE_CARD_TEST],
+  "theme-toggle": [DOCS_THEME_TOGGLE_HTML, DOCS_THEME_TOGGLE_TEST],
   "docs-search": [DOCS_SEARCH_HTML, DOCS_SEARCH_TEST],
   "docs-sidebar": [DOCS_SIDEBAR_HTML, DOCS_SIDEBAR_TEST],
   "docs-article": [DOCS_ARTICLE_HTML, DOCS_ARTICLE_TEST],
@@ -108,6 +99,8 @@ const docsFiles = ({ siteName, adapter }: TemplateContext): TemplateFile[] => [
   ["src/lib/markdown.test.ts", MARKDOWN_MODULE_TEST],
   ["src/lib/docs.ts", DOCS_MODULE],
   ["src/lib/docs.test.ts", DOCS_MODULE_TEST],
+  ["src/lib/current-doc.ts", CURRENT_DOC_MODULE],
+  ["src/lib/current-doc.test.ts", CURRENT_DOC_MODULE_TEST],
   ["src/components/docs-search/docs-search.ts", DOCS_SEARCH_SCRIPT_TS],
   ["src/components/docs-toc/docs-toc.ts", DOCS_TOC_SCRIPT_TS],
 
@@ -120,7 +113,7 @@ const docsFiles = ({ siteName, adapter }: TemplateContext): TemplateFile[] => [
   ["src/pages/404.html", DOCS_NOT_FOUND_PAGE],
 
   // Components
-  ...Object.entries(components({ adapter })).flatMap(
+  ...Object.entries(components()).flatMap(
     ([name, [template, test]]): TemplateFile[] => [
       [`src/components/${name}/${name}.html`, template],
       [`src/components/${name}/${name}.test.ts`, test],

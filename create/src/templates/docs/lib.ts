@@ -14,6 +14,9 @@ export const DOCS_CONTENT_DIR = "content/docs";
 export const DOCS_BASCIK_CONFIG = `import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
+  assets: {
+    inlineStyles: ["src/pages/css/styles.css"],
+  },
   pipeline: {
     // Rebuild pages in the dev server when a Markdown page or a helper in src/lib/ changes.
     watchPaths: ["content/", "src/lib/"],
@@ -21,7 +24,7 @@ export default defineConfig({
   scripts: {
     // These scripts read a directory, so their output cannot be safely cached by imported-file contents.
     cache: {
-      exclude: ["src/components/docs-search/**", "src/pages/docs/**"],
+      exclude: ["src/components/docs-*/**", "src/pages/docs/**", "src/pages/index.html"],
     },
   },
 });
@@ -255,7 +258,7 @@ import { parseFrontMatter, renderMarkdown, slugify } from './markdown.ts';
 
 describe('parseFrontMatter', () => {
   it('reads key: value lines and returns the Markdown below them', () => {
-    const { data, body } = parseFrontMatter('---\ntitle: "Braking zones"\ndescription: Every reference.\n---\n\nHello');
+    const { data, body } = parseFrontMatter('---\\ntitle: "Braking zones"\\ndescription: Every reference.\\n---\\n\\nHello');
     expect(data).toEqual({ title: 'Braking zones', description: 'Every reference.' });
     expect(body.trim()).toBe('Hello');
   });
@@ -298,7 +301,7 @@ describe('renderMarkdown', () => {
   });
 
   it('builds a valid id and plain text from a heading with HTML characters and Markdown', () => {
-    const { html, headings } = renderMarkdown('## The \`<channel>\` tag & "quotes" in *data*\n', 'page.md');
+    const { html, headings } = renderMarkdown('## The \`<channel>\` tag & "quotes" in *data*\\n', 'page.md');
     expect(headings).toEqual([{ id: 'the-channel-tag-quotes-in-data', text: 'The <channel> tag & "quotes" in data', depth: 2 }]);
     expect(html).toContain('id="the-channel-tag-quotes-in-data"');
     expect(html).toContain('<code>&lt;channel&gt;</code>');
@@ -337,13 +340,12 @@ export const SIDEBAR: SidebarGroup[] = [
   },
 ];
 
-/** The URL of a page: ${DOCS_CONTENT_DIR}/getting-started.md is served at /docs/getting-started. */
-export const docHref = (slug: string): string => \`/docs/\${slug}\`;
+/** The introductory guide is the root page; the other guides live under /docs/. */
+export const docHref = (slug: string): string =>
+  slug === SIDEBAR[0]?.pages[0] ? "/" : \`/docs/\${slug}\`;
 
-/** Where "Docs" links go: the first page of the sidebar. */
-export const DOCS_HOME: string = SIDEBAR[0]?.pages[0]
-  ? docHref(SIDEBAR[0].pages[0])
-  : "/";
+/** Where "Docs" links go: the introductory guide at the root. */
+export const DOCS_HOME: string = "/";
 `;
 
 /** `src/lib/docs.ts`: the reader of `content/docs/`, and what each page is handed. */
@@ -473,18 +475,28 @@ export async function getDocs(dir: string = DOCS_DIR): Promise<DocPage[]> {
   );
   return orderDocs(docs);
 }
+`;
+
+/** Context-dependent rendering stays out of the build-once search directory reader. */
+export const CURRENT_DOC_MODULE = `import { getDocs, type DocPage } from "./docs.ts";
 
 /**
  * The page being built. Bascik passes each page of src/pages/docs/[slug].html its route data in BASCIK_ROUTE,
  * so the docs components (sidebar, article, table of contents, previous and next) read it here.
  */
-export function currentDoc(): DocPage {
+export async function currentDoc(): Promise<DocPage> {
   const route = JSON.parse(process.env.BASCIK_ROUTE || "{}") as {
     data?: DocPage;
   };
+  // The static root uses the first guide, while bracket routes supply their own data.
+  if (!route.data && process.env.BASCIK_PAGE_PATH === "/") {
+    const first = (await getDocs())[0];
+    if (!first) throw new Error("The docs site needs an introductory guide.");
+    return first;
+  }
   if (!route.data) {
     throw new Error(
-      "currentDoc() found no page: the docs components only work on src/pages/docs/[slug].html.",
+      "currentDoc() found no page: the docs components only work on the root or src/pages/docs/[slug].html.",
     );
   }
   return route.data;
@@ -492,7 +504,7 @@ export function currentDoc(): DocPage {
 `;
 
 export const DOCS_MODULE_TEST = `import { describe, it, expect } from 'vitest';
-import { currentDoc, getDocs, orderDocs, toDoc, type Doc } from './docs.ts';
+import { getDocs, orderDocs, toDoc, type Doc } from './docs.ts';
 import { DOCS_HOME, SIDEBAR } from './sidebar.ts';
 
 const doc = (slug: string): Doc => toDoc(slug, \`---\\ntitle: \${slug}\\ndescription: About \${slug}.\\n---\\n\\n## Section\\n\`);
@@ -506,7 +518,7 @@ describe('the pages in content/docs', () => {
       expect(page.description).not.toBe('');
       expect(page.html).not.toBe('');
     }
-    expect(DOCS_HOME).toBe(\`/docs/\${pages[0].slug}\`);
+    expect(DOCS_HOME).toBe("/");
   });
 
   it('link each page to the one before and after it', async () => {
@@ -558,12 +570,48 @@ describe('orderDocs', () => {
   });
 });
 
+`;
+
+export const CURRENT_DOC_MODULE_TEST = `import { describe, it, expect } from "vitest";
+import { currentDoc } from "./current-doc.ts";
+import { getDocs } from "./docs.ts";
+import { SIDEBAR } from "./sidebar.ts";
+
 describe('currentDoc', () => {
-  it('explains itself when a component is used outside the docs page template', () => {
+  it('reads the first guide for the static root and keeps its neighbors', async () => {
+    const route = process.env.BASCIK_ROUTE;
+    const path = process.env.BASCIK_PAGE_PATH;
+    delete process.env.BASCIK_ROUTE;
+    process.env.BASCIK_PAGE_PATH = "/";
+    try {
+      const page = await currentDoc();
+      expect(page.slug).toBe(SIDEBAR[0].pages[0]);
+      expect(page.previous).toBeUndefined();
+      expect(page.next?.href).toBe("/docs/writing-pages");
+    } finally {
+      if (route === undefined) delete process.env.BASCIK_ROUTE;
+      else process.env.BASCIK_ROUTE = route;
+      if (path === undefined) delete process.env.BASCIK_PAGE_PATH;
+      else process.env.BASCIK_PAGE_PATH = path;
+    }
+  });
+
+  it('uses supplied route data for the remaining guides', async () => {
+    const route = process.env.BASCIK_ROUTE;
+    const page = (await getDocs())[1];
+    process.env.BASCIK_ROUTE = JSON.stringify({ data: page });
+    try { expect(await currentDoc()).toEqual(page); }
+    finally {
+      if (route === undefined) delete process.env.BASCIK_ROUTE;
+      else process.env.BASCIK_ROUTE = route;
+    }
+  });
+
+  it('explains itself when a component is used outside the docs page template', async () => {
     const before = process.env.BASCIK_ROUTE;
     delete process.env.BASCIK_ROUTE;
     try {
-      expect(() => currentDoc()).toThrow('only work on src/pages/docs/[slug].html');
+      await expect(currentDoc()).rejects.toThrow('only work on the root or src/pages/docs/[slug].html');
     } finally {
       if (before !== undefined) process.env.BASCIK_ROUTE = before;
     }

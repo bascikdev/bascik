@@ -18,6 +18,7 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
+- `create-bascik`: docs now opens directly in the introductory Markdown guide at `/`, with the existing searchable sidebar, active table of contents, and pagination. Its icon-only theme control persists both schemes, global CSS is inlined without a stylesheet request, navigation has no resting underline, and content paints without entrance animation. The shared SVG favicon is restored to canonical Bascik geometry and colors.
 - `create-bascik`: the default starter and adapter variants use a warm paper-and-ink design system with moss accents, quieter surfaces, clearer typography, and reduced-motion-aware button feedback.
 - Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).
 - `create-bascik`: the docs template has a searchable header dialog, a responsive docs layout, and a table of contents that highlights the current section.

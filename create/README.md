@@ -90,10 +90,14 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 
 `--template <name>` picks the kind of site. Any template takes any adapter (`--template default --adapter netlify`).
 
-| Template  | What you get                                                                                                                                       |
-| :-------- | :------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static`                                                                     |
-| `docs`    | A documentation site: one page per Markdown file in `content/docs/`, sidebar navigation, an on-page table of contents, and previous and next links |
+| Template  | What you get                                                                                                                            |
+| :-------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static`                                                          |
+| `docs`    | Documentation directly at `/`: Markdown guides, searchable sidebar navigation, an active table of contents, and previous and next links |
+
+For a plain slug brand, scaffold with `npm create bascik docs -- --template docs`. The folder name is used unchanged as the site name. The first sidebar entry in `src/lib/sidebar.ts` becomes `/`; the remaining guides use `/docs/<slug>`. The sample guides explain how to customize the template, rather than sending readers through a separate landing page.
+
+The docs template includes an accessible icon-only theme control, initializes the saved theme before paint, and keeps the canonical Bascik favicon. Global `src/pages/css/styles.css` is inlined through `assets.inlineStyles` in its config, without a stylesheet link or request. Navigation has no resting underline, and content appears immediately without entrance animations; interaction motion respects reduced motion.
 
 `--template cloudflare` and `--template netlify`, the spelling before `create-bascik` 1.1.0, still work and mean the same as `--adapter`. Naming two different adapters with the two flags is an error.
 

@@ -9,7 +9,7 @@ title: Getting started
 description: Run the documentation site locally, build it, and replace the sample content.
 ---
 
-This starter gives you a documentation site with Markdown pages, generated routes, a sidebar, a table of contents, and search. Most content changes happen in \`content/docs/\`.
+This starter opens directly in documentation, with Markdown pages, generated routes, a sidebar, a table of contents, and search. This introductory guide is served at \`/\`; the remaining guides use \`/docs/<file-name>\`. Most content changes happen in \`content/docs/\`.
 
 ## Start the dev server
 
@@ -44,7 +44,7 @@ title: Writing pages
 description: Add Markdown guides with page metadata, useful headings, and working links.
 ---
 
-Each Markdown file in \`content/docs/\` becomes one page at \`/docs/<file-name>\`. The file name becomes the route, so use lowercase words joined by hyphens.
+Each Markdown file in \`content/docs/\` becomes one page. The first sidebar entry is the root guide at \`/\`; the remaining files use \`/docs/<file-name>\`. Use lowercase file names joined by hyphens.
 
 ## Add a page
 
@@ -111,7 +111,7 @@ Edit \`site-header\` and \`site-footer\` for shared navigation and site informat
 
 ## Adjust the visual system
 
-The global tokens and documentation layout live in \`src/pages/css/styles.css\`. Components keep their own styles beside their markup. Change the tokens first, then tune the Markdown styles under \`.prose\`.
+The global tokens and documentation layout live in \`src/pages/css/styles.css\`. Bascik inlines this file through \`assets.inlineStyles\` in \`bascik.config.ts\`, so the compiled pages need no separate stylesheet request. Components keep their own styles beside their markup. Change the tokens first, then tune the Markdown styles under \`.prose\`. The icon-only theme control saves the reader's preference, which the head initializes before paint.
 
 ### Keep content readable
 

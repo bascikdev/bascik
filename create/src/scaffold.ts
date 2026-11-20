@@ -560,8 +560,8 @@ code {
 // ─── Components ───────────────────────────────────────────────────────────────
 
 export const FAVICON_SVG = `<svg viewBox="0 0 32 32" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
-  <polygon points="9,2 30,2 23,30 2,30" fill="#42664d" />
-  <rect x="15" y="9" width="2" height="14" rx="1" fill="#fffefa" />
+  <polygon points="10,3 28,3 23,29 4,29" fill="#d3ff8d" />
+  <rect x="15" y="9" width="2" height="14" rx="1" fill="#0e0f10" />
 </svg>
 `;
 

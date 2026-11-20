@@ -4,7 +4,6 @@
  */
 
 import {
-  HOST_RUNTIME,
   SITE_FOOTER_CSS,
   SITE_HEADER_CSS,
   SITE_META_HTML,
@@ -43,13 +42,10 @@ export const DOCS_STYLES_CSS = `${STYLES_CSS}
 }
 
 body { background: var(--surface); line-height: 1.65; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 header { background: var(--surface); }
-.feature-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-  gap: 20px;
-  margin-top: 28px;
-}
+nav a, .logo { text-decoration: none; }
 
 /* ── Docs layout ── */
 .docs-layout {
@@ -120,9 +116,74 @@ header { background: var(--surface); }
  * The default template's head tags without its site-wide description: every
  * page of this template prints its own with `pageHead()`.
  */
-export const DOCS_SITE_META_HTML = SITE_META_HTML.split("\n")
-  .filter((line) => !line.includes('name="description"'))
-  .join("\n");
+export const DOCS_SITE_META_HTML =
+  SITE_META_HTML.split("\n")
+    .filter(
+      (line) =>
+        !line.includes('name="description"') &&
+        !line.includes('rel="stylesheet"'),
+    )
+    .join("\n") +
+  `<script type="text/typescript">
+  try {
+    const theme = localStorage.getItem("theme");
+    if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  } catch {}
+</script>
+`;
+
+/** Icon-only, progressively enhanced control. Its accessible name stays stable. */
+export const DOCS_THEME_TOGGLE_HTML = `<style>
+.button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; flex-shrink: 0;
+  padding: 10px; border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text); cursor: pointer;
+}
+.button[hidden] { display: none; }
+.button:hover { background: var(--elevated); }
+.icon { width: 20px; height: 20px; }
+.sun { display: none; }
+.button[aria-pressed="true"] .moon { display: none; }
+.button[aria-pressed="true"] .sun { display: block; }
+</style>
+<button id="theme" class="button" type="button" aria-label="Toggle dark mode" aria-pressed="false" data-testid="theme-toggle" hidden>
+  <svg class="icon moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.8 13.2A9 9 0 0 1 10.8 3.2a9 9 0 1 0 10 10Z" /></svg>
+  <svg class="icon sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg>
+</button>
+<script type="text/typescript">
+  const button = document.getElementById("theme") as HTMLButtonElement;
+  const root = document.documentElement;
+  const preference = matchMedia("(prefers-color-scheme: dark)");
+  const sync = (): void => {
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : preference.matches;
+    button.setAttribute("aria-pressed", String(dark));
+  };
+  sync();
+  button.hidden = false;
+  preference.addEventListener("change", sync);
+  button.addEventListener("click", () => {
+    root.classList.add("theme-switching");
+    const theme = button.getAttribute("aria-pressed") === "true" ? "light" : "dark";
+    root.dataset.theme = theme;
+    try { localStorage.setItem("theme", theme); } catch {}
+    sync();
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+  });
+</script>
+`;
+
+export const DOCS_THEME_TOGGLE_TEST = `import { describe, it, expect } from "vitest";
+import { readFile } from "node:fs/promises";
+describe("theme-toggle", () => {
+  it("provides a labeled icon button and preserves the selected theme", async () => {
+    const html = await readFile("src/components/theme-toggle/theme-toggle.html", "utf8");
+    expect(html).toContain('aria-label="Toggle dark mode"');
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain('localStorage.setItem("theme", theme)');
+  });
+});
+`;
 
 export const DOCS_SITE_META_TEST = `import { describe, it, expect } from 'vitest';
 import { readFile } from 'node:fs/promises';
@@ -131,14 +192,15 @@ import { join } from 'node:path';
 describe('site-meta component', () => {
   const path = join(process.cwd(), 'src/components/site-meta/site-meta.html');
 
-  it('contains charset, viewport, favicon, and stylesheet link tags', async () => {
+  it('contains charset, viewport, canonical favicons, and pre-paint theme initialization', async () => {
     const html = await readFile(path, 'utf8');
     expect(html).toContain('charset="UTF-8"');
     expect(html).toContain('name="viewport"');
     expect(html).toContain('favicon.ico');
     expect(html).toContain('favicon.svg');
     expect(html).toContain('apple-touch-icon.png');
-    expect(html).toContain('styles.css');
+    expect(html).not.toContain('rel="stylesheet"');
+    expect(html).toContain('localStorage.getItem("theme")');
   });
 
   it('leaves the title and description to each page', async () => {
@@ -199,6 +261,7 @@ ${DOCS_SITE_HEADER_CSS}</style>
           </ul>\`;
       </script>
       <docs-search />
+      <theme-toggle />
     </nav>
   </div>
 </header>
@@ -434,7 +497,7 @@ describe('docs-search component', () => {
     expect(html).toContain('type="search"');
     expect(html).toContain("autofocus");
     expect(html).toContain(".dialog:modal { overscroll-behavior: contain; }");
-    expect(html).toContain("overflow: hidden;\n  overscroll-behavior: contain;");
+    expect(html).toContain("overflow: hidden;\\n  overscroll-behavior: contain;");
     expect(html).toMatch(/<button[^>]*data-testid="docs-search-open"[^>]*hidden>/);
     expect(html).toContain('<pre id="index" hidden>');
   });
@@ -518,42 +581,6 @@ describe('site-footer component', () => {
 });
 `;
 
-/** The landing page's opening: the site name, one line about it, and the way into the docs. */
-export const HOME_HERO_HTML = `<section class="hero" data-testid="home-hero">
-  <div class="container">
-    <p class="section-label">Documentation</p>
-    <script data-bascik-build-once type="text/typescript">
-      import { html } from "@bascik/bascik/html";
-      import { DOCS_HOME } from "@/lib/sidebar.ts";
-      import { SITE_NAME } from "@/lib/site.ts";
-
-      export default () => html\`<h1>\${SITE_NAME}</h1>
-        <p>A clear, searchable home for the guides, concepts, and decisions your team needs to keep moving.</p>
-        <div class="hero-actions">
-          <a href="\${DOCS_HOME}" class="btn btn-primary" data-testid="home-hero-start">Read the docs</a>
-        </div>\`;
-    </script>
-  </div>
-</section>
-`;
-
-export const HOME_HERO_TEST = `import { describe, it, expect } from 'vitest';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-
-describe('home-hero component', () => {
-  const path = join(process.cwd(), 'src/components/home-hero/home-hero.html');
-
-  it('is a section whose heading and docs link come from a build script', async () => {
-    const html = await readFile(path, 'utf8');
-    expect(html).toContain('<section class="hero" data-testid="home-hero">');
-    expect(html).toContain('<h1>\${SITE_NAME}</h1>');
-    expect(html).toContain('href="\${DOCS_HOME}"');
-    expect(html).toContain('data-testid="home-hero-start"');
-  });
-});
-`;
-
 export const DOCS_SIDEBAR_CSS = `.sidebar {
   position: sticky;
   top: 84px;
@@ -626,10 +653,10 @@ ${DOCS_SIDEBAR_CSS}</style>
   <div id="menu" class="menu" data-testid="docs-sidebar-menu">
     <script data-bascik-build type="text/typescript">
       import { html } from "@bascik/bascik/html";
-      import { currentDoc } from "@/lib/docs.ts";
+      import { currentDoc } from "@/lib/current-doc.ts";
 
-      export default () => {
-        const page = currentDoc();
+      export default async () => {
+        const page = await currentDoc();
         // A hole cannot add an attribute, so the current page's link is written out with aria-current.
         const groups = page.sidebar.map((group) => {
           const links = group.links.map((link) =>
@@ -700,10 +727,10 @@ ${DOCS_ARTICLE_CSS}</style>
 <article data-bascik-preserve="id" data-testid="docs-article">
   <script data-bascik-build type="text/typescript">
     import { html, raw } from "@bascik/bascik/html";
-    import { currentDoc } from "@/lib/docs.ts";
+    import { currentDoc } from "@/lib/current-doc.ts";
 
-    export default () => {
-      const page = currentDoc();
+    export default async () => {
+      const page = await currentDoc();
       // The Markdown is this project's own, so its HTML is trusted: raw() inserts it as it is.
       return html\`<h1 class="title">\${page.title}</h1>
         <p class="lead">\${page.description}</p>
@@ -781,10 +808,10 @@ ${DOCS_TOC_CSS}</style>
 <aside class="toc" id="toc" data-testid="docs-toc">
   <script data-bascik-build type="text/typescript">
     import { html } from "@bascik/bascik/html";
-    import { currentDoc } from "@/lib/docs.ts";
+    import { currentDoc } from "@/lib/current-doc.ts";
 
-    export default () => {
-      const headings = currentDoc().headings.filter((heading) => heading.depth <= 3);
+    export default async () => {
+      const headings = (await currentDoc()).headings.filter((heading) => heading.depth <= 3);
       if (headings.length === 0) return "";
       const links = headings.map((heading) =>
         heading.depth === 3
@@ -933,10 +960,10 @@ ${DOCS_PAGINATION_CSS}</style>
 <nav class="pagination" aria-label="Previous and next pages" data-testid="docs-pagination">
   <script data-bascik-build type="text/typescript">
     import { html } from "@bascik/bascik/html";
-    import { currentDoc } from "@/lib/docs.ts";
+    import { currentDoc } from "@/lib/current-doc.ts";
 
-    export default () => {
-      const { previous, next } = currentDoc();
+    export default async () => {
+      const { previous, next } = await currentDoc();
       return html\`\${
         previous &&
         html\`<a href="\${previous.href}" class="link" rel="prev" data-testid="docs-pagination-previous">
@@ -977,89 +1004,30 @@ describe('docs-pagination component', () => {
 });
 `;
 
-/** The extra card a hosted site gets, pointing at the API route every adapter starter has. */
-const apiFeatureCard = (runtime: string): string => `
-      <feature-card data-testid="feature-api">
-        <div data-bascik-slot="header">API route</div>
-        <h3>Ready for request-time code</h3>
-        <p>The docs are static files. <a href="/api/hello">/api/hello</a>, in <code>src/api/hello.ts</code>, runs in ${runtime}.</p>
-      </feature-card>`;
-
-/** The landing page's second section: what the template gives you, as three feature cards (four with an adapter). */
-export const homeFeatures = (
-  options: { adapter?: Adapter } = {},
-): string => `<section class="section" data-testid="home-features">
-  <div class="container">
-    <p class="section-label">Start here</p>
-    <h2>How this site works</h2>
-    <p>Replace the sample pages with your own. Navigation, search, section links, and pagination all follow your content.</p>
-    <div class="feature-grid">
-      <feature-card data-testid="feature-markdown">
-        <div data-bascik-slot="header">Markdown</div>
-        <h3>One file per page</h3>
-        <p>Each file in <code>content/docs/</code> becomes a page at <code>/docs/</code> and its name.</p>
-      </feature-card>
-      <feature-card data-testid="feature-sidebar">
-        <div data-bascik-slot="header">Sidebar</div>
-        <h3>You choose the order</h3>
-        <p>Groups and pages are listed in <code>src/lib/sidebar.ts</code>. A page you forget to list fails the build.</p>
-      </feature-card>
-      <feature-card data-testid="feature-toc">
-        <div data-bascik-slot="header">On this page</div>
-        <h3>Built from your headings</h3>
-        <p>Every <code>##</code> and <code>###</code> heading gets a link beside the page.</p>
-      </feature-card>${options.adapter ? apiFeatureCard(HOST_RUNTIME[options.adapter]) : ""}
-      <feature-card data-testid="feature-search">
-        <div data-bascik-slot="header">Search</div>
-        <h3>Find a page or section</h3>
-        <p>Search page copy and headings from the header, or press <kbd>Ctrl K</kbd> or <kbd>⌘ K</kbd>.</p>
-      </feature-card>
-    </div>
-  </div>
-</section>
-`;
-
-export const HOME_FEATURES_TEST = `import { describe, it, expect } from 'vitest';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-
-describe('home-features component', () => {
-  const path = join(process.cwd(), 'src/components/home-features/home-features.html');
-
-  it('is a section with a heading and a feature card for each part of the site', async () => {
-    const html = await readFile(path, 'utf8');
-    expect(html).toContain('<section class="section" data-testid="home-features">');
-    expect(html).toContain('<h2>How this site works</h2>');
-    for (const card of ['feature-markdown', 'feature-sidebar', 'feature-toc', 'feature-search']) {
-      expect(html).toContain(\`<feature-card data-testid="\${card}">\`);
-    }
-  });
-});
-`;
-
 // ─── Pages ───────────────────────────────────────────────────────────────────
 
-/** The landing page: the hero, then what the template gives you. */
+/** The first guide opens directly at the root, using the complete docs shell. */
 export const DOCS_INDEX_PAGE = `<!doctype html>
 <html lang="en">
 <head>
   <site-meta />
   <script data-bascik-build type="text/typescript">
     import { pageHead } from "@/lib/head.ts";
+    import { currentDoc } from "@/lib/current-doc.ts";
 
-    export default () =>
-      pageHead({
-        title: "Documentation",
-        description: "A modern documentation starter with searchable Markdown guides, responsive navigation, and an active table of contents.",
-      });
+    export default async () => pageHead(await currentDoc());
   </script>
 </head>
 <body>
   <site-header />
-  <main id="main" data-testid="home-main">
-    <home-hero />
-    <home-features />
-  </main>
+  <div class="container docs-layout">
+    <docs-sidebar />
+    <main id="main" data-testid="docs-main">
+      <docs-article />
+      <docs-pagination />
+    </main>
+    <docs-toc />
+  </div>
   <site-footer />
 </body>
 </html>
@@ -1079,16 +1047,16 @@ export const DOCS_PAGE_HTML = `<!doctype html>
     import { getDocs } from "@/lib/docs.ts";
 
     export default async () =>
-      (await getDocs()).map((page) => ({
+      (await getDocs()).slice(1).map((page) => ({
         params: { slug: page.slug },
         data: page,
       }));
   </script>
   <script data-bascik-build type="text/typescript">
-    import { currentDoc } from "@/lib/docs.ts";
+    import { currentDoc } from "@/lib/current-doc.ts";
     import { pageHead } from "@/lib/head.ts";
 
-    export default () => pageHead(currentDoc());
+    export default async () => pageHead(await currentDoc());
   </script>
 </head>
 <body>
@@ -1147,23 +1115,20 @@ export const docsE2eSpec = (
 ): string => `import { test, expect } from '@playwright/test';
 
 test.describe('Docs site', () => {
-  test('landing page leads into the docs', async ({ page }) => {
+  test('root opens directly in the docs', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle(/^Documentation - /);
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-
-    await page.getByTestId('home-hero-start').click();
-    await expect(page).toHaveURL('/docs/getting-started');
+    await expect(page).toHaveTitle(/^Getting started - /);
+    await expect(page.getByTestId('docs-sidebar')).toBeVisible();
     await expect(page.getByRole('heading', { level: 1, name: 'Getting started' })).toBeVisible();
   });
 
   test('skip link is the first stop and points at the page content', async ({ page }) => {
-    await page.goto('/docs/getting-started');
+    await page.goto('/');
     await page.keyboard.press('Tab');
     const skip = page.getByTestId('site-header-skip-link');
     await expect(skip).toBeFocused();
     await expect(skip).toHaveAttribute('href', '#main');
-    await expect(page.locator('main#main')).toHaveCount(1);
+    await expect(page.getByTestId('docs-main')).toHaveCount(1);
   });
 
   test('sidebar lists both groups and marks only the current page', async ({ page }) => {
@@ -1185,7 +1150,7 @@ test.describe('Docs site', () => {
   });
 
   test('table of contents links jump to the headings of the page', async ({ page }) => {
-    await page.goto('/docs/getting-started');
+    await page.goto('/');
     const toc = page.getByTestId('docs-toc-nav');
     const article = page.getByTestId('docs-article');
 
@@ -1196,7 +1161,7 @@ test.describe('Docs site', () => {
 
     const activeSection = toc.getByRole('link', { name: 'Start the dev server' });
     await activeSection.click();
-    await expect(page).toHaveURL('/docs/getting-started#start-the-dev-server');
+    await expect(page).toHaveURL('/#start-the-dev-server');
     await expect(article.getByRole('heading', { name: 'Start the dev server' })).toBeInViewport();
     await expect(activeSection).toHaveAttribute('aria-current', 'location');
   });
@@ -1222,7 +1187,7 @@ test.describe('Docs site', () => {
     )).toBeGreaterThan(4);
     await expect(toc.locator('[aria-current="location"]')).toHaveText('Table of contents');
 
-    await page.goto('/docs/getting-started');
+    await page.goto('/');
     await page.goto('/docs/navigation-and-search#open-search');
     await expect(toc.locator('[aria-current="location"]')).toHaveText('Open search');
   });
@@ -1239,14 +1204,14 @@ test.describe('Docs site', () => {
   });
 
   test('previous and next follow the sidebar order', async ({ page }) => {
-    await page.goto('/docs/getting-started');
+    await page.goto('/');
     await expect(page.getByTestId('docs-pagination-previous')).toHaveCount(0);
 
     await page.getByTestId('docs-pagination-next').click();
     await expect(page).toHaveURL('/docs/writing-pages');
 
     await page.getByTestId('docs-pagination-previous').click();
-    await expect(page).toHaveURL('/docs/getting-started');
+    await expect(page).toHaveURL('/');
 
     await page.goto('/docs/deployment');
     await expect(page.getByTestId('docs-pagination-next')).toHaveCount(0);
@@ -1254,7 +1219,7 @@ test.describe('Docs site', () => {
   });
 
   test('search opens from the keyboard, finds page content, and follows a result', async ({ page }) => {
-    await page.goto('/docs/getting-started');
+    await page.goto('/');
     await page.keyboard.press('Control+k');
 
     const dialog = page.getByTestId('docs-search-dialog');
@@ -1268,7 +1233,7 @@ test.describe('Docs site', () => {
 
   test('sidebar collapses behind its toggle on a small screen', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/docs/getting-started');
+    await page.goto('/');
 
     const toggle = page.getByTestId('docs-sidebar-toggle');
     const menu = page.getByTestId('docs-sidebar-menu');
@@ -1290,7 +1255,7 @@ test.describe('Docs site', () => {
   });
 
   test('sidebar stays open with no toggle on a wide screen', async ({ page }) => {
-    await page.goto('/docs/getting-started');
+    await page.goto('/');
     await expect(page.getByTestId('docs-sidebar-toggle')).toBeHidden();
     await expect(page.getByTestId('docs-sidebar-menu')).toBeVisible();
     await expect(page.getByTestId('docs-toc')).toBeVisible();

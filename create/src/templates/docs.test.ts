@@ -167,20 +167,25 @@ describe("docs template", () => {
   it("watches content and avoids caching scripts that read the docs directory", () => {
     const config = file("bascik.config.ts");
     expect(config).toContain('watchPaths: ["content/", "src/lib/"]');
-    expect(config).toContain('"src/components/docs-search/**"');
+    expect(config).toContain('"src/components/docs-*/**"');
+    expect(config).toContain('"src/pages/index.html"');
     expect(config).toContain('"src/pages/docs/**"');
     // The site URL is per deployment (BASCIK_SITE_URL), and no other default is changed.
     expect(config).not.toContain("siteUrl");
-    expect(config.match(/^ {2}\w+:/gm)).toEqual(["  pipeline:", "  scripts:"]);
+    expect(config.match(/^ {2}\w+:/gm)).toEqual([
+      "  assets:",
+      "  pipeline:",
+      "  scripts:",
+    ]);
   });
 
   it("gives every component a test beside it and every helper with logic a test", () => {
     const components = pathsMatching(/^src\/components\/.*\.html$/);
-    expect(components).toHaveLength(11);
+    expect(components).toHaveLength(9);
     for (const path of components) {
       expect(files.has(path.replace(/\.html$/, ".test.ts")), path).toBe(true);
     }
-    for (const helper of ["head", "markdown", "docs"]) {
+    for (const helper of ["head", "markdown", "docs", "current-doc"]) {
       expect(files.has(`src/lib/${helper}.test.ts`), helper).toBe(true);
     }
   });
@@ -196,12 +201,11 @@ describe("docs template", () => {
         expect(content).not.toContain("data-bascik-server");
         expect(content).not.toContain("data-bascik-stream");
       }
-      const features = withAdapter.get(
-        "src/components/home-features/home-features.html",
-      )!;
       const spec = withAdapter.get("e2e/app.spec.ts")!;
-      expect(features.includes("/api/hello")).toBe(adapter !== undefined);
       expect(spec.includes("/api/hello")).toBe(adapter !== undefined);
+      expect(paths).not.toContain(
+        "src/components/home-features/home-features.html",
+      );
     },
   );
 });
@@ -283,20 +287,15 @@ describe("docs template markup", () => {
       /<docs-sidebar \/>\s*<main id="main" data-testid="docs-main">\s*<docs-article \/>\s*<docs-pagination \/>\s*<\/main>\s*<docs-toc \/>/,
     );
     expect(file("src/pages/index.html")).toMatch(
-      /<main id="main" data-testid="home-main">\s*<home-hero \/>\s*<home-features \/>\s*<\/main>/,
+      /<docs-sidebar \/>\s*<main id="main" data-testid="docs-main">\s*<docs-article \/>\s*<docs-pagination \/>\s*<\/main>\s*<docs-toc \/>/,
     );
   });
 
   it("does not skip a heading level on the pages it writes by hand", () => {
     const levels = (html: string): number[] =>
       [...html.matchAll(/<h([1-6])\b/g)].map((match) => Number(match[1]));
-    // The landing page is the hero (h1), then the features section (h2) and its cards (h3).
-    expect(
-      levels(
-        file("src/components/home-hero/home-hero.html") +
-          file("src/components/home-features/home-features.html"),
-      ),
-    ).toEqual([1, 2, 3, 3, 3, 3]);
+    // Both root and guide pages use the same article with one h1.
+    expect(file("src/pages/index.html")).toContain("<docs-article />");
     expect(levels(file("src/pages/404.html"))).toEqual([1]);
     expect(
       levels(file("src/components/docs-article/docs-article.html")),
@@ -373,7 +372,7 @@ describe("docs template markup", () => {
   it("drops the default head's site-wide description, since every page prints its own", () => {
     expect(DOCS_SITE_META_HTML).not.toContain('name="description"');
     expect(DOCS_SITE_META_HTML).toContain('<meta charset="UTF-8" />');
-    expect(DOCS_SITE_META_HTML).toContain('href="/css/styles.css"');
+    expect(DOCS_SITE_META_HTML).not.toContain('rel="stylesheet"');
     expect(DOCS_SITE_META_HTML.endsWith("\n")).toBe(true);
   });
 });
@@ -390,7 +389,7 @@ describe("docs template sample content", () => {
     expect(pathsMatching(/^content\/docs\/.*\.md$/).sort()).toEqual(
       listed.map((slug) => `content/docs/${slug}.md`).sort(),
     );
-    expect(DOCS_HOME).toBe(`/docs/${listed[0]}`);
+    expect(DOCS_HOME).toBe("/");
   });
 
   it("reads every page in sidebar order, with previous and next links between them", async () => {
