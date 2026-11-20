@@ -94,6 +94,16 @@ These are different design systems, not a checklist to force onto every branch. 
 - The sidebar marks the current page and remains usable without JavaScript. At small widths, a labeled button progressively enhances it into a collapsible navigation.
 - Use native `<dialog>` behavior for focus, Escape, and the top layer. Do not rebuild those browser features with a custom overlay or focus trap.
 
+## Corporate-template feedback
+
+- Keep its institutional navy, stone, and copper palette, editorial serif headings, and bookshelf illustration. The scaffold folder slug is the brand; the verification project is named `corporate`.
+- Use an icon-only light/dark button with an accessible name and pressed state. Restore the saved choice synchronously in the head and suspend transitions while changing themes.
+- Initial above-the-fold content must be immediately visible and static on every route. Do not add opacity, flash, scale entrances, or cross-document view transitions. This overrides the general entrance guidance above for corporate initial content. Keep useful interaction feedback and any intentional below-fold motion, with reduced-motion alternatives.
+- Keep the original Bascik favicon geometry and colors, not a copper or navy recoloring. Inline the global stylesheet through `assets.inlineStyles`, not a blocking stylesheet link or a second inline copy.
+- Style navigation explicitly. The Services link and its borderless, adjacent 44px disclosure share one cohesive surface. Fine-pointer hover opens it across a transparent bridge; keyboard and touch activation work without hover. Escape dismisses the submenu and restores its button's focus without reopening it; a subsequent Escape closes mobile navigation and restores the mobile toggle.
+- Warning: `https://bascik.dev/how-to/visual-design` returned HTTP 404 during feedback verification on November 19, 2026. The local UI and UX guidance was read, but the missing page is not evidence of live documentation coverage.
+- Focused source regressions and fresh production Playwright checks live in `src/templates/corporate-feedback.test.ts` and `e2e/corporate-feedback.spec.ts`. Verification sources, builds, and browser output live in `mkdtemp` directories under the OS `tmpdir`, never packaged `create/dist/`. Setup failures, validation failures, and Playwright teardown remove their fixtures. The config exports its dynamic verification paths; the browser server uses only `127.0.0.1:9413` and is stopped after testing.
+
 ## Verification
 
 1. Consult Modern Web Guidance for the actual UI pattern and check browser support separately from Bascik scoping.

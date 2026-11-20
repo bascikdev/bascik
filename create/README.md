@@ -97,6 +97,7 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 | `docs`      | Documentation directly at `/`: Markdown guides, searchable sidebar navigation, an active table of contents, and previous and next links                                                                                |
 | `landing`   | A product landing page: hero, features, steps, testimonials, pricing, FAQ, and a sign-up form. With an adapter, the form posts to an API route that validates it                                                       |
 | `portfolio` | An editorial creator portfolio: clearly labeled fictional sample work, a featured grid, a project index, a page per Markdown entry in `content/projects/` read by `src/lib/projects.ts`, about, contact, and 404 pages |
+| `corporate` | A company site: services, about, careers, news, and contact pages                                                                                                                                                      |
 
 The blog uses your project slug as a plain brand, a responsive author sidebar, an unboxed reading column, and an accessible icon-only light/dark toggle. It retains the Bascik favicon. Global `styles.css` and `blog.css` are inlined through `assets.inlineStyles` in `bascik.config.ts`, without duplicate stylesheet links or above-the-fold entrance animations. Navigation remains visible without JavaScript.
 
