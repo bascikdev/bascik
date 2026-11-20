@@ -14,7 +14,6 @@ import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { mergedPullRequest } from "./merged-pull-request.mjs";
 import { parseChecks, smokeTest } from "./smoke-test.mjs";
-import domainOwners from "./template-domain-owners.json" with { type: "json" };
 
 export const TEMPLATE_SLUGS = [
   "default",
@@ -32,24 +31,28 @@ const repo = resolve(import.meta.dirname, "../..");
 const wrangler = join(repo, "node_modules/wrangler/bin/wrangler.js");
 const localDbId = "00000000-0000-4000-8000-000000000001";
 
+// Production owns template-<slug>.bascik.dev and deploys from merged PRs on
+// main. Preview Workers keep only their workers.dev URL.
 export function templateWorker(slug: string, lane: string) {
   if (!TEMPLATE_SLUGS.some((allowed) => allowed === slug))
     throw new Error(`Unknown hosted template: ${slug}`);
   if (lane !== "preview" && lane !== "production")
     throw new Error(`Unknown deployment lane: ${lane}`);
   const preview = lane === "preview";
-  const hostname = `template-${slug}.bascik.dev`;
-  const owner = domainOwners[slug as keyof typeof domainOwners];
-  if (owner !== "preview" && owner !== "production")
-    throw new Error(`Invalid custom domain owner for ${slug}`);
   return {
     name: `bascik-template-${slug}${preview ? "-preview" : ""}`,
     compatibility_date: "2026-08-01",
     compatibility_flags: ["nodejs_compat"],
-    routes: owner === lane ? [{ pattern: hostname, custom_domain: true }] : [],
+    routes: preview
+      ? []
+      : [{ pattern: templateHostname(slug), custom_domain: true }],
     workers_dev: preview,
     preview_urls: false,
   };
+}
+
+export function templateHostname(slug: string) {
+  return `template-${slug}.bascik.dev`;
 }
 
 type Worker = ReturnType<typeof templateWorker>;
@@ -85,40 +88,13 @@ function configName(lane: string) {
   return lane === "preview" ? "wrangler.preview.json" : "wrangler.jsonc";
 }
 
-async function seedTemplate(
-  slug: "reports" | "shop",
-  directory: string,
-  lane: string,
-  local = false,
-) {
+// Local runtimes get an isolated seeded database. Remote template databases
+// are pre-seeded once and only bound by CI (see DEPLOYMENT.md).
+async function seedLocalTemplate(slug: "reports" | "shop", directory: string) {
   const project = join(directory, slug);
   const out = join(project, "dist/.bascik/cloudflare");
-  const config = configName(lane);
-  const id = local
-    ? localDbId
-    : (process.env[slug === "reports" ? "REPORTS_D1_ID" : "SHOP_D1_ID"] ?? "");
-  const database = templateDatabase(slug, lane, id);
-  if (!local) {
-    if (
-      id === localDbId ||
-      !process.env.CLOUDFLARE_API_TOKEN ||
-      !process.env.CLOUDFLARE_ACCOUNT_ID
-    )
-      throw new Error(
-        "Template remote seed requires an isolated database and CI credentials",
-      );
-    const info = JSON.parse(
-      execFileSync(
-        process.execPath,
-        [wrangler, "d1", "info", database.database_name, "--json"],
-        { cwd: out, encoding: "utf8" },
-      ),
-    );
-    if (info.uuid !== id || info.name !== database.database_name)
-      throw new Error(
-        "D1 ID does not match the dedicated template database name",
-      );
-  }
+  const config = configName("preview");
+  const database = templateDatabase(slug, "preview", localDbId);
   const payload = JSON.parse(await readFile(join(out, config), "utf8"));
   await writeFile(
     join(out, config),
@@ -127,9 +103,7 @@ async function seedTemplate(
   const sql = execFileSync(
     process.execPath,
     ["scripts/seed-database.ts", "--sql"],
-    {
-      cwd: project,
-    },
+    { cwd: project },
   );
   await writeFile(join(out, "template-seed.sql"), sql);
   execFileSync(
@@ -143,11 +117,34 @@ async function seedTemplate(
       config,
       "--file",
       "template-seed.sql",
-      ...(local
-        ? ["--local", "--persist-to", join(out, "local-state")]
-        : ["--remote", "--yes"]),
+      "--local",
+      "--persist-to",
+      join(out, "local-state"),
     ],
     { cwd: out, stdio: "inherit" },
+  );
+}
+
+export async function bindTemplateDatabase(
+  slug: string,
+  lane: string,
+  directory: string,
+) {
+  if (slug !== "reports" && slug !== "shop") return;
+  const variable = `TEMPLATE_${slug.toUpperCase()}_${lane.toUpperCase()}_D1_ID`;
+  const database = templateDatabase(slug, lane, process.env[variable] ?? "");
+  if (database.database_id === localDbId)
+    throw new Error("Cannot publish with a local template database");
+  const config = join(
+    directory,
+    slug,
+    "dist/.bascik/cloudflare",
+    configName(lane),
+  );
+  const payload = JSON.parse(await readFile(config, "utf8"));
+  await writeFile(
+    config,
+    JSON.stringify({ ...payload, d1_databases: [database] }),
   );
 }
 
@@ -167,12 +164,7 @@ export function assertDomainOwner(records: unknown, worker: Worker) {
 
 async function checkDomain(worker: Worker) {
   const [route] = worker.routes;
-  if (!route) {
-    if (worker.workers_dev) return;
-    throw new Error(
-      "Custom domain is not assigned to this Worker; coordinate an explicit ownership handoff",
-    );
-  }
+  if (!route) throw new Error("Only production Workers own a custom domain");
   const { CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: account } =
     process.env;
   if (!token || !account || !/^[a-f0-9]{32}$/i.test(account))
@@ -281,7 +273,7 @@ async function build(slug: string, directory: string) {
     cwd: project,
     env: {
       ...process.env,
-      BASCIK_SITE_URL: `https://template-${slug}.bascik.dev`,
+      BASCIK_SITE_URL: `https://${templateHostname(slug)}`,
     },
     stdio: "inherit",
   });
@@ -309,42 +301,6 @@ async function build(slug: string, directory: string) {
   console.log(`Built ${production.name} in ${out}`);
 }
 
-// Build Output v0 for `cf workers triggers deploy --prebuilt` only.
-// No bundle, assets, bindings, or code are uploaded by that command.
-async function domainTriggers(slug: string, directory: string) {
-  const worker = templateWorker(slug, "preview");
-  if (worker.routes.length !== 1)
-    throw new Error("Custom domain is not assigned to this Worker");
-  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
-  if (!account || !/^[a-f0-9]{32}$/i.test(account))
-    throw new Error("Cloudflare account ID is missing or invalid");
-  const output = join(directory, ".cloudflare/output/v0");
-  const target = join(output, "workers/default");
-  if (existsSync(join(directory, ".cloudflare")))
-    throw new Error("Trigger-only output requires a fresh directory");
-  // The native reader requires an assets or bundle directory. Leave assets
-  // empty, and never use this output with any code deployment command.
-  await mkdir(join(target, "assets"), { recursive: true });
-  await writeFile(
-    join(output, "config.json"),
-    JSON.stringify({
-      accountId: account,
-      buildContext: { isPreview: false },
-    }),
-  );
-  await writeFile(
-    join(target, "worker.config.json"),
-    JSON.stringify({
-      name: worker.name,
-      compatibilityDate: worker.compatibility_date,
-      compatibilityFlags: worker.compatibility_flags,
-      domains: worker.routes.map((route) => route.pattern),
-      workersDev: worker.workers_dev,
-      previewUrls: worker.preview_urls,
-    }),
-  );
-}
-
 function buildSha() {
   const sha = process.env.GITHUB_SHA ?? "local";
   if (sha !== "local" && !/^[a-f0-9]{40}$/i.test(sha))
@@ -365,7 +321,10 @@ async function smoke(slug: string, url: string, local = false) {
   const failures = await smokeTest(
     url,
     parseChecks([...checks]),
-    local ? { attempts: 15, delayMs: 1_000 } : {},
+    // A first production deploy waits for the custom domain's certificate.
+    local
+      ? { attempts: 15, delayMs: 1_000 }
+      : { attempts: 30, delayMs: 10_000 },
   );
   if (failures.length) throw new Error(failures.join("\n"));
   if (slug === "shop") {
@@ -404,7 +363,7 @@ async function localSmoke(slug: string, directory: string) {
   const worker = templateWorker(slug, "preview");
   const out = join(directory, slug, "dist/.bascik/cloudflare");
   if (slug === "reports" || slug === "shop")
-    await seedTemplate(slug, directory, "preview", true);
+    await seedLocalTemplate(slug, directory);
   const port = "18794";
   const dev = spawn(
     process.execPath,
@@ -474,39 +433,10 @@ if (import.meta.main) {
       await localSmoke(slug, resolve(argument));
     else if (command === "smoke" && argument) await smoke(slug, argument);
     else if (command === "check-merged") await checkMerged();
-    else if (command === "seed-reports" && slug && argument)
-      await seedTemplate("reports", resolve(argument), slug);
-    else if (
-      (command === "bind-reports-preview" ||
-        command === "bind-shop-preview" ||
-        command === "bind-shop-production") &&
-      slug
-    ) {
-      const template = command === "bind-reports-preview" ? "reports" : "shop";
-      const lane =
-        command === "bind-shop-production" ? "production" : "preview";
-      const database = templateDatabase(
-        template,
-        lane,
-        process.env[template === "reports" ? "REPORTS_D1_ID" : "SHOP_D1_ID"] ??
-          "",
-      );
-      if (database.database_id === localDbId)
-        throw new Error("Cannot publish with a local template database");
-      const config = join(
-        resolve(slug),
-        `${template}/dist/.bascik/cloudflare`,
-        configName(lane),
-      );
-      const payload = JSON.parse(await readFile(config, "utf8"));
-      await writeFile(
-        config,
-        JSON.stringify({ ...payload, d1_databases: [database] }),
-      );
-    } else if (command === "domain-triggers" && argument)
-      await domainTriggers(slug, resolve(argument));
+    else if (command === "bind" && argument && process.argv[5])
+      await bindTemplateDatabase(slug, argument, resolve(process.argv[5]));
     else if (command === "check-domain")
-      await checkDomain(templateWorker(slug, argument ?? "production"));
+      await checkDomain(templateWorker(slug, "production"));
     else if (command === "list") {
       const registry = join(repo, "create/dist/templates.js");
       const templates = existsSync(registry)

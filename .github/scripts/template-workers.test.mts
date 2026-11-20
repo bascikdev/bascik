@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, mkdtempSync, rmSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import {
   assertDomainOwner,
@@ -31,19 +29,19 @@ test("SQL templates have separate D1 names and require a remote UUID", () => {
   assert.throws(() => templateDatabase("reports", "other", id));
 });
 
-test("each showcase alias belongs only to the current preview Worker", () => {
+test("each showcase hostname belongs only to the production Worker", () => {
   const names = new Set<string>();
   for (const slug of TEMPLATE_SLUGS) {
     const preview = templateWorker(slug, "preview");
     const production = templateWorker(slug, "production");
     assert.equal(preview.name, `bascik-template-${slug}-preview`);
     assert.equal(production.name, `bascik-template-${slug}`);
-    assert.deepEqual(preview.routes, [
+    assert.deepEqual(production.routes, [
       { pattern: `template-${slug}.bascik.dev`, custom_domain: true },
     ]);
-    assert.equal(preview.workers_dev, true);
-    assert.deepEqual(production.routes, []);
     assert.equal(production.workers_dev, false);
+    assert.deepEqual(preview.routes, []);
+    assert.equal(preview.workers_dev, true);
     assert.equal(production.preview_urls, false);
     names.add(preview.name).add(production.name);
   }
@@ -52,115 +50,71 @@ test("each showcase alias belongs only to the current preview Worker", () => {
   assert.throws(() => templateWorker("shop", "other"));
 });
 
-test("preview alias ownership refuses production and unrelated Workers", () => {
+test("production ownership refuses preview and unrelated Workers", () => {
   for (const slug of TEMPLATE_SLUGS) {
-    const preview = templateWorker(slug, "preview");
-    assert.doesNotThrow(() => assertDomainOwner([], preview));
+    const production = templateWorker(slug, "production");
+    assert.doesNotThrow(() => assertDomainOwner([], production));
     assert.doesNotThrow(() =>
       assertDomainOwner(
-        [{ service: preview.name, environment: "production" }],
-        preview,
+        [{ service: production.name, environment: "production" }],
+        production,
       ),
     );
     for (const service of [
-      templateWorker(slug, "production").name,
+      templateWorker(slug, "preview").name,
       "bascik",
       "bascik-shop-production",
+      "cloudflare-adapter",
     ]) {
       assert.throws(() =>
-        assertDomainOwner([{ service, environment: "production" }], preview),
+        assertDomainOwner([{ service, environment: "production" }], production),
       );
     }
   }
 });
 
-test("production promotion is blocked before credentials or domain mutation", () => {
+test("binding a production database requires its D1 id", () => {
   assert.throws(
     () =>
       execFileSync(
         process.execPath,
         [
           new URL("./template-workers.mts", import.meta.url).pathname,
-          "check-domain",
-          "default",
+          "bind",
+          "shop",
+          "production",
+          "/nonexistent",
         ],
         {
-          env: {
-            ...process.env,
-            CLOUDFLARE_API_TOKEN: "",
-            CLOUDFLARE_ACCOUNT_ID: "",
-          },
+          env: { ...process.env, TEMPLATE_SHOP_PRODUCTION_D1_ID: "" },
           stdio: "pipe",
         },
       ),
-    (error: { stderr?: Buffer }) =>
-      error.stderr
-        ?.toString()
-        .includes("Custom domain is not assigned to this Worker") === true,
+    (error: { stderr?: Buffer }) => (error.stderr?.length ?? 0) > 0,
   );
 });
 
-test("trigger-only output contains one authorized preview alias and no code or bindings", () => {
-  const directory = mkdtempSync(join(tmpdir(), "template-domain-test-"));
-  try {
-    execFileSync(
-      process.execPath,
-      [
-        new URL("./template-workers.mts", import.meta.url).pathname,
-        "domain-triggers",
-        "shop",
-        directory,
-      ],
-      {
-        env: {
-          ...process.env,
-          CLOUDFLARE_ACCOUNT_ID: "8572c3fcc06b71dbf05fe590e8b3f74e",
-        },
-        stdio: "pipe",
-      },
-    );
-    const output = join(directory, ".cloudflare/output/v0");
-    assert.deepEqual(
-      JSON.parse(readFileSync(join(output, "config.json"), "utf8")),
-      {
-        accountId: "8572c3fcc06b71dbf05fe590e8b3f74e",
-        buildContext: { isPreview: false },
-      },
-    );
-    assert.deepEqual(
-      JSON.parse(
-        readFileSync(
-          join(output, "workers/default/worker.config.json"),
-          "utf8",
-        ),
-      ),
-      {
-        name: "bascik-template-shop-preview",
-        compatibilityDate: "2026-08-01",
-        compatibilityFlags: ["nodejs_compat"],
-        domains: ["template-shop.bascik.dev"],
-        workersDev: true,
-        previewUrls: false,
-      },
-    );
-    assert.equal(existsSync(join(output, "workers/default/assets")), true);
-    assert.equal(existsSync(join(output, "workers/default/bundle")), false);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-test("CI checks preview ownership immediately before publishing without weakening the main gate", () => {
+test("main deploys production only from merged pull requests, after the ownership and newest-commit checks", () => {
   const workflow = readFileSync(
     new URL("../workflows/template-workers.yml", import.meta.url),
     "utf8",
   );
-  assert.match(
-    workflow,
-    /node \.github\/scripts\/template-workers\.mts check-domain "\$SLUG" preview\s+yarn workspace @bascik\/adapter-cloudflare wrangler deploy/,
-  );
+  assert.match(workflow, /push:\s+branches: \[main\]/);
   assert.match(workflow, /github\.ref == 'refs\/heads\/main'/);
-  assert.match(workflow, /check-merged/);
+  const order = [
+    "template-workers.mts check-merged",
+    'template-workers.mts check-domain "$SLUG"',
+    "newest-commit.mjs",
+    "wrangler.jsonc",
+    'smoke "$SLUG" "https://template-$SLUG.bascik.dev"',
+  ].map((step) => workflow.indexOf(step));
+  assert.ok(order.every((index) => index > 0));
+  assert.deepEqual(
+    order,
+    [...order].sort((a, b) => a - b),
+  );
+  for (const slug of TEMPLATE_SLUGS)
+    assert.match(workflow, new RegExp(`"${slug}"`));
   const helper = readFileSync(
     new URL("./template-workers.mts", import.meta.url),
     "utf8",

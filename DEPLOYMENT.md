@@ -6,33 +6,44 @@ The user-facing version of the Cloudflare material is [docs/content/deployment/c
 
 ## Template Showcase Workers
 
-[Template Workers](.github/workflows/template-workers.yml) builds from `create-bascik`'s current scaffold source, not a released npm starter. Each slug (`default`, `blog`, `docs`, `landing`, `portfolio`, `corporate`, `shop`, `reports`, `dashboard`) currently serves `https://template-<slug>.bascik.dev` from its already deployed `bascik-template-<slug>-preview` Worker. The shop template is a simulated checkout with fixture data; it does not use `shop.bascik.dev` or any of the independent shop's secrets, bindings, or services.
+[Template Workers](.github/workflows/template-workers.yml) builds from `create-bascik`'s current scaffold source, not a released npm starter. Each slug (`default`, `blog`, `docs`, `landing`, `portfolio`, `corporate`, `shop`, `reports`, `dashboard`) has two Workers:
 
-Pull requests build and run the registered templates in local workerd without Cloudflare credentials. A template not yet registered on `main` cannot be dispatched. Merge the scaffold foundation and template PRs before rolling out their demos, including #154 and #156 through #163.
+| Worker                           | URL                                                                 | Deployed by                                       |
+| -------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------- |
+| `bascik-template-<slug>`         | `https://template-<slug>.bascik.dev` (custom domain)                | Every push to `main` from a merged pull request   |
+| `bascik-template-<slug>-preview` | `https://bascik-template-<slug>-preview.<account>.workers.dev` only | A manual dispatch from `main` with `lane=preview` |
 
-For rollout, dispatch from `main`. The workflow uses the commit from a merged PR, checks that it is still the branch tip immediately before each deploy, and uses the existing Cloudflare CI secret and account variable. It builds with the Cloudflare adapter and publishes to the dedicated preview Worker, preserving the alias declared in [.github/scripts/template-domain-owners.json](.github/scripts/template-domain-owners.json). Only the designated lane includes the custom domain in its generated Wrangler configuration. The preview also keeps its existing `workers.dev` URL, with crawler access discouraged by `robots.txt`. The preview URL is in the run summary.
+The production Worker owns the custom domain, the same way the [adapter demo](#how-deploys-happen) owns `cloudflare-adapter.bascik.dev`; the generated `wrangler.jsonc` declares it with `custom_domain: true` and `workers_dev: false`. The preview Worker declares no routes. The shop template is a simulated checkout with fixture data; it does not use `shop.bascik.dev` or any of the independent shop's secrets, bindings, or services.
+
+**Pull requests** build every registered template and run it in local workerd without Cloudflare credentials.
+
+**A push to `main`** deploys all nine production Workers in a matrix. Each job checks that the commit came from a merged pull request, binds the pre-seeded D1 database (shop and reports), refuses a hostname attached to any other Worker or already present in DNS, checks that the commit is still the tip of `main`, runs `wrangler deploy`, and smoke-tests `https://template-<slug>.bascik.dev`. The first deploy creates the Worker and the custom domain and waits for its certificate, so its smoke test retries for up to five minutes. A commit pushed straight to `main` deploys nothing.
+
+**A manual dispatch** from `main` redeploys one template to either lane:
 
 ```sh
-gh workflow run template-workers.yml --ref main -f template=default
+gh workflow run template-workers.yml --ref main -f template=default -f lane=preview
 ```
 
-**Alias lifecycle:** all nine aliases currently belong to the preview lane. Every preview publish checks ownership first. `production=true` is blocked while an alias is assigned to preview; the main-only merged-PR guard remains in force. A future handoff requires an owner-approved PR changing that slug's policy and tests, retirement of the pinned `template-preview-rollout` workflow, and a coordinated release of the old preview attachment before production claims it. A policy change alone does not authorize taking over an attached hostname: the ownership check still refuses another Worker. Do not run both lanes with the same alias or override an ownership/DNS conflict.
+The preview URL is in the run summary, with crawler access discouraged by `robots.txt`.
 
-The initial alias attachment uses the authenticated `cf` CLI's native trigger-only path, without rebuilding or uploading code:
+**D1.** Shop and reports read a pre-seeded fixture database per lane, bound as `DB`. CI only binds them; it never writes to them, and the templates' APIs only read.
+
+| Database                             | Repository variable                 |
+| ------------------------------------ | ----------------------------------- |
+| `bascik-template-shop-db`            | `TEMPLATE_SHOP_PRODUCTION_D1_ID`    |
+| `bascik-template-shop-preview-db`    | `TEMPLATE_SHOP_PREVIEW_D1_ID`       |
+| `bascik-template-reports-db`         | `TEMPLATE_REPORTS_PRODUCTION_D1_ID` |
+| `bascik-template-reports-preview-db` | `TEMPLATE_REPORTS_PREVIEW_D1_ID`    |
+
+To reseed one after a template's fixture data changes, build the template (below) and run its seed SQL against the database:
 
 ```sh
-scratch="$(mktemp -d)"
-node .github/scripts/template-workers.mts domain-triggers default "$scratch"
-(cd "$scratch" && cf workers triggers deploy --prebuilt --worker bascik-template-default-preview --dry-run)
-# After verifying account, existing Worker ownership and absence of DNS conflicts:
-(cd "$scratch" && cf workers triggers deploy --prebuilt --worker bascik-template-default-preview)
+(cd "$scratch/shop" && node scripts/seed-database.ts --sql) > seed.sql
+cf d1 query <database-id> --sql "$(cat seed.sql)"
 ```
 
-Set `CLOUDFLARE_ACCOUNT_ID` to the existing demo account before generating this output. The helper writes native Build Output v0 with `domains`, `workersDev: true`, and `previewUrls: false`. It has no code bundle or D1 bindings and an empty assets directory required by the CLI reader. **Never use this trigger-only output with `cf deploy`, Wrangler deploy/upload/preview, or another code deployment command.** Trigger application preserves the active Worker version and database. Verify all nine HTTPS roots, representative routes, APIs, crawler policy, ownership, and unchanged active deployments. Future code deployments remain CI-only.
-
-Reports needs two dedicated D1 databases, `bascik-template-reports-preview-db` and `bascik-template-reports-db`. Set their IDs in `TEMPLATE_REPORTS_PREVIEW_D1_ID` and `TEMPLATE_REPORTS_PRODUCTION_D1_ID`, and set the separate `TEMPLATE_REPORTS_D1_TOKEN` CI secret with D1 edit and account read on the demo account. CI verifies the name matches the configured ID before loading the scaffold's synthetic data and binding `DB`. Only use these names for fixtures: the seed replaces the demo rows.
-
-Shop's request-rendered root catalog uses its own `bascik-template-shop-preview-db`, configured with `TEMPLATE_SHOP_PREVIEW_D1_ID`. Seed this dedicated fixture database from the generated shop's `node scripts/seed-database.ts --sql` output before preview dispatch. Local smoke tests seed an isolated local D1 database; the preview lane only binds the pre-seeded remote fixture. Never reuse the independent commerce shop's databases, secrets, or domain. Catalog and cart-pricing requests only read the database.
+Never reuse the independent commerce shop's databases, secrets, or domain. Local smoke tests seed an isolated local D1 database instead.
 
 For local verification after `yarn install --immutable`:
 

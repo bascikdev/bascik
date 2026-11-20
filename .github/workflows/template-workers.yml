@@ -1,8 +1,12 @@
 name: Template Workers
 
+# Pull requests build every registered template and run it in local workerd without Cloudflare credentials.
+# A push to main from a merged pull request deploys each template's production Worker, which owns
+# https://template-<slug>.bascik.dev, the same way CI stage 5 deploys the adapter demo. A manual dispatch from main
+# redeploys one template to either lane; the preview lane uses only the Worker's workers.dev URL. Runbook: DEPLOYMENT.md.
 on:
   pull_request:
-    paths:
+    paths: &paths
       - ".github/scripts/**"
       - ".github/workflows/template-workers.yml"
       - ".nvmrc"
@@ -12,10 +16,13 @@ on:
       - "create/**"
       - "pkg/**"
       - "adapters/cloudflare/**"
+  push:
+    branches: [main]
+    paths: *paths
   workflow_dispatch:
     inputs:
       template:
-        description: Template to roll out
+        description: Template to deploy
         type: choice
         required: true
         options:
@@ -28,29 +35,24 @@ on:
           - shop
           - reports
           - dashboard
-      production:
-        description: Promote to the custom domain only if the preview passes
-        type: boolean
-        default: false
+      lane:
+        description: preview (workers.dev only) or production (template-<slug>.bascik.dev)
+        type: choice
+        default: preview
+        options:
+          - preview
+          - production
 
 permissions:
   contents: read
 
 jobs:
-  template:
-    name: Build and verify template Workers
-    if: github.event_name == 'pull_request' || (github.repository == 'bascikdev/bascik' && github.ref == 'refs/heads/main')
+  verify:
+    name: Build and run templates locally
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: read
-      pull-requests: read
-    # Preview and production share this per-template lock, including the smoke checks.
-    concurrency:
-      group: template-workers-${{ github.event_name == 'workflow_dispatch' && inputs.template || github.run_id }}
-      cancel-in-progress: false
     env:
-      SLUG: ${{ inputs.template }}
       WRANGLER_SEND_METRICS: "false"
     steps:
       - uses: actions/checkout@v7
@@ -67,90 +69,103 @@ jobs:
           yarn pkg:build
           yarn adapter:cf:build
           yarn workspace create-bascik build
-      - name: Build and smoke-test all registered templates on pull requests
-        if: github.event_name == 'pull_request'
+      - name: Build and smoke-test all registered templates
         run: |
           templates="$(node .github/scripts/template-workers.mts list)"
           for slug in $templates; do
             node .github/scripts/template-workers.mts build "$slug" "$RUNNER_TEMP/template-workers"
             node .github/scripts/template-workers.mts local-smoke "$slug" "$RUNNER_TEMP/template-workers"
           done
-      - name: Build and smoke-test the selected template
-        if: github.event_name == 'workflow_dispatch'
+
+  deploy:
+    name: Deploy ${{ matrix.slug }} (${{ github.event_name == 'workflow_dispatch' && inputs.lane || 'production' }})
+    if: github.event_name != 'pull_request' && github.repository == 'bascikdev/bascik' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      matrix:
+        slug: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.template) || '["default","blog","docs","landing","portfolio","corporate","shop","reports","dashboard"]') }}
+    # No concurrency group, like CI stage 5: the newest-commit check right before Wrangler keeps main's deploys in order.
+    env:
+      SLUG: ${{ matrix.slug }}
+      LANE: ${{ github.event_name == 'workflow_dispatch' && inputs.lane || 'production' }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --immutable
+      - name: Check Cloudflare credentials
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          [ "$HAS_TOKEN" = "true" ] || { echo "::error::Repository secret CLOUDFLARE_API_TOKEN is not set (see DEPLOYMENT.md)"; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Repository variable CLOUDFLARE_ACCOUNT_ID is not set (see DEPLOYMENT.md)"; exit 1; }
+      - name: Build the tools and the template from this commit
+        run: |
+          yarn pkg:build
+          yarn adapter:cf:build
+          yarn workspace create-bascik build
           node .github/scripts/template-workers.mts build "$SLUG" "$RUNNER_TEMP/template-workers"
-          node .github/scripts/template-workers.mts local-smoke "$SLUG" "$RUNNER_TEMP/template-workers"
-      - name: Check that the selected commit came from a merged pull request
-        if: github.event_name == 'workflow_dispatch'
+      # A push to main runs no tests (the pull request was tested before the merge), so only a commit that a merged
+      # pull request put on main deploys; a commit pushed straight to main fails here.
+      - name: Check the commit came from a merged pull request
         env:
           GH_TOKEN: ${{ github.token }}
         run: node .github/scripts/template-workers.mts check-merged
-      - name: Seed the dedicated Reports preview database
-        if: github.event_name == 'workflow_dispatch' && inputs.template == 'reports'
+      - name: Bind the template's pre-seeded D1 database
+        if: matrix.slug == 'shop' || matrix.slug == 'reports'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.TEMPLATE_REPORTS_D1_TOKEN }}
+          TEMPLATE_SHOP_PREVIEW_D1_ID: ${{ vars.TEMPLATE_SHOP_PREVIEW_D1_ID }}
+          TEMPLATE_SHOP_PRODUCTION_D1_ID: ${{ vars.TEMPLATE_SHOP_PRODUCTION_D1_ID }}
+          TEMPLATE_REPORTS_PREVIEW_D1_ID: ${{ vars.TEMPLATE_REPORTS_PREVIEW_D1_ID }}
+          TEMPLATE_REPORTS_PRODUCTION_D1_ID: ${{ vars.TEMPLATE_REPORTS_PRODUCTION_D1_ID }}
+        run: node .github/scripts/template-workers.mts bind "$SLUG" "$LANE" "$RUNNER_TEMP/template-workers"
+      # Refuses a hostname attached to any other Worker or already present in DNS.
+      - name: Check the custom domain belongs to this Worker
+        if: env.LANE == 'production'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          REPORTS_D1_ID: ${{ vars.TEMPLATE_REPORTS_PREVIEW_D1_ID }}
-        run: |
-          test "$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" = true
-          node .github/scripts/template-workers.mts seed-reports preview "$RUNNER_TEMP/template-workers"
-      - name: Bind the dedicated pre-seeded Shop preview database
-        if: github.event_name == 'workflow_dispatch' && inputs.template == 'shop'
+        run: node .github/scripts/template-workers.mts check-domain "$SLUG"
+      - name: Check this is still the newest commit
+        id: newest
+        run: echo "newest=$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+      - name: Deploy to production
+        if: env.LANE == 'production' && steps.newest.outputs.newest == 'true'
         env:
-          SHOP_D1_ID: ${{ vars.TEMPLATE_SHOP_PREVIEW_D1_ID }}
-        run: node .github/scripts/template-workers.mts bind-shop-preview "$RUNNER_TEMP/template-workers"
-      # A reviewed ownership policy assigns each showcase alias to one lane.
-      # Never allow a preview deploy to take a hostname from another Worker.
-      - name: Publish to the dedicated preview Worker
-        if: github.event_name == 'workflow_dispatch'
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          yarn workspace @bascik/adapter-cloudflare wrangler deploy \
+            --config "$RUNNER_TEMP/template-workers/$SLUG/dist/.bascik/cloudflare/wrangler.jsonc" \
+            --message "Template production at $GITHUB_SHA"
+          echo "Template $SLUG production: https://template-$SLUG.bascik.dev" >> "$GITHUB_STEP_SUMMARY"
+      - name: Smoke-test production
+        if: env.LANE == 'production' && steps.newest.outputs.newest == 'true'
+        run: node .github/scripts/template-workers.mts smoke "$SLUG" "https://template-$SLUG.bascik.dev"
+      - name: Deploy to the preview Worker
+        if: env.LANE == 'preview' && steps.newest.outputs.newest == 'true'
         id: preview
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/template-preview.ndjson
         run: |
-          test "$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" = true
-          test -n "$CLOUDFLARE_API_TOKEN" && test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Cloudflare CI credentials are missing"; exit 1; }
-          node .github/scripts/template-workers.mts check-domain "$SLUG" preview
           yarn workspace @bascik/adapter-cloudflare wrangler deploy \
             --config "$RUNNER_TEMP/template-workers/$SLUG/dist/.bascik/cloudflare/wrangler.preview.json" \
             --message "Template preview at $GITHUB_SHA"
           node .github/scripts/template-workers.mts preview-url "$SLUG" "$WRANGLER_OUTPUT_FILE_PATH"
       - name: Smoke-test the preview
-        if: github.event_name == 'workflow_dispatch'
+        if: env.LANE == 'preview' && steps.newest.outputs.newest == 'true'
         env:
           URL: ${{ steps.preview.outputs.url }}
         run: node .github/scripts/template-workers.mts smoke "$SLUG" "$URL"
-      - name: Check the production custom domain
-        if: github.event_name == 'workflow_dispatch' && inputs.production
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-        run: node .github/scripts/template-workers.mts check-domain "$SLUG"
-      - name: Seed the dedicated Reports production database
-        if: github.event_name == 'workflow_dispatch' && inputs.production && inputs.template == 'reports'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.TEMPLATE_REPORTS_D1_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          REPORTS_D1_ID: ${{ vars.TEMPLATE_REPORTS_PRODUCTION_D1_ID }}
-        run: |
-          test "$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" = true
-          node .github/scripts/template-workers.mts seed-reports production "$RUNNER_TEMP/template-workers"
-      - name: Bind the dedicated pre-seeded Shop production database
-        if: github.event_name == 'workflow_dispatch' && inputs.production && inputs.template == 'shop'
-        env:
-          SHOP_D1_ID: ${{ vars.TEMPLATE_SHOP_PRODUCTION_D1_ID }}
-        run: node .github/scripts/template-workers.mts bind-shop-production "$RUNNER_TEMP/template-workers"
-      - name: Promote to production
-        if: github.event_name == 'workflow_dispatch' && inputs.production
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          test "$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" = true
-          yarn workspace @bascik/adapter-cloudflare wrangler deploy \
-            --config "$RUNNER_TEMP/template-workers/$SLUG/dist/.bascik/cloudflare/wrangler.jsonc" \
-            --message "Template production at $GITHUB_SHA"
-      - name: Smoke-test production
-        if: github.event_name == 'workflow_dispatch' && inputs.production
-        run: node .github/scripts/template-workers.mts smoke "$SLUG" "https://template-$SLUG.bascik.dev"
