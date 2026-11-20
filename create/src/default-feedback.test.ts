@@ -16,6 +16,16 @@ import {
 } from "./default-icons.js";
 
 describe("default starter feedback", () => {
+  it("does not depend on retained verification sources in packaged dist", () => {
+    for (const name of [
+      "default-feedback.config.ts",
+      "default-generated.config.ts",
+    ]) {
+      expect(
+        readFileSync(new URL(`../e2e/${name}`, import.meta.url), "utf8"),
+      ).not.toContain("dist/default-verification");
+    }
+  });
   it("welcomes the project name instead of a product slogan", () => {
     expect(indexPage("default")).toContain(
       "<h1>Welcome to <span>default</span></h1>",

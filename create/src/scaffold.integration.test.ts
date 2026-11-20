@@ -86,17 +86,45 @@ function missingPrerequisites(
   );
 }
 
-/**
- * A scaffolded project has no node_modules, so point the two packages a Cloudflare
- * build resolves from the project root at their workspace directories. The adapter's
- * own dependencies (esbuild, jsonc-parser) resolve from its real path.
- */
+/** Real local ESM resolution, without Windows symlink privilege requirements. */
+async function linkFixturePackage(
+  projectDir: string,
+  name: string,
+  source: string,
+): Promise<void> {
+  const link = join(projectDir, "node_modules", name);
+  await mkdir(resolve(link, ".."), { recursive: true });
+  if (!existsSync(link)) {
+    await symlink(
+      await realpath(source),
+      link,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  }
+}
+
+/** Even plain builds and --check load the generated config's Bascik import. */
+async function linkWorkspaceBascik(projectDir: string): Promise<void> {
+  await linkFixturePackage(
+    projectDir,
+    "@bascik/bascik",
+    join(REPO_ROOT, "pkg"),
+  );
+}
+
+/** Adapter builds additionally resolve the workspace adapters from the site. */
 async function linkWorkspacePackages(projectDir: string): Promise<void> {
-  const scope = join(projectDir, "node_modules", "@bascik");
-  await mkdir(scope, { recursive: true });
-  await symlink(join(REPO_ROOT, "pkg"), join(scope, "bascik"), "dir");
-  await symlink(ADAPTER_DIR, join(scope, "adapter-cloudflare"), "dir");
-  await symlink(NETLIFY_ADAPTER_DIR, join(scope, "adapter-netlify"), "dir");
+  await linkWorkspaceBascik(projectDir);
+  await linkFixturePackage(
+    projectDir,
+    "@bascik/adapter-cloudflare",
+    ADAPTER_DIR,
+  );
+  await linkFixturePackage(
+    projectDir,
+    "@bascik/adapter-netlify",
+    NETLIFY_ADAPTER_DIR,
+  );
 }
 
 /**
@@ -209,6 +237,7 @@ async function runBascikBuild(
   projectDir: string,
   extraArgs: string[] = [],
 ): Promise<BuildResult> {
+  await linkWorkspaceBascik(projectDir);
   try {
     const { stdout, stderr } = await execFileAsync(
       process.execPath,
@@ -329,9 +358,11 @@ describe("scaffold-to-compiler integration", () => {
     await expect(
       access(join(distDir, "assets/apple-touch-icon.png")),
     ).resolves.toBeUndefined();
-    await expect(
-      access(join(distDir, "css/styles.css")),
-    ).resolves.toBeUndefined();
+    await expect(access(join(distDir, "css/styles.css"))).rejects.toMatchObject(
+      { code: "ENOENT" },
+    );
+    expect(indexHtml).toMatch(/<style\b[^>]*>[^<]*:root\s*\{/);
+    expect(indexHtml).not.toMatch(/<link\b[^>]*href="[^"]*styles\.css/);
   }, 45_000);
 
   it("compiles scaffolded project with workers enabled in config", async () => {
@@ -375,6 +406,9 @@ describe("scaffold-to-compiler integration", () => {
     await scaffold(projectName, parentDir, { adapter: "cloudflare" });
 
     const buildResult = await runBascikBuild(projectDir);
+    expect(
+      existsSync(join(projectDir, "node_modules/@bascik/adapter-cloudflare")),
+    ).toBe(false);
     expect(
       buildResult.exitCode,
       `Build failed with stderr: ${buildResult.stderr}`,
@@ -626,6 +660,7 @@ describe("scaffold-to-compiler integration", () => {
       await scaffold("check-site", parentDir, {
         adapter: template === "default" ? undefined : template,
       });
+      await linkWorkspaceBascik(projectDir);
       const env: NodeJS.ProcessEnv = {
         ...process.env,
         NO_COLOR: "1",
@@ -696,6 +731,7 @@ describe("scaffold-to-compiler integration", () => {
       const parentDir = await createTempDir("e2e-webserver");
       const projectDir = join(parentDir, "e2e-site");
       await scaffold("e2e-site", parentDir);
+      await linkWorkspaceBascik(projectDir);
       if (dotEnvUrl !== undefined) {
         await writeFile(
           join(projectDir, ".env"),
@@ -855,9 +891,11 @@ describe("scaffold-to-compiler integration", () => {
       // A scaffolded project has no node_modules: link Bascik, the adapters, and what the template imports.
       await linkWorkspacePackages(projectDir);
       for (const dependency of Object.keys(template.dependencies ?? {})) {
-        const link = join(projectDir, "node_modules", dependency);
-        await mkdir(resolve(link, ".."), { recursive: true });
-        await symlink(join(REPO_ROOT, "node_modules", dependency), link, "dir");
+        await linkFixturePackage(
+          projectDir,
+          dependency,
+          join(REPO_ROOT, "node_modules", dependency),
+        );
       }
 
       const build = await runBascikBuild(
@@ -962,6 +1000,8 @@ describe("scaffold-to-compiler integration", () => {
     expect(buildResult.exitCode).not.toBe(0);
     // Verifier rejected the corrupted page
     const combinedOutput = `${buildResult.stdout}\n${buildResult.stderr}`;
+    expect(combinedOutput).not.toContain("Failed to load bascik.config");
+    expect(combinedOutput).not.toContain("Cannot find package");
     expect(combinedOutput.toLowerCase()).toMatch(/error|failed|syntaxerror/);
   }, 45_000);
 

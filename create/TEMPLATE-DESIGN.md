@@ -51,6 +51,8 @@ These are different design systems, not a checklist to force onto every branch. 
 - Keep the canonical Bascik favicon geometry and colors. Navigation links have deliberate resting styles without list-link underlines.
 - The two counter instances demonstrate ID, script, and CSS scoping. Initialize `data-value="0"` and reflect `String(count)` in `data-value` on every update. CSS alone monitors the raw numeric string through `.value[data-value^='-']` to make negatives red; zero and positive values retain the neutral accent color. Do not classify the sign in JavaScript or assign styling classes, semantic sign state, or colors.
 - Fresh production browser tests cover computed initial animation names, icon-only text, persistence, CSS requests, both themes, narrow layouts, and independent counters on port 9411.
+- Browser configs export dynamic verification paths. Keep generated sources, builds, and browser output in `mkdtemp` directories under the OS `tmpdir`, never packaged `create/dist/`; remove fixtures on setup failure, validation failure, and Playwright teardown.
+- Integration fixtures must resolve the generated config's `@bascik/bascik` import through local workspace dependency links, using junctions on Windows and directory symlinks elsewhere. Plain builds must not silently install adapters; negative controls must fail for their injected error, not missing dependencies.
 - The public visual-design URL returned HTTP 404 during this work. Repository-only UI/UX guidance is the reference until that page is available.
 
 ## Docs-template behavior

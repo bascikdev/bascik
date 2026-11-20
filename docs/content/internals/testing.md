@@ -27,6 +27,8 @@ Integration tests in Bascik follow an explicit boundary contract: they do not mo
 
 Template feedback regressions also scaffold isolated sites, build production output, and verify first paint, themes, navigation, and interactions in Chromium. The browser-backed Vitest harnesses run through `yarn create:unit`; build the package and adapters first, then run `npx playwright install chromium`. CI provisions Chromium before the Linux and Windows create suites. These checks complement source assertions rather than treating generated strings as proof of browser behavior.
 
+Verification sources, builds, and browser results belong in OS-temporary directories, never packaged `create/dist/`. The shared verification fixture helper links workspace dependencies with directory symlinks or Windows junctions and removes fixtures after setup failures, validation failures, and browser teardown. An allocating-process exit handler also cleans up discovery-only runs. Tarball regressions check that verification output cannot leak into the published package.
+
 ### Adapter development versus production acceptance
 
 Watched adapter development (`bascik --target cloudflare` or `bascik --target netlify`) adds a source watcher, full production adapter rebuilds, a local HTTP proxy, and browser live reload around the real platform runtime. Tests of that workflow must cover edits and recovery after a failed build across the CLI, runtime, proxy, and browser boundaries. A rebuilding or failed build may return 503; recovery means the watcher remains alive and serves a successful subsequent edit, not guaranteed last-good serving. The proxy is HTTP only, and emitted production artifacts must stay free of live-reload injection.
