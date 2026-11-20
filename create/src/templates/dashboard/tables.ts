@@ -536,10 +536,10 @@ const row = (
 });
 
 const ROWS: RowData[] = [
-  row("IMSA-1002", "2026-10-02", "Hurley Haywood", 4200, "Shipped"),
-  row("IMSA-1010", "2026-10-09", "jordan taylor", 1650, "Paid"),
-  row("IMSA-1001", "2026-10-02", "Paul Newman", 990, "Refunded"),
-  row("IMSA-1003", "2026-10-05", "Ross Bentley", 10000, "Shipped"),
+  row("IMSA-1002", "2026-10-02", "Demo customer 03", 4200, "Shipped"),
+  row("IMSA-1010", "2026-10-09", "demo customer 02", 1650, "Paid"),
+  row("IMSA-1001", "2026-10-02", "Demo customer 04", 990, "Refunded"),
+  row("IMSA-1003", "2026-10-05", "Demo customer 01", 10000, "Shipped"),
 ];
 
 const state = (changes: Partial<TableState> = {}): TableState => ({
@@ -689,9 +689,9 @@ describe("nextDirection", () => {
 
 describe("matches", () => {
   it("filters by text without regard to case or surrounding spaces, and by status", () => {
-    expect(ordersOf({ query: "  JORDAN " })).toEqual(["IMSA-1010"]);
+    expect(ordersOf({ query: "  DEMO CUSTOMER 02 " })).toEqual(["IMSA-1010"]);
     expect(ordersOf({ status: "Shipped" })).toEqual(["IMSA-1003", "IMSA-1002"]);
-    expect(ordersOf({ query: "ross", status: "Shipped" })).toEqual([
+    expect(ordersOf({ query: "demo customer 01", status: "Shipped" })).toEqual([
       "IMSA-1003",
     ]);
     expect(matches(ROWS[0], "", "")).toBe(true);
@@ -705,7 +705,7 @@ describe("matches", () => {
 
 describe("paging", () => {
   const many = Array.from({ length: 23 }, (_, index) =>
-    row(\`IMSA-\${2000 + index}\`, "2026-10-01", "Jordan Taylor", index, "Paid"),
+    row(\`IMSA-\${2000 + index}\`, "2026-10-01", "Demo customer 02", index, "Paid"),
   );
 
   it("counts pages, with one page for an empty table", () => {

@@ -18,7 +18,8 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
-- `create-bascik`: the dashboard template now uses a restrained data-product palette, clearer typographic hierarchy and content spacing, with reduced-motion-aware entrances and pressed buttons.
+- `create-bascik`: the dashboard template uses a restrained data-product palette, clearer typographic hierarchy and content spacing, with reduced-motion-aware pressed buttons. Initial page content paints without entrance animations.
+- `create-bascik`: dashboard scaffolds inline their global stylesheet through `assets.inlineStyles`, retain the canonical Bascik favicon, and use an accessible icon-only light/dark toggle. Navigation remains non-underlined at rest, settings use the plain `dashboard` name, and seeded customers and inventory use explicit demo labels rather than invented claims about real people.
 - `create-bascik`: dashboard cards and navigation now use a neutral, softly layered light/dark palette with responsive surfaces and a more legible accent.
 
 - `create-bascik`: the starter and adapter variants use a shared light/dark design system, with a neutral canvas, raised cards, restrained periwinkle accents, visible keyboard focus, and motion that respects reader preferences.

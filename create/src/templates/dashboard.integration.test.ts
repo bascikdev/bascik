@@ -128,7 +128,7 @@ const expectLiveOverview = (html: string): void => {
   );
   // The rest of the page is the build's: the tiles, both charts, the recent orders.
   expect(html.match(/data-testid="stat-tile"/g)).toHaveLength(5);
-  expect(html.match(/<svg\b/g)).toHaveLength(2);
+  expect(html.match(/<svg\b[^>]*role="img"/g)).toHaveLength(2);
   expect(markupOf(html)).not.toMatch(/NaN|undefined|Infinity/);
 };
 
@@ -235,7 +235,7 @@ describe("dashboard template, built and served", () => {
     );
     expect(preorder).toContain("No copies sold in the last 8 weeks.");
     expect(preorder).toContain("No orders include this title yet.");
-    expect(preorder).not.toContain("<svg");
+    expect(preorder).not.toMatch(/<svg\b[^>]*role="img"/);
   }, 120_000);
 
   it("builds the same bytes with and without a seeded database", async () => {

@@ -29,6 +29,21 @@ const shownValues = (page: Page, name: string): Promise<string[]> =>
   );
 
 test.describe("Overview", () => {
+  test("compiled routes have inline CSS and no above-fold initial animation", async ({ page }) => {
+    const requests: string[] = [];
+    page.on("request", request => requests.push(request.url()));
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    for (const path of ["/", "/orders", "/settings", "/missing"]) {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      await expect(page.locator('link[rel="stylesheet"]')).toHaveCount(0);
+      expect(await page.evaluate(() => Array.from(document.body.querySelectorAll("*"))
+        .filter(element => { const box = element.getBoundingClientRect(); return box.height > 0 && box.top < innerHeight && box.bottom > 0; })
+        .filter(element => getComputedStyle(element).animationName !== "none")
+        .map(element => element.tagName))).toEqual([]);
+    }
+    expect(requests.filter(url => /\\/styles\\.css(?:\\?|$)/.test(url))).toEqual([]);
+  });
+
   test("shows the stat tiles, each with its change in words", async ({
     page,
   }) => {
@@ -190,7 +205,7 @@ test.describe("App shell", () => {
     }
   });
 
-  test("uses brief motion by default and removes it for reduced-motion preferences", async ({
+  test("paints content immediately and retains reduced-motion-aware press feedback", async ({
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -201,7 +216,8 @@ test.describe("App shell", () => {
           .getByTestId("overview-main")
           .evaluate((element) => getComputedStyle(element).animationName),
       )
-      .toBe("content-enter");
+      .toBe("none");
+    await expect(page.getByTestId("overview-main")).toHaveCSS("opacity", "1");
     const toggle = page.getByTestId("theme-toggle");
     await expect(toggle).toHaveCSS(
       "transition-duration",
@@ -237,6 +253,8 @@ test.describe("App shell", () => {
     await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/");
     const toggle = page.getByTestId("theme-toggle");
+    expect((await toggle.textContent())!.trim()).toBe("");
+    expect(await toggle.locator("svg").count()).toBeGreaterThan(0);
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
     const lightBackground = await page.evaluate(
       () => getComputedStyle(document.body).backgroundColor,
@@ -261,6 +279,9 @@ test.describe("App shell", () => {
     // The choice follows the reader to other pages.
     await page.goto("/orders");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await toggle.click();
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   });
 });
 
@@ -433,7 +454,7 @@ test.describe("Titles", () => {
     await expect(detail.getByRole("heading", { level: 1 })).toHaveText(
       "Porsche 917K",
     );
-    await expect(detail).toContainText("by Hurley Haywood");
+    await expect(detail).toContainText("by Demo inventory");
     await expect(detail.getByRole("img")).toBeVisible();
     await expect(detail.getByRole("rowheader").first()).toHaveText(
       /^IMSA-\\d+$/,
@@ -513,7 +534,7 @@ test.describe("Settings form", () => {
     ).not.toBeChecked();
 
     await page.getByTestId("settings-form-reset").click();
-    await expect(page.getByLabel("Shop name")).toHaveValue("Porsche Motorsport");
+    await expect(page.getByLabel("Shop name")).toHaveValue("dashboard");
     await expect(saved).toHaveText("Defaults restored.");
   });
 
@@ -531,7 +552,7 @@ test.describe("Settings form", () => {
     await expect(problem).toBeVisible();
     await expect(problem).toHaveAttribute("role", "alert");
     await expect(problem).toContainText("could not be read");
-    await expect(page.getByLabel("Shop name")).toHaveValue("Porsche Motorsport");
+    await expect(page.getByLabel("Shop name")).toHaveValue("dashboard");
 
     // Saving replaces the broken value and clears the error.
     await page.getByTestId("settings-form-save").click();

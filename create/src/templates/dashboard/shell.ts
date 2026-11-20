@@ -13,7 +13,7 @@ export const SHELL_FILES: TemplateFile[] = [
   [
     "src/components/site-head/site-head.html",
     `<!-- @bascik
-Shared head markup for every page: charset, viewport, the saved theme, the global stylesheet, and icons. Put it first in <head>, then add the page's own <title> with pageTitle() from src/lib/site.ts.
+Shared head markup for every page: charset, viewport, the saved theme, and icons. The config inlines global CSS. Put this first in <head>, then add the page's own <title> with pageTitle() from src/lib/site.ts.
 -->
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -24,7 +24,6 @@ Shared head markup for every page: charset, viewport, the saved theme, the globa
 <!-- A back office is not for search results. Remove this line for a public site. -->
 <meta name="robots" content="noindex" />
 <theme-init />
-<link rel="stylesheet" href="/css/styles.css" />
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link
   rel="icon"
@@ -50,18 +49,18 @@ const source = (): Promise<string> =>
   );
 
 describe("site-head component", () => {
-  it("has the charset, viewport, description, stylesheet and icons, and applies the saved theme first", async () => {
+  it("has charset, viewport, description and icons, with saved theme initialization and no external stylesheet", async () => {
     const html = await source();
     expect(html).toContain('charset="utf-8"');
     expect(html).toContain('name="viewport"');
     expect(html).toContain('name="description"');
-    expect(html).toContain("/css/styles.css");
+    expect(html).not.toContain('rel="stylesheet"');
     expect(html).toContain("favicon.ico");
     expect(html).toContain("apple-touch-icon.png");
-    // The theme is set before the stylesheet loads, so the page never flashes the wrong one.
+    // The saved theme is applied from the head before first paint.
     expect(html.indexOf("<theme-init />")).toBeGreaterThan(-1);
     expect(html.indexOf("<theme-init />")).toBeLessThan(
-      html.indexOf('rel="stylesheet"'),
+      html.indexOf('rel="icon"'),
     );
   });
 
@@ -128,7 +127,12 @@ A button that switches between light and dark themes and remembers the choice. N
 -->
 <style>
   .toggle {
-    padding: var(--space-1) var(--space-2);
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    flex-shrink: 0;
+    padding: var(--space-2);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     background: var(--color-surface);
@@ -142,19 +146,40 @@ A button that switches between light and dark themes and remembers the choice. N
     display: none;
   }
 
-  /* Pressed is shown by the check mark, not only by a color. */
-  .toggle[aria-pressed="true"]::before {
-    content: "✓ ";
+  .icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .sun { display: none; }
+  .toggle[aria-pressed="true"] .sun { display: block; }
+  .toggle[aria-pressed="true"] .moon { display: none; }
+
+  .toggle:hover {
+    background: var(--color-accent-wash);
   }
 </style>
 <button
   class="toggle"
   id="toggle"
   type="button"
+  aria-label="Dark theme"
+  aria-pressed="false"
   data-testid="theme-toggle"
   hidden
 >
-  Dark theme
+  <svg class="icon moon" data-testid="theme-toggle-moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z" />
+  </svg>
+  <svg class="icon sun" data-testid="theme-toggle-sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" />
+  </svg>
 </button>
 <script type="text/typescript">
   // aria-pressed tells assistive technology whether dark theme is on; the label stays the same.
@@ -226,8 +251,10 @@ describe("theme-toggle component", () => {
     expect(html).toContain('setAttribute("aria-pressed"');
     expect(html).toContain('localStorage.setItem("theme", next)');
     expect(html).toContain('new CustomEvent("theme-change"');
-    // The pressed state has a mark of its own, so it does not depend on color.
-    expect(html).toContain('[aria-pressed="true"]::before');
+    // Decorative icons change shape, while the accessible toggle name stays stable.
+    expect(html).toContain('aria-label="Dark theme"');
+    expect(html).toContain('[aria-pressed="true"] .sun');
+    expect(html).toContain('aria-hidden="true"');
   });
 });
 `,

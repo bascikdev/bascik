@@ -264,9 +264,7 @@ describe("dashboard template", () => {
 
     expect(styles).toContain("150ms ease-out");
     expect(styles).toContain("scale(0.97)");
-    expect(styles).toMatch(
-      /from\s*\{[^}]*opacity:\s*0[^}]*transform:\s*scale\(0\.97\)/s,
-    );
+    expect(styles).not.toContain("content-enter");
     expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
     expect(styles).toContain(".theme-switching *");
     expect(theme).toContain('root.classList.add("theme-switching")');
@@ -554,9 +552,7 @@ describe("the generated data module", () => {
     expect(shop.TITLES.map((title) => title.title).join(" ")).toMatch(
       /Porsche 917|Porsche 935|Porsche 962|Porsche 963/,
     );
-    expect(shop.ORDERS[0].customer).toMatch(
-      /Hurley Haywood|Jordan Taylor|Ross Bentley|Paul Newman/,
-    );
+    expect(shop.ORDERS[0].customer).toMatch(/^Demo customer \d{2}$/);
     const ordered = new Set(
       shop.ORDERS.flatMap((order) => order.lines.map((line) => line.slug)),
     );

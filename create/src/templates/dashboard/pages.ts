@@ -248,18 +248,12 @@ code {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  @keyframes content-enter {
-    from { opacity: 0; transform: scale(0.97); }
-    to { opacity: 1; transform: scale(1); }
-  }
-  main { animation: content-enter 220ms ease-out both; }
   button { transition: transform 150ms ease-out; }
   button:active:not(:disabled) { transform: scale(0.97); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  main { animation: none; }
   button { transition: none; }
 }
 

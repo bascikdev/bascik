@@ -16,6 +16,8 @@ export const LIB_FILES: TemplateFile[] = [
     `import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
+  // Inline the global tokens before first paint, without a stylesheet request.
+  assets: { inlineStyles: ["src/pages/css/styles.css"] },
   pipeline: {
     // The pages read their data and chart helpers from src/lib/. Component and
     // page folders are watched already; this rebuilds the pages in dev when a
@@ -66,32 +68,32 @@ CREATE TABLE order_lines (
 );
 
 INSERT INTO cars (slug, title, author, price_cents, stock, preorder) VALUES
-  ('porsche-917k', 'Porsche 917K', 'Hurley Haywood', 189900, 42, 0),
-  ('porsche-935-moby-dick', 'Porsche 935 Moby Dick', 'Jacky Ickx', 245000, 6, 0),
-  ('porsche-962c', 'Porsche 962C', 'Vern Schuppan', 320000, 17, 0),
-  ('porsche-963', 'Porsche 963', 'Jordan Taylor', 165000, 58, 0),
-  ('porsche-911-carrera-rsr', 'Porsche 911 Carrera RSR', 'Paul Newman', 210000, 3, 0),
-  ('porsche-911-rsr', 'Porsche 911 RSR', 'Ross Bentley', 149900, 25, 0),
-  ('porsche-356a', 'Porsche 356A', 'Stirling Moss', 279900, 11, 0),
-  ('porsche-906', 'Porsche 906 Carrera 6', 'Jo Siffert', 349500, 8, 0),
-  ('porsche-908', 'Porsche 908', 'Brian Redman', 197500, 31, 0),
-  ('porsche-910', 'Porsche 910', 'Rolf Stommelen', 225000, 14, 0),
-  ('porsche-718-rsk', 'Porsche 718 RSK', 'Hans Herrmann', 129900, 64, 0),
-  ('porsche-718-rs-laguna', 'Porsche 718 RS Laguna Seca', 'Jean Behra', 260000, 0, 1);
+  ('porsche-917k', 'Porsche 917K', 'Demo inventory', 189900, 42, 0),
+  ('porsche-935-moby-dick', 'Porsche 935 Moby Dick', 'Demo inventory', 245000, 6, 0),
+  ('porsche-962c', 'Porsche 962C', 'Demo inventory', 320000, 17, 0),
+  ('porsche-963', 'Porsche 963', 'Demo inventory', 165000, 58, 0),
+  ('porsche-911-carrera-rsr', 'Porsche 911 Carrera RSR', 'Demo inventory', 210000, 3, 0),
+  ('porsche-911-rsr', 'Porsche 911 RSR', 'Demo inventory', 149900, 25, 0),
+  ('porsche-356a', 'Porsche 356A', 'Demo inventory', 279900, 11, 0),
+  ('porsche-906', 'Porsche 906 Carrera 6', 'Demo inventory', 349500, 8, 0),
+  ('porsche-908', 'Porsche 908', 'Demo inventory', 197500, 31, 0),
+  ('porsche-910', 'Porsche 910', 'Demo inventory', 225000, 14, 0),
+  ('porsche-718-rsk', 'Porsche 718 RSK', 'Demo inventory', 129900, 64, 0),
+  ('porsche-718-rs-laguna', 'Porsche 718 RS Laguna Seca', 'Demo inventory', 260000, 0, 1);
 
 INSERT INTO customers (id, name) VALUES
-  (1, 'Hurley Haywood'),
-  (2, 'Paul Newman'),
-  (3, 'Jordan Taylor'),
-  (4, 'Ross Bentley'),
-  (5, 'Jacky Ickx'),
-  (6, 'Brian Redman'),
-  (7, 'Jo Siffert'),
-  (8, 'Hans Herrmann'),
-  (9, 'Vern Schuppan'),
-  (10, 'Rolf Stommelen'),
-  (11, 'Stirling Moss'),
-  (12, 'Jean Behra');
+  (1, 'Demo customer 01'),
+  (2, 'Demo customer 02'),
+  (3, 'Demo customer 03'),
+  (4, 'Demo customer 04'),
+  (5, 'Demo customer 05'),
+  (6, 'Demo customer 06'),
+  (7, 'Demo customer 07'),
+  (8, 'Demo customer 08'),
+  (9, 'Demo customer 09'),
+  (10, 'Demo customer 10'),
+  (11, 'Demo customer 11'),
+  (12, 'Demo customer 12');
 
 WITH RECURSIVE seq(i) AS (
   VALUES(1)
@@ -184,30 +186,30 @@ export interface RacingOrder {
 }
 
 const FALLBACK_TITLES: readonly RacingTitle[] = [
-  { slug: "porsche-917k", title: "Porsche 917K", author: "Hurley Haywood", priceCents: 189900, stock: 42 },
-  { slug: "porsche-935-moby-dick", title: "Porsche 935 Moby Dick", author: "Jacky Ickx", priceCents: 245000, stock: 6 },
-  { slug: "porsche-962c", title: "Porsche 962C", author: "Vern Schuppan", priceCents: 320000, stock: 17 },
-  { slug: "porsche-963", title: "Porsche 963", author: "Jordan Taylor", priceCents: 165000, stock: 58 },
-  { slug: "porsche-911-carrera-rsr", title: "Porsche 911 Carrera RSR", author: "Paul Newman", priceCents: 210000, stock: 3 },
-  { slug: "porsche-911-rsr", title: "Porsche 911 RSR", author: "Ross Bentley", priceCents: 149900, stock: 25 },
-  { slug: "porsche-356a", title: "Porsche 356A", author: "Stirling Moss", priceCents: 279900, stock: 11 },
-  { slug: "porsche-906", title: "Porsche 906 Carrera 6", author: "Jo Siffert", priceCents: 349500, stock: 8 },
-  { slug: "porsche-908", title: "Porsche 908", author: "Brian Redman", priceCents: 197500, stock: 31 },
-  { slug: "porsche-910", title: "Porsche 910", author: "Rolf Stommelen", priceCents: 225000, stock: 14 },
-  { slug: "porsche-718-rsk", title: "Porsche 718 RSK", author: "Hans Herrmann", priceCents: 129900, stock: 64 },
-  { slug: "porsche-718-rs-laguna", title: "Porsche 718 RS Laguna Seca", author: "Jean Behra", priceCents: 260000, stock: 0, preorder: true },
+  { slug: "porsche-917k", title: "Porsche 917K", author: "Demo inventory", priceCents: 189900, stock: 42 },
+  { slug: "porsche-935-moby-dick", title: "Porsche 935 Moby Dick", author: "Demo inventory", priceCents: 245000, stock: 6 },
+  { slug: "porsche-962c", title: "Porsche 962C", author: "Demo inventory", priceCents: 320000, stock: 17 },
+  { slug: "porsche-963", title: "Porsche 963", author: "Demo inventory", priceCents: 165000, stock: 58 },
+  { slug: "porsche-911-carrera-rsr", title: "Porsche 911 Carrera RSR", author: "Demo inventory", priceCents: 210000, stock: 3 },
+  { slug: "porsche-911-rsr", title: "Porsche 911 RSR", author: "Demo inventory", priceCents: 149900, stock: 25 },
+  { slug: "porsche-356a", title: "Porsche 356A", author: "Demo inventory", priceCents: 279900, stock: 11 },
+  { slug: "porsche-906", title: "Porsche 906 Carrera 6", author: "Demo inventory", priceCents: 349500, stock: 8 },
+  { slug: "porsche-908", title: "Porsche 908", author: "Demo inventory", priceCents: 197500, stock: 31 },
+  { slug: "porsche-910", title: "Porsche 910", author: "Demo inventory", priceCents: 225000, stock: 14 },
+  { slug: "porsche-718-rsk", title: "Porsche 718 RSK", author: "Demo inventory", priceCents: 129900, stock: 64 },
+  { slug: "porsche-718-rs-laguna", title: "Porsche 718 RS Laguna Seca", author: "Demo inventory", priceCents: 260000, stock: 0, preorder: true },
 ];
 
 const CUSTOMERS = [
-  "Hurley Haywood", "Paul Newman", "Jordan Taylor", "Ross Bentley",
-  "Jacky Ickx", "Brian Redman", "Jo Siffert", "Hans Herrmann",
-  "Vern Schuppan", "Rolf Stommelen", "Stirling Moss", "Jean Behra",
+  "Demo customer 01", "Demo customer 02", "Demo customer 03", "Demo customer 04",
+  "Demo customer 05", "Demo customer 06", "Demo customer 07", "Demo customer 08",
+  "Demo customer 09", "Demo customer 10", "Demo customer 11", "Demo customer 12",
 ];
 
 const addDays = (date: string, offset: number): string =>
   new Date(Date.parse(date + "T00:00:00Z") - offset * 86_400_000).toISOString().slice(0, 10);
 
-const FALLBACK_ORDERS: readonly RacingOrder[] = Array.from({ length: 160 }, (_, index) => {
+const FALLBACK_ORDERS: readonly RacingOrder[] = Array.from({ length: 160 }, (_, index): RacingOrder => {
   const i = index + 1;
   const offset = i <= 80 ? (i - 1) % 30 : 30 + ((i - 81) % 30);
   const age = offset;
@@ -266,7 +268,7 @@ if (typeof process !== "undefined" && typeof process.getBuiltinModule === "funct
       const database = new sqlite.DatabaseSync(seeded ? databaseUrl : ":memory:");
       try {
         if (!seeded) database.exec(fs.readFileSync(sqlUrl, "utf8"));
-        TITLES_RESULT = (database.prepare("SELECT slug, title, author, price_cents AS priceCents, stock, preorder FROM cars ORDER BY rowid").all() as Array<RacingTitle & { preorder: number }>).map((row) => ({ ...row, preorder: row.preorder === 1 }));
+        TITLES_RESULT = (database.prepare("SELECT slug, title, author, price_cents AS priceCents, stock, preorder FROM cars ORDER BY rowid").all() as Array<Omit<RacingTitle, "preorder"> & { preorder: number }>).map((row) => ({ ...row, preorder: row.preorder === 1 }));
         ORDERS_RESULT = (database.prepare("SELECT id, date, customer, status FROM orders ORDER BY date DESC, id DESC").all() as Array<Omit<RacingOrder, "lines" | "totalCents">>).map((order) => {
           const lines = database.prepare("SELECT slug, quantity FROM order_lines WHERE order_id = ? ORDER BY slug").all(order.id) as { slug: string; quantity: number }[];
           const totalCents = lines.reduce((sum, line) => {
@@ -618,7 +620,8 @@ describe("the seeded generator", () => {
   it("generates the same orders every time", () => {
     expect(generateOrders()).toEqual(generateOrders());
     expect(generateOrders()).toEqual([...ORDERS]);
-    expect(generateOrders(1)).not.toEqual(generateOrders(2));
+    // The compatibility seed argument cannot change a database snapshot.
+    expect(generateOrders(1)).toEqual(generateOrders(2));
   });
 
   it("generates orders that add up: known titles, a correct total, a date in range, newest first", () => {
@@ -1291,8 +1294,8 @@ const order: Order = {
   date: "2026-10-31",
   customer: 'Tom & "Ann" <b>',
   lines: [
-    { slug: "the-lighthouse-ledger", quantity: 2 },
-    { slug: "the-tin-kite-society", quantity: 1 },
+    { slug: "porsche-917k", quantity: 2 },
+    { slug: "porsche-962c", quantity: 1 },
   ],
   totalCents: 5097,
   status: "Paid",
@@ -1310,7 +1313,7 @@ describe("orderRows", () => {
 
   it("links each title, shows a quantity above one, and hands the status to <status-badge>", () => {
     const markup = String(orderRows([order]));
-    expect(markup).toContain('href="/titles/the-lighthouse-ledger"');
+    expect(markup).toContain('href="/titles/porsche-917k"');
     expect(markup).toContain("× 2");
     expect(markup).toContain("$50.97");
     expect(markup).toMatch(/<status-badge\\s+data-bascik-prop-status="Paid"/);

@@ -2,6 +2,8 @@
 
 This is the visual contract for the templates shipped by `create-bascik`. Read it before changing `src/scaffold.ts` or `src/templates/`. The templates share accessible foundations, not one visual skin. Each should look designed for its job rather than like a recolored admin theme.
 
+Repository-only design guidance lives in `.github/skills/bascik-ui/SKILL.md` and `.github/skills/bascik-ux/SKILL.md`. These internal skills are not installed publicly.
+
 ## Shared principles
 
 - Use semantic HTML and CSS first. Keep native links, buttons, forms, tables, figures, and disclosure elements. Add JavaScript only where HTML and CSS do not provide the needed behavior.
@@ -30,7 +32,7 @@ These are different design systems, not a checklist to force onto every branch. 
 
 ## Motion and interaction
 
-- Entrances start at `scale: 0.97` with `opacity: 0`, never at zero scale. Keep entrances brief and opt them out under `prefers-reduced-motion: reduce`.
+- Initial above-fold content is visible at first paint: no opacity-zero states, entrance animations, or flashes. Optional interaction and below-fold entrances start at `scale: 0.97` with `opacity: 0`, never at zero scale. Keep them brief and opt them out under `prefers-reduced-motion: reduce`.
 - Pressable buttons use `button:active { scale: 0.97; }` with `transition: scale 150ms ease-out`. Apply the same behavior to button-styled links when appropriate.
 - A rejected password shakes horizontally through `0, -10, 10, -6, 6, -3, 0px` over 360ms and also changes to an error state.
 - Steppers slide the next step from the direction of travel instead of crossfading.
@@ -47,6 +49,16 @@ These are different design systems, not a checklist to force onto every branch. 
 - The table of contents links to preserved Markdown heading IDs. `IntersectionObserver` updates the visible current link and its `aria-current`; fragment links work without JavaScript.
 - The sidebar marks the current page and remains usable without JavaScript. At small widths, a labeled button progressively enhances it into a collapsible navigation.
 - Use native `<dialog>` behavior for focus, Escape, and the top layer. Do not rebuild those browser features with a custom overlay or focus trap.
+
+## Dashboard feedback contract
+
+- Keep the canonical create-template Bascik favicon byte-for-byte, including its original colors and cursor animation. It is a brand asset, not a palette token.
+- Inline `src/pages/css/styles.css` with the existing `assets.inlineStyles` compiler option. Keep theme initialization in the head and pause transitions during theme switches.
+- Use a 44px icon-only theme button with decorative sun/moon SVGs, a stable accessible name of "Dark theme", and `aria-pressed` for the state. Hide it without JavaScript.
+- Keep main content immediately visible on every route, with reduced-motion-aware pressed feedback. Do not introduce decorative initial entrances.
+- Preserve deliberate non-underlined resting brand/sidebar links, visible focus, and current-page cues.
+- Use the scaffold's plain slug for header and page-title branding, with `dashboard` as the settings demo default. Keep race-car examples illustrative, with "Demo inventory" and numbered "Demo customer" labels, never invented work or orders attributed to real people.
+- Run `create/src/templates/dashboard-feedback.test.ts` for red-first source and fresh-scaffold production-browser regressions on the reserved port 43932. It cleans up its scaffold and server after verification.
 
 ## Verification
 
