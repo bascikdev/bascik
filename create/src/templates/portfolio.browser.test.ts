@@ -438,7 +438,7 @@ describe("fresh portfolio production browser", () => {
 
   it("runs component, token, and built-link audits on the fresh scaffold", async () => {
     const project = join(directory, "portfolio");
-    const skills = "/Users/collin/github/bascik/.agents/skills";
+    const skills = join(root, "skills");
     for (const script of [
       "bascik/scripts/verify.mjs",
       "bascik/scripts/audit-components.mjs",

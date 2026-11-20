@@ -7,6 +7,31 @@ const files = new Map(PORTFOLIO_TEMPLATE.files({ siteName: "portfolio" }));
 const source = (path: string): string => String(files.get(path));
 
 describe("portfolio feedback contract", () => {
+  it("runs tracked checkout skills rather than machine-specific cached installs", async () => {
+    const browserTest = await readFile(
+      new URL("./portfolio.browser.test.ts", import.meta.url),
+      "utf8",
+    );
+    expect(browserTest).not.toMatch(/\/(?:Users|home)\//);
+    expect(browserTest).not.toMatch(/["'`][A-Za-z]:[\\/]/);
+    expect(browserTest).not.toMatch(/\.(?:agents|claude)[\\/]skills/);
+    expect(browserTest).toContain('const skills = join(root, "skills")');
+    for (const script of [
+      "bascik/scripts/verify.mjs",
+      "bascik/scripts/audit-components.mjs",
+      "bascik/scripts/check-links.mjs",
+      "bascik-components/scripts/check-tokens.mjs",
+    ]) {
+      expect(browserTest).toContain(`"${script}"`);
+      expect(
+        await readFile(
+          new URL(`../../../skills/${script}`, import.meta.url),
+          "utf8",
+        ),
+      ).not.toBe("");
+    }
+  });
+
   it("preserves the canonical Bascik SVG geometry and colors", () => {
     expect(FAVICON_SVG).toContain(
       '<polygon points="10,3 28,3 23,29 4,29" fill="#d3ff8d" />',
