@@ -6,6 +6,8 @@ Repository-wide instructions are labeled accordingly.
 
 ## House Rules for Examples, Skills, Scaffolds, and Docs
 
+Before changing the starter or a template in `create/src/scaffold.ts` or `create/src/templates/`, read `create/TEMPLATE-DESIGN.md`. It records the shared visual system, approved interaction details, rejected treatments, and template validation requirements.
+
 - **TypeScript by default.** New code in docs examples, skills, scaffolds, and examples is TypeScript: `.ts` companions, `type="text/typescript"` blocks, `.ts` helpers and exec scripts. Keep TypeScript as TypeScript in refactors. JavaScript only when a page is about JavaScript or the user asks.
 - **Component-first pages.** A page reads like a list of component tags, not big blocks of HTML. Balance it: no tiny single-use wrappers and no props passed through components that do not use them.
 - **Semantic HTML.** Pick the element the HTML standard defines for the job; a component's root is that element, not a wrapper `<div>`.

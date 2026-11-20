@@ -70,21 +70,71 @@ npm run dev
 
 Your site will be live at `http://localhost:8080` in every template. `npm run dev` is always the Bascik dev server; the Cloudflare and Netlify templates add `npm run dev:cloudflare` (`http://127.0.0.1:8787`) and `npm run dev:netlify` (`http://127.0.0.1:8888`) to run the same site in the host's local runtime.
 
-## Templates
+## Adapters
 
-Pick a starter with `--template <name>` (or `--template=<name>`). Without the flag you get the `default` starter; the prompts never ask where the site will be deployed, and an adapter can be added to any project later.
+Add a deploy adapter to the starter with `--adapter <name>` (or `--adapter=<name>`). Without the flag you get the static starter; the prompts never ask where the site will be deployed, and an adapter can be added to any project later.
 
-| Template     | What you get                                                                                                             |
+| Adapter      | What you get                                                                                                             |
 | :----------- | :----------------------------------------------------------------------------------------------------------------------- |
-| `default`    | The static starter above. `static` is accepted as an alias.                                                              |
+| `none`       | The static starter above. The same as leaving the flag out.                                                              |
 | `cloudflare` | The same starter plus the [Cloudflare adapter](https://bascik.dev/deployment/cloudflare), Wrangler, and an edge demo.    |
 | `netlify`    | The same starter plus the [Netlify adapter](https://bascik.dev/deployment/netlify), a `netlify.toml`, and the edge demo. |
 
 ```sh
-npm create bascik my-site -- --template cloudflare
+npm create bascik my-site -- --adapter cloudflare
 ```
 
-The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--template` has to follow a `--`. `-y` is the exception, since `create-bascik` also reads npm's own `yes` setting (`npm create bascik my-site -y -- --template cloudflare` skips every prompt).
+The `--` matters: npm keeps flags placed before it for itself and does not pass them on, so `--adapter` has to follow a `--`. `-y` is the exception, since `create-bascik` also reads npm's own `yes` setting (`npm create bascik my-site -y -- --adapter cloudflare` skips every prompt).
+
+### Templates
+
+`--template <name>` picks the kind of site. Any template takes any adapter (`--template default --adapter netlify`).
+
+| Template    | What you get                                                                                                                                                                                                           |
+| :---------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default`   | A small multi-page site: home, about, contact, and a 404 page. Alias: `static`                                                                                                                                         |
+| `blog`      | A blog: Markdown posts in `content/posts/`, a post list, tag pages, an Atom feed, SEO tags for every post, an about page, and a 404 page                                                                               |
+| `docs`      | Documentation directly at `/`: Markdown guides, searchable sidebar navigation, an active table of contents, and previous and next links                                                                                |
+| `landing`   | A product landing page: hero, features, steps, testimonials, pricing, FAQ, and a sign-up form. With an adapter, the form posts to an API route that validates it                                                       |
+| `portfolio` | An editorial creator portfolio: clearly labeled fictional sample work, a featured grid, a project index, a page per Markdown entry in `content/projects/` read by `src/lib/projects.ts`, about, contact, and 404 pages |
+| `corporate` | A company site: services, about, careers, news, and contact pages                                                                                                                                                      |
+| `shop`      | A shop: a product catalog, product pages, a cart, and a demo checkout                                                                                                                                                  |
+| `reports`   | A reporting site: SQLite/D1 data, SVG charts, CSV downloads, and print styles; Netlify renders at build time                                                                                                           |
+| `dashboard` | A dashboard: stat tiles, SVG charts, a sortable data table, and a settings page. Built as static pages, with one tile rendered per request where a server runs                                                         |
+
+The blog uses your project slug as a plain brand, a responsive author sidebar, an unboxed reading column, and an accessible icon-only light/dark toggle. It retains the Bascik favicon. Global `styles.css` and `blog.css` are inlined through `assets.inlineStyles` in `bascik.config.ts`, without duplicate stylesheet links or above-the-fold entrance animations. Navigation remains visible without JavaScript.
+
+Its racing guides are explicitly illustrative, not biographies, endorsements, or actual track reports. Before publishing, replace the John Doe placeholder and author context in `src/lib/site.ts`, update the Markdown bylines and about page, and replace or source the sample content. Article pages include author context below the prose.
+
+For a plain slug brand, scaffold with `npm create bascik docs -- --template docs`. The folder name is used unchanged as the site name. The first sidebar entry in `src/lib/sidebar.ts` becomes `/`; the remaining guides use `/docs/<slug>`. The sample guides explain how to customize the template, rather than sending readers through a separate landing page.
+
+The docs template includes an accessible icon-only theme control, initializes the saved theme before paint, and keeps the canonical Bascik favicon. Global `src/pages/css/styles.css` is inlined through `assets.inlineStyles` in its config, without a stylesheet link or request. Navigation has no resting underline, and content appears immediately without entrance animations; interaction motion respects reduced motion.
+
+The portfolio uses an inset editorial masthead, a plain project-slug brand (`portfolio` for that project name), non-underlined navigation, and an accessible icon-only theme toggle with saved light/dark preference. Its global `src/pages/css/styles.css` is inlined through `assets.inlineStyles: true`; above-fold content is visible immediately without entrance animations. Bascik's shared favicons are unchanged. Replace the sample work and biography before publishing; the contact form validates locally and does not send a message.
+
+The shop's default brand is the plain slug `shop`. Its icon-only theme button
+restores a saved light/dark preference before paint. Global CSS is inlined,
+and initial content has no entrance animation. Edit `catalog/books.ts` to
+change each product's material, fit, specification and demo availability.
+All products, ratings and stock counts are illustrative; nothing is sold or
+shipped by the demo checkout. The favicon remains the canonical Bascik asset.
+Product actions render at their final size before scripts load: Add to cart
+starts disabled, and View cart is always a working link. The navigation keeps
+a visible neutral cart-count pill, including `0` for an empty cart.
+
+The all-products catalog is `/`; product details use `/products/<slug>`.
+Sorting and filtering are native GET forms, so they work without JavaScript.
+A non-streamed Bascik server script reads `data/racing.db` read-only, or the
+Cloudflare D1 `DB` binding, before sending the catalog HTML. The demo seed
+runs before dev/build and resets the catalog from `catalog/books.ts`.
+Production therefore needs `bascik --server` or an adapter, not a static host.
+Cloudflare projects need a dedicated D1 database bound as `DB`; generate its
+fixture SQL with `node scripts/seed-database.ts --sql`. Never run the demo seed
+against an application's database.
+The Netlify variant includes the seeded, read-only SQLite fixture in its
+function bundle through `functions.included_files`.
+
+`--template cloudflare` and `--template netlify`, the spelling before `create-bascik` 1.1.0, still work and mean the same as `--adapter`. Naming two different adapters with the two flags is an error.
 
 The Cloudflare template differs from the default in these files only:
 

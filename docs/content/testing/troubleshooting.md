@@ -23,19 +23,23 @@ Not sure where the problem is reported? Bascik tells you in one of four places:
 
 The CLI refuses to start on an older Node. Install Node 24.21 or newer and re-run. `@bascik/bascik`, `create-bascik`, `@bascik/adapter-cloudflare`, `@bascik/adapter-netlify`, and `@bascik/language-server` all declare the same floor in their `engines` field, so a package manager that enforces engines reports it at install time instead.
 
-### `npm create bascik` ignored my `--template`
+### `npm create bascik` ignored my `--adapter` or `--template`
 
-npm keeps flags that come before `--` for itself. If you ran `npm create bascik my-site --template cloudflare`, the scaffolder sees no template and reports:
+npm keeps flags that come before `--` for itself. If you ran `npm create bascik my-site --adapter cloudflare`, the scaffolder sees no adapter and reports:
 
 ```text
-npm kept --template for itself and dropped its value. Put flags after "--": npm create bascik my-site -- --template cloudflare
+npm kept --adapter for itself and dropped its value. Put flags after "--": npm create bascik my-site -- --adapter cloudflare
 ```
 
 Put every scaffolder flag after `--`. `yarn create` and `pnpm create` pass flags through without it. See [Scaffold a new project](/cli#scaffold-a-new-project).
 
-### `Unknown template "..."` or `--template needs a value`
+### `Unknown adapter "..."`, `Unknown template "..."`, or `needs a value`
 
-The template name is misspelled or missing. The message lists the valid names. See [Scaffold a new project](/cli#scaffold-a-new-project).
+The adapter or template name is misspelled or missing. The message lists the valid names. `Unknown option "--adapter"` means `create-bascik` is older than 1.1.0: run `npm create bascik@latest`, or use `--template cloudflare`.
+
+### `--template ... and --adapter ... ask for different adapters`
+
+`--template cloudflare` and `--template netlify` are the older spelling of `--adapter`, so the two flags cannot name different hosts. Pass only `--adapter`. See [Scaffold a new project](/cli#scaffold-a-new-project).
 
 ## Editor warnings
 
