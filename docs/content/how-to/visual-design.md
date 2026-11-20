@@ -18,6 +18,8 @@ Start with a link for navigation and a button for an action. Show the next step,
 
 Motion should convey where an element came from or acknowledge an action. Keep everyday feedback short. A disclosure can animate its intrinsic height where supported; it must open immediately where it is not. Keep direct manipulation responsive, preserve direction on release, and do not require a swipe to reach content. Disable cosmetic motion for reduced-motion preferences without losing feedback or hiding content.
 
+Do not fade or scale above-the-fold content into view during initial page load. Render it visibly on the first paint; loading entrances can delay meaningful content and harm Lighthouse metrics. Reserve entrances for user-triggered panels and appropriate below-the-fold interactions. Theme changes should apply immediately without a page flash.
+
 ## Review the compiled page
 
 Test light and dark themes, keyboard focus, narrow and wide layouts, zoom, and touch. Check that long labels fit, loading does not move the interface unexpectedly, and a failure state offers a way forward. Compare the rendered result to the visual direction rather than checking that it uses a particular effect.

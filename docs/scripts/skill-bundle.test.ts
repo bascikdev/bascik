@@ -19,6 +19,23 @@ import {
 const repoSkillsDir = path.resolve(import.meta.dirname, "../../skills");
 
 describe("skill-bundle", () => {
+  it("keeps repository design skills out of public archives and discovery", async () => {
+    const names = await listSkillNames(repoSkillsDir);
+    expect(names).not.toContain("bascik-ui");
+    expect(names).not.toContain("bascik-ux");
+    const files = await collectSkillFiles(repoSkillsDir);
+    expect(files.some(({ path }) => /^bascik-(ui|ux)\//.test(path))).toBe(
+      false,
+    );
+    for (const name of ["bascik-ui", "bascik-ux"]) {
+      const source = await readFile(
+        path.resolve(repoSkillsDir, `../.github/skills/${name}/SKILL.md`),
+        "utf8",
+      );
+      expect(source).toMatch(/metadata:\s+internal: true/);
+    }
+  });
+
   let dir: string;
 
   beforeEach(async () => {

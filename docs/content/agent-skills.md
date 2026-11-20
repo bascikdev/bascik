@@ -28,8 +28,6 @@ To install a skill from the docs site instead, use `npx skills add https://basci
 | `bascik-seo`           | Titles, descriptions, canonical URLs, social cards, JSON-LD, and `llms.txt`                                              | `npx skills add bascikdev/bascik --skill bascik-seo`           |
 | `bascik-config`        | Configuration, exec scripts, deployment, and monorepos                                                                   | `npx skills add bascikdev/bascik --skill bascik-config`        |
 | `bascik-testing`       | Unit and E2E tests, debugging, validating output, and Lighthouse                                                         | `npx skills add bascikdev/bascik --skill bascik-testing`       |
-| `bascik-ui`            | Visual identity, responsive layout, typography, color, and dark mode                                                     | `npx skills add bascikdev/bascik --skill bascik-ui`            |
-| `bascik-ux`            | Interaction flows, accessible controls, demo feedback, and motion                                                        | `npx skills add bascikdev/bascik --skill bascik-ux`            |
 | `bascik-migrate`       | Moving from React, Next.js, Vue, Svelte, Astro, Eleventy, Hugo, or WordPress                                             | `npx skills add bascikdev/bascik --skill bascik-migrate`       |
 | `bascik-refactor`      | **Opt-in.** Refactoring a live site with production parity at every breakpoint and 100 in all five Lighthouse categories | `npx skills add bascikdev/bascik --skill bascik-refactor`      |
 
@@ -109,7 +107,7 @@ npx skills update
 `npx skills update` keeps the version a skill was installed from. Skills that a new project installed at a release tag stay at that tag, so after upgrading `@bascik/bascik` run the install again with the new version, as the project's `AGENTS.md` shows:
 
 ```sh
-npx skills add bascikdev/bascik#v<version> -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-images bascik-migrate bascik-scripts bascik-seo bascik-testing bascik-ui bascik-ux
+npx skills add bascikdev/bascik#v<version> -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-images bascik-migrate bascik-scripts bascik-seo bascik-testing
 ```
 
 With curl, run the same install command again; it overwrites the files in place.
@@ -170,7 +168,7 @@ Press Enter, or pass `-y`, and they run the skills CLI for you. They install eve
 Answer `n`, or pass `--no-skills`, to skip it. When you skip it, or the install fails, for example offline, the project is still created and the command to run later is printed, pinned to the same release tag:
 
 ```sh
-npx skills add bascikdev/bascik#v1.0.1 -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-images bascik-migrate bascik-scripts bascik-seo bascik-testing bascik-ui bascik-ux
+npx skills add bascikdev/bascik#v1.0.1 -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-images bascik-migrate bascik-scripts bascik-seo bascik-testing
 ```
 
 If that tag is not found, run the same command without `#v1.0.1` to install from the default branch.

@@ -69,8 +69,6 @@ export const PROJECT_SKILLS = [
   "bascik-scripts",
   "bascik-seo",
   "bascik-testing",
-  "bascik-ui",
-  "bascik-ux",
 ] as const;
 
 /** Skills readers install on purpose with `--skill <name>`. */
