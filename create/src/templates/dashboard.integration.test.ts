@@ -101,10 +101,10 @@ async function filesUnder(dir: string): Promise<string[]> {
 /** Mask non-markup blocks without joining fragments into new HTML tokens. */
 const markupOf = (html: string): string =>
   html
-    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, (match) =>
+    .replace(/<script\b[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi, (match) =>
       " ".repeat(match.length),
     )
-    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, (match) =>
+    .replace(/<style\b[\s\S]*?<\/style(?:[\s/][^>]*)?>/gi, (match) =>
       " ".repeat(match.length),
     )
     .replace(/<!--[\s\S]*?-->/g, (match) => " ".repeat(match.length));
