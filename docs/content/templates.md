@@ -10,11 +10,11 @@ A simple starting point with shared components, navigation, and a theme toggle. 
 
 ### Blog
 
-An editorial site with Markdown posts and topic archives. Run `npm create bascik my-site -- --template blog`.
+An editorial site with Markdown posts, topic archives, and author context. Run `npm create bascik my-site -- --template blog`.
 
 ### Docs
 
-Searchable documentation with a sidebar, section links, and Markdown pages. Run `npm create bascik my-site -- --template docs`.
+Documentation from the first page, with search, a sidebar, highlighted section links, and Markdown pages. Run `npm create bascik my-site -- --template docs`.
 
 ### Landing
 

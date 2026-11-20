@@ -4,7 +4,7 @@ import { demoImage, renderMdRange } from "./md-renderer.ts";
 export const TEMPLATE_DEMOS = [
   { slug: "default", name: "Default", path: "/" },
   { slug: "blog", name: "Blog", path: "/blog/" },
-  { slug: "docs", name: "Docs", path: "/docs/getting-started" },
+  { slug: "docs", name: "Docs", path: "/" },
   { slug: "landing", name: "Landing", path: "/" },
   { slug: "portfolio", name: "Portfolio", path: "/" },
   { slug: "corporate", name: "Corporate", path: "/" },

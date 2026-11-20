@@ -45,7 +45,7 @@ test("the CLI links to nine template previews that open their own demos", async 
   });
   await expect(docs.getByTestId("showcase-card-link")).toHaveAttribute(
     "href",
-    "https://bascik-template-docs-preview.collin-inbox.workers.dev/docs/getting-started",
+    "https://bascik-template-docs-preview.collin-inbox.workers.dev/",
   );
   await expect(docs).toContainText(
     "npm create bascik my-site -- --template docs",
