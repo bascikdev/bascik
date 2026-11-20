@@ -3,24 +3,28 @@ import test from "node:test";
 import {
   assertDomainOwner,
   previewUrl,
-  reportsDatabase,
+  templateDatabase,
   templateWorker,
   TEMPLATE_SLUGS,
 } from "./template-workers.mts";
 
-test("Reports D1 names are fixed and a remote binding requires a UUID", () => {
+test("SQL templates have separate D1 names and require a remote UUID", () => {
   const id = "11111111-2222-4333-8444-555555555555";
-  assert.deepEqual(reportsDatabase("preview", id), {
+  assert.deepEqual(templateDatabase("reports", "preview", id), {
     binding: "DB",
     database_name: "bascik-template-reports-preview-db",
     database_id: id,
   });
   assert.equal(
-    reportsDatabase("production", id).database_name,
+    templateDatabase("reports", "production", id).database_name,
     "bascik-template-reports-db",
   );
-  assert.throws(() => reportsDatabase("production", ""));
-  assert.throws(() => reportsDatabase("shop", id));
+  assert.equal(
+    templateDatabase("shop", "preview", id).database_name,
+    "bascik-template-shop-preview-db",
+  );
+  assert.throws(() => templateDatabase("shop", "production", ""));
+  assert.throws(() => templateDatabase("reports", "other", id));
 });
 
 test("each approved template has two unique Workers and only production has a custom domain", () => {

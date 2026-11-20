@@ -94,6 +94,11 @@ jobs:
         run: |
           test "$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" = true
           node .github/scripts/template-workers.mts seed-reports preview "$RUNNER_TEMP/template-workers"
+      - name: Bind the dedicated pre-seeded Shop preview database
+        if: github.event_name == 'workflow_dispatch' && inputs.template == 'shop'
+        env:
+          SHOP_D1_ID: ${{ vars.TEMPLATE_SHOP_PREVIEW_D1_ID }}
+        run: node .github/scripts/template-workers.mts bind-shop-preview "$RUNNER_TEMP/template-workers"
       # Use a separate route-free worker so the first preview can happen before
       # a production Worker or custom domain exists.
       - name: Publish to the dedicated preview Worker
@@ -130,6 +135,11 @@ jobs:
         run: |
           test "$(node .github/scripts/newest-commit.mjs "$GITHUB_REF" "$GITHUB_SHA")" = true
           node .github/scripts/template-workers.mts seed-reports production "$RUNNER_TEMP/template-workers"
+      - name: Bind the dedicated pre-seeded Shop production database
+        if: github.event_name == 'workflow_dispatch' && inputs.production && inputs.template == 'shop'
+        env:
+          SHOP_D1_ID: ${{ vars.TEMPLATE_SHOP_PRODUCTION_D1_ID }}
+        run: node .github/scripts/template-workers.mts bind-shop-production "$RUNNER_TEMP/template-workers"
       - name: Promote to production
         if: github.event_name == 'workflow_dispatch' && inputs.production
         env:

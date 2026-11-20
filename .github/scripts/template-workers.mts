@@ -61,14 +61,18 @@ const routes: Record<(typeof TEMPLATE_SLUGS)[number], string> = {
   dashboard: "/orders",
 };
 
-export function reportsDatabase(lane: string, id: string) {
+export function templateDatabase(
+  slug: "reports" | "shop",
+  lane: string,
+  id: string,
+) {
   if (lane !== "preview" && lane !== "production")
-    throw new Error("Expected the Reports preview or production lane");
+    throw new Error("Expected a template preview or production lane");
   if (!/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(id))
-    throw new Error(`Missing or invalid Reports ${lane} D1 ID`);
+    throw new Error(`Missing or invalid ${slug} ${lane} D1 ID`);
   return {
     binding: "DB",
-    database_name: templateWorker("reports", lane).name + "-db",
+    database_name: templateWorker(slug, lane).name + "-db",
     database_id: id,
   };
 }
@@ -77,12 +81,19 @@ function configName(lane: string) {
   return lane === "preview" ? "wrangler.preview.json" : "wrangler.jsonc";
 }
 
-async function seedReports(directory: string, lane: string, local = false) {
-  const project = join(directory, "reports");
+async function seedTemplate(
+  slug: "reports" | "shop",
+  directory: string,
+  lane: string,
+  local = false,
+) {
+  const project = join(directory, slug);
   const out = join(project, "dist/.bascik/cloudflare");
   const config = configName(lane);
-  const id = local ? localDbId : (process.env.REPORTS_D1_ID ?? "");
-  const database = reportsDatabase(lane, id);
+  const id = local
+    ? localDbId
+    : (process.env[slug === "reports" ? "REPORTS_D1_ID" : "SHOP_D1_ID"] ?? "");
+  const database = templateDatabase(slug, lane, id);
   if (!local) {
     if (
       id === localDbId ||
@@ -90,7 +101,7 @@ async function seedReports(directory: string, lane: string, local = false) {
       !process.env.CLOUDFLARE_ACCOUNT_ID
     )
       throw new Error(
-        "Reports remote seed requires an isolated database and CI credentials",
+        "Template remote seed requires an isolated database and CI credentials",
       );
     const info = JSON.parse(
       execFileSync(
@@ -101,7 +112,7 @@ async function seedReports(directory: string, lane: string, local = false) {
     );
     if (info.uuid !== id || info.name !== database.database_name)
       throw new Error(
-        "D1 ID does not match the dedicated Reports database name",
+        "D1 ID does not match the dedicated template database name",
       );
   }
   const payload = JSON.parse(await readFile(join(out, config), "utf8"));
@@ -116,7 +127,7 @@ async function seedReports(directory: string, lane: string, local = false) {
       cwd: project,
     },
   );
-  await writeFile(join(out, "reports-seed.sql"), sql);
+  await writeFile(join(out, "template-seed.sql"), sql);
   execFileSync(
     process.execPath,
     [
@@ -127,7 +138,7 @@ async function seedReports(directory: string, lane: string, local = false) {
       "--config",
       config,
       "--file",
-      "reports-seed.sql",
+      "template-seed.sql",
       ...(local
         ? ["--local", "--persist-to", join(out, "local-state")]
         : ["--remote", "--yes"]),
@@ -305,18 +316,50 @@ async function smoke(slug: string, url: string, local = false) {
     `/build-${buildSha()}.txt=200`,
     "/not-a-template-page=404",
   ]);
+  if (slug === "shop") checks.add("/books/=404");
   const failures = await smokeTest(
     url,
     parseChecks([...checks]),
     local ? { attempts: 15, delayMs: 1_000 } : {},
   );
   if (failures.length) throw new Error(failures.join("\n"));
+  if (slug === "shop") {
+    const response = await fetch(new URL("/?format=Parts&sort=price-low", url));
+    const catalog = await response.text();
+    if (
+      !response.ok ||
+      catalog.match(/data-testid="book-card"/g)?.length !== 4 ||
+      !catalog.includes("Showing 4 of 8 products") ||
+      !catalog.includes("Wheel Fastener Kit") ||
+      !catalog.includes("Aero Display Panel") ||
+      catalog.indexOf("Wheel Fastener Kit") >
+        catalog.indexOf("Aero Display Panel")
+    )
+      throw new Error(
+        "Shop D1 catalog did not render the four correctly sorted Parts products.",
+      );
+    const cart = await fetch(new URL("/api/cart", url), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lines: [{ id: "pit-lane-coach-jacket", quantity: 2, priceCents: 1 }],
+      }),
+    });
+    if (
+      !cart.ok ||
+      ((await cart.json()) as { totalCents?: number }).totalCents !== 48000
+    )
+      throw new Error(
+        "Shop D1 cart pricing did not use the catalog's server-side prices.",
+      );
+  }
 }
 
 async function localSmoke(slug: string, directory: string) {
   const worker = templateWorker(slug, "preview");
   const out = join(directory, slug, "dist/.bascik/cloudflare");
-  if (slug === "reports") await seedReports(directory, "preview", true);
+  if (slug === "reports" || slug === "shop")
+    await seedTemplate(slug, directory, "preview", true);
   const port = "18794";
   const dev = spawn(
     process.execPath,
@@ -387,8 +430,35 @@ if (import.meta.main) {
     else if (command === "smoke" && argument) await smoke(slug, argument);
     else if (command === "check-merged") await checkMerged();
     else if (command === "seed-reports" && slug && argument)
-      await seedReports(resolve(argument), slug);
-    else if (command === "check-domain")
+      await seedTemplate("reports", resolve(argument), slug);
+    else if (
+      (command === "bind-reports-preview" ||
+        command === "bind-shop-preview" ||
+        command === "bind-shop-production") &&
+      slug
+    ) {
+      const template = command === "bind-reports-preview" ? "reports" : "shop";
+      const lane =
+        command === "bind-shop-production" ? "production" : "preview";
+      const database = templateDatabase(
+        template,
+        lane,
+        process.env[template === "reports" ? "REPORTS_D1_ID" : "SHOP_D1_ID"] ??
+          "",
+      );
+      if (database.database_id === localDbId)
+        throw new Error("Cannot publish with a local template database");
+      const config = join(
+        resolve(slug),
+        `${template}/dist/.bascik/cloudflare`,
+        configName(lane),
+      );
+      const payload = JSON.parse(await readFile(config, "utf8"));
+      await writeFile(
+        config,
+        JSON.stringify({ ...payload, d1_databases: [database] }),
+      );
+    } else if (command === "check-domain")
       await checkDomain(templateWorker(slug, "production"));
     else if (command === "list") {
       const registry = join(repo, "create/dist/templates.js");
