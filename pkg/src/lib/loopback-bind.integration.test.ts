@@ -5,7 +5,7 @@
  * already on `127.0.0.1:<port>` went unnoticed while Bascik announced
  * `http://localhost:<port>`. `localhost` now means both loopbacks.
  *
- * Real sockets on ports 44060-44079.
+ * Real sockets on dynamically allocated loopback ports.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import http from "node:http";
@@ -84,7 +84,10 @@ const blocker = async (host: string, port: number) => {
   const server = net.createServer((socket) =>
     socket.end("HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\nBLOCKER"),
   );
-  await new Promise<void>((resolve) => server.listen(port, host, resolve));
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, resolve);
+  });
   cleanup.push(() => new Promise<void>((r) => server.close(() => r())));
   return server;
 };
@@ -121,37 +124,75 @@ const bindable = async (host: string, port: number) => {
   return false;
 };
 
+const availablePort = async (withNextPort = false): Promise<number> => {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const probe = net.createServer();
+    await new Promise<void>((resolve, reject) => {
+      probe.once("error", reject);
+      probe.listen(0, "127.0.0.1", resolve);
+    });
+    try {
+      const address = probe.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Loopback probe did not return a TCP address");
+      }
+      const { port } = address;
+      if (
+        port < 65535 &&
+        (await bindOnce("::1", port)) &&
+        (!withNextPort ||
+          ((await bindOnce("127.0.0.1", port + 1)) &&
+            (await bindOnce("::1", port + 1))))
+      ) {
+        return port;
+      }
+    } finally {
+      await closeServer(probe);
+    }
+  }
+  throw new Error("Could not allocate available loopback ports");
+};
+
 describe("hostname localhost listens on both loopbacks", () => {
   it("answers on 127.0.0.1 and on [::1] (findings 46 and 86)", async () => {
-    const { origin } = await start(44060);
-    expect(origin).toBe("http://localhost:44060");
-    expect(await fetchFrom("127.0.0.1", 44060)).toBe("bascik via 127.0.0.1");
-    expect(await fetchFrom("::1", 44060)).toBe("bascik via ::1");
+    const port = await availablePort();
+    const { origin } = await start(port);
+    expect(origin).toBe(`http://localhost:${port}`);
+    expect(await fetchFrom("127.0.0.1", port)).toBe("bascik via 127.0.0.1");
+    expect(await fetchFrom("::1", port)).toBe("bascik via ::1");
   });
 
   it("dev moves to the next port when another program holds 127.0.0.1 (finding 143)", async () => {
-    await blocker("127.0.0.1", 44062);
+    const port = await availablePort(true);
+    await blocker("127.0.0.1", port);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const { origin } = await start(44062);
-      expect(origin).toBe("http://localhost:44063");
-      expect(warn).toHaveBeenCalledWith("Port 44062 is in use, trying 44063…");
-      expect(await fetchFrom("127.0.0.1", 44063)).toBe("bascik via 127.0.0.1");
-      expect(await fetchFrom("::1", 44063)).toBe("bascik via ::1");
+      const { origin } = await start(port);
+      expect(origin).toBe(`http://localhost:${port + 1}`);
+      expect(warn).toHaveBeenCalledWith(
+        `Port ${port} is in use, trying ${port + 1}…`,
+      );
+      expect(await fetchFrom("127.0.0.1", port + 1)).toBe(
+        "bascik via 127.0.0.1",
+      );
+      expect(await fetchFrom("::1", port + 1)).toBe("bascik via ::1");
       // The port it gave up is left whole on ::1 for the next run.
-      expect(await bindable("::1", 44062)).toBe(true);
+      expect(await bindable("::1", port)).toBe(true);
     } finally {
       warn.mockRestore();
     }
   });
 
   it("dev moves to the next port when another program holds [::1]", async () => {
-    await blocker("::1", 44065);
+    const port = await availablePort(true);
+    await blocker("::1", port);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const { origin } = await start(44065);
-      expect(origin).toBe("http://localhost:44066");
-      expect(await fetchFrom("127.0.0.1", 44066)).toBe("bascik via 127.0.0.1");
+      const { origin } = await start(port);
+      expect(origin).toBe(`http://localhost:${port + 1}`);
+      expect(await fetchFrom("127.0.0.1", port + 1)).toBe(
+        "bascik via 127.0.0.1",
+      );
     } finally {
       warn.mockRestore();
     }
@@ -159,18 +200,20 @@ describe("hostname localhost listens on both loopbacks", () => {
 
   it("--server refuses a port another program holds on 127.0.0.1", async () => {
     configState.isProdServer = true;
-    await blocker("127.0.0.1", 44068);
-    configState.http.port = 44068;
+    const port = await availablePort();
+    await blocker("127.0.0.1", port);
+    configState.http.port = port;
     const server = http.createServer();
     await expect(startServerInstance(server, "http")).rejects.toThrow(
-      /Port 44068 is already in use/,
+      `Port ${port} is already in use`,
     );
     expect(server.listening).toBe(false);
-    expect(await bindable("::1", 44068)).toBe(true);
+    expect(await bindable("::1", port)).toBe(true);
   });
 
   it("close() releases both loopbacks and waits for both", async () => {
-    const { server } = await start(44070);
+    const port = await availablePort();
+    const { server } = await start(port);
     let closed = false;
     await new Promise<void>((resolve) =>
       server.close(() => {
@@ -179,16 +222,17 @@ describe("hostname localhost listens on both loopbacks", () => {
       }),
     );
     expect(closed).toBe(true);
-    expect(await bindable("127.0.0.1", 44070)).toBe(true);
-    expect(await bindable("::1", 44070)).toBe(true);
+    expect(await bindable("127.0.0.1", port)).toBe(true);
+    expect(await bindable("::1", port)).toBe(true);
     cleanup.pop();
   });
 
   it("an explicit 127.0.0.1 binds only IPv4", async () => {
     configState.http.hostname = "127.0.0.1";
-    const { origin } = await start(44072);
-    expect(origin).toBe("http://127.0.0.1:44072");
-    expect(await fetchFrom("127.0.0.1", 44072)).toBe("bascik via 127.0.0.1");
-    expect(await fetchFrom("::1", 44072)).toMatch(/^error ECONNREFUSED/);
+    const port = await availablePort();
+    const { origin } = await start(port);
+    expect(origin).toBe(`http://127.0.0.1:${port}`);
+    expect(await fetchFrom("127.0.0.1", port)).toBe("bascik via 127.0.0.1");
+    expect(await fetchFrom("::1", port)).toMatch(/^error ECONNREFUSED/);
   });
 });
