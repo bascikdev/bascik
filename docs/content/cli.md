@@ -4,6 +4,8 @@ Bascik features a simple, fast, and highly informative CLI for both development 
 
 ## Scaffold a new project
 
+Browse the [Create Bascik template gallery](/templates) to choose a starting point.
+
 ```sh
 npm create bascik
 # or: npm create bascik my-project
