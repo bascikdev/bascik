@@ -90,6 +90,7 @@ export interface StarterTemplate {
   scripts?: Record<string, string>;
   /** Read-only fixture files that Netlify must include in its function bundle. */
   netlifyIncludedFiles?: readonly string[];
+  gitignoreEntries?: readonly string[];
 }
 
 // ─── Root files ───────────────────────────────────────────────────────────────
@@ -142,6 +143,7 @@ export const PACKAGE_JSON = (
             deploy: "npx --yes netlify-cli deploy --build --prod",
           }),
           lint: "bascik --check",
+          ...extra.scripts,
           test: "vitest run",
           "test:watch": "vitest",
           "test:coverage": "vitest run --coverage",
@@ -1544,11 +1546,16 @@ const sharedFiles = (
   ["vite.config.ts", VITE_CONFIG],
   [
     ".gitignore",
-    adapter === "cloudflare"
-      ? CLOUDFLARE_GITIGNORE
-      : adapter === "netlify"
-        ? NETLIFY_GITIGNORE
-        : GITIGNORE,
+    (() => {
+      const base =
+        adapter === "cloudflare"
+          ? CLOUDFLARE_GITIGNORE
+          : adapter === "netlify"
+            ? NETLIFY_GITIGNORE
+            : GITIGNORE;
+      const entries = template.gitignoreEntries ?? [];
+      return entries.length > 0 ? `${base}${entries.join("\n")}\n` : base;
+    })(),
   ],
   ...(adapter === "netlify"
     ? ([

@@ -125,6 +125,16 @@ These are different design systems, not a checklist to force onto every branch. 
 - Clicking a chart month pins inspection; Escape clears it. Hover and keyboard focus can temporarily highlight linked chart/table data without replacing navigation.
 - Keep the reports brand typographic, without a decorative square glyph.
 
+## Dashboard feedback contract
+
+- Keep the canonical create-template Bascik favicon byte-for-byte, including its original colors and cursor animation. It is a brand asset, not a palette token.
+- Inline `src/pages/css/styles.css` with the existing `assets.inlineStyles` compiler option. Keep theme initialization in the head and pause transitions during theme switches.
+- Use a 44px icon-only theme button with decorative sun/moon SVGs, a stable accessible name of "Dark theme", and `aria-pressed` for the state. Hide it without JavaScript.
+- Keep main content immediately visible on every route, with reduced-motion-aware pressed feedback. Do not introduce decorative initial entrances.
+- Preserve deliberate non-underlined resting brand/sidebar links, visible focus, and current-page cues.
+- Use the scaffold's plain slug for header and page-title branding, with `dashboard` as the settings demo default. Keep race-car examples illustrative, with "Demo inventory" and numbered "Demo customer" labels, never invented work or orders attributed to real people.
+- Run `create/src/templates/dashboard-feedback.test.ts` for red-first source and fresh-scaffold production-browser regressions on the reserved port 43932. It cleans up its scaffold and server after verification.
+
 ## Verification
 
 1. Consult Modern Web Guidance for the actual UI pattern and check browser support separately from Bascik scoping.

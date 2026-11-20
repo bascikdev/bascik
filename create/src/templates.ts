@@ -15,6 +15,7 @@ import { PORTFOLIO_TEMPLATE } from "./templates/portfolio.js";
 import { CORPORATE_TEMPLATE } from "./templates/corporate.js";
 import { SHOP_TEMPLATE } from "./templates/shop.js";
 import { REPORTS_TEMPLATE } from "./templates/reports.js";
+import { DASHBOARD_TEMPLATE } from "./templates/dashboard.js";
 
 /** Every template, the default first. Keep one entry per line: each template is added in its own change. */
 export const TEMPLATES: readonly StarterTemplate[] = [
@@ -26,6 +27,7 @@ export const TEMPLATES: readonly StarterTemplate[] = [
   CORPORATE_TEMPLATE,
   SHOP_TEMPLATE,
   REPORTS_TEMPLATE,
+  DASHBOARD_TEMPLATE,
 ];
 
 /** Other names a template answers to. `static` is the default: it is a plain static site. */
