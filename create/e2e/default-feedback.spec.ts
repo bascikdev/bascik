@@ -1,6 +1,25 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
+test("theme follows Contact visually and in keyboard order", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const contact = page.getByTestId("site-header-contact");
+  const theme = page.getByTestId("site-header-theme-toggle");
+  const contactBox = await contact.boundingBox();
+  const themeBox = await theme.boundingBox();
+  expect(themeBox!.x).toBeGreaterThan(contactBox!.x + contactBox!.width);
+  await contact.focus();
+  await page.keyboard.press("Tab");
+  await expect(theme).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByTestId("site-header-nav-toggle").click();
+  await expect(contact).toBeVisible();
+  await expect(theme).toBeVisible();
+});
+
 test("canonical favicon bytes reach production unchanged", async ({
   request,
 }) => {
