@@ -10,6 +10,7 @@ import { join } from "node:path";
 import * as defaultIcons from "./default-icons.js";
 import { agentFilesReportLines, writeAgentFiles } from "./agent-setup.js";
 import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
+import { LANDING_ICONS } from "./templates/landing/icons.js";
 
 /**
  * The `@bascik/bascik` release a new project depends on. The agent skills are
@@ -1546,7 +1547,9 @@ const sharedFiles = (
     Buffer.from(
       template.name === "default"
         ? defaultIcons.FAVICON_ICO_B64
-        : FAVICON_ICO_B64,
+        : template.name === "landing"
+          ? LANDING_ICONS.ico
+          : FAVICON_ICO_B64,
       "base64",
     ),
   ],
@@ -1555,7 +1558,9 @@ const sharedFiles = (
     Buffer.from(
       template.name === "default"
         ? defaultIcons.FAVICON_32_PNG_B64
-        : FAVICON_32_PNG_B64,
+        : template.name === "landing"
+          ? LANDING_ICONS.png32
+          : FAVICON_32_PNG_B64,
       "base64",
     ),
   ],
@@ -1564,11 +1569,16 @@ const sharedFiles = (
     Buffer.from(
       template.name === "default"
         ? defaultIcons.APPLE_TOUCH_ICON_PNG_B64
-        : APPLE_TOUCH_ICON_PNG_B64,
+        : template.name === "landing"
+          ? LANDING_ICONS.touch
+          : APPLE_TOUCH_ICON_PNG_B64,
       "base64",
     ),
   ],
-  ["src/pages/assets/favicon.svg", FAVICON_SVG],
+  [
+    "src/pages/assets/favicon.svg",
+    template.name === "landing" ? LANDING_ICONS.svg : FAVICON_SVG,
+  ],
 
   ...(adapter
     ? ([["src/api/hello.ts", HELLO_API_ROUTE]] as TemplateFile[])

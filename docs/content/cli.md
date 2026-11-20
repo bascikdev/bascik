@@ -86,11 +86,12 @@ Select **Y** for all three and you're live at `http://localhost:8080`. `npm run 
 | `--adapter <name>`  | Add a deploy adapter to the starter: `cloudflare`, `netlify`, or `none` (the default). New in `create-bascik` 1.1.0                |
 | `--template <name>` | The kind of site, from the table below. Default: `default`. `cloudflare` and `netlify` still work and mean the same as `--adapter` |
 
-| Template  | What you get                                                                                                                                       |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static`                                                                     |
-| `blog`    | A blog: Markdown posts in `content/posts/`, a post list, tag pages, an Atom feed, SEO tags for every post, an about page, and a 404 page           |
-| `docs`    | A documentation site: one page per Markdown file in `content/docs/`, sidebar navigation, an on-page table of contents, and previous and next links |
+| Template  | What you get                                                                                                                                                     |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static`                                                                                   |
+| `blog`    | A blog: Markdown posts in `content/posts/`, a post list, tag pages, an Atom feed, SEO tags for every post, an about page, and a 404 page                         |
+| `docs`    | A documentation site: one page per Markdown file in `content/docs/`, sidebar navigation, an on-page table of contents, and previous and next links               |
+| `landing` | A product landing page: hero, features, steps, testimonials, pricing, FAQ, and a sign-up form. With an adapter, the form posts to an API route that validates it |
 
 Any template takes any adapter: `npm create bascik my-site -- --template default --adapter netlify`.
 

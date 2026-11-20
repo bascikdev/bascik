@@ -90,11 +90,12 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 
 `--template <name>` picks the kind of site. Any template takes any adapter (`--template default --adapter netlify`).
 
-| Template  | What you get                                                                                                                             |
-| :-------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
-| `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static`                                                           |
-| `blog`    | A blog: Markdown posts in `content/posts/`, a post list, tag pages, an Atom feed, SEO tags for every post, an about page, and a 404 page |
-| `docs`    | Documentation directly at `/`: Markdown guides, searchable sidebar navigation, an active table of contents, and previous and next links  |
+| Template  | What you get                                                                                                                                                     |
+| :-------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static`                                                                                   |
+| `blog`    | A blog: Markdown posts in `content/posts/`, a post list, tag pages, an Atom feed, SEO tags for every post, an about page, and a 404 page                         |
+| `docs`    | Documentation directly at `/`: Markdown guides, searchable sidebar navigation, an active table of contents, and previous and next links                          |
+| `landing` | A product landing page: hero, features, steps, testimonials, pricing, FAQ, and a sign-up form. With an adapter, the form posts to an API route that validates it |
 
 The blog uses your project slug as a plain brand, a responsive author sidebar, an unboxed reading column, and an accessible icon-only light/dark toggle. It retains the Bascik favicon. Global `styles.css` and `blog.css` are inlined through `assets.inlineStyles` in `bascik.config.ts`, without duplicate stylesheet links or above-the-fold entrance animations. Navigation remains visible without JavaScript.
 
