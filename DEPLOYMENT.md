@@ -1,8 +1,61 @@
 # Deploying bascik.dev and the Adapter Demos
 
-This repo deploys two sites to Cloudflare. Everything that can live in the repo does: each Worker is defined by a `wrangler.jsonc`, GitHub Actions builds and deploys both (CI stage 5 in [.github/workflows/ci.yml](.github/workflows/ci.yml)), and root scripts build, check and preview each one locally. Nobody deploys by hand, and Cloudflare Workers Builds is not used. The steps that cannot live in the repo (credentials, the bascik.dev cutover, retiring the Pages project) are listed here with a check for each.
+The docs and adapter demo deploy to Cloudflare from CI stage 5 in [.github/workflows/ci.yml](.github/workflows/ci.yml). Each Worker is defined by a `wrangler.jsonc`, and root scripts build, check and preview each one locally. The [template showcase](#template-showcase-workers) and [independent shop](#independent-shop) use separate workflows. Nobody deploys by hand, and Cloudflare Workers Builds is not used.
 
 The user-facing version of the Cloudflare material is [docs/content/deployment/cloudflare.md](docs/content/deployment/cloudflare.md) (rendered at https://bascik.dev/deployment/cloudflare). The independent Netlify acceptance project is described below; it does not deploy through the Cloudflare jobs.
+
+## Template Showcase Workers
+
+[Template Workers](.github/workflows/template-workers.yml) builds from `create-bascik`'s current scaffold source, not a released npm starter. Each slug (`default`, `blog`, `docs`, `landing`, `portfolio`, `corporate`, `shop`, `reports`, `dashboard`) has two Workers:
+
+| Worker                           | URL                                                                 | Deployed by                                       |
+| -------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------- |
+| `bascik-template-<slug>`         | `https://template-<slug>.bascik.dev` (custom domain)                | Every push to `main` from a merged pull request   |
+| `bascik-template-<slug>-preview` | `https://bascik-template-<slug>-preview.<account>.workers.dev` only | A manual dispatch from `main` with `lane=preview` |
+
+The production Worker owns the custom domain, the same way the [adapter demo](#how-deploys-happen) owns `cloudflare-adapter.bascik.dev`; the generated `wrangler.jsonc` declares it with `custom_domain: true` and `workers_dev: false`. The preview Worker declares no routes. The shop template is a simulated checkout with fixture data; it does not use `shop.bascik.dev` or any of the independent shop's secrets, bindings, or services.
+
+**Pull requests** build every registered template and run it in local workerd without Cloudflare credentials.
+
+**A push to `main`** deploys all nine production Workers in a matrix. Each job checks that the commit came from a merged pull request, binds the pre-seeded D1 database (shop and reports), refuses a hostname attached to any other Worker or already present in DNS, checks that the commit is still the tip of `main`, runs `wrangler deploy`, and smoke-tests `https://template-<slug>.bascik.dev`. The first deploy creates the Worker and the custom domain and waits for its certificate, so its smoke test retries for up to five minutes. A commit pushed straight to `main` deploys nothing.
+
+**A manual dispatch** from `main` redeploys one template to either lane:
+
+```sh
+gh workflow run template-workers.yml --ref main -f template=default -f lane=preview
+```
+
+The preview URL is in the run summary, with crawler access discouraged by `robots.txt`.
+
+**D1.** Shop and reports read a pre-seeded fixture database per lane, bound as `DB`. CI only binds them; it never writes to them, and the templates' APIs only read.
+
+| Database                             | Repository variable                 |
+| ------------------------------------ | ----------------------------------- |
+| `bascik-template-shop-db`            | `TEMPLATE_SHOP_PRODUCTION_D1_ID`    |
+| `bascik-template-shop-preview-db`    | `TEMPLATE_SHOP_PREVIEW_D1_ID`       |
+| `bascik-template-reports-db`         | `TEMPLATE_REPORTS_PRODUCTION_D1_ID` |
+| `bascik-template-reports-preview-db` | `TEMPLATE_REPORTS_PREVIEW_D1_ID`    |
+
+To reseed one after a template's fixture data changes, build the template (below) and run its seed SQL against the database:
+
+```sh
+(cd "$scratch/shop" && node scripts/seed-database.ts --sql) > seed.sql
+cf d1 query <database-id> --sql "$(cat seed.sql)"
+```
+
+Never reuse the independent commerce shop's databases, secrets, or domain. Local smoke tests seed an isolated local D1 database instead.
+
+For local verification after `yarn install --immutable`:
+
+```sh
+yarn pkg:build
+yarn adapter:cf:build
+yarn workspace create-bascik build
+node --test .github/scripts/template-workers.test.mts
+scratch="$(mktemp -d)"
+node .github/scripts/template-workers.mts build default "$scratch"
+node .github/scripts/template-workers.mts local-smoke default "$scratch"
+```
 
 ## Independent Shop
 
