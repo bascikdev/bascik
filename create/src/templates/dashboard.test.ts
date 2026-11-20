@@ -358,10 +358,10 @@ describe("house rules", () => {
     for (const path of COMPONENTS) {
       const name = path.split("/")[2];
       const markup = code(file(path))
-        .replace(/<style\b[\s\S]*?<\/style>/gi, (match) =>
+        .replace(/<style\b[\s\S]*?<\/style\s*>/gi, (match) =>
           " ".repeat(match.length),
         )
-        .replace(/<script\b[\s\S]*?<\/script>/gi, (match) =>
+        .replace(/<script\b[\s\S]*?<\/script\s*>/gi, (match) =>
           " ".repeat(match.length),
         );
       if (!head.has(name))
@@ -379,7 +379,7 @@ describe("house rules", () => {
     const roots = new Map<string, string>();
     for (const path of COMPONENTS) {
       const markup = code(file(path)).replace(
-        /<style\b[\s\S]*?<\/style>/gi,
+        /<style\b[\s\S]*?<\/style\s*>/gi,
         (match) => " ".repeat(match.length),
       );
       roots.set(path.split("/")[2], /<([a-z]+)\b/.exec(markup)![1]);
