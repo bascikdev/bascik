@@ -22,6 +22,8 @@ export const SHOP_STYLES_CSS = `${STYLES_CSS}
 /* ── Shop ── */
 /* Keeps a focused field or a link target clear of the sticky header. */
 html { scroll-padding-top: 76px; }
+html[data-theme="light"] { color-scheme: light; }
+html[data-theme="dark"] { color-scheme: dark; }
 
 /* An element's own display rule would otherwise override the hidden attribute. */
 [hidden] { display: none !important; }
@@ -44,6 +46,7 @@ html { scroll-padding-top: 76px; }
   padding: clamp(24px, 4vw, 48px) clamp(16px, 4vw, 52px);
 }
 .shop-main > .container { max-width: 1280px; margin-inline: auto; }
+.product-page { max-width: 1280px; margin-inline: auto; }
 
 /* A page whose content is not one full-width section: the book page and the checkout. */
 .page {
@@ -71,13 +74,7 @@ html { scroll-padding-top: 76px; }
   .checkout-columns { grid-template-columns: minmax(0, 1fr); }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  @keyframes shop-enter {
-    from { opacity: 0; transform: scale(0.97); }
-    to { opacity: 1; transform: scale(1); }
-  }
-  .shop-main > * { animation: shop-enter 260ms ease-out both; }
-}
+/* Initial content is visible immediately. Motion is reserved for interactions. */
 `;
 
 // ─── Layout components ────────────────────────────────────────────────────────
@@ -92,8 +89,19 @@ Put it first in <head>, then add the page's own title and description with seo()
 from src/lib/seo.ts.
 -->
 ${SITE_META_HTML.split("\n")
-  .filter((line) => !line.includes('name="description"'))
-  .join("\n")}`;
+  .filter(
+    (line) =>
+      !line.includes('name="description"') &&
+      !line.includes('rel="stylesheet"'),
+  )
+  .join("\n")}
+<script type="text/typescript">
+  // Apply a valid saved preference before the page paints; storage may be blocked.
+  try {
+    const theme = localStorage.getItem("shop-theme");
+    if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  } catch { /* The system theme remains the default. */ }
+</script>`;
 
 /** Prints the site name from `src/lib/site.ts`, escaped by `html`. */
 const SITE_NAME_SCRIPT = `<script data-bascik-build-once type="text/typescript">
@@ -104,6 +112,26 @@ const SITE_NAME_SCRIPT = `<script data-bascik-build-once type="text/typescript">
 
 export const SHOP_SITE_HEADER_HTML = `<style>
 ${SITE_HEADER_CSS}
+.menu a { text-decoration: none; }
+.menu a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.theme svg { width: 22px; height: 22px; }
+.theme .sun { display: none; }
+.theme[data-dark="true"] .sun { display: block; }
+.theme[data-dark="true"] .moon { display: none; }
 .count {
   display: inline-block;
   min-width: 1.6em;
@@ -130,6 +158,10 @@ ${SITE_HEADER_CSS}
         <!-- The link works without JavaScript. The count stays hidden until the saved cart is read. -->
         <li><a id="cart-link" href="/cart" data-testid="site-header-cart">Cart <span id="cart-count" class="count" data-testid="site-header-cart-count" hidden></span></a></li>
       </ul>
+      <button id="theme" type="button" class="theme" aria-label="Switch to dark mode" data-testid="site-header-theme" hidden>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4a8.5 8.5 0 1 0 11.5 11.5Z" /></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg>
+      </button>
     </nav>
   </div>
 </header>
@@ -138,6 +170,26 @@ ${SITE_HEADER_CSS}
 
 export const SHOP_SITE_HEADER_TS = `import { books } from "/js/books.js";
 import { CART_CHANGED, cartCount, loadCart } from "/js/cart.js";
+
+const themeButton = document.getElementById("theme") as HTMLButtonElement;
+const root = document.documentElement;
+const systemTheme = matchMedia("(prefers-color-scheme: dark)");
+function showTheme(): void {
+  const dark = root.dataset.theme ? root.dataset.theme === "dark" : systemTheme.matches;
+  themeButton.dataset.dark = String(dark);
+  themeButton.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+}
+themeButton.hidden = false;
+showTheme();
+systemTheme.addEventListener("change", showTheme);
+themeButton.addEventListener("click", (): void => {
+  const theme = themeButton.dataset.dark === "true" ? "light" : "dark";
+  root.classList.add("theme-switching");
+  root.dataset.theme = theme;
+  try { localStorage.setItem("shop-theme", theme); } catch { /* Still works for this page. */ }
+  showTheme();
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+});
 
 const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
 const menu = document.getElementById("nav-menu") as HTMLUListElement;
@@ -212,7 +264,7 @@ export const HOME_HERO_HTML = `<style>
 </style>
 <section class="hero" data-testid="home-hero">
   <div class="container">
-    <p class="section-label">Bascik Example Shop · Trackside essentials</p>
+    <p class="section-label">Trackside essentials</p>
     <h1>Made for <span>the long way around.</span></h1>
     <p>Considered apparel, useful garage pieces and everyday accessories with a motorsport point of view.</p>
     <div class="hero-actions">
@@ -260,10 +312,6 @@ An original, product-specific illustration drawn as inline SVG.
   .artwork[data-product="interval-chronograph"] .chronograph,
   .artwork[data-product="door-number-decal-pack"] .door-decals,
   .artwork[data-product="wheel-fastener-kit"] .fasteners { display: block; }
-  @media (prefers-reduced-motion: no-preference) {
-    .artwork svg { animation: art-enter 360ms ease-out both; }
-    @keyframes art-enter { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
-  }
 </style>
 <span class="artwork" role="img" data-bascik-attr-aria-label="label" data-bascik-attr-data-format="format" data-bascik-attr-data-product="product" data-bascik-attr-data-tone="tone" data-testid="product-art">
   <svg class="jacket" viewBox="0 0 240 180" aria-hidden="true">
@@ -565,33 +613,58 @@ One product's detail page and add-to-cart button. Its illustration goes in the s
 @prop price - The price as text
 @prop rating - The rating out of 5
 @prop description - What the product is
+@prop material - Illustrative composition
+@prop fit - Dimensions or fit guidance
+@prop specification - Contents, care and intended use
+@prop availability - Clearly labeled demo inventory
 -->
 <style>
   article {
     display: grid;
-    grid-template-columns: minmax(160px, 260px) minmax(0, 1fr);
-    gap: 40px;
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: clamp(28px, 4vw, 64px);
+    align-items: center;
+    min-height: calc(100svh - 180px);
+    max-width: 1280px;
+    margin-inline: auto;
+    padding: clamp(24px, 3vw, 44px);
+    border-radius: var(--r);
+    background: var(--surface);
+    border: 1px solid var(--border);
   }
   h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); margin-bottom: 4px; }
   .facts { font-size: 0.9rem; }
   .description { color: var(--text); max-width: 60ch; }
   .price { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
   .actions { display: flex; flex-wrap: wrap; gap: 12px; }
-  @media (max-width: 640px) {
-    article { grid-template-columns: minmax(0, 1fr); }
-    .art { max-width: 220px; }
+  .information { min-width: 0; }
+  .specs { margin: 24px 0; font-size: 0.9rem; }
+  .specs > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 16px; padding-block: 12px; border-top: 1px solid var(--border); }
+  dt { font-weight: 650; }
+  dd { margin: 0; color: var(--text-muted); overflow-wrap: anywhere; }
+  .demo { font-size: 0.8rem; }
+  @media (max-width: 760px) {
+    article { grid-template-columns: minmax(0, 1fr); min-height: auto; padding: 24px 20px; }
+    .art { width: 100%; max-width: 420px; margin-inline: auto; }
+    .specs > div { grid-template-columns: 84px minmax(0, 1fr); gap: 12px; }
   }
 </style>
 <article data-testid="book-detail">
   <div class="art"><div data-bascik-slot></div></div>
-  <div>
+  <div class="information">
     <h1 data-bascik-prop-title></h1>
     <p class="facts">
       <span data-bascik-prop-format></span> ·
-      <span aria-hidden="true">★</span> <span data-bascik-prop-rating></span><span class="visually-hidden"> out of 5</span>
+      <span aria-hidden="true">★</span> <span data-bascik-prop-rating></span><span class="visually-hidden"> out of 5</span> illustrative rating
     </p>
     <p class="description" data-bascik-prop-description></p>
+    <dl class="specs" data-testid="book-detail-specs">
+      <div><dt>Material</dt><dd data-bascik-prop-material></dd></div>
+      <div><dt>Fit</dt><dd data-bascik-prop-fit></dd></div>
+      <div><dt>Specification</dt><dd data-bascik-prop-specification></dd></div>
+      <div><dt>Availability</dt><dd data-bascik-prop-availability></dd></div>
+    </dl>
+    <p class="demo">Illustrative product, specifications and rating. Demo checkout only; nothing is sold or shipped.</p>
     <p class="price" data-bascik-prop-price data-testid="book-detail-price"></p>
     <noscript><p>Adding a product to the cart needs JavaScript.</p></noscript>
     <div class="actions">

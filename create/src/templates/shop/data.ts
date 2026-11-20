@@ -7,7 +7,7 @@
  */
 
 /** The shop's own brand, independent of the scaffold folder name. */
-export const SHOP_BRAND = "Bascik Example Shop";
+export const SHOP_BRAND = "shop";
 
 /**
  * The catalog: the one file a shop owner edits to change what is for sale.
@@ -26,6 +26,10 @@ export const books: Book[] = [
   {
     slug: "pit-lane-coach-jacket",
     title: "Pit Lane Coach Jacket",
+    material: "Recycled nylon shell with a cotton jersey lining.",
+    fit: "Relaxed unisex cut; demo size M, chest 112 cm, back length 72 cm.",
+    specification: "Two welt pockets, snap front and adjustable hem. Machine wash cold.",
+    availability: "Demo stock: 12 jackets. No real inventory or shipment.",
     format: "Racewear",
     priceCents: 24000,
     rating: 4.9,
@@ -37,6 +41,10 @@ export const books: Book[] = [
   {
     slug: "gridline-driver-suit",
     title: "Gridline Driver Suit",
+    material: "280 g/m² cotton twill with reinforced seams.",
+    fit: "Relaxed one-piece cut; demo size M, inseam 78 cm.",
+    specification: "Six utility pockets and a two-way zip. Casual apparel, not protective racewear.",
+    availability: "Demo stock: 8 suits. No real inventory or shipment.",
     format: "Racewear",
     priceCents: 16500,
     rating: 4.8,
@@ -48,6 +56,10 @@ export const books: Book[] = [
   {
     slug: "brake-cooling-duct-kit",
     title: "Brake Cooling Duct Kit",
+    material: "Powder-coated aluminum display ducts with silicone hose.",
+    fit: "Illustrative 76 mm connection; no vehicle compatibility is asserted.",
+    specification: "Two ducts, two 1 m hoses and four clamps. Display use only, not tested for road use.",
+    availability: "Demo stock: 6 kits. No real inventory or shipment.",
     format: "Parts",
     priceCents: 28000,
     rating: 4.7,
@@ -59,6 +71,10 @@ export const books: Book[] = [
   {
     slug: "aero-display-panel",
     title: "Aero Display Panel",
+    material: "Satin-finished composite display panel.",
+    fit: "Wall display, 60 × 24 cm; allow 8 cm clearance.",
+    specification: "Two mounting brackets included. Decorative only; not a vehicle aero part.",
+    availability: "Demo stock: 10 panels. No real inventory or shipment.",
     format: "Parts",
     priceCents: 14999,
     rating: 4.6,
@@ -69,6 +85,10 @@ export const books: Book[] = [
   {
     slug: "helmet-number-decal-set",
     title: "Helmet Number Decal Set",
+    material: "Matte removable vinyl with paper backing.",
+    fit: "Numbers are 60 mm tall; check surface compatibility before applying.",
+    specification: "Two sheets of digits 0–9. Decorative only; no safety certification.",
+    availability: "Demo stock: 24 sets. No real inventory or shipment.",
     format: "Accessories",
     priceCents: 9999,
     rating: 4.5,
@@ -79,6 +99,10 @@ export const books: Book[] = [
   {
     slug: "interval-chronograph",
     title: "Interval Chronograph",
+    material: "Brushed stainless steel case with an acrylic lens.",
+    fit: "52 mm handheld case with a detachable wrist cord.",
+    specification: "60-minute analog dial with start, stop and reset controls. Illustrative specifications.",
+    availability: "Demo stock: 9 timers. No real inventory or shipment.",
     format: "Accessories",
     priceCents: 32000,
     rating: 4.9,
@@ -89,6 +113,10 @@ export const books: Book[] = [
   {
     slug: "door-number-decal-pack",
     title: "Door Number Decal Pack",
+    material: "Weather-resistant removable vinyl.",
+    fit: "Two 30 × 30 cm sheets for flat display surfaces.",
+    specification: "Matched number panels with application guide. Decorative display use.",
+    availability: "Demo stock: 18 packs. No real inventory or shipment.",
     format: "Parts",
     priceCents: 15000,
     rating: 4.4,
@@ -99,6 +127,10 @@ export const books: Book[] = [
   {
     slug: "wheel-fastener-kit",
     title: "Wheel Fastener Kit",
+    material: "Zinc-finished steel display fasteners.",
+    fit: "Illustrative M12 × 1.5 thread; no vehicle fitment is asserted.",
+    specification: "20 fasteners in a reusable tray. Display only; not approved for vehicle installation.",
+    availability: "Demo stock: 7 kits. No real inventory or shipment.",
     format: "Parts",
     priceCents: 8500,
     rating: 4.3,
@@ -135,6 +167,11 @@ export interface Book {
   slug: string;
   title: string;
   description: string;
+  /** Optional for custom catalogs; the demo supplies all four detail fields. */
+  material?: string;
+  fit?: string;
+  specification?: string;
+  availability?: string;
   format: Format;
   /** The price in whole cents: 1499 is $14.99. */
   priceCents: number;
@@ -608,6 +645,7 @@ for (const [name, source] of Object.entries(MODULES)) {
 export const BASCIK_CONFIG_TS = `import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
+  assets: { inlineStyles: ["src/pages/css/styles.css"] },
   pipeline: {
     // Rebuild pages in dev when the catalog or a shared helper changes.
     watchPaths: ["catalog/", "src/lib/", "src/browser/"],

@@ -177,8 +177,8 @@ describe("shop template build", () => {
 
     // The specified brand is the same in the page title and header.
     const home = await read("index.html");
-    expect(home).toContain("Bascik Example Shop</title>");
-    expect(home).toContain("Bascik Example Shop");
+    expect(home).toContain("shop</title>");
+    expect(home).toContain(">shop</a>");
     expect(home.match(/<h1\b/g)).toHaveLength(1);
 
     // The cart and checkout pages are static and marked noindex.

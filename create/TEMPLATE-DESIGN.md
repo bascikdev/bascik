@@ -2,6 +2,8 @@
 
 This is the visual contract for the templates shipped by `create-bascik`. Read it before changing `src/scaffold.ts` or `src/templates/`. The templates share accessible foundations, not one visual skin. Each should look designed for its job rather than like a recolored admin theme.
 
+Repository-only design guidance lives in `.github/skills/bascik-ui/SKILL.md` and `.github/skills/bascik-ux/SKILL.md`. These internal skills are not installed publicly.
+
 ## Shared principles
 
 - Use semantic HTML and CSS first. Keep native links, buttons, forms, tables, figures, and disclosure elements. Add JavaScript only where HTML and CSS do not provide the needed behavior.
@@ -30,7 +32,8 @@ These are different design systems, not a checklist to force onto every branch. 
 
 ## Motion and interaction
 
-- Entrances start at `scale: 0.97` with `opacity: 0`, never at zero scale. Keep entrances brief and opt them out under `prefers-reduced-motion: reduce`.
+- Shop feedback takes precedence over decorative entrance recipes: the header, hero and product artwork paint at full opacity with no entrance or flash animation. Preserve press, hover and focus feedback and reduced-motion support.
+- Above-fold content paints immediately, without initial opacity, entrance, or flash animations. Reserve entrances for user-triggered panels or appropriate below-fold content and respect reduced motion.
 - Pressable buttons use `button:active { scale: 0.97; }` with `transition: scale 150ms ease-out`. Apply the same behavior to button-styled links when appropriate.
 - A rejected password shakes horizontally through `0, -10, 10, -6, 6, -3, 0px` over 360ms and also changes to an error state.
 - Steppers slide the next step from the direction of travel instead of crossfading.
@@ -47,6 +50,15 @@ These are different design systems, not a checklist to force onto every branch. 
 - The table of contents links to preserved Markdown heading IDs. `IntersectionObserver` updates the visible current link and its `aria-current`; fragment links work without JavaScript.
 - The sidebar marks the current page and remains usable without JavaScript. At small widths, a labeled button progressively enhances it into a collapsible navigation.
 - Use native `<dialog>` behavior for focus, Escape, and the top layer. Do not rebuild those browser features with a custom overlay or focus trap.
+
+## Shop-template behavior
+
+- Use the plain slug `shop` for default branding. Keep the canonical create-template Bascik favicon files unmodified.
+- Inline the global `src/pages/css/styles.css` through `assets.inlineStyles`; omit its external stylesheet link from the shop head component.
+- Provide a 44 px icon-only light/dark button with an action-specific accessible label. Restore a valid saved theme in the head before paint, default to the system preference, and tolerate blocked storage.
+- Navigation links have no underline at rest, with deliberate hover and visible keyboard focus treatments.
+- Product detail uses a generous two-column, viewport-height desktop panel and a natural-height single column on phones. Give the product illustration meaningful space, not a thumbnail beside a short paragraph.
+- Keep composition, fit/dimensions, contents/care/intended use and demo availability in the typed catalog. Label specifications, ratings and stock as illustrative; never imply real customer reviews, vehicle safety certification, live inventory or shipping. Custom entries may omit the detail fields and get explicit fallbacks.
 
 ## Verification
 

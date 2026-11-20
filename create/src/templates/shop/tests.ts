@@ -532,6 +532,22 @@ const cartLine = (page: Page, title: string) =>
   page.getByTestId("cart-list-line").filter({ hasText: title });
 
 test.describe("Shop", () => {
+  test("theme toggle is icon-only, keyboard accessible and saved across pages", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/");
+    const toggle = page.getByTestId("site-header-theme");
+    await expect(toggle).toHaveAccessibleName("Switch to dark mode");
+    await expect(toggle).toHaveText("");
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(toggle).toHaveAccessibleName("Switch to light mode");
+    await page.goto(\`/books/\${JACKET.slug}\`);
+    await expect(toggle).toHaveAccessibleName("Switch to light mode");
+    await expect(page.getByTestId("book-detail-specs")).toContainText("Material");
+    await expect(page.getByTestId("book-detail-specs")).toContainText("Availability");
+    await expect(page.getByTestId("book-detail")).toContainText("Illustrative product");
+  });
+
   test("home page features racing products and leads to the catalog", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(/Motorsport-inspired apparel and goods/);
@@ -548,9 +564,9 @@ test.describe("Shop", () => {
     await expect(cards).toHaveCount(PRODUCT_COUNT);
 
     await page.getByLabel("Sort by").selectOption("price-low");
-    await expect(cards.first()).toContainText(AERO.title);
+    await expect(cards.first()).toContainText("Wheel Fastener Kit");
     await page.getByLabel("Sort by").selectOption("price-high");
-    await expect(cards.first()).toContainText(JACKET.title);
+    await expect(cards.first()).toContainText("Interval Chronograph");
 
     await page.getByLabel("Category").selectOption("Parts");
     await expect(cards.filter({ visible: true })).toHaveCount(4);
@@ -636,7 +652,7 @@ test.describe("Shop", () => {
       await expect(page.getByTestId("cart-list-status")).toContainText("Choose a whole quantity");
       await expect(quantity).toHaveValue("3");
     }
-    await expect(page.getByTestId("cart-list-total")).toHaveText("$57.50");
+    await expect(page.getByTestId("cart-list-total")).toHaveText("$869.99");
   });
 
   test("removing a line takes it out of the cart", async ({ page }) => {

@@ -99,7 +99,7 @@ export const SHOP_BOOK_PAGE = `<!doctype html>
         // One page per book in catalog/books.ts, at /books/<slug>.
         export default () => books.map((book) => ({ params: { slug: book.slug } }));
       </script>
-      <div class="page">
+      <div class="product-page">
         <p><a href="/books/" data-testid="book-back">← All products</a></p>
         <script data-bascik-build type="text/typescript">
           import { bookBody } from "./book-page.ts";
@@ -163,6 +163,10 @@ export function bookBody(): SafeHtml {
     data-bascik-prop-price="\${formatCents(book.priceCents)}"
     data-bascik-prop-rating="\${book.rating.toFixed(1)}"
     data-bascik-prop-description="\${book.description}"
+    data-bascik-prop-material="\${book.material ?? "Not specified"}"
+    data-bascik-prop-fit="\${book.fit ?? "Not specified"}"
+    data-bascik-prop-specification="\${book.specification ?? "Not specified"}"
+    data-bascik-prop-availability="\${book.availability ?? "Demo catalog; no real inventory"}"
   >\${productArt(book)}</book-detail>\`;
 }
 `;

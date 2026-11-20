@@ -100,7 +100,7 @@ const shopComponents = ({ adapter }: TemplateContext): ShopComponent[] => [
     html: SHOP_SITE_META_HTML,
     claim:
       "has the shared head tags and leaves the title and description to each page",
-    parts: ['charset="UTF-8"', 'name="viewport"', "favicon.svg", "styles.css"],
+    parts: ['charset="UTF-8"', 'name="viewport"', "favicon.svg", "shop-theme"],
   },
   {
     name: "site-header",

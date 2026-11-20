@@ -95,6 +95,13 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 | `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static` |
 | `shop`    | A shop: a product catalog, product pages, a cart, and a demo checkout          |
 
+The shop's default brand is the plain slug `shop`. Its icon-only theme button
+restores a saved light/dark preference before paint. Global CSS is inlined,
+and initial content has no entrance animation. Edit `catalog/books.ts` to
+change each product's material, fit, specification and demo availability.
+All products, ratings and stock counts are illustrative; nothing is sold or
+shipped by the demo checkout. The favicon remains the canonical Bascik asset.
+
 `--template cloudflare` and `--template netlify`, the spelling before `create-bascik` 1.1.0, still work and mean the same as `--adapter`. Naming two different adapters with the two flags is an error.
 
 The Cloudflare template differs from the default in these files only:

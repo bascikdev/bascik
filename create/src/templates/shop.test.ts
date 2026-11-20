@@ -39,6 +39,52 @@ const file = (path: string, adapter?: Adapter): string => {
 };
 
 const ANY_ADAPTER = [undefined, ...ADAPTERS] as const;
+
+describe("shop feedback regressions", () => {
+  it("uses plain shop branding and inlines the global stylesheet", () => {
+    expect(SHOP_BRAND).toBe("shop");
+    expect(file("bascik.config.ts")).toContain(
+      'inlineStyles: ["src/pages/css/styles.css"]',
+    );
+    expect(file("src/components/home-hero/home-hero.html")).not.toContain(
+      "Bascik Example Shop",
+    );
+  });
+
+  it("provides an icon-only accessible theme control and pre-paint saved theme", () => {
+    const header = file("src/components/site-header/site-header.html");
+    expect(header).toMatch(
+      /<button[^>]*aria-label="Switch to dark mode"[^>]*data-testid="site-header-theme"[^>]*>/,
+    );
+    expect(header).toContain('aria-hidden="true"');
+    expect(header).toMatch(/\.menu a \{[^}]*text-decoration: none/);
+    expect(file("src/components/site-header/site-header.ts")).toContain(
+      'localStorage.setItem("shop-theme"',
+    );
+    expect(file("src/components/site-meta/site-meta.html")).toContain(
+      'localStorage.getItem("shop-theme")',
+    );
+  });
+
+  it("keeps initial content visible and gives detail a viewport-sized desktop panel", () => {
+    expect(file("src/pages/css/styles.css")).not.toContain("shop-enter");
+    expect(file("src/components/product-art/product-art.html")).not.toContain(
+      "art-enter",
+    );
+    expect(file("src/components/book-detail/book-detail.html")).toContain(
+      "100svh",
+    );
+    for (const field of ["material", "fit", "specification", "availability"]) {
+      expect(
+        file("catalog/books.ts").match(new RegExp(`${field}:`, "g")),
+      ).toHaveLength(8);
+      expect(file("src/components/book-detail/book-detail.html")).toContain(
+        `data-bascik-prop-${field}`,
+      );
+      expect(file("src/pages/books/book-page.ts")).toContain(`book.${field}`);
+    }
+  });
+});
 const COMPONENTS = [
   "site-meta",
   "site-header",
@@ -205,7 +251,7 @@ describe("shop template", () => {
     const catalog = file("catalog/books.ts");
 
     expect(file("src/lib/site.ts")).toContain(
-      'export const siteName = "Bascik Example Shop";',
+      'export const siteName = "shop";',
     );
     expect(header).toContain('import { siteName } from "@/lib/site.ts";');
     expect(styles).toMatch(/\.shop-main\s*\{[^}]*padding:\s*clamp\(/s);
@@ -381,7 +427,7 @@ describe("shop template markup", () => {
     const meta = file("src/components/site-meta/site-meta.html");
     expect(meta).not.toContain('name="description"');
     expect(meta).toContain('<meta charset="UTF-8" />');
-    expect(meta).toContain('<link rel="stylesheet" href="/css/styles.css" />');
+    expect(meta).not.toContain('rel="stylesheet"');
   });
 
   it.each(COMPONENTS.filter((name) => name !== "site-meta"))(

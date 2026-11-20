@@ -18,7 +18,8 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
-- `create-bascik`: the shop template is now branded Bascik Example Shop, uses original product-matched illustrations and a roomier editorial storefront, and no longer associates its fictional catalog with real people or companies.
+- `create-bascik`: the shop template uses plain `shop` branding, original product-matched illustrations and a roomier editorial storefront, without associating its fictional catalog with real people or companies.
+- `create-bascik`: shop adds an accessible icon-only theme toggle with pre-paint preference restoration, keeps the canonical Bascik favicon, inlines global CSS through `assets.inlineStyles`, and removes initial entrance animations. Resting navigation is deliberately not underlined. Product pages now have viewport-sized desktop panels and clearly illustrative material, fit, specification and availability details.
 - `create-bascik`: shop pages and book cards now use the shared raised light/dark surfaces, with responsive padding and theme-aware form errors.
 
 - `create-bascik`: the starter and adapter variants use a shared light/dark design system, with a neutral canvas, raised cards, restrained periwinkle accents, visible keyboard focus, and motion that respects reader preferences.
