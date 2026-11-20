@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { TEMPLATES, VSCODE_LAUNCH_JSON, scaffold } from "./scaffold.ts";
+import { ADAPTERS, VSCODE_LAUNCH_JSON, scaffold } from "./scaffold.ts";
 import {
   BASCIK_EXTENSION_ID,
   VSCODE_SETTINGS_JSON,
@@ -32,10 +32,12 @@ async function createTempDir(): Promise<string> {
 const read = (path: string) => readFile(path, "utf8");
 
 describe("scaffold writes VS Code settings on disk", () => {
-  for (const template of TEMPLATES) {
+  for (const template of ["default", ...ADAPTERS] as const) {
     it(`${template} template: settings, extensions and launch files`, async () => {
       const parent = await createTempDir();
-      const result = await scaffold("site", parent, { template });
+      const result = await scaffold("site", parent, {
+        adapter: template === "default" ? undefined : template,
+      });
       const vscode = join(parent, "site", ".vscode");
       expect(await read(join(vscode, "settings.json"))).toBe(
         VSCODE_SETTINGS_JSON,
@@ -108,10 +110,12 @@ describe("Webhint is opt-in", () => {
     ".hintrc.dist.json",
   ];
 
-  for (const template of TEMPLATES) {
+  for (const template of ["default", ...ADAPTERS] as const) {
     it(`${template} template does not generate Webhint configs or dependencies`, async () => {
       const parent = await createTempDir();
-      await scaffold("site", parent, { template });
+      await scaffold("site", parent, {
+        adapter: template === "default" ? undefined : template,
+      });
       const root = join(parent, "site");
       for (const file of configFiles) {
         expect(existsSync(join(root, file)), file).toBe(false);
@@ -130,7 +134,9 @@ describe("Webhint is opt-in", () => {
       for (const file of configFiles) {
         await writeFile(join(root, file), `user-owned ${file}\n`);
       }
-      const result = await scaffold("site", parent, { template });
+      const result = await scaffold("site", parent, {
+        adapter: template === "default" ? undefined : template,
+      });
       for (const file of configFiles) {
         expect(await read(join(root, file))).toBe(`user-owned ${file}\n`);
       }

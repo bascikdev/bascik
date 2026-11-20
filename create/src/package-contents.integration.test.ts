@@ -28,6 +28,13 @@ describe("create-bascik tarball", () => {
     const files = await packedFiles();
     const tests = files.filter((file) => /\.test\.ts$/.test(file));
     expect(tests).toEqual([]);
+    expect(
+      files.filter(
+        (file) =>
+          file.startsWith("dist/") &&
+          /(?:verification|browser-results)\//.test(file),
+      ),
+    ).toEqual([]);
     // Every non-test source is still there, so dist/*.js.map resolves.
     const sources = readdirSync(join(createRoot, "src"))
       .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))

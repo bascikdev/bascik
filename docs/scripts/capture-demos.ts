@@ -52,6 +52,7 @@ import { stripVTControlCharacters } from "node:util";
 import { chromium, type Browser, type Page } from "playwright";
 import { readDemoBlock } from "../src/lib/md-renderer.ts";
 import { SHOWCASE_SITES } from "../src/lib/showcase.ts";
+import { TEMPLATE_DEMOS } from "../src/lib/template-gallery.ts";
 import {
   browserWindow,
   roundCorners,
@@ -1617,6 +1618,16 @@ const scenes: Record<string, () => Promise<Frame[]>> = {
     SHOWCASE_SITES.map((site) => [
       `showcase-${site.slug}`,
       () => showcase(site.url),
+    ]),
+  ),
+  ...Object.fromEntries(
+    TEMPLATE_DEMOS.map(({ slug, origin, path }) => [
+      `template-${slug}`,
+      () =>
+        showcase(
+          new URL(path, process.env.BASCIK_TEMPLATE_CAPTURE_ORIGIN ?? origin)
+            .href,
+        ),
     ]),
   ),
 };

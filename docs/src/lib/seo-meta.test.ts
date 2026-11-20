@@ -24,6 +24,7 @@ const NO_ARTICLE_SCHEMA = new Set([
   "/releases",
   "/press",
   "/showcase", // A directory of sites, not a documentation article
+  "/templates", // A gallery of starter sites
   "/sponsor",
 ]);
 

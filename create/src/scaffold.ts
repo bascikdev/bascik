@@ -7,8 +7,10 @@
 
 import { lstat, mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import * as defaultIcons from "./default-icons.js";
 import { agentFilesReportLines, writeAgentFiles } from "./agent-setup.js";
 import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
+import { LANDING_ICONS } from "./templates/landing/icons.js";
 
 /**
  * The `@bascik/bascik` release a new project depends on. The agent skills are
@@ -16,17 +18,80 @@ import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
  */
 export const BASCIK_VERSION = "1.0.1";
 
-// ─── Templates ────────────────────────────────────────────────────────────────
+// ─── Templates and adapters ───────────────────────────────────────────────────
 
 /**
- * The starters create-bascik can scaffold. `default` is the plain static site;
- * `cloudflare` is the same site plus the pieces a Cloudflare Workers deployment
- * needs: the hosting adapter, Wrangler, and a demo page the Worker renders;
- * `netlify` is the same site with the Netlify adapter, a `netlify.toml`, and
- * the same demo page, rendered by a Netlify Function.
+ * The deploy adapters a starter can be scaffolded with (`--adapter`). Any
+ * template takes any adapter: the adapter adds the hosting package, the host's
+ * CLI, the scripts that run them, and an API route; the template adds whatever
+ * request-time demo page it wants to show.
  */
-export const TEMPLATES = ["default", "cloudflare", "netlify"] as const;
-export type Template = (typeof TEMPLATES)[number];
+export const ADAPTERS = ["cloudflare", "netlify"] as const;
+export type Adapter = (typeof ADAPTERS)[number];
+
+/** Where each adapter runs request-time code, for the copy that names it. */
+export const HOST_RUNTIME: Record<Adapter, string> = {
+  cloudflare: "a Cloudflare Worker",
+  netlify: "a Netlify Function",
+};
+
+/** What a template is told about the project it is writing. */
+export interface TemplateContext {
+  /** The site's display name, from the last segment of the project name. */
+  siteName: string;
+  /** The deploy adapter, when one was asked for. */
+  adapter?: Adapter;
+}
+
+const HTML_ESCAPES: Readonly<Record<string, string>> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+/**
+ * Text made safe for HTML text and quoted attribute values. A template puts the
+ * site name through this before writing it into a page: the CLI only accepts
+ * names that need no escaping, but `scaffold` can be called with any name.
+ * The sites themselves use `@bascik/bascik/html`; create-bascik has no dependencies.
+ */
+export const escapeHtml = (text: string): string =>
+  text.replace(/[&<>"']/g, (character) => HTML_ESCAPES[character]);
+
+/** One file a template writes, relative to the project root, with `/` separators. */
+export type TemplateFile = [path: string, data: string | Buffer];
+
+/**
+ * A kind of site create-bascik can scaffold (`--template`). A template owns
+ * everything under `src/` except the favicons and `src/api/hello.ts`, plus
+ * `e2e/app.spec.ts`. It may also write a `bascik.config.ts` and top-level
+ * folders of its own, as the blog does with `content/` and `scripts/`. The root files (package.json, the Vite and Playwright
+ * configs, .gitignore, netlify.toml), the favicons and, with an adapter, the
+ * `/api/hello` route are written for every template by `scaffold`.
+ *
+ * Each template is one module in `create/src/templates/`, registered in
+ * `create/src/templates.ts`. See "Adding a template" in
+ * docs/content/internals/create-app.md.
+ */
+export interface StarterTemplate {
+  /** The `--template` value: lowercase letters and hyphens. */
+  name: string;
+  /** One line for `--help` and the docs: what kind of site this is. */
+  summary: string;
+  /** The folders the template's files need, relative to the project root. */
+  directories(context: TemplateContext): string[];
+  /** The files the template writes as its own. */
+  files(context: TemplateContext): TemplateFile[];
+  /** Packages the site imports beyond the starter's own, such as a Markdown parser. */
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  scripts?: Record<string, string>;
+  /** Read-only fixture files that Netlify must include in its function bundle. */
+  netlifyIncludedFiles?: readonly string[];
+  gitignoreEntries?: readonly string[];
+}
 
 // ─── Root files ───────────────────────────────────────────────────────────────
 
@@ -39,10 +104,14 @@ const NETLIFY_CLI_VERSION = "^27.17.0";
 
 export const PACKAGE_JSON = (
   name: string,
-  template: Template = "default",
+  adapter?: Adapter,
+  extra: Pick<
+    StarterTemplate,
+    "dependencies" | "devDependencies" | "scripts"
+  > = {},
 ): string => {
-  const cloudflare = template === "cloudflare";
-  const netlify = template === "netlify";
+  const cloudflare = adapter === "cloudflare";
+  const netlify = adapter === "netlify";
   return (
     JSON.stringify(
       {
@@ -78,9 +147,11 @@ export const PACKAGE_JSON = (
           "test:watch": "vitest",
           "test:coverage": "vitest run --coverage",
           e2e: "playwright test --config e2e/playwright.config.ts",
+          ...extra.scripts,
         },
         dependencies: {
           "@bascik/bascik": `^${BASCIK_VERSION}`,
+          ...extra.dependencies,
         },
         devDependencies: {
           ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0" }),
@@ -93,6 +164,7 @@ export const PACKAGE_JSON = (
           vite: "^8.3.4",
           ...(cloudflare && { wrangler: WRANGLER_VERSION }),
           ...(netlify && { "netlify-cli": NETLIFY_CLI_VERSION }),
+          ...extra.devDependencies,
         },
       },
       null,
@@ -242,9 +314,27 @@ test.describe('Starter App E2E Tests', () => {
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(menu).toBeVisible();
 
+    await page.getByTestId('site-header-about').focus();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(toggle).toBeFocused();
+
+    await toggle.click();
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(menu).toBeHidden();
+  });
+
+  test('mobile navigation still works without JavaScript', async ({ browser, baseURL }) => {
+    const page = await browser.newPage({ baseURL, javaScriptEnabled: false, viewport: { width: 375, height: 667 } });
+    try {
+      await page.goto('/');
+      await expect(page.getByTestId('site-header-nav-toggle')).toBeHidden();
+      await page.getByTestId('site-header-about').click();
+      await expect(page).toHaveURL('/about');
+    } finally {
+      await page.close();
+    }
   });
 
   test('contact form answers a submit without leaving the page', async ({ page }) => {
@@ -261,6 +351,22 @@ test.describe('Starter App E2E Tests', () => {
     // The card's own sizes (1rem, 0.88rem), not the page's h3 and p.
     await expect(page.getByRole('heading', { name: 'No framework overhead' })).toHaveCSS('font-size', '16px');
     await expect(page.getByText('Components compile at build time.')).toHaveCSS('font-size', '14.08px');
+  });
+
+  test('shared surfaces support both themes and narrow viewports', async ({ page }) => {
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+      for (const width of [1440, 768, 320]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto('/');
+        const card = page.getByTestId('feature-zero-runtime');
+        await expect(card).toBeVisible();
+        expect(await card.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+        expect(await card.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe('1px');
+        expect(await card.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe('none');
+        expect(await page.locator('body').evaluate((element) => element.scrollWidth <= innerWidth)).toBe(true);
+      }
+    }
   });
 ${extraTests}});
 `;
@@ -325,21 +431,38 @@ export const STYLES_CSS = `/* ── Design system ── */
 *, *::before, *::after { box-sizing: border-box; }
 
 :root {
-  --bg:           #18191b;
-  --surface:      #1e2022;
-  --elevated:     #242628;
-  --border:       rgba(255,255,255,0.07);
-  --border-hover: rgba(211,255,141,0.35);
-  --accent:       #d3ff8d;
-  --accent-dim:   rgba(211,255,141,0.12);
-  --text:         #f0f1f2;
-  --text-muted:   #8d929e;
+  color-scheme: light dark;
+  --bg:           light-dark(#f4f2eb, #141712);
+  --surface:      light-dark(#fffefa, #1d211b);
+  --surface-top:  light-dark(#fff, #262b24);
+  --elevated:     light-dark(#ebe8df, #252a23);
+  --border:       light-dark(#d8d4c9, #3c4439);
+  --border-hover: light-dark(#9ca391, #788873);
+  --accent:       light-dark(#42664d, #a4c99e);
+  --accent-hover: light-dark(#35563f, #b8d7b2);
+  --accent-dim:   light-dark(#e7eee5, #263128);
+  --on-accent:    light-dark(#fffefa, #172018);
+  --error:        light-dark(#a33b32, #ffaaa0);
+  --text:         light-dark(#252820, #edf1e8);
+  --text-muted:   light-dark(#66695f, #b5bdb1);
+  --panel: none;
+  --sheen: none;
+  --shadow: 0 18px 40px -32px light-dark(rgb(35 43 34 / 32%), rgb(0 0 0 / 48%));
   --mono:         'SF Mono','Fira Code',Menlo,monospace;
-  --r:            10px;
-  --r-sm:         6px;
+  --r:            16px;
+  --r-sm:         8px;
 }
 
-html { scroll-behavior: smooth; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+/* Navigation paints immediately, including browsers with view transitions. */
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; }
+
+@supports (interpolate-size: allow-keywords) {
+  :root { interpolate-size: allow-keywords; }
+}
 
 body {
   background: var(--bg);
@@ -349,6 +472,7 @@ body {
   line-height: 1.7;
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -356,20 +480,21 @@ body {
 main { flex: 1; }
 
 /* ── Layout ── */
-.container { max-width: 1140px; margin: 0 auto; padding: 0 28px; }
-.section    { padding: 72px 0; }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 28px; }
+.section    { padding: 76px 0; }
 .section + .section { border-top: 1px solid var(--border); }
 
 /* ── Typography ── */
-h1, h2, h3, h4 { margin-top: 0; line-height: 1.25; font-weight: 700; }
-h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin-bottom: 16px; }
-h2 { font-size: clamp(1.4rem, 3vw, 2rem);  margin-bottom: 12px; }
+h1, h2, h3, h4 { margin-top: 0; line-height: 1.2; font-weight: 650; letter-spacing: -0.035em; }
+h1 { font-size: clamp(2.4rem, 6vw, 4.5rem); margin-bottom: 18px; }
+h2 { font-size: clamp(1.5rem, 3vw, 2.2rem); margin-bottom: 14px; }
 h3 { font-size: 1.05rem; margin-bottom: 6px; }
 p  { margin-top: 0; color: var(--text-muted); }
 
-a { color: var(--accent); text-decoration: none; transition: opacity .15s; }
-a:hover { opacity: 0.8; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover, var(--accent)); }
 p a, li a { text-decoration: underline; text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 code {
   font-family: var(--mono);
@@ -384,56 +509,58 @@ code {
 /* ── Buttons ── */
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 10px 22px; border: none; border-radius: var(--r-sm);
+  min-height: 44px; padding: 10px 20px; border: 1px solid transparent; border-radius: var(--r-sm);
   font-size: 0.9rem; font-weight: 600; cursor: pointer;
-  text-decoration: none; transition: filter .15s, opacity .15s; line-height: 1;
+  text-decoration: none; line-height: 1.3;
 }
-.btn-primary { background: var(--accent); color: #18191b; }
-.btn-ghost   { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.btn-primary { background: var(--accent); color: var(--on-accent); }
+.btn-ghost   { background: var(--surface); color: var(--text); border-color: var(--border); }
 @media (hover: hover) {
-  .btn-primary:hover { filter: brightness(0.88); opacity: 1; }
-  .btn-ghost:hover   { border-color: var(--accent); color: var(--accent); opacity: 1; }
+  .btn-primary:hover { background: var(--accent-hover, var(--accent)); color: var(--on-accent); }
+  .btn-ghost:hover   { border-color: var(--accent); color: var(--accent); }
 }
 
 /* ── Cards ── */
 .card {
-  background: var(--elevated); border: 1px solid var(--border);
+  background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r); padding: 24px;
-  transition: border-color .2s, box-shadow .2s;
+  box-shadow: var(--shadow);
 }
-.card:hover { border-color: var(--border-hover); box-shadow: 0 0 0 1px var(--accent-dim); }
+.card:hover { border-color: var(--border-hover); }
 .card h3 { margin-top: 0; }
 .card p  { margin-bottom: 0; }
 
 /* ── Grid ── */
-.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
-.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 24px; }
 
 /* ── Callout ── */
 .callout {
-  background: var(--accent-dim); border: 1px solid rgba(211,255,141,0.22);
-  border-radius: var(--r); padding: 16px 20px; margin: 20px 0;
+  background: var(--accent-dim); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 18px 22px; margin: 24px 0;
 }
 .callout p { color: var(--text); margin: 0; }
 
 /* ── Hero ── */
-.hero { padding: 96px 0 72px; text-align: center; }
+.hero { padding: 112px 0 88px; text-align: left; }
+.hero > .container { max-width: 920px; }
 .hero h1 span { color: var(--accent); }
-.hero > .container > p { font-size: 1.1rem; max-width: 520px; margin: 0 auto 36px; }
-.hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.hero > .container > p { font-size: 1.15rem; max-width: 58ch; margin: 0 0 32px; }
+.hero-actions { display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap; }
 
 /* ── Utilities ── */
 .text-accent  { color: var(--accent); }
 .text-muted   { color: var(--text-muted); }
 .section-label {
   font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .1em; color: var(--accent); margin-bottom: 8px;
+  letter-spacing: .12em; color: var(--accent); margin-bottom: 10px;
 }
 .page-intro { font-size: 1.05rem; color: var(--text-muted); max-width: 600px; margin-bottom: 40px; }
 .mt-28 { margin-top: 28px; }
 .mt-32 { margin-top: 32px; }
 .mt-40 { margin-top: 40px; }
 .counter-row { display: flex; gap: 48px; flex-wrap: wrap; margin-top: 24px; }
+.theme-switching * { transition: none !important; }
 
 /* ── 404 ── */
 .not-found { text-align: center; }
@@ -449,18 +576,39 @@ code {
 
 /* ── Responsive ── */
 @media (max-width: 640px) {
-  .section { padding: 48px 0; }
-  .hero    { padding: 64px 0 48px; }
+  .section { padding: 52px 0; }
+  .hero    { padding: 72px 0 56px; }
+  .container { padding: 0 18px; }
+  .grid-2, .grid-3 { gap: 18px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+  a, button, .card { transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease; }
+  button, .btn { transition: scale 150ms ease-out; }
+  button:active, .btn:active { scale: 0.97; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
 }
 `;
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
-export const FAVICON_SVG = `<svg viewBox="0 0 32 32" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
-  <polygon points="9,2 30,2 23,30 2,30" fill="#d3ff8d" />
-  <rect x="15" y="9" width="2" height="14" rx="1" fill="#0e0f10">
-    <animate attributeName="opacity" values="0.9;0.9;0;0" keyTimes="0;0.49;0.5;1" dur="1.1s" repeatCount="indefinite" />
-  </rect>
+export const FAVICON_SVG = `<svg
+  viewBox="0 0 32 32"
+  width="32"
+  height="32"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <polygon points="10,3 28,3 23,29 4,29" fill="#d3ff8d" />
+  <rect x="15" y="9" width="2" height="14" rx="1" fill="#0e0f10" />
+</svg>
+`;
+
+/** Original Bascik mark, not a template palette variant. */
+export const CANONICAL_FAVICON_SVG = `<svg viewBox="0 0 32 32" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+  <polygon points="10,3 28,3 23,29 4,29" fill="#d3ff8d" />
+  <rect x="15" y="9" width="2" height="14" rx="1" fill="#0e0f10" />
 </svg>
 `;
 
@@ -470,41 +618,53 @@ export const FAVICON_32_PNG_B64 = `iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0A
 
 export const APPLE_TOUCH_ICON_PNG_B64 = `iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAAACXBIWXMAAAsTAAALEwEAmpwYAAAGKUlEQVR4nO2bzWqdVRSGN72AtqO0WicWJ1KtoTi0dGjTK8gFGGtnH1ghJpXOw1l0kHoTUvlIU6rQa9Dg2R9W8OcK2guwky0nkIGU0kTfsvZZ63nhnWWwz7ufnTwcSCmEEEIIIYQQQgghhBBCCCGEEEII6SG12Xptsyd0Fm2DrZIxtdlYmzVq0TYYSra0dvfUvM2edTA+bdoNpnZvtWTL4kMDU7zHNG+z54tfViVbFn+WvMen9iY2GEvG4M9hH9RQsgV/jtsJf/a/BGqSDfBnYGrBNsCfO7gE2mQb4M8AZWE2wJ87uARqkg3wZ2CK9pjGkjF8/xy2Q8kWvn+O24nvn/0vgZpkA/wZmKI9prFkDP4ctkPJFvw5bif82f8SqEk2wJ+BKdpjGkvG4M9hO5RswZ/jdsKf/S+BmmQD/BmYoj2msWQM/hy2Q8kW/DluJ/zZ/xKoSTbAn4Ep2mMaS8bgz2E7lGzBn+N2wp/9L4GaZAP8GZiiPaaxZAz+HLZDyRb8OW4n/Nn/EqhJNsCfgSnaYxpLxuDPYTuUbMGf43bCn5evj3/farsPNw77+I9t9/PUToo/L1n3ft1sn3z6YTt95uy/evX65bb3dNP9fNW/+POy9Lufvmzn3l55Ceajnr+w0h4c3HY/Z/Ut/rwM/fnvnfb+6ruvhPmol65cbAcvdtzPW52KPy9Jd/c+ey3MR72/v+F+3upQ/HmJenN77dhAf3Fnzf281af487J0/da1YwO9+Fnv81af4s8dXAJAN81G+HMHoAK0SfbBnzuAFKBNuRH+7A0pQJtyI/zZG1KANtk++HMHkAK0SbbBnzsAFKBNuQ/+7A0oQJtyH/zZG1CANtk2+HMHgAK0SXbBnzuAE6BNuQ3+7A0nQJtyG/zZG04ANtku+HMHcAK0STbBnzsAE6BNuQv+7A0mQJtyF/zZG0yANtkm+HMHYAK0SfbAnzuAEqBNuQn+7A0lQJtyE/zZG0qANtke+HMHUAK0SbbAnzsAEgBNuQf+7A0kQJtyD/zZG0iANtkW+HMHQAK0SXbAnzuAEaBNuQX+7A0jQJtyC/zZG0aANtkO+HMHMAK0STbAnzsAEQBNuQP+7A0iQJtyB/zZG0SANtkG+HMHIAK0ZgP8uQMIAdqUG+DP3hACtCk3wJ+9IQRok22AP3cAIUCbZAP8uQMAAdqUG+DP3gACtCk3wJ+9AQRok22AP3cAIECbZAP8uQP4ANqUG+DP3vABtCk3wJ+94QNok22AP3cAH0CbZAP8uQPwANqUG+DP3uABtCk3wJ+9wQNok22AP3cAHkCbZAP8uQPoANqUG+DP3tABtCk3wJ+9oQNok22AP3cAHUCbZAP8uQPgANqUG+DP3sABtCk3wJ+9gQNok22AP3cAHECbZAP8uQPYANqUG+DP3rABtCk3wJ+9YQNok22AP3cAG0CbZAP8uQPQANqUG+DP3qABtCk3wJ+9QQNok22AP3cAGkCbZAP8uQPIANqUG+DPmXpze62dPnP2WL31zQ3389aTF3/O1N2HG8cG+ttHn7uft56w+HOyHrzYaZeuXHwtzB98/N7hz3qft56g+HPSPji43c5fWHklzG+9c659/8tX7uesJy/+nLV7Tzfb1euXX4L52o2P2v5vX7ufr/634s/Z+8Of2+3+/sZhf/zrjvt56v8o/tzBJVCTbIA/A1O0xzSWjFl88A7Gp02+Af4MWHEe1tTurZZsWXxo7+GpyTfAnwEr2sMaS8bgz2E7lGxp7e6peZs962B82rQb4M9AFeZRzdvs+eKXVcmWxZ8l7/GpvYnW/d2iwC0CBAgAIAAAAAAAAgAAAAAAQIECBAgAIAAAAAAAAgAAAAAAQIECBAgAIAAAAAAAAgAAAAAAQIECBAgAIAAAAAAAAgAAAAAAQIEC`;
 
-/** Head component: charset, viewport, favicon, CSS link. */
+/** Head component: charset, viewport, favicon, and pre-paint theme restoration. */
 export const SITE_META_HTML = `<meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light dark" />
 <meta name="description" content="A fast, modern website built with Bascik." />
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="/css/styles.css" />
+<script type="text/typescript">
+  try {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+  } catch { /* System colors remain available when storage is blocked. */ }
+</script>
 `;
 
 export const SITE_HEADER_CSS = `.skip-link {
   position: absolute;
   left: 16px;
-  top: -48px;
+  top: 8px;
   padding: 8px 14px;
   border-radius: var(--r-sm);
   background: var(--accent);
-  color: #18191b;
+  color: var(--on-accent, #18191b);
   font-weight: 600;
   z-index: 200;
 }
-.skip-link:focus { top: 8px; }
+/* Hidden until focused. Clipping, not an offset, keeps it hidden when something sits above the header. */
+.skip-link:not(:focus) {
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 header {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(24, 25, 27, 0.9);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 
-.container { max-width: 1140px; margin: 0 auto; padding: 0 28px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 28px; }
 
 nav {
   display: flex;
@@ -535,7 +695,7 @@ nav {
   font-size: 0.9rem;
   color: var(--text-muted);
   border-radius: var(--r-sm);
-  transition: color .15s, background .15s;
+  text-decoration: none;
 }
 .menu a:hover { color: var(--text); background: var(--elevated); opacity: 1; }
 
@@ -544,8 +704,8 @@ nav {
   flex-direction: column;
   justify-content: center;
   gap: 5px;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   background: none;
   border: none;
   cursor: pointer;
@@ -560,10 +720,35 @@ nav {
   border-radius: 2px;
 }
 
-@media (max-width: 640px) {
-  .toggle { display: flex; }
+.theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.theme[hidden] { display: none; }
+.theme:hover { color: var(--text); background: var(--elevated); }
+.theme svg { width: 22px; height: 22px; }
+.theme .sun { display: none; }
+.theme[aria-pressed="true"] .sun { display: block; }
+.theme[aria-pressed="true"] .moon { display: none; }
 
-  .menu {
+@media (max-width: 640px) {
+  .container { padding: 0 16px; }
+  nav { min-height: 60px; height: auto; gap: 8px; flex-wrap: wrap; }
+  .toggle:not([hidden]) { display: flex; }
+
+  .menu { flex-wrap: wrap; }
+
+  .toggle:not([hidden]) + .menu {
     display: none;
     position: absolute;
     top: 60px;
@@ -575,9 +760,13 @@ nav {
     border-bottom: 1px solid var(--border);
     padding: 8px 16px;
   }
-  .menu.is-open { display: flex; }
-  .menu li { width: 100%; }
-  .menu a { padding: 10px 4px; }
+  .toggle:not([hidden]) + .menu.is-open { display: flex; }
+  .toggle:not([hidden]) + .menu a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 8px;
+  }
 }
 `;
 
@@ -589,7 +778,7 @@ ${SITE_HEADER_CSS}</style>
   <div class="container">
     <nav aria-label="Main" data-testid="site-header-nav">
       <a href="/" class="logo" data-bascik-prop-brand data-testid="site-header-logo">My Site</a>
-      <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle">
+      <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
         <span></span><span></span><span></span>
       </button>
       <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
@@ -597,17 +786,46 @@ ${SITE_HEADER_CSS}</style>
         <li><a href="/about" data-testid="site-header-about">About</a></li>
         <li><a href="/contact" data-testid="site-header-contact">Contact</a></li>
       </ul>
+      <button id="theme" type="button" class="theme" aria-label="Toggle dark mode" aria-pressed="false" data-testid="site-header-theme-toggle" hidden>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+      </button>
     </nav>
   </div>
 </header>
 <script type="text/typescript">
   const toggle = document.getElementById('nav-toggle') as HTMLButtonElement;
   const menu = document.getElementById('nav-menu') as HTMLUListElement;
+  const setOpen = (open: boolean): void => {
+    toggle.setAttribute('aria-expanded', String(open));
+    menu.classList.toggle('is-open', open);
+  };
   toggle.addEventListener('click', (): void => {
-    const open = toggle.getAttribute('aria-expanded') === 'true';
-    toggle.setAttribute('aria-expanded', String(!open));
-    menu.classList.toggle('is-open');
+    setOpen(toggle.getAttribute('aria-expanded') !== 'true');
   });
+  toggle.parentElement?.addEventListener('keydown', (event): void => {
+    if (event.key !== 'Escape' || toggle.getAttribute('aria-expanded') !== 'true' || toggle.getClientRects().length === 0) return;
+    setOpen(false);
+    toggle.focus();
+  });
+  toggle.hidden = false;
+  const theme = document.getElementById('theme') as HTMLButtonElement;
+  const root = document.documentElement;
+  const system = matchMedia('(prefers-color-scheme: dark)');
+  const isDark = (): boolean => root.dataset.theme === 'dark' ||
+    (root.dataset.theme !== 'light' && system.matches);
+  const sync = (): void => theme.setAttribute('aria-pressed', String(isDark()));
+  theme.addEventListener('click', (): void => {
+    root.classList.add('theme-switching');
+    root.dataset.theme = isDark() ? 'light' : 'dark';
+    try { localStorage.setItem('theme', root.dataset.theme); } catch { /* Use this choice for the current page. */ }
+    sync();
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('theme-switching')));
+  });
+  system.addEventListener('change', sync);
+  window.addEventListener('pageshow', sync);
+  sync();
+  theme.hidden = false;
 </script>
 `;
 
@@ -616,7 +834,7 @@ export const SITE_FOOTER_CSS = `footer {
   padding: 28px 0;
 }
 
-.container { max-width: 1140px; margin: 0 auto; padding: 0 28px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 28px; }
 
 .inner {
   display: flex;
@@ -639,6 +857,7 @@ nav a {
 nav a:hover { color: var(--text); opacity: 1; }
 
 @media (max-width: 480px) {
+  .container { padding: 0 16px; }
   .inner { flex-direction: column; align-items: flex-start; }
 }
 `;
@@ -664,19 +883,21 @@ ${SITE_FOOTER_CSS}</style>
 `;
 
 export const FEATURE_CARD_CSS = `article {
-  background: var(--elevated);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r);
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  transition: border-color .2s, box-shadow .2s, transform .2s;
+  box-shadow: var(--shadow);
 }
 article:hover {
   border-color: var(--border-hover);
-  box-shadow: 0 0 0 1px var(--accent-dim), 0 8px 32px rgba(0,0,0,0.3);
-  transform: translateY(-2px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  article { transition: border-color 160ms ease, transform 160ms ease; }
+  article:hover { transform: translateY(-2px); }
 }
 
 header {
@@ -733,18 +954,19 @@ output {
   text-align: center;
   color: var(--accent);
 }
+.value[data-value^='-'] { color: var(--error); }
 
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 10px 22px; border: none; border-radius: var(--r-sm);
+  min-height: 44px; padding: 10px 22px; border: 1px solid transparent; border-radius: var(--r-sm);
   font-size: 0.9rem; font-weight: 600; cursor: pointer;
-  text-decoration: none; transition: filter .15s, opacity .15s; line-height: 1;
+  text-decoration: none; line-height: 1.3;
 }
-.btn-primary { background: var(--accent); color: #18191b; }
-.btn-ghost   { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.btn-primary { background: var(--accent); color: var(--on-accent, #18191b); }
+.btn-ghost   { background: var(--surface) var(--panel); color: var(--text); border-color: var(--border); }
 @media (hover: hover) {
-  .btn-primary:hover { filter: brightness(0.88); opacity: 1; }
-  .btn-ghost:hover   { border-color: var(--accent); color: var(--accent); opacity: 1; }
+  .btn-primary:hover { background: var(--accent-hover, var(--accent)); color: var(--on-accent, #18191b); }
+  .btn-ghost:hover   { border-color: var(--accent); color: var(--accent); }
 }
 `;
 
@@ -753,16 +975,17 @@ export const MY_COUNTER_HTML = `<style>
 ${MY_COUNTER_CSS}</style>
 <div class="counter" role="group" aria-label="Counter" data-testid="my-counter">
   <button id="btn-dec" type="button" class="btn btn-ghost" aria-label="Decrease" data-testid="my-counter-dec">−</button>
-  <output id="count-val" aria-live="polite" data-testid="my-counter-value">0</output>
+  <output id="count-val" class="value" data-value="0" aria-live="polite" data-testid="my-counter-value">0</output>
   <button id="btn-inc" type="button" class="btn btn-primary" aria-label="Increase" data-testid="my-counter-inc">+</button>
 </div>
 <script type="text/typescript">
-  // Each instance runs this with its own ids, so two counters keep their own count.
+  // Each instance has scoped ids. Reflect the raw number; CSS alone detects its minus sign.
   let count: number = 0;
   const val = document.getElementById('count-val') as HTMLOutputElement;
   const show = (next: number): void => {
     count = next;
     val.textContent = String(count);
+    val.dataset.value = String(count);
   };
   document.getElementById('btn-dec')!.addEventListener('click', () => show(count - 1));
   document.getElementById('btn-inc')!.addEventListener('click', () => show(count + 1));
@@ -780,7 +1003,7 @@ export const CONTACT_FORM_CSS = `.form { max-width: 520px; }
 .field textarea {
   width: 100%; background: var(--elevated); border: 1px solid var(--border);
   border-radius: var(--r-sm); color: var(--text); font-family: inherit;
-  font-size: 0.9rem; padding: 10px 14px; transition: border-color .15s; outline: none;
+  font-size: 0.9rem; padding: 10px 14px;
 }
 .field input:focus,
 .field textarea:focus { border-color: var(--accent); }
@@ -788,13 +1011,13 @@ export const CONTACT_FORM_CSS = `.form { max-width: 520px; }
 
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 10px 22px; border: none; border-radius: var(--r-sm);
+  min-height: 44px; padding: 10px 22px; border: 1px solid transparent; border-radius: var(--r-sm);
   font-size: 0.9rem; font-weight: 600; cursor: pointer;
-  line-height: 1; transition: filter .15s;
-  background: var(--accent); color: #18191b;
+  line-height: 1.3;
+  background: var(--accent); color: var(--on-accent, #18191b);
 }
 @media (hover: hover) {
-  .btn:hover { filter: brightness(0.88); }
+  .btn:hover { background: var(--accent-hover, var(--accent)); }
 }
 
 .status { margin: 16px 0 0; color: var(--accent); }
@@ -845,16 +1068,19 @@ import { join } from 'node:path';
 describe('site-meta component', () => {
   const path = join(process.cwd(), 'src/components/site-meta/site-meta.html');
 
-  it('contains charset, viewport, favicon, and stylesheet link tags', async () => {
+  it('contains head metadata and uses the inline global stylesheet config', async () => {
     const html = await readFile(path, 'utf8');
     expect(html).toContain('charset="UTF-8"');
     expect(html).toContain('name="viewport"');
+    expect(html).toContain('<meta name="color-scheme" content="light dark"');
     expect(html).toContain('name="description"');
     expect(html).toContain('favicon.ico');
     expect(html).toContain('favicon-32x32.png');
     expect(html).toContain('favicon.svg');
     expect(html).toContain('apple-touch-icon.png');
-    expect(html).toContain('styles.css');
+    expect(html).not.toContain('rel="stylesheet"');
+    const config = await readFile(join(process.cwd(), 'bascik.config.ts'), 'utf8');
+    expect(config).toContain("inlineStyles: ['src/pages/css/styles.css']");
   });
 });
 `;
@@ -922,6 +1148,10 @@ describe('my-counter component', () => {
     expect(html).toContain('id="btn-inc"');
     expect(html).toContain('id="count-val"');
     expect(html).toContain('addEventListener');
+    expect(html).toContain('data-value="0"');
+    expect(html).toContain("val.dataset.value = String(count)");
+    expect(html).toContain(".value[data-value^='-']");
+    expect(html).not.toContain("dataset.state");
   });
 });
 `;
@@ -969,12 +1199,6 @@ ${body}
 </html>
 `;
 
-/** Where each hosted template runs request-time code, for the copy that names it. */
-const HOST_RUNTIME: Partial<Record<Template, string>> = {
-  cloudflare: "a Cloudflare Worker",
-  netlify: "a Netlify Function",
-};
-
 /** The extra feature card a hosted template adds, linking to the page its host renders. */
 const edgeFeatureCard = (runtime: string): string => `
           <feature-card data-testid="feature-edge">
@@ -986,7 +1210,7 @@ const edgeFeatureCard = (runtime: string): string => `
 
 export const indexPage = (
   brand: string,
-  options: { template?: Template } = {},
+  options: { adapter?: Adapter } = {},
 ): string =>
   pageShell(
     `Home - ${brand}`,
@@ -994,7 +1218,7 @@ export const indexPage = (
     `    <section class="hero">
       <div class="container">
         <p class="section-label">Welcome</p>
-        <h1>Build fast with <span>${brand}</span></h1>
+        <h1>Welcome to <span>${brand}</span></h1>
         <p>A Bascik site. HTML components, scoped CSS, and zero runtime overhead.</p>
         <div class="hero-actions">
           <a href="/about" class="btn btn-primary">About</a>
@@ -1026,7 +1250,7 @@ export const indexPage = (
             <h3>Flexible composition</h3>
             <p>Pass header, body, and footer content into components from the usage site.</p>
             <div data-bascik-slot="footer"><a href="/about" class="btn btn-ghost">Learn more →</a></div>
-          </feature-card>${options.template && HOST_RUNTIME[options.template] ? edgeFeatureCard(HOST_RUNTIME[options.template]!) : ""}
+          </feature-card>${options.adapter ? edgeFeatureCard(HOST_RUNTIME[options.adapter]) : ""}
         </div>
       </div>
     </section>
@@ -1035,7 +1259,7 @@ export const indexPage = (
       <div class="container">
         <p class="section-label">Interactive</p>
         <h2>Counter component</h2>
-        <p>Each instance holds its own state. Place the same component twice, and they stay independent.</p>
+        <p>Each instance holds its own count and stays independent. CSS monitors the reflected numeric <code>data-value</code>: <code>.value[data-value^='-']</code> turns negative values red. The script only updates the number; Bascik scopes the selector and each instance's IDs.</p>
         <div class="counter-row">
           <my-counter />
           <my-counter />
@@ -1121,7 +1345,7 @@ export const notFoundPage = (brand: string): string =>
  */
 export const edgePage = (
   brand: string,
-  runtime = HOST_RUNTIME.cloudflare!,
+  runtime = HOST_RUNTIME.cloudflare,
 ): string =>
   pageShell(
     `Edge - ${brand}`,
@@ -1239,20 +1463,34 @@ export const packageNameOf = (projectName: string): string => {
  * @param projectName  The folder to create, relative to `targetDir` (see `validateProjectName`).
  *                     Its last segment names the site and, lowercased, the package.
  * @param targetDir    Parent directory in which to create the project (defaults to cwd).
- * @param options      `template` picks the starter (defaults to the static `default`).
+ * @param options      `template` is the kind of site (defaults to `DEFAULT_TEMPLATE`; the CLI
+ *                     looks a name up in `create/src/templates.ts`). `adapter` adds a deploy adapter.
  */
 export async function scaffold(
   projectName: string,
   targetDir: string = process.cwd(),
-  options: { template?: Template } = {},
+  options: { template?: StarterTemplate; adapter?: Adapter } = {},
 ): Promise<ScaffoldResult> {
   const root = join(targetDir, projectName);
-  const siteName = siteNameOf(projectName);
-  const template = options.template ?? "default";
+  const template = options.template ?? DEFAULT_TEMPLATE;
+  const { adapter } = options;
+  const context: TemplateContext = {
+    siteName: siteNameOf(projectName),
+    adapter,
+  };
   const notes: string[] = [];
 
-  const dirs = starterDirectories(template);
-  const files = starterFiles(siteName, packageNameOf(projectName), template);
+  const dirs = [
+    ...new Set([
+      ...sharedDirectories(adapter),
+      ...template.directories(context),
+    ]),
+  ];
+  const files = [
+    ...sharedFiles(packageNameOf(projectName), template, adapter),
+    ...template.files(context),
+  ];
+  assertDistinctPaths(template, files);
 
   // Nothing is written when the folder already holds a file the starter would replace.
   await assertScaffoldTarget(projectName, root, dirs, files);
@@ -1267,7 +1505,7 @@ export async function scaffold(
   await Promise.all([
     // Coding assistants: merged into an AGENTS.md or CLAUDE.md the folder already has.
     // The agent skills are installed afterwards by the CLI, with the skills CLI.
-    writeAgentFiles(root, { template }).then((report) => {
+    writeAgentFiles(root, { template: adapter ?? "default" }).then((report) => {
       notes.push(...agentFilesReportLines(report));
     }),
 
@@ -1290,11 +1528,118 @@ export async function scaffold(
   return { notes };
 }
 
-/** The folders the starter creates, relative to the project root, with `/` separators. */
-const starterDirectories = (template: Template): string[] => [
+/** The folders every template gets, relative to the project root, with `/` separators. */
+const sharedDirectories = (adapter?: Adapter): string[] => [
   "e2e",
-  ...(template === "cloudflare" || template === "netlify" ? ["src/api"] : []),
+  ...(adapter ? ["src/api"] : []),
   "src/pages/assets",
+];
+
+/**
+ * The files every template gets: the project's root files, the favicons and,
+ * with an adapter, the `/api/hello` route. AGENTS.md, CLAUDE.md and the .vscode
+ * files are not here: they are merged into what the folder has.
+ */
+const sharedFiles = (
+  packageName: string,
+  template: StarterTemplate,
+  adapter?: Adapter,
+): TemplateFile[] => [
+  ["package.json", PACKAGE_JSON(packageName, adapter, template)],
+  ["vite.config.ts", VITE_CONFIG],
+  [
+    ".gitignore",
+    (() => {
+      const base =
+        adapter === "cloudflare"
+          ? CLOUDFLARE_GITIGNORE
+          : adapter === "netlify"
+            ? NETLIFY_GITIGNORE
+            : GITIGNORE;
+      const entries = template.gitignoreEntries ?? [];
+      return entries.length > 0 ? `${base}${entries.join("\n")}\n` : base;
+    })(),
+  ],
+  ...(adapter === "netlify"
+    ? ([
+        [
+          "netlify.toml",
+          NETLIFY_TOML +
+            (template.netlifyIncludedFiles?.length
+              ? `\n[functions]\n  included_files = ${JSON.stringify(template.netlifyIncludedFiles)}\n`
+              : ""),
+        ],
+      ] as TemplateFile[])
+    : []),
+
+  // E2E: the web server is \`bascik --server\`, which renders request-time pages on Node
+  ["e2e/playwright.config.ts", PLAYWRIGHT_CONFIG],
+
+  [
+    "src/pages/favicon.ico",
+    Buffer.from(
+      template.name === "default"
+        ? defaultIcons.FAVICON_ICO_B64
+        : template.name === "landing"
+          ? LANDING_ICONS.ico
+          : FAVICON_ICO_B64,
+      "base64",
+    ),
+  ],
+  [
+    "src/pages/assets/favicon-32x32.png",
+    Buffer.from(
+      template.name === "default"
+        ? defaultIcons.FAVICON_32_PNG_B64
+        : template.name === "landing"
+          ? LANDING_ICONS.png32
+          : FAVICON_32_PNG_B64,
+      "base64",
+    ),
+  ],
+  [
+    "src/pages/assets/apple-touch-icon.png",
+    Buffer.from(
+      template.name === "default"
+        ? defaultIcons.APPLE_TOUCH_ICON_PNG_B64
+        : template.name === "landing"
+          ? LANDING_ICONS.touch
+          : APPLE_TOUCH_ICON_PNG_B64,
+      "base64",
+    ),
+  ],
+  [
+    "src/pages/assets/favicon.svg",
+    template.name === "landing"
+      ? LANDING_ICONS.svg
+      : template.name === "corporate"
+        ? CANONICAL_FAVICON_SVG
+        : FAVICON_SVG,
+  ],
+
+  ...(adapter
+    ? ([["src/api/hello.ts", HELLO_API_ROUTE]] as TemplateFile[])
+    : []),
+];
+
+/** A template that writes a shared file, or one path twice, is a bug in the template. */
+const assertDistinctPaths = (
+  template: StarterTemplate,
+  files: TemplateFile[],
+): void => {
+  const seen = new Set<string>();
+  for (const [path] of files) {
+    if (seen.has(path)) {
+      throw new Error(
+        `The "${template.name}" template writes ${path} twice, or writes a file every template already gets.`,
+      );
+    }
+    seen.add(path);
+  }
+};
+
+/** The folders the default starter creates under `src/`. */
+const defaultDirectories = (): string[] => [
   "src/pages/css",
   "src/components/site-meta",
   "src/components/site-header",
@@ -1304,65 +1649,38 @@ const starterDirectories = (template: Template): string[] => [
   "src/components/contact-form",
 ];
 
-/**
- * The files the starter writes as its own, relative to the project root. AGENTS.md,
- * CLAUDE.md and the .vscode files are not here: they are merged into what the folder has.
- */
-const starterFiles = (
-  siteName: string,
-  packageName: string,
-  template: Template,
-): Array<[path: string, data: string | Buffer]> => {
-  const cloudflare = template === "cloudflare";
-  const netlify = template === "netlify";
-  const runtime = HOST_RUNTIME[template];
+/** The files the default starter writes as its own, relative to the project root. */
+const defaultFiles = ({
+  siteName,
+  adapter,
+}: TemplateContext): TemplateFile[] => {
+  const runtime = adapter && HOST_RUNTIME[adapter];
   return [
-    // Root
-    ["package.json", PACKAGE_JSON(packageName, template)],
-    ["vite.config.ts", VITE_CONFIG],
     [
-      ".gitignore",
-      cloudflare
-        ? CLOUDFLARE_GITIGNORE
-        : netlify
-          ? NETLIFY_GITIGNORE
-          : GITIGNORE,
-    ],
-    ...(netlify
-      ? ([["netlify.toml", NETLIFY_TOML]] as Array<[string, string]>)
-      : []),
+      "bascik.config.ts",
+      `import { defineConfig } from '@bascik/bascik/config';
 
-    // E2E: the web server is \`bascik --server\`, which renders the edge page on Node
-    ["e2e/playwright.config.ts", PLAYWRIGHT_CONFIG],
+export default defineConfig({
+  assets: { inlineStyles: ['src/pages/css/styles.css'] },
+});
+`,
+    ],
     ["e2e/app.spec.ts", runtime ? CLOUDFLARE_E2E_APP_SPEC : E2E_APP_SPEC],
-
-    // Assets
-    ["src/pages/favicon.ico", Buffer.from(FAVICON_ICO_B64, "base64")],
-    [
-      "src/pages/assets/favicon-32x32.png",
-      Buffer.from(FAVICON_32_PNG_B64, "base64"),
-    ],
-    [
-      "src/pages/assets/apple-touch-icon.png",
-      Buffer.from(APPLE_TOUCH_ICON_PNG_B64, "base64"),
-    ],
-    ["src/pages/assets/favicon.svg", FAVICON_SVG],
 
     // Global CSS
     ["src/pages/css/styles.css", STYLES_CSS],
 
     // Pages
-    ["src/pages/index.html", indexPage(siteName, { template })],
+    ["src/pages/index.html", indexPage(siteName, { adapter })],
     ["src/pages/about.html", aboutPage(siteName)],
     ["src/pages/contact.html", contactPage(siteName)],
     ["src/pages/404.html", notFoundPage(siteName)],
 
-    // Hosted templates: the edge demo page and its API route
+    // With an adapter: the edge demo page, next to the shared /api/hello route
     ...(runtime
       ? ([
           ["src/pages/edge.html", edgePage(siteName, runtime)],
-          ["src/api/hello.ts", HELLO_API_ROUTE],
-        ] as Array<[string, string]>)
+        ] as TemplateFile[])
       : []),
 
     // Components
@@ -1379,6 +1697,14 @@ const starterFiles = (
     ["src/components/contact-form/contact-form.html", CONTACT_FORM_HTML],
     ["src/components/contact-form/contact-form.test.ts", CONTACT_FORM_TEST],
   ];
+};
+
+/** The starter you get without `--template`: a small multi-page site that shows components, slots and scoped scripts. */
+export const DEFAULT_TEMPLATE: StarterTemplate = {
+  name: "default",
+  summary: "A small multi-page site: home, about, contact, and a 404 page",
+  directories: defaultDirectories,
+  files: defaultFiles,
 };
 
 /** Thrown before anything is written when the target folder cannot take the starter. */
@@ -1415,7 +1741,7 @@ async function assertScaffoldTarget(
   projectName: string,
   root: string,
   dirs: string[],
-  files: Array<[path: string, data: string | Buffer]>,
+  files: TemplateFile[],
 ): Promise<void> {
   const rootEntry = await entryAt(root);
   if (rootEntry === null) return;

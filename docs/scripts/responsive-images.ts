@@ -16,7 +16,7 @@
  * A variant that is not clearly smaller than the file it stands in for is not written at all.
  *
  * What gets variants:
- * - the showcase screenshots and the hero's video thumbnails (photographs), from the committed file;
+ * - the showcase and template screenshots and the hero's video thumbnails, from the committed file;
  * - the reduced-motion `-still` copy of every recording (screenshots), from the committed file.
  *
  * The committed file is always the widest: add a new image at the largest size it will be shown at on a dense
@@ -141,7 +141,8 @@ async function main(): Promise<void> {
       for (const name of names) {
         const file = join(dir, name);
         if (await isAnimated(file)) continue;
-        if (name.startsWith("showcase-")) showcase.push(file);
+        if (name.startsWith("showcase-") || name.startsWith("template-"))
+          showcase.push(file);
         else if (name.startsWith("video-")) videos.push(file);
         else stills.push(file);
       }

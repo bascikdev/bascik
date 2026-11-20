@@ -6,6 +6,8 @@ Repository-wide instructions are labeled accordingly.
 
 ## House Rules for Examples, Skills, Scaffolds, and Docs
 
+Before changing the starter or a template in `create/src/scaffold.ts` or `create/src/templates/`, read `create/TEMPLATE-DESIGN.md`. It records the shared visual system, approved interaction details, rejected treatments, and template validation requirements.
+
 - **TypeScript by default.** New code in docs examples, skills, scaffolds, and examples is TypeScript: `.ts` companions, `type="text/typescript"` blocks, `.ts` helpers and exec scripts. Keep TypeScript as TypeScript in refactors. JavaScript only when a page is about JavaScript or the user asks.
 - **Component-first pages.** A page reads like a list of component tags, not big blocks of HTML. Balance it: no tiny single-use wrappers and no props passed through components that do not use them.
 - **Semantic HTML.** Pick the element the HTML standard defines for the job; a component's root is that element, not a wrapper `<div>`.
@@ -168,7 +170,7 @@ This repo ships its own agent customizations. Know which is which before editing
 - `.github/copilot-instructions.md` (this file): repo-wide rules, always loaded.
 - `.github/skills/<name>/SKILL.md`: Use the project skills (Bascik-specific domain knowledge such as `bascik-css-scoping`, `bascik-server-architecture`, `bascik-playwright-e2e`). These are authored in-repo and safe to edit.
 - `.github/agents/*.agent.md`: 8 agent definitions (developer, docs, planner, PR reviewer, pre-push, profiler, regression, supervisor).
-- `.agents/skills/<name>/SKILL.md`: 3 externally sourced skills (`playwright-cli`, `specmap`, `vitest`) tracked by `skills-lock.json` with a `computedHash`. Do not hand-edit these; the lock file records their upstream source and hash.
+- `.agents/skills/<name>/SKILL.md`: 4 externally sourced skills (`modern-web-guidance`, `playwright-cli`, `specmap`, `vitest`) tracked by `skills-lock.json` with a `computedHash`. Do not hand-edit these; the lock file records their upstream source and hash.
 - `skills/<name>/SKILL.md`: 10 public, user-facing skills (9 installed by `create-bascik`, plus the opt-in `bascik-refactor`) for people building with Bascik (not for working on this repo). See "Public Agent Skills" above.
 - Contributor skills in `.github/skills/` carry `metadata: internal: true` so `npx skills add bascikdev/bascik` does not offer them. Keep that on any new contributor skill.
 - `create/` installs the public skills, except `bascik-refactor`, into a new project at `.agents/skills/` and `.claude/skills/` by running the skills CLI against the matching release tag.
