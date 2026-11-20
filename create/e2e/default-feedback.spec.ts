@@ -139,7 +139,7 @@ test("default design remains readable in both themes at phone and desktop widths
   }
 });
 
-test("two compiled counters keep independent state and CSS makes negatives red", async ({
+test("two compiled counters reflect raw numbers and scoped CSS monitors negative, zero, and positive values", async ({
   page,
 }) => {
   await page.goto("/");
@@ -150,13 +150,24 @@ test("two compiled counters keep independent state and CSS makes negatives red",
   await expect(counters).toHaveCount(2);
   const first = counters.nth(0);
   const second = counters.nth(1);
+  const value = first.getByTestId("my-counter-value");
+  const otherValue = second.getByTestId("my-counter-value");
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    await expect(value).toHaveAttribute("data-value", "0");
+    await expect(otherValue).toHaveAttribute("data-value", "0");
+    const neutral = await value.evaluate(
+      (element) => getComputedStyle(element).color,
+    );
     await first.getByTestId("my-counter-dec").click();
-    await expect(first.getByTestId("my-counter-value")).toHaveText("-1");
-    await expect(second.getByTestId("my-counter-value")).toHaveText("0");
-    const value = first.getByTestId("my-counter-value");
-    await expect(value).toHaveAttribute("data-state", "negative");
+    await expect(value).toHaveText("-1");
+    await expect(value).toHaveAttribute("data-value", "-1");
+    await expect(otherValue).toHaveText("0");
+    await expect(otherValue).toHaveAttribute("data-value", "0");
+    const negative = await value.evaluate(
+      (element) => getComputedStyle(element).color,
+    );
+    expect(negative).not.toBe(neutral);
     expect(
       await value.evaluate((element) => {
         const probe = document.createElement("span");
@@ -169,11 +180,26 @@ test("two compiled counters keep independent state and CSS makes negatives red",
     ).toBe(true);
     await first.getByTestId("my-counter-inc").click();
     await expect(value).toHaveText("0");
-    await expect(value).toHaveAttribute("data-state", "nonnegative");
+    await expect(value).toHaveAttribute("data-value", "0");
+    await expect(value).toHaveCSS("color", neutral);
+    await first.getByTestId("my-counter-inc").click();
+    await expect(value).toHaveText("1");
+    await expect(value).toHaveAttribute("data-value", "1");
+    await expect(value).toHaveCSS("color", neutral);
+    await expect(otherValue).toHaveText("0");
+    await first.getByTestId("my-counter-dec").click();
     await second.getByTestId("my-counter-inc").click();
-    await expect(second.getByTestId("my-counter-value")).toHaveText("1");
+    await expect(otherValue).toHaveText("1");
+    await expect(otherValue).toHaveAttribute("data-value", "1");
+    await expect(otherValue).toHaveCSS("color", neutral);
     await expect(value).toHaveText("0");
     await second.getByTestId("my-counter-dec").click();
+    // Attribute-only mutations prove CSS monitors the number, not script classification.
+    await value.evaluate((element) => element.setAttribute("data-value", "-9"));
+    await expect(value).toHaveCSS("color", negative);
+    await expect(otherValue).toHaveCSS("color", neutral);
+    await value.evaluate((element) => element.setAttribute("data-value", "0"));
+    await expect(value).toHaveCSS("color", neutral);
     expect(
       await first.getByTestId("my-counter-inc").getAttribute("id"),
     ).not.toBe(await second.getByTestId("my-counter-inc").getAttribute("id"));

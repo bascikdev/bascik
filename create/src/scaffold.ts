@@ -932,7 +932,7 @@ output {
   text-align: center;
   color: var(--accent);
 }
-.value[data-state="negative"] { color: var(--error); }
+.value[data-value^='-'] { color: var(--error); }
 
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
@@ -953,17 +953,17 @@ export const MY_COUNTER_HTML = `<style>
 ${MY_COUNTER_CSS}</style>
 <div class="counter" role="group" aria-label="Counter" data-testid="my-counter">
   <button id="btn-dec" type="button" class="btn btn-ghost" aria-label="Decrease" data-testid="my-counter-dec">−</button>
-  <output id="count-val" class="value" data-state="nonnegative" aria-live="polite" data-testid="my-counter-value">0</output>
+  <output id="count-val" class="value" data-value="0" aria-live="polite" data-testid="my-counter-value">0</output>
   <button id="btn-inc" type="button" class="btn btn-primary" aria-label="Increase" data-testid="my-counter-inc">+</button>
 </div>
 <script type="text/typescript">
-  // Each instance runs this with its own ids, so two counters keep their own count.
+  // Each instance has scoped ids. Reflect the raw number; CSS alone detects its minus sign.
   let count: number = 0;
   const val = document.getElementById('count-val') as HTMLOutputElement;
   const show = (next: number): void => {
     count = next;
     val.textContent = String(count);
-    val.dataset.state = count < 0 ? 'negative' : 'nonnegative';
+    val.dataset.value = String(count);
   };
   document.getElementById('btn-dec')!.addEventListener('click', () => show(count - 1));
   document.getElementById('btn-inc')!.addEventListener('click', () => show(count + 1));
@@ -1126,6 +1126,10 @@ describe('my-counter component', () => {
     expect(html).toContain('id="btn-inc"');
     expect(html).toContain('id="count-val"');
     expect(html).toContain('addEventListener');
+    expect(html).toContain('data-value="0"');
+    expect(html).toContain("val.dataset.value = String(count)");
+    expect(html).toContain(".value[data-value^='-']");
+    expect(html).not.toContain("dataset.state");
   });
 });
 `;
@@ -1233,7 +1237,7 @@ export const indexPage = (
       <div class="container">
         <p class="section-label">Interactive</p>
         <h2>Counter component</h2>
-        <p>Each instance holds its own state. Place the same component twice, and they stay independent.</p>
+        <p>Each instance holds its own count and stays independent. CSS monitors the reflected numeric <code>data-value</code>: <code>.value[data-value^='-']</code> turns negative values red. The script only updates the number; Bascik scopes the selector and each instance's IDs.</p>
         <div class="counter-row">
           <my-counter />
           <my-counter />

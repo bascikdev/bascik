@@ -49,7 +49,7 @@ These are different design systems, not a checklist to force onto every branch. 
 - Provide an icon-only 44px theme control with an accessible name, pressed state, pre-paint restoration of both saved themes, and a useful system-color fallback.
 - Inline global CSS with `assets.inlineStyles: ["src/pages/css/styles.css"]`; compiled pages must have no stylesheet link or request for this file.
 - Keep the canonical Bascik favicon geometry and colors. Navigation links have deliberate resting styles without list-link underlines.
-- The two counter instances demonstrate ID and script scoping. Negative values are red through a scoped CSS selector reading semantic `data-state`, never script-assigned colors.
+- The two counter instances demonstrate ID, script, and CSS scoping. Initialize `data-value="0"` and reflect `String(count)` in `data-value` on every update. CSS alone monitors the raw numeric string through `.value[data-value^='-']` to make negatives red; zero and positive values retain the neutral accent color. Do not classify the sign in JavaScript or assign styling classes, semantic sign state, or colors.
 - Fresh production browser tests cover computed initial animation names, icon-only text, persistence, CSS requests, both themes, narrow layouts, and independent counters on port 9411.
 - The public visual-design URL returned HTTP 404 during this work. Repository-only UI/UX guidance is the reference until that page is available.
 

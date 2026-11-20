@@ -36,11 +36,17 @@ describe("default starter feedback", () => {
     expect(config?.[1]).toContain("inlineStyles");
     expect(config?.[1]).toContain("src/pages/css/styles.css");
   });
-  it("uses semantic counter state for CSS-driven negative values", () => {
-    expect(MY_COUNTER_HTML).toContain("val.dataset.state");
-    expect(MY_COUNTER_CSS).toContain('.value[data-state="negative"]');
+  it("lets scoped CSS monitor the reflected raw numeric counter value", () => {
+    expect(MY_COUNTER_HTML).toContain('data-value="0"');
+    expect(MY_COUNTER_HTML).toContain("val.dataset.value = String(count)");
+    expect(MY_COUNTER_CSS).toContain(".value[data-value^='-']");
     expect(MY_COUNTER_CSS).toContain("color: var(--error)");
     expect(MY_COUNTER_HTML).not.toContain("val.style");
+    expect(MY_COUNTER_HTML).not.toContain("dataset.state");
+    expect(MY_COUNTER_HTML).not.toContain("count < 0");
+    expect(indexPage("default")).toContain(
+      "CSS monitors the reflected numeric",
+    );
   });
   it("ships the canonical SVG without recoloring the brand", () => {
     expect(FAVICON_SVG.replace(/\s+/g, " ").trim()).toBe(
