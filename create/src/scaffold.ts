@@ -7,6 +7,7 @@
 
 import { lstat, mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import * as defaultIcons from "./default-icons.js";
 import { agentFilesReportLines, writeAgentFiles } from "./agent-setup.js";
 import { vscodeReportLines, writeVscodeFiles } from "./vscode-settings.js";
 
@@ -442,6 +443,13 @@ export const STYLES_CSS = `/* ── Design system ── */
   --r-sm:         8px;
 }
 
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+/* Navigation paints immediately, including browsers with view transitions. */
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; }
+
 @supports (interpolate-size: allow-keywords) {
   :root { interpolate-size: allow-keywords; }
 }
@@ -577,8 +585,8 @@ code {
 // ─── Components ───────────────────────────────────────────────────────────────
 
 export const FAVICON_SVG = `<svg viewBox="0 0 32 32" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
-  <polygon points="9,2 30,2 23,30 2,30" fill="#42664d" />
-  <rect x="15" y="9" width="2" height="14" rx="1" fill="#fffefa" />
+  <polygon points="10,3 28,3 23,29 4,29" fill="#d3ff8d" />
+  <rect x="15" y="9" width="2" height="14" rx="1" fill="#0e0f10" />
 </svg>
 `;
 
@@ -588,7 +596,7 @@ export const FAVICON_32_PNG_B64 = `iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0A
 
 export const APPLE_TOUCH_ICON_PNG_B64 = `iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAAACXBIWXMAAAsTAAALEwEAmpwYAAAGKUlEQVR4nO2bzWqdVRSGN72AtqO0WicWJ1KtoTi0dGjTK8gFGGtnH1ghJpXOw1l0kHoTUvlIU6rQa9Dg2R9W8OcK2guwky0nkIGU0kTfsvZZ63nhnWWwz7ufnTwcSCmEEEIIIYQQQgghhBBCCCGEEEII6SG12Xptsyd0Fm2DrZIxtdlYmzVq0TYYSra0dvfUvM2edTA+bdoNpnZvtWTL4kMDU7zHNG+z54tfViVbFn+WvMen9iY2GEvG4M9hH9RQsgV/jtsJf/a/BGqSDfBnYGrBNsCfO7gE2mQb4M8AZWE2wJ87uARqkg3wZ2CK9pjGkjF8/xy2Q8kWvn+O24nvn/0vgZpkA/wZmKI9prFkDP4ctkPJFvw5bif82f8SqEk2wJ+BKdpjGkvG4M9hO5RswZ/jdsKf/S+BmmQD/BmYoj2msWQM/hy2Q8kW/DluJ/zZ/xKoSTbAn4Ep2mMaS8bgz2E7lGzBn+N2wp/9L4GaZAP8GZiiPaaxZAz+HLZDyRb8OW4n/Nn/EqhJNsCfgSnaYxpLxuDPYTuUbMGf43bCn5evj3/farsPNw77+I9t9/PUToo/L1n3ft1sn3z6YTt95uy/evX65bb3dNP9fNW/+POy9Lufvmzn3l55Ceajnr+w0h4c3HY/Z/Ut/rwM/fnvnfb+6ruvhPmol65cbAcvdtzPW52KPy9Jd/c+ey3MR72/v+F+3upQ/HmJenN77dhAf3Fnzf281af487J0/da1YwO9+Fnv81af4s8dXAJAN81G+HMHoAK0SfbBnzuAFKBNuRH+7A0pQJtyI/zZG1KANtk++HMHkAK0SbbBnzsAFKBNuQ/+7A0oQJtyH/zZG1CANtk2+HMHgAK0SXbBnzuAE6BNuQ3+7A0nQJtyG/zZG04ANtku+HMHcAK0STbBnzsAE6BNuQv+7A0mQJtyF/zZG0yANtkm+HMHYAK0SfbAnzuAEqBNuQn+7A0lQJtyE/zZG0qANtke+HMHUAK0SbbAnzsAEgBNuQf+7A0kQJtyD/zZG0iANtkW+HMHQAK0SXbAnzuAEaBNuQX+7A0jQJtyC/zZG0aANtkO+HMHMAK0STbAnzsAEQBNuQP+7A0iQJtyB/zZG0SANtkG+HMHIAK0ZgP8uQMIAdqUG+DP3hACtCk3wJ+9IQRok22AP3cAIUCbZAP8uQMAAdqUG+DP3gACtCk3wJ+9AQRok22AP3cAIECbZAP8uQP4ANqUG+DP3vABtCk3wJ+94QNok22AP3cAH0CbZAP8uQPwANqUG+DP3uABtCk3wJ+9wQNok22AP3cAHkCbZAP8uQPoANqUG+DP3tABtCk3wJ+9oQNok22AP3cAHUCbZAP8uQPgANqUG+DP3sABtCk3wJ+9gQNok22AP3cAHECbZAP8uQPYANqUG+DP3rABtCk3wJ+9YQNok22AP3cAG0CbZAP8uQPQANqUG+DP3qABtCk3wJ+9QQNok22AP3cAGkCbZAP8uQPIANqUG+DPmXpze62dPnP2WL31zQ3389aTF3/O1N2HG8cG+ttHn7uft56w+HOyHrzYaZeuXHwtzB98/N7hz3qft56g+HPSPji43c5fWHklzG+9c659/8tX7uesJy/+nLV7Tzfb1euXX4L52o2P2v5vX7ufr/634s/Z+8Of2+3+/sZhf/zrjvt56v8o/tzBJVCTbIA/A1O0xzSWjFl88A7Gp02+Af4MWHEe1tTurZZsWXxo7+GpyTfAnwEr2sMaS8bgz2E7lGxp7e6peZs962B82rQb4M9AFeZRzdvs+eKXVcmWxZ8l7/GpvYnW/d2iwC0CBAgAIAAAAAAAAgAAAAAAQIECBAgAIAAAAAAAAgAAAAAAQIECBAgAIAAAAAAAAgAAAAAAQIECBAgAIAAAAAAAAgAAAAAAQIEC`;
 
-/** Head component: charset, viewport, favicon, CSS link. */
+/** Head component: charset, viewport, favicon, and pre-paint theme restoration. */
 export const SITE_META_HTML = `<meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="color-scheme" content="light dark" />
@@ -597,7 +605,12 @@ export const SITE_META_HTML = `<meta charset="UTF-8" />
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png" />
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="/css/styles.css" />
+<script type="text/typescript">
+  try {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+  } catch { /* System colors remain available when storage is blocked. */ }
+</script>
 `;
 
 export const SITE_HEADER_CSS = `.skip-link {
@@ -660,6 +673,7 @@ nav {
   font-size: 0.9rem;
   color: var(--text-muted);
   border-radius: var(--r-sm);
+  text-decoration: none;
 }
 .menu a:hover { color: var(--text); background: var(--elevated); opacity: 1; }
 
@@ -683,6 +697,27 @@ nav {
   background: var(--text);
   border-radius: 2px;
 }
+
+.theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.theme[hidden] { display: none; }
+.theme:hover { color: var(--text); background: var(--elevated); }
+.theme svg { width: 22px; height: 22px; }
+.theme .sun { display: none; }
+.theme[aria-pressed="true"] .sun { display: block; }
+.theme[aria-pressed="true"] .moon { display: none; }
 
 @media (max-width: 640px) {
   .container { padding: 0 16px; }
@@ -721,6 +756,10 @@ ${SITE_HEADER_CSS}</style>
   <div class="container">
     <nav aria-label="Main" data-testid="site-header-nav">
       <a href="/" class="logo" data-bascik-prop-brand data-testid="site-header-logo">My Site</a>
+      <button id="theme" type="button" class="theme" aria-label="Toggle dark mode" aria-pressed="false" data-testid="site-header-theme-toggle" hidden>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+      </button>
       <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
         <span></span><span></span><span></span>
       </button>
@@ -748,6 +787,23 @@ ${SITE_HEADER_CSS}</style>
     toggle.focus();
   });
   toggle.hidden = false;
+  const theme = document.getElementById('theme') as HTMLButtonElement;
+  const root = document.documentElement;
+  const system = matchMedia('(prefers-color-scheme: dark)');
+  const isDark = (): boolean => root.dataset.theme === 'dark' ||
+    (root.dataset.theme !== 'light' && system.matches);
+  const sync = (): void => theme.setAttribute('aria-pressed', String(isDark()));
+  theme.addEventListener('click', (): void => {
+    root.classList.add('theme-switching');
+    root.dataset.theme = isDark() ? 'light' : 'dark';
+    try { localStorage.setItem('theme', root.dataset.theme); } catch { /* Use this choice for the current page. */ }
+    sync();
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('theme-switching')));
+  });
+  system.addEventListener('change', sync);
+  window.addEventListener('pageshow', sync);
+  sync();
+  theme.hidden = false;
 </script>
 `;
 
@@ -876,6 +932,7 @@ output {
   text-align: center;
   color: var(--accent);
 }
+.value[data-state="negative"] { color: var(--error); }
 
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
@@ -896,7 +953,7 @@ export const MY_COUNTER_HTML = `<style>
 ${MY_COUNTER_CSS}</style>
 <div class="counter" role="group" aria-label="Counter" data-testid="my-counter">
   <button id="btn-dec" type="button" class="btn btn-ghost" aria-label="Decrease" data-testid="my-counter-dec">−</button>
-  <output id="count-val" aria-live="polite" data-testid="my-counter-value">0</output>
+  <output id="count-val" class="value" data-state="nonnegative" aria-live="polite" data-testid="my-counter-value">0</output>
   <button id="btn-inc" type="button" class="btn btn-primary" aria-label="Increase" data-testid="my-counter-inc">+</button>
 </div>
 <script type="text/typescript">
@@ -906,6 +963,7 @@ ${MY_COUNTER_CSS}</style>
   const show = (next: number): void => {
     count = next;
     val.textContent = String(count);
+    val.dataset.state = count < 0 ? 'negative' : 'nonnegative';
   };
   document.getElementById('btn-dec')!.addEventListener('click', () => show(count - 1));
   document.getElementById('btn-inc')!.addEventListener('click', () => show(count + 1));
@@ -988,7 +1046,7 @@ import { join } from 'node:path';
 describe('site-meta component', () => {
   const path = join(process.cwd(), 'src/components/site-meta/site-meta.html');
 
-  it('contains charset, viewport, favicon, and stylesheet link tags', async () => {
+  it('contains head metadata and uses the inline global stylesheet config', async () => {
     const html = await readFile(path, 'utf8');
     expect(html).toContain('charset="UTF-8"');
     expect(html).toContain('name="viewport"');
@@ -998,7 +1056,9 @@ describe('site-meta component', () => {
     expect(html).toContain('favicon-32x32.png');
     expect(html).toContain('favicon.svg');
     expect(html).toContain('apple-touch-icon.png');
-    expect(html).toContain('styles.css');
+    expect(html).not.toContain('rel="stylesheet"');
+    const config = await readFile(join(process.cwd(), 'bascik.config.ts'), 'utf8');
+    expect(config).toContain("inlineStyles: ['src/pages/css/styles.css']");
   });
 });
 `;
@@ -1132,7 +1192,7 @@ export const indexPage = (
     `    <section class="hero">
       <div class="container">
         <p class="section-label">Welcome</p>
-        <h1>Build fast with <span>${brand}</span></h1>
+        <h1>Welcome to <span>${brand}</span></h1>
         <p>A Bascik site. HTML components, scoped CSS, and zero runtime overhead.</p>
         <div class="hero-actions">
           <a href="/about" class="btn btn-primary">About</a>
@@ -1476,14 +1536,32 @@ const sharedFiles = (
   // E2E: the web server is \`bascik --server\`, which renders request-time pages on Node
   ["e2e/playwright.config.ts", PLAYWRIGHT_CONFIG],
 
-  ["src/pages/favicon.ico", Buffer.from(FAVICON_ICO_B64, "base64")],
+  [
+    "src/pages/favicon.ico",
+    Buffer.from(
+      template.name === "default"
+        ? defaultIcons.FAVICON_ICO_B64
+        : FAVICON_ICO_B64,
+      "base64",
+    ),
+  ],
   [
     "src/pages/assets/favicon-32x32.png",
-    Buffer.from(FAVICON_32_PNG_B64, "base64"),
+    Buffer.from(
+      template.name === "default"
+        ? defaultIcons.FAVICON_32_PNG_B64
+        : FAVICON_32_PNG_B64,
+      "base64",
+    ),
   ],
   [
     "src/pages/assets/apple-touch-icon.png",
-    Buffer.from(APPLE_TOUCH_ICON_PNG_B64, "base64"),
+    Buffer.from(
+      template.name === "default"
+        ? defaultIcons.APPLE_TOUCH_ICON_PNG_B64
+        : APPLE_TOUCH_ICON_PNG_B64,
+      "base64",
+    ),
   ],
   ["src/pages/assets/favicon.svg", FAVICON_SVG],
 
@@ -1526,6 +1604,15 @@ const defaultFiles = ({
 }: TemplateContext): TemplateFile[] => {
   const runtime = adapter && HOST_RUNTIME[adapter];
   return [
+    [
+      "bascik.config.ts",
+      `import { defineConfig } from '@bascik/bascik/config';
+
+export default defineConfig({
+  assets: { inlineStyles: ['src/pages/css/styles.css'] },
+});
+`,
+    ],
     ["e2e/app.spec.ts", runtime ? CLOUDFLARE_E2E_APP_SPEC : E2E_APP_SPEC],
 
     // Global CSS

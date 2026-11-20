@@ -2,7 +2,7 @@
 
 This is the visual contract for the templates shipped by `create-bascik`. Read it before changing `src/scaffold.ts` or `src/templates/`. The templates share accessible foundations, not one visual skin. Each should look designed for its job rather than like a recolored admin theme.
 
-Use `bascik-ui` to set the visual direction and `bascik-ux` to review the interactions. The [visual design guide](https://bascik.dev/how-to/visual-design) explains both.
+Use the repository-only [UI guidance](../.github/skills/bascik-ui/SKILL.md) to set the visual direction and [UX guidance](../.github/skills/bascik-ux/SKILL.md) to review interactions. These internal skills are not installed in generated sites.
 
 ## Shared principles
 
@@ -32,7 +32,7 @@ These are different design systems, not a checklist to force onto every branch. 
 
 ## Motion and interaction
 
-- Entrances start at `scale: 0.97` with `opacity: 0`, never at zero scale. Keep entrances brief and opt them out under `prefers-reduced-motion: reduce`.
+- Never animate above-fold content on initial load, including root view-transition snapshots. Initial content is immediately opaque and static. User-triggered entrances and appropriate below-fold motion remain brief and opt out under `prefers-reduced-motion: reduce`.
 - Pressable buttons use `button:active { scale: 0.97; }` with `transition: scale 150ms ease-out`. Apply the same behavior to button-styled links when appropriate.
 - A rejected password shakes horizontally through `0, -10, 10, -6, 6, -3, 0px` over 360ms and also changes to an error state.
 - Steppers slide the next step from the direction of travel instead of crossfading.
@@ -42,6 +42,16 @@ These are different design systems, not a checklist to force onto every branch. 
 - Delay only the first tooltip; show subsequent tooltips immediately while one is already open.
 - Drag and flick interactions hand their release velocity to a spring rather than snapping with a fixed-duration transition. Carousels resist pulls past either end, then spring back.
 - Do not add motion just to satisfy a rule. Respect reduced motion, avoid flashes, and provide pause controls for persistent automatically moving content.
+
+## Default-template feedback
+
+- Keep warm paper, ink, and moss styling. Use the project slug consistently and greet the visitor with `Welcome to <name>` rather than a landing-page slogan.
+- Provide an icon-only 44px theme control with an accessible name, pressed state, pre-paint restoration of both saved themes, and a useful system-color fallback.
+- Inline global CSS with `assets.inlineStyles: ["src/pages/css/styles.css"]`; compiled pages must have no stylesheet link or request for this file.
+- Keep the canonical Bascik favicon geometry and colors. Navigation links have deliberate resting styles without list-link underlines.
+- The two counter instances demonstrate ID and script scoping. Negative values are red through a scoped CSS selector reading semantic `data-state`, never script-assigned colors.
+- Fresh production browser tests cover computed initial animation names, icon-only text, persistence, CSS requests, both themes, narrow layouts, and independent counters on port 9411.
+- The public visual-design URL returned HTTP 404 during this work. Repository-only UI/UX guidance is the reference until that page is available.
 
 ## Docs-template behavior
 

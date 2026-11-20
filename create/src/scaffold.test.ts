@@ -1185,8 +1185,8 @@ describe("SITE_META_HTML", () => {
     expect(SITE_META_HTML).toContain("viewport");
   });
 
-  it("links the global stylesheet", () => {
-    expect(SITE_META_HTML).toContain("styles.css");
+  it("leaves global CSS to the inline asset configuration", () => {
+    expect(SITE_META_HTML).not.toContain('rel="stylesheet"');
   });
 });
 
@@ -1547,9 +1547,9 @@ describe("scaffold", () => {
     expect(dirs.some((d) => d.includes("site-meta"))).toBe(true);
   });
 
-  it("writes all 31 expected files", async () => {
+  it("writes all 32 expected files", async () => {
     await scaffold("my-app", "/tmp");
-    expect(mockWriteFile.mock.calls.length).toBe(31);
+    expect(mockWriteFile.mock.calls.length).toBe(32);
   });
 
   it("writes E2E config and spec files", async () => {
@@ -1604,7 +1604,7 @@ describe("scaffold", () => {
   it("writes root config files", async () => {
     await scaffold("my-app", "/tmp");
     expect(writtenTo("package.json")).toBeDefined();
-    expect(writtenTo("bascik.config.ts")).toBeUndefined();
+    expect(writtenTo("bascik.config.ts")).toContain("inlineStyles");
     expect(writtenTo("vite.config.ts")).toBeDefined();
     expect(writtenTo("vite.config.js")).toBeUndefined();
     expect(writtenTo(".gitignore")).toBeDefined();
@@ -1838,7 +1838,7 @@ describe("scaffold", () => {
       ]);
       await scaffold("my-app", "/tmp");
       expect(writtenTo("/tmp/my-app/package.json")).toBeDefined();
-      expect(mockWriteFile.mock.calls.length).toBe(31);
+      expect(mockWriteFile.mock.calls.length).toBe(32);
     });
   });
 
@@ -1898,8 +1898,8 @@ describe("scaffold", () => {
   describe("cloudflare template", () => {
     beforeEach(() => scaffold("my-app", "/tmp", { adapter: "cloudflare" }));
 
-    it("writes the 31 default files plus the edge page and API route", () => {
-      expect(mockWriteFile.mock.calls.length).toBe(33);
+    it("writes the 32 default files plus the edge page and API route", () => {
+      expect(mockWriteFile.mock.calls.length).toBe(34);
       const paths = allWrittenPaths();
       expect(paths).toContain("/tmp/my-app/src/pages/edge.html");
       expect(paths).toContain("/tmp/my-app/src/api/hello.ts");
