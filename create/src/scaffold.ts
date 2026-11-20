@@ -87,6 +87,9 @@ export interface StarterTemplate {
   /** Packages the site imports beyond the starter's own, such as a Markdown parser. */
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  scripts?: Record<string, string>;
+  /** Read-only fixture files that Netlify must include in its function bundle. */
+  netlifyIncludedFiles?: readonly string[];
 }
 
 // ─── Root files ───────────────────────────────────────────────────────────────
@@ -101,7 +104,10 @@ const NETLIFY_CLI_VERSION = "^27.16.2";
 export const PACKAGE_JSON = (
   name: string,
   adapter?: Adapter,
-  extra: Pick<StarterTemplate, "dependencies" | "devDependencies"> = {},
+  extra: Pick<
+    StarterTemplate,
+    "dependencies" | "devDependencies" | "scripts"
+  > = {},
 ): string => {
   const cloudflare = adapter === "cloudflare";
   const netlify = adapter === "netlify";
@@ -140,6 +146,7 @@ export const PACKAGE_JSON = (
           "test:watch": "vitest",
           "test:coverage": "vitest run --coverage",
           e2e: "playwright test --config e2e/playwright.config.ts",
+          ...extra.scripts,
         },
         dependencies: {
           "@bascik/bascik": `^${BASCIK_VERSION}`,
@@ -396,6 +403,7 @@ hint-report/
 .env
 .env.*
 !.env.example
+data/racing.db
 `;
 
 /** Wrangler keeps its local state (workerd cache, dev vars) in `.wrangler/`. */
@@ -1543,7 +1551,15 @@ const sharedFiles = (
         : GITIGNORE,
   ],
   ...(adapter === "netlify"
-    ? ([["netlify.toml", NETLIFY_TOML]] as TemplateFile[])
+    ? ([
+        [
+          "netlify.toml",
+          NETLIFY_TOML +
+            (template.netlifyIncludedFiles?.length
+              ? `\n[functions]\n  included_files = ${JSON.stringify(template.netlifyIncludedFiles)}\n`
+              : ""),
+        ],
+      ] as TemplateFile[])
     : []),
 
   // E2E: the web server is \`bascik --server\`, which renders request-time pages on Node

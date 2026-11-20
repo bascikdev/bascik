@@ -94,6 +94,7 @@ Select **Y** for all three and you're live at `http://localhost:8080`. `npm run 
 | `landing`   | A product landing page: hero, features, steps, testimonials, pricing, FAQ, and a sign-up form. With an adapter, the form posts to an API route that validates it |
 | `portfolio` | A creator portfolio: featured work, a project index, a page per Markdown entry in `content/projects/`, about, contact, and a 404 page                            |
 | `corporate` | A company site: services, about, careers, news, and contact pages                                                                                                |
+| `shop`      | A shop: a product catalog, product pages, a cart, and a demo checkout                                                                                            |
 
 Any template takes any adapter: `npm create bascik my-site -- --template default --adapter netlify`.
 

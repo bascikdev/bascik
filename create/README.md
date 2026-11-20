@@ -98,6 +98,7 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 | `landing`   | A product landing page: hero, features, steps, testimonials, pricing, FAQ, and a sign-up form. With an adapter, the form posts to an API route that validates it                                                       |
 | `portfolio` | An editorial creator portfolio: clearly labeled fictional sample work, a featured grid, a project index, a page per Markdown entry in `content/projects/` read by `src/lib/projects.ts`, about, contact, and 404 pages |
 | `corporate` | A company site: services, about, careers, news, and contact pages                                                                                                                                                      |
+| `shop`      | A shop: a product catalog, product pages, a cart, and a demo checkout                                                                                                                                                  |
 
 The blog uses your project slug as a plain brand, a responsive author sidebar, an unboxed reading column, and an accessible icon-only light/dark toggle. It retains the Bascik favicon. Global `styles.css` and `blog.css` are inlined through `assets.inlineStyles` in `bascik.config.ts`, without duplicate stylesheet links or above-the-fold entrance animations. Navigation remains visible without JavaScript.
 
@@ -106,6 +107,27 @@ For a plain slug brand, scaffold with `npm create bascik docs -- --template docs
 
 The docs template includes an accessible icon-only theme control, initializes the saved theme before paint, and keeps the canonical Bascik favicon. Global `src/pages/css/styles.css` is inlined through `assets.inlineStyles` in its config, without a stylesheet link or request. Navigation has no resting underline, and content appears immediately without entrance animations; interaction motion respects reduced motion.
 The portfolio uses an inset editorial masthead, a plain project-slug brand (`portfolio` for that project name), non-underlined navigation, and an accessible icon-only theme toggle with saved light/dark preference. Its global `src/pages/css/styles.css` is inlined through `assets.inlineStyles: true`; above-fold content is visible immediately without entrance animations. Bascik's shared favicons are unchanged. Replace the sample work and biography before publishing; the contact form validates locally and does not send a message.
+The shop's default brand is the plain slug `shop`. Its icon-only theme button
+restores a saved light/dark preference before paint. Global CSS is inlined,
+and initial content has no entrance animation. Edit `catalog/books.ts` to
+change each product's material, fit, specification and demo availability.
+All products, ratings and stock counts are illustrative; nothing is sold or
+shipped by the demo checkout. The favicon remains the canonical Bascik asset.
+Product actions render at their final size before scripts load: Add to cart
+starts disabled, and View cart is always a working link. The navigation keeps
+a visible neutral cart-count pill, including `0` for an empty cart.
+
+The all-products catalog is `/`; product details use `/products/<slug>`.
+Sorting and filtering are native GET forms, so they work without JavaScript.
+A non-streamed Bascik server script reads `data/racing.db` read-only, or the
+Cloudflare D1 `DB` binding, before sending the catalog HTML. The demo seed
+runs before dev/build and resets the catalog from `catalog/books.ts`.
+Production therefore needs `bascik --server` or an adapter, not a static host.
+Cloudflare projects need a dedicated D1 database bound as `DB`; generate its
+fixture SQL with `node scripts/seed-database.ts --sql`. Never run the demo seed
+against an application's database.
+The Netlify variant includes the seeded, read-only SQLite fixture in its
+function bundle through `functions.included_files`.
 
 `--template cloudflare` and `--template netlify`, the spelling before `create-bascik` 1.1.0, still work and mean the same as `--adapter`. Naming two different adapters with the two flags is an error.
 

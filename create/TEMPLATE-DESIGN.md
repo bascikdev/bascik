@@ -104,6 +104,19 @@ These are different design systems, not a checklist to force onto every branch. 
 - Warning: `https://bascik.dev/how-to/visual-design` returned HTTP 404 during feedback verification on November 19, 2026. The local UI and UX guidance was read, but the missing page is not evidence of live documentation coverage.
 - Focused source regressions and fresh production Playwright checks live in `src/templates/corporate-feedback.test.ts` and `e2e/corporate-feedback.spec.ts`. Verification sources, builds, and browser output live in `mkdtemp` directories under the OS `tmpdir`, never packaged `create/dist/`. Setup failures, validation failures, and Playwright teardown remove their fixtures. The config exports its dynamic verification paths; the browser server uses only `127.0.0.1:9413` and is stopped after testing.
 
+## Shop-template behavior
+
+- The root `/` is the all-products catalog, not a landing page. Product URLs use `/products/<slug>`; there is no `/books/` catalog.
+- A non-streamed server script reads SQLite or Cloudflare D1 and returns the sorted, filtered cards before the response starts. Native GET controls are visible and usable without JavaScript; never reorder cards on initial load.
+- Reserve theme-button and cart-badge footprints before paint. Render a visible neutral `0` cart pill, not an empty or hidden badge. Product actions keep their final geometry before scripts load: disable Add to cart until ready and always show the View cart link. Critical theme/menu initialization must not depend on browser cart-module downloads. Product SVGs stay inline with explicit aspect ratios.
+- The demo seed runs before builds and dev startup and is the only catalog writer. Production uses `bascik --server` or an adapter, not a plain static host. For Cloudflare, bind a dedicated D1 database as `DB` and seed it with `node scripts/seed-database.ts --sql`; never point the demo seed at an application's database.
+- Use the plain slug `shop` for default branding. Keep the canonical create-template Bascik favicon files unmodified.
+- Inline the global `src/pages/css/styles.css` through `assets.inlineStyles`; omit its external stylesheet link from the shop head component.
+- Provide a 44 px icon-only light/dark button with an action-specific accessible label. Restore a valid saved theme in the head before paint, default to the system preference, and tolerate blocked storage.
+- Navigation links have no underline at rest, with deliberate hover and visible keyboard focus treatments.
+- Product detail uses a generous two-column, viewport-height desktop panel and a natural-height single column on phones. Give the product illustration meaningful space, not a thumbnail beside a short paragraph.
+- Keep composition, fit/dimensions, contents/care/intended use and demo availability in the typed catalog. Label specifications, ratings and stock as illustrative; never imply real customer reviews, vehicle safety certification, live inventory or shipping. Custom entries may omit the detail fields and get explicit fallbacks.
+
 ## Verification
 
 1. Consult Modern Web Guidance for the actual UI pattern and check browser support separately from Bascik scoping.
