@@ -6,8 +6,6 @@ Use the repository-only [UI guidance](../.github/skills/bascik-ui/SKILL.md) to s
 
 ## Shared principles
 
-Use the repository-only [UI guidance](../.github/skills/bascik-ui/SKILL.md) and [UX guidance](../.github/skills/bascik-ux/SKILL.md), not public or generated-site skills.
-
 - Use semantic HTML and CSS first. Keep native links, buttons, forms, tables, figures, and disclosure elements. Add JavaScript only where HTML and CSS do not provide the needed behavior.
 - Pages read like a list of purposeful component tags. Keep components at a useful size, and do not pass props through components that do not use them.
 - Set global tokens in `src/pages/css/styles.css`; read them from components. Do not copy a single palette into every template or declare private `:root` tokens in component styles.
@@ -78,6 +76,15 @@ These are different design systems, not a checklist to force onto every branch. 
 - Inline the global stylesheet with Bascik's `assets.inlineStyles: ["src/pages/css/styles.css"]` and omit the redundant stylesheet link. Keep menu links deliberately styled without default list-link underlines.
 - Ship the canonical Bascik SVG, ICO, PNG favicon, and touch icon bytes with their original geometry and colors, not a landing-palette recoloring. Leave other templates unchanged.
 - Warning: the design skills' reference URL, `https://bascik.dev/how-to/visual-design`, currently returns 404. Use the local UI/UX guidance and this contract without claiming the unavailable page was verified.
+
+## Portfolio contract
+
+- Use an inset editorial masthead with a typographic slug signature, a small practice/index label, and numbered section links. Do not reuse the generic full-width sticky navigation skin. Keep the brand plain `portfolio` when scaffolded with that slug; custom project names still come from `src/lib/site.ts`.
+- Preserve the canonical shared Bascik favicon assets unchanged. Inline `src/pages/css/styles.css` through Bascik `assets.inlineStyles: true`, not a custom build step.
+- Use an icon-only theme button with no visible text, the accessible name "Dark theme", and `aria-pressed` for its state. Apply saved light/dark preference in the head before paint, fall back to the system scheme, and tolerate unavailable storage.
+- Keep above-fold content fully visible from first paint. No opacity gates, page flashes, or automatic entrance animation. Retain press/hover feedback and theme-transition suppression; honor reduced motion.
+- Navigation links are not underlined by default. Keep visible focus, 44px controls, an Escape-dismissable mobile menu with focus returned to its toggle, and visible mobile links without JavaScript.
+- Explicitly label the project collection, detail pages, and biography as samples. Do not imply fictional commissions, real-person authorship, or endorsements. Preserve real routes and the contact form's validation-only behavior.
 
 ## Docs-template behavior
 
