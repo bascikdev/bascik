@@ -58,7 +58,7 @@ These are different design systems, not a checklist to force onto every branch. 
 - Keep the original Bascik favicon geometry and colors, not a copper or navy recoloring. Inline the global stylesheet through `assets.inlineStyles`, not a blocking stylesheet link or a second inline copy.
 - Style navigation explicitly. The Services link and its borderless, adjacent 44px disclosure share one cohesive surface. Fine-pointer hover opens it across a transparent bridge; keyboard and touch activation work without hover. Escape dismisses the submenu and restores its button's focus without reopening it; a subsequent Escape closes mobile navigation and restores the mobile toggle.
 - Warning: `https://bascik.dev/how-to/visual-design` returned HTTP 404 during feedback verification on November 19, 2026. The local UI and UX guidance was read, but the missing page is not evidence of live documentation coverage.
-- Focused source regressions and fresh production Playwright checks live in `src/templates/corporate-feedback.test.ts` and `e2e/corporate-feedback.spec.ts`. Verification output stays in ignored `create/dist/`; the browser server uses only `127.0.0.1:9413` and is stopped after testing.
+- Focused source regressions and fresh production Playwright checks live in `src/templates/corporate-feedback.test.ts` and `e2e/corporate-feedback.spec.ts`. Verification sources, builds, and browser output live in `mkdtemp` directories under the OS `tmpdir`, never packaged `create/dist/`. Setup failures, validation failures, and Playwright teardown remove their fixtures. The config exports its dynamic verification paths; the browser server uses only `127.0.0.1:9413` and is stopped after testing.
 
 ## Verification
 

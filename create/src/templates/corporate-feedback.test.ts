@@ -1,43 +1,33 @@
-import { execFileSync } from "node:child_process";
-import { mkdir, readFile, rm, symlink } from "node:fs/promises";
-import { resolve } from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
-import { scaffold } from "../scaffold.js";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  createVerificationFixture,
+  type VerificationFixture,
+} from "../../e2e/verification-fixture.ts";
 import { CORPORATE_TEMPLATE } from "./corporate.js";
 
-const root = resolve(import.meta.dirname, "../../..");
-const verification = resolve(root, "create/dist/corporate-verification");
-const site = resolve(verification, "corporate");
+let fixture: VerificationFixture | undefined;
+let verification: string;
+let site: string;
 const sources = new Map(CORPORATE_TEMPLATE.files({ siteName: "corporate" }));
 const source = (path: string): string => sources.get(path) as string;
 
-// A fresh real scaffold and production build, retained only in ignored dist/.
+// A fresh real scaffold and production build, isolated from npm pack.
 beforeAll(async () => {
-  await rm(verification, { recursive: true, force: true });
-  await mkdir(verification, { recursive: true });
-  await scaffold("corporate", verification, { template: CORPORATE_TEMPLATE });
-  await mkdir(resolve(site, "node_modules/@bascik"), { recursive: true });
-  await symlink(
-    resolve(root, "pkg"),
-    resolve(site, "node_modules/@bascik/bascik"),
-  );
-  execFileSync(
-    process.execPath,
-    [resolve(root, "pkg/bin/bascik.js"), "--build"],
-    {
-      cwd: site,
-      env: {
-        ...process.env,
-        BASCIK_SITE_URL: "https://example.com",
-        NO_COLOR: "1",
-      },
-      stdio: "pipe",
-      timeout: 90_000,
-    },
-  );
+  fixture = await createVerificationFixture("corporate", true);
+  verification = fixture.root;
+  site = fixture.site;
 }, 120_000);
+afterAll(async () => {
+  await fixture?.dispose();
+});
 
 describe("corporate feedback regressions", () => {
+  it("keeps live verification sources outside the repository and npm package", () => {
+    expect(dirname(verification)).toBe(tmpdir());
+  });
   it("inlines global CSS through assets.inlineStyles without a blocking link", async () => {
     expect(source("bascik.config.ts")).toContain(
       'inlineStyles: ["src/pages/css/styles.css"]',
