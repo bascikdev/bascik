@@ -157,7 +157,12 @@ db.close();`,
       });
       try {
         await paint.goto(baseURL, { waitUntil: "commit" });
-        await expect.poll(() => paint.getByTestId("book-card").count()).toBe(8);
+        // Navigation commit precedes HTML parsing, especially on Windows.
+        await expect
+          .poll(() => paint.getByTestId("book-card").count(), {
+            timeout: 15000,
+          })
+          .toBe(8);
         await expect
           .poll(() => paint.getByTestId("site-header-theme").isVisible())
           .toBe(true);
