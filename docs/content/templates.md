@@ -30,7 +30,7 @@ A company site with services, team information, and contact details. Run `npm cr
 
 ### Shop
 
-A sample storefront with a product catalog and a simulated cart. Run `npm create bascik my-site -- --template shop`.
+A sample storefront that opens directly to a server-rendered product catalog, with native filters, SQLite-compatible data, and a simulated cart. Run `npm create bascik my-site -- --template shop`.
 
 ### Reports
 
