@@ -13,7 +13,7 @@ export const TEMPLATE_DEMOS = [
   { slug: "dashboard", name: "Dashboard", path: "/" },
 ].map((template) => ({
   ...template,
-  origin: `https://bascik-template-${template.slug}-preview.collin-inbox.workers.dev`,
+  origin: `https://template-${template.slug}.bascik.dev`,
 }));
 
 export async function renderTemplateGallery() {
