@@ -94,10 +94,14 @@ The `--` matters: npm keeps flags placed before it for itself and does not pass 
 | :-------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
 | `default` | A small multi-page site: home, about, contact, and a 404 page. Alias: `static`                                                           |
 | `blog`    | A blog: Markdown posts in `content/posts/`, a post list, tag pages, an Atom feed, SEO tags for every post, an about page, and a 404 page |
+| `docs`    | Documentation directly at `/`: Markdown guides, searchable sidebar navigation, an active table of contents, and previous and next links  |
 
 The blog uses your project slug as a plain brand, a responsive author sidebar, an unboxed reading column, and an accessible icon-only light/dark toggle. It retains the Bascik favicon. Global `styles.css` and `blog.css` are inlined through `assets.inlineStyles` in `bascik.config.ts`, without duplicate stylesheet links or above-the-fold entrance animations. Navigation remains visible without JavaScript.
 
 Its racing guides are explicitly illustrative, not biographies, endorsements, or actual track reports. Before publishing, replace the John Doe placeholder and author context in `src/lib/site.ts`, update the Markdown bylines and about page, and replace or source the sample content. Article pages include author context below the prose.
+For a plain slug brand, scaffold with `npm create bascik docs -- --template docs`. The folder name is used unchanged as the site name. The first sidebar entry in `src/lib/sidebar.ts` becomes `/`; the remaining guides use `/docs/<slug>`. The sample guides explain how to customize the template, rather than sending readers through a separate landing page.
+
+The docs template includes an accessible icon-only theme control, initializes the saved theme before paint, and keeps the canonical Bascik favicon. Global `src/pages/css/styles.css` is inlined through `assets.inlineStyles` in its config, without a stylesheet link or request. Navigation has no resting underline, and content appears immediately without entrance animations; interaction motion respects reduced motion.
 
 `--template cloudflare` and `--template netlify`, the spelling before `create-bascik` 1.1.0, still work and mean the same as `--adapter`. Naming two different adapters with the two flags is an error.
 

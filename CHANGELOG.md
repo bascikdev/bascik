@@ -15,18 +15,15 @@ it is not `@bascik/bascik`.
 
 - `create-bascik` 1.1.0: `--adapter <name>` adds a deploy adapter to the starter (`cloudflare`, `netlify`, or `none`), as in `npm create bascik my-site -- --adapter cloudflare`. `--template cloudflare` and `--template netlify` still work and mean the same thing; naming two different adapters with the two flags is an error. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
 - `create-bascik` 1.1.0: `--template blog` scaffolds a blog, as in `npm create bascik my-blog -- --template blog`. Posts are Markdown files with front matter in `content/posts/`; the starter has a home page with the newest posts, a post list, a page per post and per tag, an Atom feed at `/feed.xml`, canonical and Open Graph tags for every post, an about page, and a 404 page. A post with a missing title, description, author or date stops the build with an error that names the file. It takes any `--adapter`. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
+- `create-bascik` 1.1.0: `--template docs` scaffolds a documentation site, as in `npm create bascik my-docs -- --template docs`. Each Markdown file in `content/docs/` becomes a page at `/docs/<name>` with a sidebar that marks the current page, an "On this page" list built from the page's headings, and previous and next links. To add a page, write the file and list it in `src/lib/sidebar.ts`; a page missing from the sidebar, or an entry with no file, fails the build with an error that names it. It works with `--adapter cloudflare` and `--adapter netlify`. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
 
 ### Changed
 
 - `create-bascik`: the blog template uses a responsive editorial author sidebar, a plain project-slug brand, rule-led post entries, and an unboxed reading column with article author context. An accessible icon-only light/dark toggle restores the saved theme before paint, while global styles are inlined through `assets.inlineStyles`. The Bascik favicon is unchanged; navigation has no default underline and above-the-fold content has no entrance animation. Sample racing guides are explicitly illustrative, with a John Doe placeholder instead of invented real-person biographies or endorsements.
-
-- `create-bascik`: the starter and adapter variants use a shared light/dark design system, with a neutral canvas, raised cards, restrained periwinkle accents, visible keyboard focus, and motion that respects reader preferences.
-- Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).
-
-### Changed
-
+- `create-bascik`: docs now opens directly in the introductory Markdown guide at `/`, with the existing searchable sidebar, active table of contents, and pagination. Its icon-only theme control persists both schemes, global CSS is inlined without a stylesheet request, navigation has no resting underline, and content paints without entrance animation. The shared SVG favicon is restored to canonical Bascik geometry and colors.
 - `create-bascik`: the default starter and adapter variants use a warm paper-and-ink design system with moss accents, quieter surfaces, clearer typography, and reduced-motion-aware button feedback.
 - Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).
+- `create-bascik`: the docs template has a searchable header dialog, a responsive docs layout, and a table of contents that highlights the current section.
 
 ### Fixed
 
@@ -34,6 +31,7 @@ it is not `@bascik/bascik`.
 - `create-bascik`: the default starter welcomes your project name, includes an accessible icon-only theme toggle that remembers both themes without flashing, inlines global CSS, and retains the canonical Bascik favicon. Navigation has deliberate resting styles, initial content stays static including view transitions, and independent counters demonstrate scoped CSS monitoring the raw numeric `data-value` to turn negative values red without JavaScript sign classification.
 
 - `create-bascik`: the starter's mobile navigation works without JavaScript and returns focus to the menu button when dismissed with Escape.
+- `create-bascik`: the docs template highlights the last section at the bottom of the page, even when its heading cannot reach the reading position. Direct links to nearby headings keep the correct highlight.
 - `create-bascik`: the starter's "Skip to content" link stays hidden when you put something above `<site-header>`, such as a banner or another nav. It was hidden with a fixed offset that only worked while the header was first on the page; it is now clipped until it has keyboard focus. Existing sites: in `src/components/site-header/site-header.html`, set `.skip-link` to `top: 8px` and replace the `.skip-link:focus` rule with `.skip-link:not(:focus) { width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }`.
 
 ## [1.0.0] - 2026-11-12

@@ -13,6 +13,8 @@ Use the repository-only [UI guidance](../.github/skills/bascik-ui/SKILL.md) to s
 - Prefer quiet, layered contrast and intentional whitespace over repeated bordered cards, gratuitous gradients, glass, gloss, bevels, pills, or Bootstrap-like grids.
 - Preserve routes, form behavior, data, keyboard access, test hooks, and useful no-JavaScript fallbacks.
 - Use data that is clearly illustrative. Do not attribute fictional work, products, quotes, or books to real people or companies.
+- Use an accessible SVG-only light/dark control with an `aria-label`, no visible button text, and saved preference initialization before paint. Preserve the canonical Bascik favicon, not a recolored version.
+- Inline `src/pages/css/styles.css` with Bascik's `assets.inlineStyles` and omit its stylesheet link. Navigation has no resting underline; keep prose links identifiable.
 
 ## Template directions
 
@@ -66,8 +68,9 @@ These are different design systems, not a checklist to force onto every branch. 
 
 ## Docs-template behavior
 
+- Open directly in the first Markdown guide at `/`, not a separate landing page. Keep the useful template-explaining content; the remaining guides use `/docs/<slug>`. Sidebar, search results, and pagination all link to the root for the introductory guide.
 - Search is a native `<dialog>` with a visible close control, an accessible name, a build-time index, and a `Ctrl+K` / `Cmd+K` shortcut. The index searches page titles, descriptions, and headings. Results remain ordinary links.
-- The table of contents links to preserved Markdown heading IDs. `IntersectionObserver` updates the visible current link and its `aria-current`; fragment links work without JavaScript.
+- The table of contents links to preserved Markdown heading IDs. The highlight follows the reading position, selects the last section at the bottom, and respects a fragment when the browser cannot scroll its heading any further. Fragment links work without JavaScript.
 - The sidebar marks the current page and remains usable without JavaScript. At small widths, a labeled button progressively enhances it into a collapsible navigation.
 - Use native `<dialog>` behavior for focus, Escape, and the top layer. Do not rebuild those browser features with a custom overlay or focus trap.
 
@@ -78,4 +81,5 @@ These are different design systems, not a checklist to force onto every branch. 
 3. Scaffold a real project, build it with the local compiler, run `bascik --check`, and inspect compiled output.
 4. Inspect representative pages at desktop, tablet, and narrow-phone widths, in light and dark mode. Check text wrapping, navigation, focus, overflow, and contrast.
 5. Exercise existing interactions in production output. Verify the page still works when optional JavaScript or newer CSS features are unavailable.
+   Check actual compiled pages for no `styles.css` link or request, empty theme-button text with an SVG and accessible name, both saved themes after reload, and no fresh-load above-fold computed animations.
 6. Keep shared foundation changes separate from template-specific work. Apply and verify template changes on each template's own branch; do not overwrite unrelated work or add runtime dependencies for styling.
