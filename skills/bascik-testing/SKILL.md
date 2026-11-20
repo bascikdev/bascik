@@ -76,6 +76,8 @@ test("each like button toggles independently", async ({ page }) => {
 
 Install `parse5` as a dev dependency and `bascik --check` will report WHATWG parse errors in `dist/` HTML. For a test that fails the suite instead, walk `dist/**/*.html` and collect `parse5` `onParseError` results; see `read-doc.mjs /testing/component-testing`.
 
+Optional visual review: use a temporary, unlayered **global** DevTools diagnostic stylesheet on served `dist/`, never component-scoped `:is()`/`:has()` element selectors or production CSS. Prefer outlines and uniquely named `--error-*` messages inspected in DevTools, not layout-changing pseudo-content. These checks are heuristics, not accessibility or WHATWG validation: empty `alt` and no-`href` anchors may be intentional, and `label[for]` does not prove a valid association. Normal unlayered rules outrank all normal layered rules, so a final `tests` layer only wins over site rules in earlier layers; do not blanket diagnostics with `!important`. Examples and limits: `read-doc.mjs /testing/component-testing#optional-css-diagnostics-on-compiled-html`.
+
 ## Debug
 
 - **Component scripts:** in DevTools Sources, open `src/components/<name>/<name>.html` (Cmd+P / Ctrl+P). Lines match the source in dev. Later instances are `<name>.html?instance=2`. Use `debugger;` to stop in every instance.
@@ -91,13 +93,14 @@ Bascik output starts near 100 because it adds no runtime. The remaining points c
 
 ## Look it up
 
-| How do I...                          | Read                                                                         |
-| ------------------------------------ | ---------------------------------------------------------------------------- |
-| Unit test helpers and handlers       | `/testing/unit-testing`                                                      |
-| Test components in a browser         | `/testing/component-testing`, `/testing/e2e-testing`                         |
-| Test build, server, and exec scripts | `/testing/build-scripts`, `/testing/server-scripts`, `/testing/exec-scripts` |
-| Lint in CI                           | `/testing/linting`, `/tools/linter`                                          |
-| Handle false editor linter warnings  | `/testing/linting#editor-linters-read-source`                                |
-| Fix a known problem                  | `/testing/troubleshooting`                                                   |
+| How do I...                                       | Read                                                                         |
+| ------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Unit test helpers and handlers                    | `/testing/unit-testing`                                                      |
+| Test components in a browser                      | `/testing/component-testing`, `/testing/e2e-testing`                         |
+| Test build, server, and exec scripts              | `/testing/build-scripts`, `/testing/server-scripts`, `/testing/exec-scripts` |
+| Lint in CI                                        | `/testing/linting`, `/tools/linter`                                          |
+| Handle false editor linter warnings               | `/testing/linting#editor-linters-read-source`                                |
+| Review built markup with optional CSS diagnostics | `/testing/component-testing#optional-css-diagnostics-on-compiled-html`       |
+| Fix a known problem                               | `/testing/troubleshooting`                                                   |
 
 `node <skills-dir>/bascik/scripts/read-doc.mjs <path>` prints any of these.

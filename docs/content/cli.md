@@ -7,10 +7,10 @@ Bascik features a simple, fast, and highly informative CLI for both development 
 ```sh
 npm create bascik
 # or: npm create bascik my-project
-# or: npm create bascik my-project -- --template cloudflare
+# or: npm create bascik my-project -- --adapter cloudflare
 ```
 
-Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. The name is a folder under the current one (`.`, `..`, absolute paths and spaces are refused), and a folder that already has one of the starter's files, such as `package.json`, is refused before anything is written; use [`bascik init`](#set-up-an-existing-project-with-bascik-init) for an existing project. `--template cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter, and `--template netlify` adds the [Netlify adapter](/deployment/netlify), a `netlify.toml`, and the same demo; it goes after `--` because npm keeps flags placed before it for itself. Creates:
+Scaffolds a complete starter project in a new directory. Prompts for a project name if not passed as an argument. The name is a folder under the current one (`.`, `..`, absolute paths and spaces are refused), and a folder that already has one of the starter's files, such as `package.json`, is refused before anything is written; use [`bascik init`](#set-up-an-existing-project-with-bascik-init) for an existing project. `--adapter cloudflare` adds the [Cloudflare adapter](/deployment/cloudflare), Wrangler, and an edge demo page to the same starter, and `--adapter netlify` adds the [Netlify adapter](/deployment/netlify), a `netlify.toml`, and the same demo; it goes after `--` because npm keeps flags placed before it for itself. Creates:
 
 ```text
 my-project/
@@ -77,13 +77,28 @@ Start the dev server after install? (Y/n)
 
 Select **Y** for all three and you're live at `http://localhost:8080`. `npm run dev` is the Bascik dev server in every template. The Cloudflare and Netlify templates add `npm run dev:cloudflare` (`http://127.0.0.1:8787`) and `npm run dev:netlify` (`http://127.0.0.1:8888`), which run the same site in the real platform runtime with source watching and browser live reload. The dev server question is skipped when you decline the install, and the dev server starts only once `npm install` succeeds; otherwise the next steps are printed. The first installs the [agent skills](/agent-skills#new-projects) with the skills CLI; when that fails, such as offline, the project is still created and the command to run later is printed.
 
-| Flag                | Description                                                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `-y`, `--yes`       | Answer every question with its default: the default template, and yes to the skills, the install and the dev server |
-| `--no-skills`       | Do not install the agent skills                                                                                     |
-| `--no-install`      | Do not run `npm install`, nor start the dev server, which needs it                                                  |
-| `--no-dev`          | Do not start the dev server                                                                                         |
-| `--template <name>` | `default` (alias `static`), `cloudflare`, or `netlify`                                                              |
+| Flag                | Description                                                                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `-y`, `--yes`       | Answer every question with its default: the default template, no adapter, and yes to the skills, the install and the dev server    |
+| `--no-skills`       | Do not install the agent skills                                                                                                    |
+| `--no-install`      | Do not run `npm install`, nor start the dev server, which needs it                                                                 |
+| `--no-dev`          | Do not start the dev server                                                                                                        |
+| `--adapter <name>`  | Add a deploy adapter to the starter: `cloudflare`, `netlify`, or `none` (the default). New in `create-bascik` 1.1.0                |
+| `--template <name>` | The kind of site, from the table below. Default: `default`. `cloudflare` and `netlify` still work and mean the same as `--adapter` |
+
+| Template    | What you get                                                                                                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default`   | A small multi-page site: home, about, contact, and a 404 page. Alias: `static`                                                                                   |
+| `blog`      | A blog: Markdown posts in `content/posts/`, a post list, tag pages, an Atom feed, SEO tags for every post, an about page, and a 404 page                         |
+| `docs`      | A documentation site: one page per Markdown file in `content/docs/`, sidebar navigation, an on-page table of contents, and previous and next links               |
+| `landing`   | A product landing page: hero, features, steps, testimonials, pricing, FAQ, and a sign-up form. With an adapter, the form posts to an API route that validates it |
+| `portfolio` | A creator portfolio: featured work, a project index, a page per Markdown entry in `content/projects/`, about, contact, and a 404 page                            |
+| `corporate` | A company site: services, about, careers, news, and contact pages                                                                                                |
+| `shop`      | A shop: a product catalog, product pages, a cart, and a demo checkout                                                                                            |
+| `reports`   | A reporting site: SQLite/D1 data, SVG charts, CSV downloads, and print styles; Netlify renders at build time                                                     |
+| `dashboard` | A dashboard: stat tiles, SVG charts, a sortable data table, and a settings page. Built as static pages, with one tile rendered per request where a server runs   |
+
+Any template takes any adapter: `npm create bascik my-site -- --template default --adapter netlify`.
 
 A `--no-*` flag wins over `-y` and skips its question. An unknown flag, such as `--no-skill`, is refused with the flag it most likely meant. Without a terminal, such as in CI, answers piped to the command are used in order, and every question after the input ends takes its default.
 

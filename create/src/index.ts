@@ -16,7 +16,6 @@ import {
   ScaffoldTargetError,
   scaffold,
   validateProjectName,
-  type Template,
 } from "./scaffold.js";
 
 const args = process.argv.slice(2);
@@ -37,7 +36,8 @@ const {
   noDevFlag,
   noInstallFlag,
   noSkillsFlag,
-  template: templateArg,
+  template,
+  adapter,
   projectName: nameArg,
 } = options;
 
@@ -61,15 +61,18 @@ if (error) {
   process.exit(1);
 }
 
-// Where the site will be deployed is never asked: a new project is the default starter, which builds a
-// static site and runs on the built-in server. `--template cloudflare` or `--template netlify` adds an
-// adapter for someone who already knows they want one, and an adapter can be added to any project later.
-const template: Template = templateArg ?? "default";
+// Neither the kind of site nor where it will be deployed is asked: a new project is the default template,
+// which builds a static site and runs on the built-in server. `--template` picks another kind of site, and
+// `--adapter cloudflare` or `--adapter netlify` adds an adapter for someone who already knows they want one;
+// an adapter can be added to any project later.
 
 console.log(`\nCreating Bascik project "${projectName}"…\n`);
 let notes: string[];
 try {
-  ({ notes } = await scaffold(projectName, process.cwd(), { template }));
+  ({ notes } = await scaffold(projectName, process.cwd(), {
+    template,
+    adapter,
+  }));
 } catch (err) {
   rl.close();
   // A refused target says what is in the way; anything else is a filesystem error worth naming.
@@ -149,13 +152,13 @@ if (shouldDev && installed) {
   for (const line of skillsLater) console.log(line);
 }
 
-if (template === "cloudflare") {
+if (adapter === "cloudflare") {
   console.log("To develop in workerd:  npm run dev:cloudflare");
   console.log("To preview in workerd:  npm run build && npm run preview");
   console.log("To deploy:              npm run build && npm run deploy\n");
 }
 
-if (template === "netlify") {
+if (adapter === "netlify") {
   console.log("To develop in Netlify Dev:    npm run dev:netlify");
   console.log("To preview with netlify dev:  npm run build && npm run preview");
   console.log(

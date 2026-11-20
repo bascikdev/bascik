@@ -1,4 +1,5 @@
-import { TEMPLATES, type Template } from "./scaffold.js";
+import { ADAPTERS, type Adapter, type StarterTemplate } from "./scaffold.js";
+import { TEMPLATES, TEMPLATE_ALIASES, templateNamed } from "./templates.js";
 
 export interface CliOptions {
   yesFlag: boolean;
@@ -6,40 +7,91 @@ export interface CliOptions {
   noInstallFlag: boolean;
   /** `--no-skills`: do not ask about or install the agent skills. */
   noSkillsFlag: boolean;
-  /** Left undefined when no `--template` flag was given; the entry then uses the default starter. */
-  template?: Template;
+  /** `--template`: the kind of site. Left undefined when the flag was not given; the entry then uses the default one. */
+  template?: StarterTemplate;
+  /**
+   * `--adapter`, or the older `--template cloudflare` and `--template netlify`.
+   * Left undefined for no adapter, which `--adapter none` also asks for.
+   */
+  adapter?: Adapter;
   /** The first positional argument, the project name, with flag values excluded. */
   projectName?: string;
   /** `--help` or `-h`: print the usage and exit 0, before anything else. */
   helpFlag: boolean;
 }
 
-/** `static` is accepted as a synonym because the default starter is a plain static site. */
-const TEMPLATE_ALIASES: Record<string, Template> = { static: "default" };
-
 const templateChoices = (): string =>
-  [...TEMPLATES, ...Object.keys(TEMPLATE_ALIASES)].join(", ");
+  [
+    ...TEMPLATES.map((template) => template.name),
+    ...Object.keys(TEMPLATE_ALIASES),
+  ].join(", ");
 
-const parseTemplate = (value: string | undefined): Template => {
+const isAdapter = (name: string): name is Adapter =>
+  (ADAPTERS as readonly string[]).includes(name);
+
+/**
+ * `--template <name>` is a template, or one of the adapters: until 1.1.0 an
+ * adapter was chosen with `--template cloudflare`, which still works.
+ */
+const parseTemplate = (
+  value: string | undefined,
+): StarterTemplate | Adapter => {
   if (value === undefined || value === "" || value.startsWith("-")) {
     throw new Error(
       `--template needs a value. Choose one of: ${templateChoices()}.`,
     );
   }
+  const template = templateNamed(value);
+  if (template) return template;
   const name = value.toLowerCase();
-  if ((TEMPLATES as readonly string[]).includes(name)) return name as Template;
-  if (Object.prototype.hasOwnProperty.call(TEMPLATE_ALIASES, name))
-    return TEMPLATE_ALIASES[name];
+  if (isAdapter(name)) return name;
   throw new Error(
     `Unknown template "${value}". Choose one of: ${templateChoices()}.`,
   );
+};
+
+/** `--adapter none` asks for the plain static starter, the same as leaving the flag out. */
+const NO_ADAPTER = "none";
+
+const adapterChoices = (): string => [...ADAPTERS, NO_ADAPTER].join(", ");
+
+const parseAdapter = (
+  value: string | undefined,
+): Adapter | typeof NO_ADAPTER => {
+  if (value === undefined || value === "" || value.startsWith("-")) {
+    throw new Error(
+      `--adapter needs a value. Choose one of: ${adapterChoices()}.`,
+    );
+  }
+  const name = value.toLowerCase();
+  if (isAdapter(name) || name === NO_ADAPTER) return name;
+  throw new Error(
+    `Unknown adapter "${value}". Choose one of: ${adapterChoices()}.`,
+  );
+};
+
+/**
+ * One adapter from the two flags. `--template cloudflare` and `--template netlify`
+ * are the older way to write `--adapter`, so the two flags may agree but not disagree.
+ */
+const resolveAdapter = (
+  legacy: Adapter | undefined,
+  adapter: Adapter | typeof NO_ADAPTER | undefined,
+): Adapter | undefined => {
+  if (adapter === undefined) return legacy;
+  if (legacy !== undefined && legacy !== adapter) {
+    throw new Error(
+      `--template ${legacy} and --adapter ${adapter} ask for different adapters. Pass only --adapter.`,
+    );
+  }
+  return adapter === NO_ADAPTER ? undefined : adapter;
 };
 
 /**
  * The form the docs recommend. npm keeps any flag that comes before `--` for
  * itself, so this is what the error messages point users back to.
  */
-const NPM_CREATE_EXAMPLE = "npm create bascik my-site -- --template cloudflare";
+const NPM_CREATE_EXAMPLE = "npm create bascik my-site -- --adapter cloudflare";
 
 const unexpectedArgument = (arg: string): Error =>
   new Error(
@@ -56,6 +108,7 @@ export const CLI_FLAGS = [
   "--no-dev",
   "--no-skills",
   "--template",
+  "--adapter",
 ] as const;
 
 /** Edit distance, for suggesting the flag a typo meant. */
@@ -95,18 +148,20 @@ const npmConfigIsFalse = (value: string | undefined): boolean =>
   value === "" || value === "false";
 
 /**
- * Parse the CLI arguments. `--template` takes its value either as the next token
+ * Parse the CLI arguments. `--adapter` and `--template` take their value either as the next token
  * or after `=`, so the project name is whichever positional is left over.
- * Throws on an unknown flag, naming the closest one, on an unknown or missing template value, and on a second positional
- * because that is what npm hands over when `--template cloudflare` was given
+ * Throws on an unknown flag, naming the closest one, on an unknown or missing adapter or template value,
+ * on the two flags naming different adapters, and on a second positional
+ * because that is what npm hands over when `--adapter cloudflare` was given
  * before `--`: npm keeps the flag and forwards its value as a plain argument.
  *
  * npm exposes the flags it consumed as `npm_config_*` environment variables.
  * `-y` becomes `npm_config_yes=true`, which is honored so the documented
  * `npm create bascik my-site -y` skips every prompt (and npm's own install
- * prompt, which is why that flag belongs before `--`). `--template=<name>`
- * becomes `npm_config_template=<name>` and is honored too, while the two-token
- * form only yields `npm_config_template=true`, so that case is reported instead
+ * prompt, which is why that flag belongs before `--`). `--adapter=<name>` and
+ * `--template=<name>` become `npm_config_adapter=<name>` and
+ * `npm_config_template=<name>` and are honored too, while the two-token
+ * form only yields `npm_config_<flag>=true`, so that case is reported instead
  * of being guessed at. `--no-skills` and `--no-install` are honored through
  * `npm_config_skills` and `npm_config_install`; `--no-dev` leaves no trace.
  */
@@ -124,7 +179,8 @@ export function parseCliOptions(
       noSkillsFlag: false,
     };
   }
-  let template: Template | undefined;
+  let template: StarterTemplate | Adapter | undefined;
+  let adapter: Adapter | typeof NO_ADAPTER | undefined;
   const positionals: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -134,6 +190,11 @@ export function parseCliOptions(
       i++;
     } else if (arg.startsWith("--template=")) {
       template = parseTemplate(arg.slice("--template=".length));
+    } else if (arg === "--adapter") {
+      adapter = parseAdapter(args[i + 1]);
+      i++;
+    } else if (arg.startsWith("--adapter=")) {
+      adapter = parseAdapter(arg.slice("--adapter=".length));
     } else if (!arg.startsWith("-")) {
       positionals.push(arg);
     } else if (!(CLI_FLAGS as readonly string[]).includes(arg)) {
@@ -154,6 +215,16 @@ export function parseCliOptions(
     template = parseTemplate(envTemplate);
   }
 
+  const envAdapter = env.npm_config_adapter;
+  if (adapter === undefined && envAdapter !== undefined) {
+    if (envAdapter === "true") {
+      throw new Error(
+        `npm kept --adapter for itself and dropped its value. Put flags after "--": ${NPM_CREATE_EXAMPLE}`,
+      );
+    }
+    adapter = parseAdapter(envAdapter);
+  }
+
   return {
     yesFlag:
       args.includes("-y") ||
@@ -166,7 +237,11 @@ export function parseCliOptions(
       args.includes("--no-install") || npmConfigIsFalse(env.npm_config_install),
     noSkillsFlag:
       args.includes("--no-skills") || npmConfigIsFalse(env.npm_config_skills),
-    template,
+    template: typeof template === "string" ? undefined : template,
+    adapter: resolveAdapter(
+      typeof template === "string" ? template : undefined,
+      adapter,
+    ),
     projectName: positionals[0],
     helpFlag: false,
   };
@@ -178,8 +253,12 @@ export const USAGE = `Usage: npm create bascik [project-name] -- [options]
 Creates a new Bascik project in ./<project-name> (asks for a name when none is given).
 
 Options:
-  --template <name>  The starter: ${TEMPLATES.join(", ")} (alias: static). Default: default.
-  -y, --yes          Answer every question with its default: the default template,
+  --adapter <name>   Add a deploy adapter to the starter: ${adapterChoices()}. Default: none.
+  --template <name>  The kind of site. Default: default (alias: static).
+${TEMPLATES.map((template) => `                       ${template.name.padEnd(8)} ${template.summary}`).join("\n")}
+                     "--template cloudflare" and "--template netlify" still work
+                     and mean the same as --adapter.
+  -y, --yes          Answer every question with its default: the default template, no adapter,
                      install the agent skills, install dependencies, start the dev server
   --no-skills        Do not install the Bascik agent skills
   --no-install       Do not run npm install (nor start the dev server, which needs it)

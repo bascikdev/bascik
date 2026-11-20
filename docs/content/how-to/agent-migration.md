@@ -92,7 +92,7 @@ Production defects, such as low contrast, a missing focus outline or a blurry im
    chmod -R a-w migration/legacy
    ```
 
-3. Create the Bascik project without prompts, install the `bascik-refactor` skill (new projects do not include it), and add the dependencies. Use `--template cloudflare` instead if production will run on Cloudflare Workers:
+3. Create the Bascik project without prompts, install the `bascik-refactor` skill (new projects do not include it), and add the dependencies. Add `--adapter cloudflare` if production will run on Cloudflare Workers:
 
    ```sh
    cd migration
