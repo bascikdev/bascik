@@ -3,16 +3,11 @@
  *
  * The portfolio's components, each with the Vitest test written beside it in the generated project.
  *
- * The header and footer use the default template's CSS (`SITE_HEADER_CSS`, `SITE_FOOTER_CSS`), so the skip link
- * is the same one: first in the header and clipped until it has focus. Their markup is the portfolio's own,
- * because the navigation differs and the name comes from `src/lib/site.ts` instead of a prop.
+ * The editorial masthead keeps the skip link first and clipped until focus. The footer shares the accessible
+ * foundation; the site's name comes from `src/lib/site.ts` instead of a prop.
  */
 
-import {
-  SITE_FOOTER_CSS,
-  SITE_HEADER_CSS,
-  SITE_META_HTML,
-} from "../../scaffold.js";
+import { SITE_FOOTER_CSS, SITE_META_HTML } from "../../scaffold.js";
 
 /** The first lines every generated component test shares. */
 const testHead = (
@@ -32,22 +27,35 @@ const source = (): Promise<string> =>
 
 /**
  * The default template's head tags without its one description for every page: here each page writes its own
- * through `seo()`, and two descriptions on a page would be a duplicate.
+ * through `seo()`. Global CSS is injected by assets.inlineStyles, so do not ship a dangling stylesheet link.
  */
-export const SITE_META_HTML_PORTFOLIO = SITE_META_HTML.split("\n")
-  .filter((line) => !line.includes('name="description"'))
-  .join("\n");
+export const SITE_META_HTML_PORTFOLIO =
+  SITE_META_HTML.split("\n")
+    .filter(
+      (line) =>
+        !line.includes('name="description"') &&
+        !line.includes('rel="stylesheet"'),
+    )
+    .join("\n") +
+  `<script type="text/typescript">
+  try {
+    const saved = localStorage.getItem("portfolio-theme");
+    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+  } catch { /* System theme remains usable when storage is unavailable. */ }
+</script>
+`;
 
 export const SITE_META_TEST = `${testHead("site-meta")}
 describe("site-meta component", () => {
-  it("holds the tags every page shares: charset, viewport, icons, and the stylesheet", async () => {
+  it("holds shared metadata and initializes theme before paint without a stylesheet request", async () => {
     const html = await source();
     expect(html).toContain('charset="UTF-8"');
     expect(html).toContain('name="viewport"');
     expect(html).toContain("favicon.ico");
     expect(html).toContain("favicon.svg");
     expect(html).toContain("apple-touch-icon.png");
-    expect(html).toContain("/css/styles.css");
+    expect(html).not.toContain('rel="stylesheet"');
+    expect(html).toContain("localStorage.getItem");
   });
 
   it("leaves the title and description to each page's seo() call", async () => {
@@ -60,36 +68,97 @@ describe("site-meta component", () => {
 
 // ─── site-header ──────────────────────────────────────────────────────────────
 
-/** Sticky header: the skip link first, the site's name, and the navigation with a toggle at phone width. */
+/** Editorial index: an inset rule, typographic signature, numbered links, and quiet icon controls. */
 export const SITE_HEADER_HTML = `<style>
-${SITE_HEADER_CSS}</style>
+  .skip-link { position: absolute; left: 18px; top: 8px; padding: 10px; background: var(--accent); color: var(--on-accent); z-index: 200; }
+  .skip-link:not(:focus) { width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  header { position: relative; padding-top: clamp(20px, 4vw, 48px); }
+  .masthead { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 24px; padding: 18px 0; border-top: 1px solid var(--text); border-bottom: 1px solid var(--border); }
+  .signature { min-width: 0; }
+  .index-label { display: block; color: var(--text-muted); font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; }
+  .logo { display: inline-block; max-width: 100%; overflow-wrap: anywhere; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: clamp(1.8rem, 3vw, 2.8rem); line-height: 1.2; letter-spacing: -0.045em; color: var(--text); }
+  .menu { display: flex; gap: clamp(16px, 3vw, 40px); margin: 0; padding: 0; list-style: none; }
+  .menu a { display: grid; gap: 4px; min-height: 44px; color: var(--text); text-decoration: none; font-size: 0.95rem; }
+  .number { color: var(--text-muted); font-size: 0.65rem; font-variant-numeric: tabular-nums; }
+  .menu a:hover { color: var(--accent); }
+  .controls { display: flex; gap: 8px; }
+  .icon-button { display: grid; place-items: center; width: 44px; height: 44px; padding: 10px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; }
+  .icon-button[hidden] { display: none; }
+  .icon-button:hover { background: var(--elevated); border-color: var(--text); }
+  .icon-button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+  .sun { display: none; }
+  .theme[aria-pressed="true"] .sun { display: block; }
+  .theme[aria-pressed="true"] .moon { display: none; }
+  .toggle { display: none; }
+  @media (max-width: 640px) {
+    .masthead { grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; }
+    .controls { grid-column: 2; grid-row: 1; }
+    .menu { grid-column: 1 / -1; flex-wrap: wrap; justify-content: space-between; }
+    .masthead[data-enhanced="true"] .toggle { display: grid; }
+    .masthead[data-enhanced="true"] .menu[data-state="closed"] { display: none; }
+  }
+</style>
 <header data-testid="site-header">
   <a href="#main" class="skip-link" data-testid="site-header-skip-link">Skip to content</a>
   <div class="container">
-    <nav aria-label="Main" data-testid="site-header-nav">
+    <nav id="masthead" class="masthead" aria-label="Main" data-testid="site-header-nav">
+      <div class="signature">
+      <span class="index-label">Practice / Index</span>
       <a href="/" class="logo" data-testid="site-header-logo"><script data-bascik-build-once type="text/typescript">
         import { html } from "@bascik/bascik/html";
         import { site } from "@/lib/site.ts";
         export default () => html\`\${site.name}\`;
       </script></a>
-      <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle">
-        <span></span><span></span><span></span>
-      </button>
-      <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
-        <li><a href="/work" data-testid="site-header-work">Work</a></li>
-        <li><a href="/about" data-testid="site-header-about">About</a></li>
-        <li><a href="/contact" data-testid="site-header-contact">Contact</a></li>
+      </div>
+      <ul id="nav-menu" class="menu" data-state="closed" data-testid="site-header-nav-menu">
+        <li><a href="/work" data-testid="site-header-work"><span class="number" aria-hidden="true">01</span>Work</a></li>
+        <li><a href="/about" data-testid="site-header-about"><span class="number" aria-hidden="true">02</span>About</a></li>
+        <li><a href="/contact" data-testid="site-header-contact"><span class="number" aria-hidden="true">03</span>Contact</a></li>
       </ul>
+      <div class="controls">
+        <button id="theme-toggle" type="button" class="icon-button theme" aria-label="Dark theme" aria-pressed="false" data-testid="site-header-theme-toggle" hidden>
+          <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15a8 8 0 0 1-11-11A8 8 0 1 0 20 15Z" /></svg>
+          <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2" /></svg>
+        </button>
+        <button id="nav-toggle" type="button" class="icon-button toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h18M3 16h18" /></svg>
+        </button>
+      </div>
     </nav>
   </div>
 </header>
 <script type="text/typescript">
   const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
   const menu = document.getElementById("nav-menu") as HTMLUListElement;
-  toggle.addEventListener("click", (): void => {
-    const open = toggle.getAttribute("aria-expanded") === "true";
-    toggle.setAttribute("aria-expanded", String(!open));
-    menu.classList.toggle("is-open");
+  const masthead = document.getElementById("masthead") as HTMLElement;
+  const setMenu = (open: boolean): void => {
+    toggle.setAttribute("aria-expanded", String(open));
+    menu.dataset.state = open ? "open" : "closed";
+  };
+  toggle.hidden = false;
+  masthead.dataset.enhanced = "true";
+  toggle.addEventListener("click", () => setMenu(toggle.getAttribute("aria-expanded") !== "true"));
+  masthead.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key === "Escape" && toggle.getAttribute("aria-expanded") === "true") {
+      setMenu(false);
+      toggle.focus();
+    }
+  });
+  const theme = document.getElementById("theme-toggle") as HTMLButtonElement;
+  const root = document.documentElement;
+  const preference = matchMedia("(prefers-color-scheme: dark)");
+  const isDark = (): boolean => root.dataset.theme ? root.dataset.theme === "dark" : preference.matches;
+  const syncTheme = (): void => { theme.setAttribute("aria-pressed", String(isDark())); };
+  syncTheme();
+  theme.hidden = false;
+  preference.addEventListener("change", syncTheme);
+  theme.addEventListener("click", (): void => {
+    const next = isDark() ? "light" : "dark";
+    root.classList.add("theme-switching");
+    root.dataset.theme = next;
+    try { localStorage.setItem("portfolio-theme", next); } catch { /* Toggle still works. */ }
+    syncTheme();
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
   });
 </script>
 `;
@@ -577,9 +646,11 @@ describe("project-card component", () => {
 export const PROJECT_LIST_HTML = `<section data-testid="project-list">
   <h2>All selected work</h2>
   <script data-bascik-build-once type="text/typescript">
+    import { html } from "@bascik/bascik/html";
+    import { site } from "@/lib/site.ts";
     import { projectCards } from "@/lib/project-cards.ts";
     import { projects } from "@/lib/projects.ts";
-    export default () => projectCards(projects);
+    export default () => html\`<p>\${site.sampleWork}</p>\${projectCards(projects)}\`;
   </script>
 </section>
 `;
@@ -599,9 +670,11 @@ export const FEATURED_PROJECTS_HTML = `<section class="section" data-testid="fea
     <p class="section-label">Selected work</p>
     <h2>Selected work</h2>
     <script data-bascik-build-once type="text/typescript">
+      import { html } from "@bascik/bascik/html";
+      import { site } from "@/lib/site.ts";
       import { projectCards } from "@/lib/project-cards.ts";
       import { featuredProjects } from "@/lib/projects.ts";
-      export default () => projectCards(featuredProjects());
+      export default () => html\`<p>\${site.sampleWork}</p>\${projectCards(featuredProjects())}\`;
     </script>
     <p class="more"><a href="/work">See all selected work</a></p>
   </div>
@@ -676,6 +749,7 @@ export function projectDetail(project: Project | undefined): SafeHtml {
     <div class="text">
       <p class="section-label">\${project.category}</p>
       <h1>\${project.title}</h1>
+      <p>Sample project. A fictional case study, not a client commission.</p>
       <p class="lead">\${project.summary}</p>
       \${raw(String(project.html))}
       <dl class="facts">
@@ -704,6 +778,7 @@ export const CREATOR_BIO_HTML = `<style>
 </style>
 <section data-testid="creator-bio">
   <div class="prose">
+    <p>Sample biography. Replace this example practice with your own story and availability.</p>
     <h2>Good work begins with a good question.</h2>
     <p>This is an independent creative practice for people with something to say. The work moves between identity, editorial, and image-making, with a focus on finding the detail that makes an idea feel unmistakably its own.</p>
     <h2>Made with care, and made to be used.</h2>

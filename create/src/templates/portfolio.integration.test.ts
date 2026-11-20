@@ -23,7 +23,6 @@ import {
   symlink,
 } from "node:fs/promises";
 import { execFile } from "node:child_process";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -80,8 +79,9 @@ afterEach(async () => {
  * test runner are linked from the workspace; each resolves its own dependencies from its real path.
  */
 async function scaffoldPortfolio(label: string): Promise<string> {
+  await mkdir(join(REPO_ROOT, "my-site"), { recursive: true });
   const parentDir = await mkdtemp(
-    join(tmpdir(), `bascik-portfolio-test-${label}-`),
+    join(REPO_ROOT, "my-site", `bascik-portfolio-test-${label}-`),
   );
   tempDirs.push(parentDir);
   const projectDir = join(parentDir, "studio-portfolio");

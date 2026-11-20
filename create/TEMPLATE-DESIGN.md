@@ -2,6 +2,8 @@
 
 This is the visual contract for the templates shipped by `create-bascik`. Read it before changing `src/scaffold.ts` or `src/templates/`. The templates share accessible foundations, not one visual skin. Each should look designed for its job rather than like a recolored admin theme.
 
+Consult the repository-only `.github/skills/bascik-ui/SKILL.md` and `.github/skills/bascik-ux/SKILL.md` for visual and interaction guidance. Both have `metadata.internal: true`; they are not public site-building skills.
+
 ## Shared principles
 
 - Use semantic HTML and CSS first. Keep native links, buttons, forms, tables, figures, and disclosure elements. Add JavaScript only where HTML and CSS do not provide the needed behavior.
@@ -40,6 +42,15 @@ These are different design systems, not a checklist to force onto every branch. 
 - Delay only the first tooltip; show subsequent tooltips immediately while one is already open.
 - Drag and flick interactions hand their release velocity to a spring rather than snapping with a fixed-duration transition. Carousels resist pulls past either end, then spring back.
 - Do not add motion just to satisfy a rule. Respect reduced motion, avoid flashes, and provide pause controls for persistent automatically moving content.
+
+## Portfolio contract
+
+- Use an inset editorial masthead with a typographic slug signature, a small practice/index label, and numbered section links. Do not reuse the generic full-width sticky navigation skin. Keep the brand plain `portfolio` when scaffolded with that slug; custom project names still come from `src/lib/site.ts`.
+- Preserve the canonical shared Bascik favicon assets unchanged. Inline `src/pages/css/styles.css` through Bascik `assets.inlineStyles: true`, not a custom build step.
+- Use an icon-only theme button with no visible text, the accessible name "Dark theme", and `aria-pressed` for its state. Apply saved light/dark preference in the head before paint, fall back to the system scheme, and tolerate unavailable storage.
+- Keep above-fold content fully visible from first paint. No opacity gates, page flashes, or automatic entrance animation. Retain press/hover feedback and theme-transition suppression; honor reduced motion.
+- Navigation links are not underlined by default. Keep visible focus, 44px controls, an Escape-dismissable mobile menu with focus returned to its toggle, and visible mobile links without JavaScript.
+- Explicitly label the project collection, detail pages, and biography as samples. Do not imply fictional commissions, real-person authorship, or endorsements. Preserve real routes and the contact form's validation-only behavior.
 
 ## Docs-template behavior
 

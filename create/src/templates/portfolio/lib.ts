@@ -19,6 +19,7 @@ export const site = {
   name: ${JSON.stringify(siteName)},
   /** Who the site is about. */
   author: "Your Name",
+  sampleWork: "Sample work. These fictional projects demonstrate the template, not client commissions.",
   role: "Independent designer & art director",
   tagline:
     "Independent design and art direction for ideas with something to say.",
@@ -32,6 +33,10 @@ export const site = {
 export const BASCIK_CONFIG = `import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
+  assets: {
+    // Put global tokens and layout in the head before the first paint.
+    inlineStyles: true,
+  },
   pipeline: {
     // Rebuild pages in dev when project Markdown or shared helpers change.
     // Component and page folders are watched already.

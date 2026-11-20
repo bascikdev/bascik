@@ -69,7 +69,7 @@ export const WORK_PAGE = page({
   body: `      <page-intro
         data-bascik-prop-label="Selected work"
         data-bascik-prop-title="A collection of ideas, made real"
-        data-bascik-prop-text="Identity, editorial, campaigns, and image-making, each with a point of view and a reason to exist."
+        data-bascik-prop-text="Sample work: fictional identity, editorial, campaigns, and image-making projects. Replace these examples with your own."
       />
       <project-list />`,
 });
@@ -172,7 +172,7 @@ export const PORTFOLIO_STYLES_CSS = `${STYLES_CSS}
   --accent: var(--portfolio-accent);
   --accent-hover: light-dark(#943f31, #ffae98);
   --accent-dim: light-dark(#f2e3dc, #382a25);
-  --on-accent: #fffaf5;
+  --on-accent: light-dark(#fffaf5, #171916);
   --text: light-dark(#262820, #f1efe7);
   --text-muted: light-dark(#696b61, #bcbbb0);
   --shadow: none;
@@ -180,6 +180,9 @@ export const PORTFOLIO_STYLES_CSS = `${STYLES_CSS}
   --r-sm: 2px;
 }
 
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+nav a { text-decoration: none; }
 body { font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; line-height: 1.65; }
 h1, h2, h3, h4 {
   font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
@@ -238,6 +241,20 @@ import { projects, featuredProjects } from "../src/lib/projects.ts";
 const [project] = projects;
 
 test.describe("Portfolio E2E Tests", () => {
+  test("icon-only theme toggle persists and global styles are inline", async ({ page }) => {
+    await page.goto("/");
+    const toggle = page.getByTestId("site-header-theme-toggle");
+    await expect(toggle).toHaveAccessibleName("Dark theme");
+    await expect(toggle).toHaveText("");
+    await toggle.focus();
+    await toggle.press("Space");
+    const pressed = await toggle.getAttribute("aria-pressed");
+    await page.reload();
+    await expect(toggle).toHaveAttribute("aria-pressed", pressed!);
+    await expect(page.locator('link[rel="stylesheet"][href*="styles.css"]')).toHaveCount(0);
+    await expect(page.getByTestId("featured-projects")).toContainText("Sample work");
+  });
+
   test("home page introduces a creator and shows featured projects", async ({
     page,
   }) => {
@@ -348,9 +365,7 @@ test.describe("Portfolio E2E Tests", () => {
     const toggle = page.getByTestId("site-header-nav-toggle");
     const menu = page.getByTestId("site-header-nav-menu");
 
-    // Assert what the reader sees, not the class name: the build scopes
-    // .is-open (hashed under minify.identifiers), so the element never
-    // carries the literal class.
+    // Assert visible state, not production-minified classes.
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(menu).toBeHidden();
 
@@ -358,9 +373,10 @@ test.describe("Portfolio E2E Tests", () => {
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(menu).toBeVisible();
 
-    await toggle.click();
+    await toggle.press("Escape");
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(menu).toBeHidden();
+    await expect(toggle).toBeFocused();
   });
 
   test("pages fit a phone screen without scrolling sideways", async ({

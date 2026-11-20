@@ -9,15 +9,13 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   ADAPTERS,
   PACKAGE_JSON,
   SITE_FOOTER_CSS,
-  SITE_HEADER_CSS,
   SITE_META_HTML,
   STYLES_CSS,
   type TemplateContext,
@@ -69,7 +67,10 @@ async function load<T>(source: string): Promise<T> {
 }
 
 beforeAll(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), "bascik-portfolio-test-"));
+  await mkdir("../my-site", { recursive: true });
+  tempDir = await mkdtemp(
+    join(process.cwd(), "../my-site/bascik-portfolio-test-"),
+  );
   const projects = [...files.keys()]
     .filter((path) => /^content\/projects\/[^/]+\.md$/.test(path))
     .map((path) => {
@@ -327,9 +328,8 @@ describe("portfolio template", () => {
         expect(tag, `${path}: ${tag}`).toContain("data-testid=");
   });
 
-  it("uses the default template's header and footer CSS, so the skip link is the same one", () => {
+  it("keeps the accessible skip link and shared footer foundation", () => {
     const header = file("src/components/site-header/site-header.html");
-    expect(header).toContain(SITE_HEADER_CSS);
     expect(header).toContain(".skip-link:not(:focus)");
     expect(header).toContain("clip-path: inset(50%)");
     // The skip link is the first element in the header and the first link in the file.
@@ -347,9 +347,15 @@ describe("portfolio template", () => {
     const meta = file("src/components/site-meta/site-meta.html");
     expect(SITE_META_HTML).toContain('name="description"');
     expect(meta).not.toContain('name="description"');
-    expect(meta.split("\n").length).toBe(SITE_META_HTML.split("\n").length - 1);
-    for (const line of meta.split("\n")) expect(SITE_META_HTML).toContain(line);
-    expect(meta).toContain('<link rel="stylesheet" href="/css/styles.css" />');
+    const sharedTags = meta.split("<script")[0];
+    expect(sharedTags.split("\n").length).toBe(
+      SITE_META_HTML.split("\n").length - 2,
+    );
+    for (const line of sharedTags.split("\n"))
+      expect(SITE_META_HTML).toContain(line);
+    expect(meta).toContain('localStorage.getItem("portfolio-theme")');
+    expect(meta).not.toContain('rel="stylesheet"');
+    expect(file("bascik.config.ts")).toContain("inlineStyles: true");
   });
 
   it("labels each form control and states its rules in HTML", () => {

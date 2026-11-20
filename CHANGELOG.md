@@ -19,7 +19,7 @@ it is not `@bascik/bascik`.
 ### Changed
 
 - `create-bascik`: the portfolio template is now an art-directed creator portfolio with fictional identity, editorial, and image-making projects rather than a motorsport author portfolio.
-- `create-bascik`: portfolio project cards and detail pages now use raised neutral surfaces, subtle depth, and responsive padding from the shared design system.
+- `create-bascik`: portfolio now uses an inset editorial masthead with numbered links, non-underlined navigation, and a persistent accessible icon-only theme toggle. Global CSS is inlined with `assets.inlineStyles`; first-paint content stays visible without entrance animation, and canonical Bascik favicons remain unchanged. Collections, case studies, and the biography are explicitly labeled as fictional samples.
 
 - `create-bascik`: the starter and adapter variants use a shared light/dark design system, with a neutral canvas, raised cards, restrained periwinkle accents, visible keyboard focus, and motion that respects reader preferences.
 - Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).
