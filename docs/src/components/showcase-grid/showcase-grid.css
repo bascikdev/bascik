@@ -4,3 +4,7 @@ div {
   gap: 24px;
   margin: 24px 0 32px;
 }
+
+div[data-columns="1"] {
+  grid-template-columns: 1fr;
+}
