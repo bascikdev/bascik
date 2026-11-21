@@ -10,7 +10,7 @@ Create a new site with Bascik:
 npm create bascik my-site -y
 ```
 
-That scaffolds the project, installs dependencies, and starts the dev server in one shot.
+That scaffolds the default site, installs dependencies, and starts the dev server in one shot. To choose another starting point, browse the [template gallery](/templates).
 
 Open **http://localhost:8080** in your browser to see your live site.
 
