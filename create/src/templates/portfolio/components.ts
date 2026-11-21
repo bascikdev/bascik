@@ -146,7 +146,8 @@ export const SITE_HEADER_HTML = `<style>
     .masthead[data-enhanced="true"] .panel {
       display: none;
       position: fixed;
-      top: var(--menu-top, 96px);
+      /* The script sets the exact top from the bar's bottom edge when the menu opens. */
+      top: 96px;
       left: 0;
       right: 0;
       bottom: 0;
@@ -203,13 +204,14 @@ export const SITE_HEADER_HTML = `<style>
 </header>
 <script type="text/typescript">
   const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
+  const panel = document.getElementById("nav-menu") as HTMLElement;
   const header = toggle.closest("header") as HTMLElement;
   const masthead = document.getElementById("masthead") as HTMLElement;
   const setOpen = (open: boolean): void => {
     if (open) {
       header.scrollIntoView();
-      masthead.style.setProperty('--menu-top', masthead.getBoundingClientRect().bottom + 'px');
-    }
+      panel.style.top = masthead.getBoundingClientRect().bottom + 'px';
+    } else panel.style.top = '';
     toggle.setAttribute('aria-expanded', String(open));
     document.body.style.overflow = open ? 'hidden' : '';
   };

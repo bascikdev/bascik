@@ -131,7 +131,8 @@ nav { margin-top: 24px; }
   header[data-menu] .panel {
     display: none;
     position: fixed;
-    top: var(--menu-top, 76px);
+    /* The script sets the exact top from the bar's bottom edge when the menu opens. */
+    top: 76px;
     left: 0;
     right: 0;
     bottom: 0;
@@ -222,12 +223,13 @@ nav { margin-top: 24px; }
 <script type="text/typescript">
   const bar = document.getElementById("bar") as HTMLElement;
   const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
+  const panel = document.getElementById("nav-menu") as HTMLElement;
   const header = toggle.closest("header") as HTMLElement;
   const setOpen = (open: boolean): void => {
     if (open) {
       header.scrollIntoView();
-      header.style.setProperty("--menu-top", bar.getBoundingClientRect().bottom + "px");
-    }
+      panel.style.top = bar.getBoundingClientRect().bottom + "px";
+    } else panel.style.top = "";
     toggle.setAttribute("aria-expanded", String(open));
     document.body.style.overflow = open ? "hidden" : "";
   };

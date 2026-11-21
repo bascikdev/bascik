@@ -400,7 +400,8 @@ The top bar of every page: the skip link, the site's name, and the theme toggle.
       top: 100%;
       left: 0;
       right: 0;
-      height: calc(100dvh - var(--menu-top, 4rem));
+      /* The script sets the exact height from the header's bottom edge when the menu opens. */
+      height: calc(100dvh - 4rem);
       overflow-y: auto;
       z-index: 100;
       background: var(--color-bg);
@@ -476,13 +477,14 @@ The top bar of every page: the skip link, the site's name, and the theme toggle.
 </header>
 <script type="text/typescript">
   const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
+  const panel = document.getElementById("nav-menu") as HTMLElement;
   const header = toggle.closest("header") as HTMLElement;
   const setOpen = (open: boolean): void => {
     if (open) {
       // The menu fills the screen below the header, so bring the header to the top and measure it.
       header.scrollIntoView();
-      header.style.setProperty("--menu-top", header.getBoundingClientRect().bottom + "px");
-    }
+      panel.style.height = "calc(100dvh - " + header.getBoundingClientRect().bottom + "px)";
+    } else panel.style.height = "";
     toggle.setAttribute("aria-expanded", String(open));
     // The page behind the open menu does not scroll.
     document.body.style.overflow = open ? "hidden" : "";

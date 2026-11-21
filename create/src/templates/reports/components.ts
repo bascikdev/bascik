@@ -1505,7 +1505,8 @@ ${SKIP_LINK_CSS}
       top: 100%;
       left: 0;
       right: 0;
-      height: calc(100dvh - var(--menu-top, 73px));
+      /* The script sets the exact height from the header's bottom edge when the menu opens. */
+      height: calc(100dvh - 73px);
       overflow-y: auto;
       flex-direction: column;
       align-items: stretch;
@@ -1596,12 +1597,13 @@ ${SKIP_LINK_CSS}
 </header>
 <script type="text/typescript">
   const toggle = document.getElementById('nav-toggle') as HTMLButtonElement;
+  const panel = document.getElementById('nav-menu') as HTMLElement;
   const header = toggle.closest('header') as HTMLElement;
   const setOpen = (open: boolean): void => {
     if (open) {
       header.scrollIntoView();
-      header.style.setProperty('--menu-top', header.getBoundingClientRect().bottom + 'px');
-    }
+      panel.style.height = 'calc(100dvh - ' + header.getBoundingClientRect().bottom + 'px)';
+    } else panel.style.height = '';
     toggle.setAttribute('aria-expanded', String(open));
     document.body.style.overflow = open ? 'hidden' : '';
   };

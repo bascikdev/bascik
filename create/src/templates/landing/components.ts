@@ -1186,8 +1186,8 @@ ${SITE_HEADER_CSS}
   const setOpen = (open: boolean): void => {
     if (open) {
       header.scrollIntoView();
-      header.style.setProperty('--menu-top', header.getBoundingClientRect().bottom + 'px');
-    }
+      menu.style.height = 'calc(100dvh - ' + header.getBoundingClientRect().bottom + 'px)';
+    } else menu.style.height = '';
     toggle.setAttribute('aria-expanded', String(open));
     document.body.style.overflow = open ? 'hidden' : '';
   };

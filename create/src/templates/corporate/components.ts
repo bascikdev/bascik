@@ -1294,8 +1294,8 @@ nav {
     top: 100%;
     left: 0;
     right: 0;
-    /* --menu-top is the header's bottom edge: styles.css declares it and site-header.ts measures it on open. */
-    height: calc(100dvh - var(--menu-top));
+    /* The script sets the exact height from the header's bottom edge when the menu opens. */
+    height: calc(100dvh - 68px);
     overflow-y: auto;
     flex-direction: column;
     align-items: stretch;
@@ -1387,6 +1387,7 @@ The site header: a skip link, the company name and the main navigation, with one
 // State lives in aria-expanded and, for the submenu, data-state, which the CSS reads.
 const header = document.getElementById("site-header") as HTMLElement;
 const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
+const panel = document.getElementById("nav-menu") as HTMLElement;
 const menu = document.getElementById("nav-list") as HTMLUListElement;
 const carets: HTMLButtonElement[] = Array.from(menu.querySelectorAll("button"));
 
@@ -1484,8 +1485,8 @@ const setOpen = (open: boolean): void => {
   if (open) {
     // The menu fills the screen below the header, so bring the header to the top and measure it.
     header.scrollIntoView();
-    header.style.setProperty("--menu-top", header.getBoundingClientRect().bottom + "px");
-  }
+    panel.style.height = "calc(100dvh - " + header.getBoundingClientRect().bottom + "px)";
+  } else panel.style.height = "";
   toggle.setAttribute("aria-expanded", String(open));
   // The page behind the open menu does not scroll.
   document.body.style.overflow = open ? "hidden" : "";
