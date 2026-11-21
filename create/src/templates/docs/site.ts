@@ -146,6 +146,7 @@ export const DOCS_THEME_TOGGLE_HTML = `<style>
 .sun { display: none; }
 .button[aria-pressed="true"] .moon { display: none; }
 .button[aria-pressed="true"] .sun { display: block; }
+@media (max-width: 760px) { .button { display: none; } }
 </style>
 <button id="theme" class="button" type="button" aria-label="Toggle dark mode" aria-pressed="false" data-testid="theme-toggle" hidden>
   <svg class="icon moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.8 13.2A9 9 0 0 1 10.8 3.2a9 9 0 1 0 10 10Z" /></svg>
@@ -170,6 +171,7 @@ export const DOCS_THEME_TOGGLE_HTML = `<style>
     sync();
     requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
   });
+  new MutationObserver(sync).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
 </script>
 `;
 
@@ -214,7 +216,7 @@ describe('site-meta component', () => {
 /** The default header's skip link, bar and logo rules, without its collapsing menu: this header has one link. */
 const HEADER_BAR_CSS = SITE_HEADER_CSS.slice(
   0,
-  SITE_HEADER_CSS.indexOf(".menu {"),
+  SITE_HEADER_CSS.indexOf("/* The links and"),
 );
 
 export const DOCS_SITE_HEADER_CSS = `${HEADER_BAR_CSS}.links {
@@ -236,10 +238,124 @@ export const DOCS_SITE_HEADER_CSS = `${HEADER_BAR_CSS}.links {
 @media (prefers-reduced-motion: no-preference) {
   .link { transition: color 150ms ease, background-color 150ms ease; }
 }
-@media (max-width: 640px) {
+
+/* The phone-width menu button: three bars that become a cross while the menu is open. */
+.toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.toggle:hover { background: var(--elevated); }
+.toggle-icon,
+.toggle-icon::before,
+.toggle-icon::after {
+  display: block;
+  width: 20px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--text);
+}
+.toggle-icon { position: relative; }
+.toggle-icon::before,
+.toggle-icon::after { content: ""; position: absolute; left: 0; }
+.toggle-icon::before { translate: 0 -6px; }
+.toggle-icon::after { translate: 0 6px; }
+.toggle[aria-expanded="true"] .toggle-icon { background: transparent; }
+.toggle[aria-expanded="true"] .toggle-icon::before { translate: 0 0; rotate: 45deg; }
+.toggle[aria-expanded="true"] .toggle-icon::after { translate: 0 0; rotate: -45deg; }
+@media (prefers-reduced-motion: no-preference) {
+  .toggle-icon::before,
+  .toggle-icon::after { transition: translate 150ms ease-out, rotate 150ms ease-out; }
+}
+
+/* The theme row at the bottom of the phone menu. */
+.mobile { display: none; }
+.separator { margin: 16px 0 20px; border: 0; border-top: 1px solid var(--border); }
+.mobile-theme {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+.mobile-theme[hidden] { display: none; }
+.mobile-theme:hover { color: var(--text); background: var(--elevated); }
+.mobile-theme svg { flex: 0 0 18px; width: 18px; height: 18px; }
+.mobile-theme .sun { display: none; }
+.mobile-theme[data-dark="true"] .sun { display: block; }
+.mobile-theme[data-dark="true"] .moon { display: none; }
+
+/* The phone menu lists every docs page, as the sidebar does. It is only shown at phone width. */
+.panel { display: none; }
+.groups, .pages { list-style: none; margin: 0; padding: 0; }
+.group + .group { margin-top: 22px; }
+.label {
+  display: block;
+  padding: 0 12px;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--text);
+}
+.page-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+.page-link:hover { color: var(--text); background: var(--elevated); opacity: 1; }
+.page-link[aria-current="page"] { color: var(--accent); background: var(--accent-dim); font-weight: 600; }
+
+@media (max-width: 760px) {
   .container { padding: 0 16px; }
-  nav { justify-content: space-between; gap: 12px; }
+  /* The bar: the logo at the left, then search and the menu button together at the right. */
+  nav { gap: 4px; }
+  .logo { margin-right: auto; }
   .links { display: none; }
+  .toggle:not([hidden]) { display: flex; margin-left: 0; }
+
+  /* The open menu covers the screen below the header. */
+  .toggle:not([hidden]) + .panel {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: calc(100dvh - var(--menu-top, 60px));
+    overflow-y: auto;
+    flex-direction: column;
+    align-items: stretch;
+    margin: 0;
+    padding: 20px 16px 40px;
+    background: var(--bg);
+  }
+  .toggle[aria-expanded="true"] + .panel { display: flex; }
+  .toggle:not([hidden]) + .panel .mobile { display: block; }
 }
 `;
 
@@ -261,10 +377,104 @@ ${DOCS_SITE_HEADER_CSS}</style>
           </ul>\`;
       </script>
       <docs-search />
+      <button id="nav-toggle" class="toggle" type="button" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
+        <span class="toggle-icon"></span>
+      </button>
+      <div id="nav-menu" class="panel" data-testid="site-header-nav-menu">
+        <div data-testid="site-header-docs-nav">
+          <script data-bascik-build type="text/typescript">
+            import { html } from "@bascik/bascik/html";
+            import { getDocs } from "@/lib/docs.ts";
+
+            // The same pages as <docs-sidebar />, which is not displayed at phone width. The header is also on
+            // pages that are not a guide, such as the 404 page, where no link is the current one.
+            export default async () => {
+              const pages = await getDocs();
+              const route = JSON.parse(process.env.BASCIK_ROUTE || "{}") as { data?: { slug: string } };
+              const current = route.data?.slug ?? (process.env.BASCIK_PAGE_PATH === "/" ? pages[0]?.slug : undefined);
+              const groups = (pages[0]?.sidebar ?? []).map((group) => {
+                // A hole cannot add an attribute, so the current page's link is written out with aria-current.
+                const links = group.links.map((link) =>
+                  link.slug === current
+                    ? html\`<li><a href="\${link.href}" class="page-link" aria-current="page">\${link.title}</a></li>\`
+                    : html\`<li><a href="\${link.href}" class="page-link">\${link.title}</a></li>\`,
+                );
+                return html\`<li class="group">
+                  <span class="label">\${group.label}</span>
+                  <ul class="pages">\${links}</ul>
+                </li>\`;
+              });
+              return html\`<ul class="groups">\${groups}</ul>\`;
+            };
+          </script>
+        </div>
+        <div class="mobile">
+          <hr class="separator" />
+          <button id="mobile-theme" type="button" class="mobile-theme" aria-label="Switch to dark theme" data-testid="site-header-mobile-theme" hidden>
+            <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
+            <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+            <span id="mobile-theme-label">Dark</span>
+          </button>
+        </div>
+      </div>
       <theme-toggle />
     </nav>
   </div>
 </header>
+<script type="text/typescript">
+  const toggle = document.getElementById('nav-toggle') as HTMLButtonElement;
+  const header = toggle.closest('header') as HTMLElement;
+  const setOpen = (open: boolean): void => {
+    if (open) {
+      // The menu fills the screen below the header, so bring the header to the top and measure it.
+      header.scrollIntoView();
+      header.style.setProperty('--menu-top', header.getBoundingClientRect().bottom + 'px');
+    }
+    toggle.setAttribute('aria-expanded', String(open));
+    // The page behind the open menu does not scroll.
+    document.body.style.overflow = open ? 'hidden' : '';
+  };
+  toggle.addEventListener('click', (): void => {
+    setOpen(toggle.getAttribute('aria-expanded') !== 'true');
+  });
+  header.addEventListener('keydown', (event): void => {
+    if (event.key !== 'Escape' || toggle.getAttribute('aria-expanded') !== 'true' || toggle.getClientRects().length === 0) return;
+    setOpen(false);
+    toggle.focus();
+  });
+  // Leaving phone width closes the menu, so the page is never left unable to scroll.
+  matchMedia('(max-width: 760px)').addEventListener('change', (): void => setOpen(false));
+  toggle.hidden = false;
+
+  // The labeled theme row in the phone menu. <theme-toggle /> is another component, so the row keeps the same
+  // storage key and follows the root's data-theme, which both controls write.
+  const mobileTheme = document.getElementById('mobile-theme') as HTMLButtonElement;
+  const mobileLabel = document.getElementById('mobile-theme-label') as HTMLSpanElement;
+  const root = document.documentElement;
+  const system = matchMedia('(prefers-color-scheme: dark)');
+  const isDark = (): boolean => root.dataset.theme === 'dark' ||
+    (root.dataset.theme !== 'light' && system.matches);
+  const sync = (): void => {
+    const dark = isDark();
+    // The row names the theme it switches to.
+    mobileTheme.dataset.dark = String(dark);
+    mobileTheme.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+    mobileLabel.textContent = dark ? 'Light' : 'Dark';
+  };
+  const switchTheme = (): void => {
+    root.classList.add('theme-switching');
+    root.dataset.theme = isDark() ? 'light' : 'dark';
+    try { localStorage.setItem('theme', root.dataset.theme); } catch { /* Use this choice for the current page. */ }
+    sync();
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('theme-switching')));
+  };
+  mobileTheme.addEventListener('click', switchTheme);
+  system.addEventListener('change', sync);
+  window.addEventListener('pageshow', sync);
+  new MutationObserver(sync).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  sync();
+  mobileTheme.hidden = false;
+</script>
 `;
 
 export const DOCS_SEARCH_CSS = `.root { position: relative; }
@@ -368,7 +578,8 @@ export const DOCS_SEARCH_CSS = `.root { position: relative; }
   .dialog[open] { animation: none; }
 }
 @media (max-width: 760px) {
-  .open { padding: 8px 10px; }
+  .open { padding: 0; justify-content: center; border-color: transparent; background: none; width: 44px; height: 44px; }
+  .open-label { display: none; }
   .shortcut { display: none; }
   .dialog { margin-top: 8vh; }
 }
@@ -402,6 +613,7 @@ ${DOCS_SEARCH_CSS}</style>
     };
   </script></pre>
   <button id="open" class="open" type="button" aria-haspopup="dialog" aria-controls="dialog" aria-label="Search documentation" data-testid="docs-search-open" hidden>
+    <svg class="open-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
     <span class="open-label">Search docs</span>
     <kbd class="shortcut" aria-hidden="true">⌘ / Ctrl K</kbd>
   </button>
@@ -539,6 +751,16 @@ describe('site-header component', () => {
     expect(html).toContain('aria-label="Main"');
     expect(html).toContain('<docs-search />');
   });
+
+  it('has a phone menu: search, then a hidden-until-scripted button, the docs pages, and a labeled theme row', async () => {
+    const html = await readFile(path, 'utf8');
+    const header = html.slice(html.indexOf('<header'));
+    expect(header.indexOf('<docs-search />')).toBeLessThan(header.indexOf('id="nav-toggle"'));
+    expect(html).toMatch(/<button id="nav-toggle"[^>]*aria-controls="nav-menu"[^>]*aria-expanded="false"[^>]*hidden>/);
+    expect(html).toContain('.toggle[aria-expanded="true"] + .panel');
+    expect(header.indexOf('getDocs()')).toBeLessThan(header.indexOf('id="mobile-theme"'));
+    expect(html).toMatch(/<button id="mobile-theme"[^>]*data-testid="site-header-mobile-theme"[^>]*hidden>/);
+  });
 });
 `;
 
@@ -589,20 +811,6 @@ export const DOCS_SIDEBAR_CSS = `.sidebar {
   font-size: 0.9rem;
 }
 
-.toggle {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  background: var(--elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  color: var(--text);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
 .groups, .pages { list-style: none; margin: 0; padding: 0; }
 .group + .group { margin-top: 22px; }
 .label {
@@ -627,8 +835,7 @@ export const DOCS_SIDEBAR_CSS = `.sidebar {
 
 @media (max-width: 760px) {
   .sidebar { position: static; max-height: none; overflow-y: visible; }
-  .toggle { display: inline-flex; }
-  .toggle[hidden] { display: none; }
+  .sidebar[data-enhanced="true"] { display: none; }
   .menu {
     margin-top: 12px;
     padding: 14px 6px;
@@ -636,7 +843,6 @@ export const DOCS_SIDEBAR_CSS = `.sidebar {
     border: 1px solid var(--border);
     border-radius: var(--r);
   }
-  .menu[data-state="closed"] { display: none; }
 }
 `;
 
@@ -649,7 +855,6 @@ export const DOCS_SIDEBAR_CSS = `.sidebar {
 export const DOCS_SIDEBAR_HTML = `<style>
 ${DOCS_SIDEBAR_CSS}</style>
 <nav class="sidebar" aria-label="Documentation" data-testid="docs-sidebar">
-  <button id="toggle" type="button" class="toggle" aria-expanded="true" aria-controls="menu" data-testid="docs-sidebar-toggle" hidden>Menu</button>
   <div id="menu" class="menu" data-testid="docs-sidebar-menu">
     <script data-bascik-build type="text/typescript">
       import { html } from "@bascik/bascik/html";
@@ -675,16 +880,10 @@ ${DOCS_SIDEBAR_CSS}</style>
   </div>
 </nav>
 <script type="text/typescript">
-  // Without this script the list stays open. With it, a small screen starts with the list behind the button.
-  const toggle = document.getElementById('toggle') as HTMLButtonElement;
+  // Without this script the list stays in place. With it, <site-header /> lists the same pages in its phone
+  // menu, so the sidebar steps aside at phone width.
   const menu = document.getElementById('menu') as HTMLDivElement;
-  const show = (open: boolean): void => {
-    toggle.setAttribute('aria-expanded', String(open));
-    menu.setAttribute('data-state', open ? 'open' : 'closed');
-  };
-  toggle.hidden = false;
-  show(false);
-  toggle.addEventListener('click', (): void => show(toggle.getAttribute('aria-expanded') !== 'true'));
+  (menu.closest('nav') as HTMLElement).dataset.enhanced = 'true';
 </script>
 `;
 
@@ -695,20 +894,20 @@ import { join } from 'node:path';
 describe('docs-sidebar component', () => {
   const path = join(process.cwd(), 'src/components/docs-sidebar/docs-sidebar.html');
 
-  it('is a labeled nav whose toggle names the list it controls', async () => {
+  it('is a labeled nav around the list, with no menu button of its own', async () => {
     const html = await readFile(path, 'utf8');
     expect(html).toContain('<nav class="sidebar" aria-label="Documentation" data-testid="docs-sidebar">');
-    expect(html).toContain('aria-controls="menu"');
     expect(html).toContain('id="menu"');
-    expect(html).toContain('aria-expanded=');
+    expect(html).not.toContain('<button');
   });
 
-  it('marks the current page and keeps the list open without JavaScript', async () => {
+  it('marks the current page and stays in place without JavaScript', async () => {
     const html = await readFile(path, 'utf8');
     expect(html).toContain('aria-current="page"');
-    // The button only appears once the script that makes it work has run.
-    expect(html).toMatch(/<button[^>]*\\shidden>/);
-    expect(html).toContain('toggle.hidden = false');
+    // Only the script lets the sidebar step aside at phone width, where the header's menu lists the pages.
+    expect(html).not.toMatch(/<nav[^>]*data-enhanced/);
+    expect(html).toContain(".dataset.enhanced = 'true'");
+    expect(html).toContain('.sidebar[data-enhanced="true"] { display: none; }');
   });
 });
 `;
@@ -1242,32 +1441,64 @@ test.describe('Docs site', () => {
     await expect(page).toHaveURL('/docs/writing-pages');
   });
 
-  test('sidebar collapses behind its toggle on a small screen', async ({ page }) => {
+  test('the header menu lists the docs pages and the theme switch on a small screen', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
 
-    const toggle = page.getByTestId('docs-sidebar-toggle');
-    const menu = page.getByTestId('docs-sidebar-menu');
+    const toggle = page.getByTestId('site-header-nav-toggle');
+    const menu = page.getByTestId('site-header-nav-menu');
 
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(menu).toBeHidden();
+    // The header's menu holds the pages at this width: the sidebar and the icon theme button step aside,
+    // and search is an icon beside the menu button.
+    await expect(page.getByTestId('docs-sidebar')).toBeHidden();
+    await expect(page.getByTestId('theme-toggle')).toBeHidden();
+    const search = page.getByTestId('docs-search-open');
+    await expect(search).toBeVisible();
+    expect((await search.innerText()).trim()).toBe('');
+    expect((await search.boundingBox())!.x).toBeLessThan((await toggle.boundingBox())!.x);
     // The page fits the screen: nothing scrolls sideways.
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(menu).toBeVisible();
+    await expect(menu.getByRole('link', { name: 'Getting started' })).toHaveAttribute('aria-current', 'page');
     await expect(menu.getByRole('link', { name: 'Writing pages' })).toBeVisible();
 
-    await toggle.click();
+    // The theme switch is the last row of the menu and names the theme it switches to.
+    const themeRow = page.getByTestId('site-header-mobile-theme');
+    const before = await themeRow.innerText();
+    await themeRow.click();
+    await expect(themeRow).not.toHaveText(before);
+
+    await page.keyboard.press('Escape');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(menu).toBeHidden();
+    await expect(toggle).toBeFocused();
+
+    await toggle.click();
+    await menu.getByRole('link', { name: 'Writing pages' }).click();
+    await expect(page).toHaveURL('/docs/writing-pages');
   });
 
-  test('sidebar stays open with no toggle on a wide screen', async ({ page }) => {
+  test('the sidebar stays in the page on a small screen without JavaScript', async ({ browser, baseURL }) => {
+    const page = await browser.newPage({ baseURL, javaScriptEnabled: false, viewport: { width: 375, height: 667 } });
+    try {
+      await page.goto('/');
+      await expect(page.getByTestId('site-header-nav-toggle')).toBeHidden();
+      await page.getByTestId('docs-sidebar-menu').getByRole('link', { name: 'Writing pages' }).click();
+      await expect(page).toHaveURL('/docs/writing-pages');
+    } finally {
+      await page.close();
+    }
+  });
+
+  test('sidebar stays open with no menu button on a wide screen', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByTestId('docs-sidebar-toggle')).toBeHidden();
+    await expect(page.getByTestId('site-header-nav-toggle')).toBeHidden();
     await expect(page.getByTestId('docs-sidebar-menu')).toBeVisible();
     await expect(page.getByTestId('docs-toc')).toBeVisible();
     await expect(page.getByTestId('docs-search-open')).toBeVisible();

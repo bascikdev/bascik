@@ -1370,6 +1370,7 @@ describe("site-footer component", () => {
 const SITE_HEADER_SITE_HEADER_HTML = `<style>
 ${SKIP_LINK_CSS}
   header {
+    position: relative;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
   }
@@ -1395,6 +1396,32 @@ ${SKIP_LINK_CSS}
     overflow-wrap: anywhere;
     text-decoration: none;
   }
+  .panel { display: flex; align-items: center; margin-left: auto; }
+
+  ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  li a {
+    display: inline-block;
+    padding: 7px 0;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+  }
+
+  li a:hover {
+    border-color: var(--link);
+    color: var(--link);
+  }
+
   .theme {
     display: grid;
     place-items: center;
@@ -1414,40 +1441,113 @@ ${SKIP_LINK_CSS}
   .theme[aria-pressed="true"] .sun { display: none; }
   .theme[aria-pressed="true"] .moon { display: block; }
 
-  ul {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 24px;
-    list-style: none;
-    margin: 0 0 0 auto;
-    padding: 0;
-  }
-
-  li a {
-    display: inline-block;
-    padding: 7px 0;
-    color: var(--text-muted);
-    font-size: 0.8rem;
-    font-weight: 500;
-    text-decoration: none;
-    border-bottom: 1px solid transparent;
-  }
-
-  li a:hover {
-    border-color: var(--link);
-    color: var(--link);
-  }
-
   nav a:focus-visible {
     outline: 3px solid var(--link);
     outline-offset: 3px;
   }
 
+  /* The phone-width menu button: three bars that become a cross while the menu is open. */
+  .toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    margin-left: auto;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: none;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .toggle:hover { background: var(--surface-soft); }
+  .toggle-icon,
+  .toggle-icon::before,
+  .toggle-icon::after {
+    display: block;
+    width: 20px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--text);
+  }
+  .toggle-icon { position: relative; }
+  .toggle-icon::before,
+  .toggle-icon::after { content: ""; position: absolute; left: 0; }
+  .toggle-icon::before { translate: 0 -6px; }
+  .toggle-icon::after { translate: 0 6px; }
+  .toggle[aria-expanded="true"] .toggle-icon { background: transparent; }
+  .toggle[aria-expanded="true"] .toggle-icon::before { translate: 0 0; rotate: 45deg; }
+  .toggle[aria-expanded="true"] .toggle-icon::after { translate: 0 0; rotate: -45deg; }
+  @media (prefers-reduced-motion: no-preference) {
+    .toggle-icon::before,
+    .toggle-icon::after { transition: translate 150ms ease-out, rotate 150ms ease-out; }
+  }
+
+  .mobile { display: none; }
+
   @media (max-width: 700px) {
     nav {
       padding: 16px;
       gap: 12px;
+      min-height: 73px;
+      height: auto;
     }
+    ul { flex-wrap: wrap; }
+
+    .toggle:not([hidden]) { display: flex; }
+    .toggle:not([hidden]) ~ .theme { display: none; }
+
+    .toggle:not([hidden]) + .panel {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      height: calc(100dvh - var(--menu-top, 73px));
+      overflow-y: auto;
+      flex-direction: column;
+      align-items: stretch;
+      margin: 0;
+      padding: 20px 16px 40px;
+      background: var(--bg);
+      z-index: 100;
+    }
+    .toggle[aria-expanded="true"] + .panel { display: flex; }
+    .toggle:not([hidden]) + .panel ul { flex-direction: column; flex-wrap: nowrap; }
+    .toggle:not([hidden]) + .panel ul li a {
+      display: flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 8px 12px;
+    }
+
+    .toggle:not([hidden]) + .panel .mobile { display: block; }
+    .separator { margin: 16px 0 20px; border: 0; border-top: 1px solid var(--border); }
+    .mobile-theme {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 44px;
+      padding: 8px 12px;
+      border: 0;
+      border-radius: var(--r-sm);
+      background: none;
+      color: var(--text-muted);
+      font: inherit;
+      font-size: 0.9rem;
+      text-align: left;
+      cursor: pointer;
+    }
+    .mobile-theme[hidden] { display: none; }
+    .mobile-theme:hover { color: var(--text); background: var(--surface-soft); }
+    .mobile-theme svg { flex: 0 0 18px; width: 18px; height: 18px; }
+    .mobile-theme .moon { display: block; }
+    .mobile-theme .sun { display: none; }
+    .mobile-theme[data-dark="true"] .sun { display: block; }
+    .mobile-theme[data-dark="true"] .moon { display: none; }
   }
 
   /* A printed report has no use for navigation. */
@@ -1458,9 +1558,7 @@ ${SKIP_LINK_CSS}
   }
 </style>
 <header data-testid="site-header">
-  <a href="#main" class="skip-link" data-testid="site-header-skip-link"
-    >Skip to content</a
-  >
+  <a href="#main" class="skip-link" data-testid="site-header-skip-link">Skip to content</a>
   <nav aria-label="Main" data-testid="site-header-nav">
     <script data-bascik-build-once type="text/typescript">
       import { html } from "@bascik/bascik/html";
@@ -1468,14 +1566,24 @@ ${SKIP_LINK_CSS}
       export default () =>
         html\`<a href="/" class="brand" data-testid="site-header-brand">\${siteName}</a>\`;
     </script>
-    <ul>
-      <li><a href="/" data-testid="site-header-reports">Reports</a></li>
-      <li>
-        <a href="/compare" data-testid="site-header-compare">Compare periods</a>
-      </li>
-    </ul>
-    <button id="theme" class="theme" type="button" hidden aria-label="Switch to dark theme"
-      aria-pressed="false" data-testid="site-header-theme">
+    <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
+      <span class="toggle-icon"></span>
+    </button>
+    <div id="nav-menu" class="panel" data-testid="site-header-nav-menu">
+      <ul class="menu">
+        <li><a href="/" data-testid="site-header-reports">Reports</a></li>
+        <li><a href="/compare" data-testid="site-header-compare">Compare periods</a></li>
+      </ul>
+      <div class="mobile">
+        <hr class="separator" />
+        <button id="mobile-theme" type="button" class="mobile-theme" aria-label="Switch to dark theme" data-testid="site-header-mobile-theme" hidden>
+          <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
+          <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+          <span id="mobile-theme-label">Dark</span>
+        </button>
+      </div>
+    </div>
+    <button id="theme" class="theme" type="button" hidden aria-label="Switch to dark theme" aria-pressed="false" data-testid="site-header-theme">
       <svg class="sun" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7">
         <circle cx="12" cy="12" r="4" />
         <path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4L19 5" />
@@ -1487,25 +1595,53 @@ ${SKIP_LINK_CSS}
   </nav>
 </header>
 <script type="text/typescript">
-  const toggle = document.getElementById("theme") as HTMLButtonElement;
-  const root = document.documentElement;
-  const preference = matchMedia("(prefers-color-scheme: dark)");
-  const render = () => {
-    const dark = root.dataset.theme ? root.dataset.theme === "dark" : preference.matches;
-    toggle.setAttribute("aria-pressed", String(dark));
-    toggle.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+  const toggle = document.getElementById('nav-toggle') as HTMLButtonElement;
+  const header = toggle.closest('header') as HTMLElement;
+  const setOpen = (open: boolean): void => {
+    if (open) {
+      header.scrollIntoView();
+      header.style.setProperty('--menu-top', header.getBoundingClientRect().bottom + 'px');
+    }
+    toggle.setAttribute('aria-expanded', String(open));
+    document.body.style.overflow = open ? 'hidden' : '';
   };
-  toggle.addEventListener("click", () => {
-    const theme = toggle.getAttribute("aria-pressed") === "true" ? "light" : "dark";
-    root.classList.add("theme-switching");
-    root.dataset.theme = theme;
-    try { localStorage.setItem("bascik-reports-theme", theme); } catch { /* Still switch this page. */ }
-    render();
-    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+  toggle.addEventListener('click', (): void => {
+    setOpen(toggle.getAttribute('aria-expanded') !== 'true');
   });
-  preference.addEventListener("change", render);
-  render();
+  header.addEventListener('keydown', (event): void => {
+    if (event.key !== 'Escape' || toggle.getAttribute('aria-expanded') !== 'true' || toggle.getClientRects().length === 0) return;
+    setOpen(false);
+    toggle.focus();
+  });
+  matchMedia('(max-width: 700px)').addEventListener('change', (): void => setOpen(false));
   toggle.hidden = false;
+
+  const theme = document.getElementById('theme') as HTMLButtonElement;
+  const mobileTheme = document.getElementById('mobile-theme') as HTMLButtonElement;
+  const mobileLabel = document.getElementById('mobile-theme-label') as HTMLSpanElement;
+  const root = document.documentElement;
+  const preference = matchMedia('(prefers-color-scheme: dark)');
+  const render = (): void => {
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : preference.matches;
+    theme.setAttribute('aria-pressed', String(dark));
+    theme.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+    mobileTheme.dataset.dark = String(dark);
+    mobileTheme.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+    mobileLabel.textContent = dark ? 'Light' : 'Dark';
+  };
+  const switchTheme = (): void => {
+    root.classList.add('theme-switching');
+    root.dataset.theme = theme.getAttribute('aria-pressed') === 'true' ? 'light' : 'dark';
+    try { localStorage.setItem('bascik-reports-theme', root.dataset.theme); } catch { /* Still switch this page. */ }
+    render();
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('theme-switching')));
+  };
+  theme.addEventListener('click', switchTheme);
+  mobileTheme.addEventListener('click', switchTheme);
+  preference.addEventListener('change', render);
+  render();
+  theme.hidden = false;
+  mobileTheme.hidden = false;
 </script>
 `;
 

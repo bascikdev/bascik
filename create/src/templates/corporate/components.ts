@@ -1134,6 +1134,8 @@ nav {
 }
 .logo:hover { color: var(--brand); }
 
+.panel { display: flex; align-items: center; }
+
 .menu {
   list-style: none;
   margin: 0;
@@ -1212,29 +1214,105 @@ nav {
 .bar:not(.enhanced) .group:hover .submenu,
 .bar:not(.enhanced) .group:focus-within .submenu { display: block; }
 
+/* The phone-width menu button: three bars that become a cross while the menu is open. */
 .toggle {
   display: none;
-  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 5px;
+  flex: 0 0 44px;
   width: 44px;
   height: 44px;
-  padding: 10px;
+  margin-left: auto;
+  padding: 0;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-sm);
   background: var(--bg);
   cursor: pointer;
+  touch-action: manipulation;
 }
-.toggle span { display: block; height: 2px; background: var(--text); border-radius: 2px; }
+.toggle:hover { background: var(--surface); }
+.toggle-icon,
+.toggle-icon::before,
+.toggle-icon::after {
+  display: block;
+  width: 20px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--text);
+}
+.toggle-icon { position: relative; }
+.toggle-icon::before,
+.toggle-icon::after { content: ""; position: absolute; left: 0; }
+.toggle-icon::before { translate: 0 -6px; }
+.toggle-icon::after { translate: 0 6px; }
+.toggle[aria-expanded="true"] .toggle-icon { background: transparent; }
+.toggle[aria-expanded="true"] .toggle-icon::before { translate: 0 0; rotate: 45deg; }
+.toggle[aria-expanded="true"] .toggle-icon::after { translate: 0 0; rotate: -45deg; }
+@media (prefers-reduced-motion: no-preference) {
+  .toggle-icon::before,
+  .toggle-icon::after { transition: translate 150ms ease-out, rotate 150ms ease-out; }
+}
+
+/* The theme row at the bottom of the phone menu. */
+.mobile { display: none; }
+.separator { margin: 16px 0 20px; border: 0; border-top: 1px solid var(--border); }
+.mobile-theme {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+.mobile-theme[hidden] { display: none; }
+.mobile-theme:hover { color: var(--brand); background: var(--surface); }
+.mobile-theme svg { flex: 0 0 18px; width: 18px; height: 18px; }
+.mobile-theme .sun { display: none; }
+.mobile-theme[data-dark="true"] .sun { display: block; }
+.mobile-theme[data-dark="true"] .moon { display: none; }
 
 @media (max-width: 760px) {
   .toggle:not([hidden]) { display: flex; }
 
   /* One column, full width. Without JavaScript it is always shown, services included. */
-  .menu { order: 1; flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0; padding-bottom: 12px; }
-  .bar.enhanced .menu { display: none; }
-  .bar.enhanced .menu[data-state="open"] { display: flex; }
+  .panel { order: 1; flex-basis: 100%; flex-direction: column; align-items: stretch; }
+  .menu { flex-direction: column; align-items: stretch; gap: 0; padding-bottom: 12px; }
   .menu a { padding: 12px 4px; }
+
+  /* With JavaScript the menu opens from the button and covers the screen below the header. */
+  .toggle:not([hidden]) + .panel {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    /* --menu-top is the header's bottom edge: styles.css declares it and site-header.ts measures it on open. */
+    height: calc(100dvh - var(--menu-top));
+    overflow-y: auto;
+    flex-direction: column;
+    align-items: stretch;
+    margin: 0;
+    padding: 20px 32px 40px;
+    background: var(--bg);
+  }
+  .toggle[aria-expanded="true"] + .panel { display: flex; }
+  .toggle:not([hidden]) + .panel .menu { flex-wrap: nowrap; padding-bottom: 0; }
+  .toggle:not([hidden]) + .panel .menu a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+
+  .toggle:not([hidden]) + .panel .mobile { display: block; }
 
   .group { flex-wrap: wrap; }
   .group > a { flex: 1; }
@@ -1272,14 +1350,24 @@ The site header: a skip link, the company name and the main navigation, with one
         </script>
       </a>
       <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
-        <span></span><span></span><span></span>
+        <span class="toggle-icon"></span>
       </button>
-      <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
-        <script data-bascik-build type="text/typescript">
-          import { primaryNav } from "./primary-nav.ts";
-          export default () => primaryNav(process.env.BASCIK_PAGE_PATH);
-        </script>
-      </ul>
+      <div id="nav-menu" class="panel" data-testid="site-header-nav-menu">
+        <ul id="nav-list" class="menu">
+          <script data-bascik-build type="text/typescript">
+            import { primaryNav } from "./primary-nav.ts";
+            export default () => primaryNav(process.env.BASCIK_PAGE_PATH);
+          </script>
+        </ul>
+        <div class="mobile">
+          <hr class="separator" />
+          <button id="mobile-theme" type="button" class="mobile-theme" aria-label="Switch to dark theme" data-testid="site-header-mobile-theme" hidden>
+            <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
+            <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+            <span id="mobile-theme-label">Dark</span>
+          </button>
+        </div>
+      </div>
       <theme-toggle />
     </nav>
   </div>
@@ -1293,12 +1381,13 @@ The site header: a skip link, the company name and the main navigation, with one
 //   - each menu button opens and closes the list after it (click, Enter or Space);
 //   - Arrow Down opens the menu and moves through its links, Arrow Up moves back, Home and End jump;
 //   - fine-pointer hover opens the menu across the CSS bridge without requiring a click;
-//   - Escape closes the submenu and returns focus to its button; focus or clicks elsewhere close without stealing focus;
+//   - Escape closes the submenu and returns focus to its button; at desktop width focus or clicks elsewhere close
+//     it without stealing focus;
 //   - at phone width the toggle shows and hides the whole menu, with Escape restoring toggle focus.
-// State lives in aria-expanded and data-state, which the CSS reads.
+// State lives in aria-expanded and, for the submenu, data-state, which the CSS reads.
 const header = document.getElementById("site-header") as HTMLElement;
 const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
-const menu = document.getElementById("nav-menu") as HTMLUListElement;
+const menu = document.getElementById("nav-list") as HTMLUListElement;
 const carets: HTMLButtonElement[] = Array.from(menu.querySelectorAll("button"));
 
 const submenuOf = (caret: HTMLButtonElement): HTMLElement =>
@@ -1312,12 +1401,6 @@ function setSubmenu(caret: HTMLButtonElement, open: boolean): void {
   submenuOf(caret).setAttribute("data-state", open ? "open" : "closed");
   caret.parentElement!.setAttribute("data-state", open ? "open" : "closed");
   if (!open) caret.parentElement!.removeAttribute("data-trigger");
-}
-
-function setMenu(open: boolean): void {
-  toggle.setAttribute("aria-expanded", String(open));
-  menu.setAttribute("data-state", open ? "open" : "closed");
-  if (!open) for (const caret of carets) setSubmenu(caret, false);
 }
 
 const finePointer = matchMedia("(hover: hover) and (pointer: fine)");
@@ -1373,8 +1456,10 @@ for (const caret of carets) {
     }
   });
 
+  // In the phone menu the list is part of the column: closing it as focus leaves would move the row
+  // being pressed out from under the finger, so there it stays open until its button or the menu closes it.
   group.addEventListener("focusout", (event: FocusEvent): void => {
-    if (!group.contains(event.relatedTarget as Node | null)) {
+    if (desktop.matches && !group.contains(event.relatedTarget as Node | null)) {
       setSubmenu(caret, false);
     }
   });
@@ -1387,6 +1472,7 @@ for (const caret of carets) {
 }
 
 document.addEventListener("click", (event: MouseEvent): void => {
+  if (!desktop.matches) return;
   for (const caret of carets) {
     if (!caret.parentElement!.contains(event.target as Node)) {
       setSubmenu(caret, false);
@@ -1394,19 +1480,62 @@ document.addEventListener("click", (event: MouseEvent): void => {
   }
 });
 
-toggle.addEventListener("click", (): void => setMenu(!isOpen(toggle)));
+const setOpen = (open: boolean): void => {
+  if (open) {
+    // The menu fills the screen below the header, so bring the header to the top and measure it.
+    header.scrollIntoView();
+    header.style.setProperty("--menu-top", header.getBoundingClientRect().bottom + "px");
+  }
+  toggle.setAttribute("aria-expanded", String(open));
+  // The page behind the open menu does not scroll.
+  document.body.style.overflow = open ? "hidden" : "";
+  if (!open) for (const caret of carets) setSubmenu(caret, false);
+};
+
+toggle.addEventListener("click", (): void => setOpen(!isOpen(toggle)));
 header.addEventListener("keydown", (event: KeyboardEvent): void => {
   if (event.key === "Escape" && !desktop.matches && isOpen(toggle)) {
     event.preventDefault();
-    setMenu(false);
+    setOpen(false);
     toggle.focus();
   }
 });
-desktop.addEventListener("change", (): void => setMenu(false));
-setMenu(false);
+// Leaving phone width closes the menu, so the page is never left unable to scroll.
+desktop.addEventListener("change", (): void => setOpen(false));
 toggle.hidden = false;
+
 // From here the CSS hides closed menus; before this line every link is visible.
 header.classList.add("enhanced");
+
+// The labeled theme row in the phone menu. <theme-toggle /> is another component, so the row keeps the same
+// storage key and follows the root's data-theme, which both controls write.
+const mobileTheme = document.getElementById("mobile-theme") as HTMLButtonElement;
+const mobileLabel = document.getElementById("mobile-theme-label") as HTMLSpanElement;
+const root = document.documentElement;
+const systemDark = matchMedia("(prefers-color-scheme: dark)");
+const dark = (): boolean => root.dataset.theme
+  ? root.dataset.theme === "dark"
+  : systemDark.matches;
+const sync = (): void => {
+  const d = dark();
+  mobileTheme.dataset.dark = String(d);
+  mobileTheme.setAttribute("aria-label", d ? "Switch to light theme" : "Switch to dark theme");
+  mobileLabel.textContent = d ? "Light" : "Dark";
+};
+const switchTheme = (): void => {
+  root.classList.add("theme-switching");
+  root.dataset.theme = dark() ? "light" : "dark";
+  try { localStorage.setItem("corporate-theme", root.dataset.theme); } catch { /* Still works in memory. */ }
+  sync();
+  void root.offsetWidth;
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+};
+mobileTheme.addEventListener("click", switchTheme);
+systemDark.addEventListener("change", sync);
+window.addEventListener("pageshow", sync);
+sync();
+mobileTheme.hidden = false;
+new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 `,
   ],
   [
@@ -1434,6 +1563,7 @@ An icon-only light/dark toggle. The pressed state means dark mode is active.
   .sun { display: none; }
   .control[aria-pressed="true"] .sun { display: block; }
   .control[aria-pressed="true"] .moon { display: none; }
+  @media (max-width: 760px) { .control { display: none; } }
 </style>
 <button id="theme-button" class="control" type="button" aria-label="Toggle dark mode" aria-pressed="false" data-testid="theme-toggle-button" hidden>
   <svg class="moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
@@ -1469,6 +1599,7 @@ systemDark.addEventListener("change", sync);
 window.addEventListener("pageshow", sync);
 sync();
 button.hidden = false;
+new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 `,
   ],
   [

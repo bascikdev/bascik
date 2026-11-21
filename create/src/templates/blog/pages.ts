@@ -396,15 +396,45 @@ test.describe('Blog E2E Tests', () => {
     await expect(page).toHaveURL('/about#main');
   });
 
-  test('mobile editorial navigation is available without a menu toggle', async ({ page }) => {
+  test('mobile navigation opens from the menu button and ends with the theme switch', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
 
+    const toggle = page.getByTestId('site-header-nav-toggle');
     const menu = page.getByTestId('site-header-nav-menu');
-    await expect(menu).toBeVisible();
     await expect(page.getByTestId('author-sidebar')).toContainText('John Doe');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(menu).toBeHidden();
+    // At phone width the theme switch is a row in the menu, not an icon in the bar.
+    await expect(page.getByTestId('theme-toggle')).toBeHidden();
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(menu).toBeVisible();
+    const themeRow = page.getByTestId('site-header-mobile-theme');
+    const before = await themeRow.innerText();
+    await themeRow.click();
+    await expect(themeRow).not.toHaveText(before);
+
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(toggle).toBeFocused();
+
+    await toggle.click();
     await page.getByTestId('site-header-blog').click();
     await expect(page).toHaveURL('/blog/');
+  });
+
+  test('mobile navigation stays visible without JavaScript', async ({ browser, baseURL }) => {
+    const page = await browser.newPage({ baseURL, javaScriptEnabled: false, viewport: { width: 375, height: 667 } });
+    try {
+      await page.goto('/');
+      await expect(page.getByTestId('site-header-nav-toggle')).toBeHidden();
+      await page.getByTestId('site-header-blog').click();
+      await expect(page).toHaveURL('/blog/');
+    } finally {
+      await page.close();
+    }
   });
 
   test('icon-only dark-mode button toggles and persists the theme', async ({ page }) => {

@@ -213,8 +213,25 @@ describe("fresh production blog in Chromium", () => {
           if (
             ((await toggle.getAttribute("aria-pressed")) === "true") !==
             (theme === "dark")
-          )
-            await toggle.click();
+          ) {
+            if (width > 900) await toggle.click();
+            else {
+              // At phone width the theme switch is the last row of the menu.
+              const navToggle = page.getByTestId("site-header-nav-toggle");
+              const themeRow = page.getByTestId("site-header-mobile-theme");
+              await browserExpect(toggle).toBeHidden();
+              await navToggle.click();
+              await browserExpect(themeRow).toHaveText(
+                theme === "dark" ? "Dark" : "Light",
+              );
+              await themeRow.click();
+              await page.keyboard.press("Escape");
+              await browserExpect(navToggle).toBeFocused();
+              await browserExpect(
+                page.getByTestId("site-header-nav-menu"),
+              ).toBeHidden();
+            }
+          }
           expect(
             await page.evaluate(() => document.documentElement.dataset.theme),
           ).toBe(theme);
@@ -246,6 +263,7 @@ describe("fresh production blog in Chromium", () => {
         }
       }
       await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.setViewportSize({ width: 1440, height: 900 });
       await toggle.focus();
       await page.keyboard.press("Tab");
       await page.keyboard.press("Shift+Tab");

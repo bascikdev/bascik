@@ -284,8 +284,28 @@ describe("fresh portfolio production browser", () => {
       ).toBe("");
       expect(await theme.locator("svg").count()).toBeGreaterThan(0);
       expect(await theme.getAttribute("aria-label")).toBe("Dark theme");
-      await theme.focus();
-      await theme.press("Space");
+      // At phone width the theme switch is the last row of the menu, not the icon in the masthead.
+      const phone = width <= 640;
+      const navToggle = page.getByTestId("site-header-nav-toggle");
+      const themeRow = page.getByTestId("site-header-mobile-theme");
+      expect(await theme.isVisible()).toBe(!phone);
+      const switchTheme = async (): Promise<void> => {
+        if (!phone) {
+          await theme.focus();
+          await theme.press("Space");
+          return;
+        }
+        await navToggle.click();
+        expect(await themeRow.isVisible()).toBe(true);
+        const label = (await themeRow.innerText()).trim();
+        await themeRow.focus();
+        await themeRow.press("Space");
+        expect((await themeRow.innerText()).trim()).toBe(
+          label === "Dark" ? "Light" : "Dark",
+        );
+        await navToggle.click();
+      };
+      await switchTheme();
       expect(await theme.getAttribute("aria-pressed")).toBe("true");
       await page.reload();
       expect(await theme.getAttribute("aria-pressed")).toBe("true");
@@ -295,7 +315,7 @@ describe("fresh portfolio production browser", () => {
       expect(
         await page.evaluate(() => localStorage.getItem("portfolio-theme")),
       ).toBe("dark");
-      await theme.click();
+      await switchTheme();
       expect(await theme.getAttribute("aria-pressed")).toBe("false");
       await page.reload();
       expect(await theme.getAttribute("aria-pressed")).toBe("false");
@@ -306,8 +326,9 @@ describe("fresh portfolio production browser", () => {
         await page.evaluate(() => localStorage.getItem("portfolio-theme")),
       ).toBe("light");
       const menu = page.getByTestId("site-header-nav-menu");
-      if (width <= 640) {
-        const toggle = page.getByTestId("site-header-nav-toggle");
+      if (phone) {
+        const toggle = navToggle;
+        expect(await menu.isVisible()).toBe(false);
         await toggle.click();
         expect(await toggle.getAttribute("aria-expanded")).toBe("true");
         await toggle.press("Escape");

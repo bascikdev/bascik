@@ -18,7 +18,7 @@
  *   `bascik`, `bascik --server`, and the Cloudflare and Netlify adapters.
  * - **In the browser.** Small scoped scripts only: sorting, filtering and
  *   paging the orders table (rows the build already printed), the settings
- *   form (saved to localStorage, a demo), the sidebar's Menu button and the
+ *   form (saved to localStorage, a demo), the header's phone menu and the
  *   theme toggle.
  *
  * No authentication: the generated `src/pages/index.html` says where a real

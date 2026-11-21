@@ -266,6 +266,13 @@ test.describe('Company site E2E Tests', () => {
     await page.getByTestId('site-header-submenu-toggle').click();
     await expect(submenu).toBeVisible();
 
+    // At phone width the theme switch is the last row of the menu and names the theme it switches to.
+    await expect(page.getByTestId('theme-toggle-button')).toBeHidden();
+    const themeRow = page.getByTestId('site-header-mobile-theme');
+    const before = await themeRow.innerText();
+    await themeRow.click();
+    await expect(themeRow).not.toHaveText(before);
+
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(menu).toBeHidden();

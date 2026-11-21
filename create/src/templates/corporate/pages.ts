@@ -401,6 +401,7 @@ export const CORPORATE_CSS = `/* styles.css: the site's global stylesheet. The d
   /* Shape */
   --r:    8px;
   --r-sm: 4px;
+  --menu-top: 68px;
 }
 
 @media (prefers-color-scheme: dark) {

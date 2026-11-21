@@ -350,10 +350,19 @@ describe("freshly scaffolded production docs", () => {
         ).toBe(true);
         expect(await page.getByTestId("docs-article").isVisible()).toBe(true);
         if (width < 760) {
-          await page.getByTestId("docs-sidebar-toggle").click();
-          expect(await page.getByTestId("docs-sidebar-menu").isVisible()).toBe(
-            true,
+          // The header's menu lists the pages at phone width, and ends with the theme switch.
+          expect(await page.getByTestId("docs-sidebar").isVisible()).toBe(
+            false,
           );
+          await page.getByTestId("site-header-nav-toggle").click();
+          expect(
+            await page.getByTestId("site-header-nav-menu").isVisible(),
+          ).toBe(true);
+          expect(
+            (
+              await page.getByTestId("site-header-mobile-theme").innerText()
+            ).trim(),
+          ).toBe(colorScheme === "dark" ? "Light" : "Dark");
         }
         if (width === 320 || width === 1440) {
           await page.screenshot({

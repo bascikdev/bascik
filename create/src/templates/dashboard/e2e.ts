@@ -140,24 +140,38 @@ test.describe("App shell", () => {
     );
   });
 
-  test("collapses the sidebar behind the Menu button at phone width", async ({
+  test("opens the navigation from the header's menu button at phone width", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto("/");
-    const toggle = page.getByTestId("app-sidebar-toggle");
-    const links = page.getByTestId("app-sidebar-links");
+    const toggle = page.getByTestId("app-header-nav-toggle");
+    const menu = page.getByTestId("app-header-nav-menu");
 
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(links).toBeHidden();
+    await expect(menu).toBeHidden();
+    // The header's menu holds the links at phone width: the sidebar and the icon theme button step aside.
+    await expect(page.getByTestId("app-sidebar")).toBeHidden();
+    await expect(page.getByTestId("theme-toggle")).toBeHidden();
 
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(links).toBeVisible();
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("link", { name: "Overview" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
 
-    await toggle.click();
+    // The theme switch is the last row of the menu and names the theme it switches to.
+    const themeRow = page.getByTestId("app-header-mobile-theme");
+    const before = await themeRow.innerText();
+    await themeRow.click();
+    await expect(themeRow).not.toHaveText(before);
+
+    await page.keyboard.press("Escape");
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(links).toBeHidden();
+    await expect(menu).toBeHidden();
+    await expect(toggle).toBeFocused();
 
     // Nothing is wider than the phone: tables and charts scroll inside their own boxes.
     expect(
@@ -165,11 +179,11 @@ test.describe("App shell", () => {
     ).toBeLessThanOrEqual(375);
   });
 
-  test("shows the sidebar without a Menu button at desktop width", async ({
+  test("shows the sidebar without a menu button at desktop width", async ({
     page,
   }) => {
     await page.goto("/");
-    await expect(page.getByTestId("app-sidebar-toggle")).toBeHidden();
+    await expect(page.getByTestId("app-header-nav-toggle")).toBeHidden();
     await expect(page.getByTestId("app-sidebar-links")).toBeVisible();
   });
 

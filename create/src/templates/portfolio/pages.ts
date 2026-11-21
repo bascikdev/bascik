@@ -373,6 +373,13 @@ test.describe("Portfolio E2E Tests", () => {
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(menu).toBeVisible();
 
+    // At phone width the theme switch is the last row of the menu and names the theme it switches to.
+    await expect(page.getByTestId("site-header-theme-toggle")).toBeHidden();
+    const themeRow = page.getByTestId("site-header-mobile-theme");
+    const before = await themeRow.innerText();
+    await themeRow.click();
+    await expect(themeRow).not.toHaveText(before);
+
     await toggle.press("Escape");
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(menu).toBeHidden();

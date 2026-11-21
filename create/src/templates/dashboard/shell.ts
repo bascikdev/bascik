@@ -163,6 +163,10 @@ A button that switches between light and dark themes and remembers the choice. N
   .toggle:hover {
     background: var(--color-accent-wash);
   }
+
+  @media (max-width: 47.99rem) {
+    .toggle { display: none; }
+  }
 </style>
 <button
   class="toggle"
@@ -263,7 +267,7 @@ describe("theme-toggle component", () => {
   [
     "src/components/app-header/app-header.html",
     `<!-- @bascik
-The top bar of every page: the skip link, the site's name, and the theme toggle.
+The top bar of every page: the skip link, the site's name, and the theme toggle. At phone width a menu button at the top right opens the navigation, which prints the sidebar's links and ends with the theme switch.
 -->
 <style>
   header {
@@ -274,6 +278,7 @@ The top bar of every page: the skip link, the site's name, and the theme toggle.
     padding: var(--space-2) clamp(1rem, 3vw, 2rem);
     border-bottom: 1px solid var(--color-border);
     background: var(--color-surface);
+    position: relative;
   }
 
   .skip-link {
@@ -317,6 +322,121 @@ The top bar of every page: the skip link, the site's name, and the theme toggle.
       padding-inline: var(--space-3);
     }
   }
+
+  /* The phone-width menu button: three bars that become a cross while the menu is open. */
+  .menu-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    margin-left: auto;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius);
+    background: none;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .menu-toggle:hover { background: var(--color-accent-wash); }
+  .toggle-icon,
+  .toggle-icon::before,
+  .toggle-icon::after {
+    display: block;
+    width: 20px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--color-muted);
+  }
+  .toggle-icon { position: relative; }
+  .toggle-icon::before,
+  .toggle-icon::after { content: ""; position: absolute; left: 0; }
+  .toggle-icon::before { translate: 0 -6px; }
+  .toggle-icon::after { translate: 0 6px; }
+  .menu-toggle[aria-expanded="true"] .toggle-icon { background: transparent; }
+  .menu-toggle[aria-expanded="true"] .toggle-icon::before { translate: 0 0; rotate: 45deg; }
+  .menu-toggle[aria-expanded="true"] .toggle-icon::after { translate: 0 0; rotate: -45deg; }
+  @media (prefers-reduced-motion: no-preference) {
+    .toggle-icon::before,
+    .toggle-icon::after { transition: translate 150ms ease-out, rotate 150ms ease-out; }
+  }
+
+  /* The panel is hidden at desktop width. */
+  .panel { display: none; }
+
+  /* The theme row at the bottom of the phone menu. */
+  .mobile { display: none; }
+  .separator { margin: 16px 0 20px; border: 0; border-top: 1px solid var(--color-border); }
+  .mobile-theme {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: var(--radius);
+    background: none;
+    color: var(--color-muted);
+    font: inherit;
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mobile-theme[hidden] { display: none; }
+  .mobile-theme:hover { color: inherit; background: var(--color-accent-wash); }
+  .mobile-theme svg { flex: 0 0 18px; width: 18px; height: 18px; }
+  .mobile-theme .sun { display: none; }
+  .mobile-theme[data-dark="true"] .sun { display: block; }
+  .mobile-theme[data-dark="true"] .moon { display: none; }
+
+  @media (max-width: 47.99rem) {
+    .menu-toggle:not([hidden]) { display: flex; }
+    /* The open menu covers the screen below the header. */
+    .menu-toggle:not([hidden]) + .panel {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      height: calc(100dvh - var(--menu-top, 4rem));
+      overflow-y: auto;
+      z-index: 100;
+      background: var(--color-bg);
+      padding: var(--space-4) var(--space-3);
+      flex-direction: column;
+      align-items: stretch;
+      margin: 0;
+    }
+    .menu-toggle[aria-expanded="true"] + .panel { display: flex; }
+    .menu-toggle:not([hidden]) + .panel .links {
+      display: grid;
+      gap: var(--space-1);
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .menu-toggle:not([hidden]) + .panel .links a {
+      display: flex;
+      align-items: center;
+      min-height: 2.75rem;
+      padding: var(--space-2) 0.75rem;
+      border-radius: var(--radius);
+      color: inherit;
+      font-size: 0.9375rem;
+      text-decoration: none;
+    }
+    .menu-toggle:not([hidden]) + .panel .links a:hover {
+      background: var(--color-accent-wash);
+    }
+    .menu-toggle:not([hidden]) + .panel .links a[aria-current="page"] {
+      font-weight: 700;
+      background: var(--color-accent-wash);
+    }
+
+    .menu-toggle:not([hidden]) + .panel .mobile { display: block; }
+  }
 </style>
 <header data-testid="app-header">
   <a href="#main" class="skip-link" data-testid="app-header-skip-link"
@@ -330,8 +450,97 @@ The top bar of every page: the skip link, the site's name, and the theme toggle.
     </script>
   </a>
   <span class="area">Operations</span>
+  <button id="nav-toggle" type="button" class="menu-toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="app-header-nav-toggle" hidden>
+    <span class="toggle-icon"></span>
+  </button>
+  <div id="nav-menu" class="panel" data-testid="app-header-nav-menu">
+    <nav aria-label="Main" data-testid="app-header-nav">
+      <ul class="links" data-testid="app-header-nav-links">
+        <script data-bascik-build type="text/typescript">
+          import { navLinks } from "../app-sidebar/nav.ts";
+          // The same links as the sidebar, which is not displayed at phone width.
+          export default () => navLinks(process.env.BASCIK_PAGE_PATH);
+        </script>
+      </ul>
+    </nav>
+    <div class="mobile">
+      <hr class="separator" />
+      <button id="mobile-theme" type="button" class="mobile-theme" aria-label="Switch to dark theme" data-testid="app-header-mobile-theme" hidden>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+        <span id="mobile-theme-label">Dark</span>
+      </button>
+    </div>
+  </div>
   <theme-toggle />
 </header>
+<script type="text/typescript">
+  const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
+  const header = toggle.closest("header") as HTMLElement;
+  const setOpen = (open: boolean): void => {
+    if (open) {
+      // The menu fills the screen below the header, so bring the header to the top and measure it.
+      header.scrollIntoView();
+      header.style.setProperty("--menu-top", header.getBoundingClientRect().bottom + "px");
+    }
+    toggle.setAttribute("aria-expanded", String(open));
+    // The page behind the open menu does not scroll.
+    document.body.style.overflow = open ? "hidden" : "";
+  };
+  toggle.addEventListener("click", (): void => {
+    setOpen(toggle.getAttribute("aria-expanded") !== "true");
+  });
+  header.addEventListener("keydown", (event): void => {
+    if (event.key !== "Escape" || toggle.getAttribute("aria-expanded") !== "true" || toggle.getClientRects().length === 0) return;
+    setOpen(false);
+    toggle.focus();
+  });
+  // Leaving phone width closes the menu, so the page is never left unable to scroll.
+  matchMedia("(max-width: 47.99rem)").addEventListener("change", (): void => setOpen(false));
+  toggle.hidden = false;
+
+  // The labeled theme row in the phone menu. <theme-toggle /> is another component, so the row keeps the same
+  // storage key and follows the root's data-theme, which both controls write.
+  const mobileTheme = document.getElementById("mobile-theme") as HTMLButtonElement;
+  const mobileLabel = document.getElementById("mobile-theme-label") as HTMLSpanElement;
+  const root = document.documentElement;
+  const media = matchMedia("(prefers-color-scheme: dark)");
+
+  const current = (): string =>
+    root.getAttribute("data-theme") ?? (media.matches ? "dark" : "light");
+
+  const sync = (): void => {
+    const dark = current() === "dark";
+    // The row names the theme it switches to.
+    mobileTheme.dataset.dark = String(dark);
+    mobileTheme.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+    mobileLabel.textContent = dark ? "Light" : "Dark";
+  };
+
+  const switchTheme = (): void => {
+    const next = current() === "dark" ? "light" : "dark";
+    root.classList.add("theme-switching");
+    root.setAttribute("data-theme", next);
+    requestAnimationFrame(() => root.classList.remove("theme-switching"));
+    try {
+      localStorage.setItem("theme", next);
+    } catch {
+      // Not persisted when storage is unavailable; the choice still applies here.
+    }
+    sync();
+  };
+
+  mobileTheme.addEventListener("click", switchTheme);
+  media.addEventListener("change", sync);
+  // Stay in sync when any other script changes the theme.
+  new MutationObserver(sync).observe(root, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+  window.addEventListener("pageshow", sync);
+  sync();
+  mobileTheme.hidden = false;
+</script>
 `,
   ],
 
@@ -368,6 +577,22 @@ describe("app-header component", () => {
     expect(html).toContain("html\`\${SITE_NAME}\`");
     expect(html).toContain("<theme-toggle />");
   });
+
+  it("has a phone menu: a hidden-until-scripted button, the sidebar's links, then a labeled theme row", async () => {
+    const html = await source();
+    expect(html).toMatch(
+      /<button id="nav-toggle"[^>]*aria-controls="nav-menu"[^>]*aria-expanded="false"[^>]*hidden>/,
+    );
+    expect(html).toContain('.menu-toggle[aria-expanded="true"] + .panel');
+    expect(html).toContain('import { navLinks } from "../app-sidebar/nav.ts"');
+    const menu = html.slice(html.indexOf('id="nav-menu"'));
+    expect(menu.indexOf("navLinks(")).toBeLessThan(
+      menu.indexOf('id="mobile-theme"'),
+    );
+    expect(html).toMatch(
+      /<button id="mobile-theme"[^>]*data-testid="app-header-mobile-theme"[^>]*hidden>/,
+    );
+  });
 });
 `,
   ],
@@ -375,24 +600,13 @@ describe("app-header component", () => {
   [
     "src/components/app-sidebar/app-sidebar.html",
     `<!-- @bascik
-The sidebar navigation. It marks the link to the page being built with aria-current="page". At phone width the links collapse behind the Menu button; without JavaScript they stay open.
+The sidebar navigation. It marks the link to the page being built with aria-current="page". At phone width <app-header /> lists the same links in its menu and this sidebar is not displayed; without JavaScript it stays in place.
 -->
 <style>
   .sidebar {
     padding: var(--space-4) var(--space-3);
     border-inline-end: 1px solid var(--color-border);
     background: var(--color-bg);
-  }
-
-  .toggle {
-    display: none;
-    padding: var(--space-1) var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    background: var(--color-bg);
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
   }
 
   .links {
@@ -431,16 +645,7 @@ The sidebar navigation. It marks the link to the page being built with aria-curr
       border-bottom: 1px solid var(--color-border);
     }
 
-    .toggle {
-      display: block;
-    }
-
-    /* An author display value beats the hidden attribute, so restate it: no button without its script. */
-    .toggle[hidden] {
-      display: none;
-    }
-
-    .sidebar[data-collapsed="true"] .links {
+    .sidebar[data-enhanced="true"] {
       display: none;
     }
 
@@ -450,17 +655,6 @@ The sidebar navigation. It marks the link to the page being built with aria-curr
   }
 </style>
 <nav class="sidebar" id="sidebar" aria-label="Main" data-testid="app-sidebar">
-  <button
-    class="toggle"
-    id="toggle"
-    type="button"
-    aria-expanded="true"
-    aria-controls="links"
-    data-testid="app-sidebar-toggle"
-    hidden
-  >
-    Menu
-  </button>
   <ul class="links" id="links" data-testid="app-sidebar-links">
     <script data-bascik-build type="text/typescript">
       import { navLinks } from "./nav.ts";
@@ -470,20 +664,9 @@ The sidebar navigation. It marks the link to the page being built with aria-curr
   </ul>
 </nav>
 <script type="text/typescript">
-  const toggle = document.getElementById("toggle") as HTMLButtonElement;
   const sidebar = document.getElementById("sidebar") as HTMLElement;
-
-  // One function applies the state: the button says it, and the CSS reads it at phone width.
-  const render = (open: boolean): void => {
-    toggle.setAttribute("aria-expanded", String(open));
-    sidebar.setAttribute("data-collapsed", String(!open));
-  };
-
-  toggle.addEventListener("click", () =>
-    render(toggle.getAttribute("aria-expanded") !== "true"),
-  );
-  render(false);
-  toggle.hidden = false;
+  // With this script running, <app-header /> has the phone menu, so the sidebar steps aside at phone width.
+  sidebar.dataset.enhanced = "true";
 </script>
 `,
   ],
@@ -552,20 +735,20 @@ const source = (): Promise<string> =>
   );
 
 describe("app-sidebar component", () => {
-  it("is a labeled <nav> whose Menu button is a real button that controls the list", async () => {
+  it("is a labeled <nav> around the list of links, with no menu button of its own", async () => {
     const html = await source();
     expect(html).toMatch(/<nav[^>]*aria-label="Main"/);
-    expect(html).toMatch(
-      /<button[^>]*type="button"[^>]*aria-expanded="true"[^>]*aria-controls="links"[^>]*hidden/s,
-    );
     expect(html).toContain('<ul class="links" id="links"');
+    expect(html).not.toContain("<button");
   });
 
-  it("keeps the links open without JavaScript: only the script collapses them", async () => {
+  it("stays in place without JavaScript: only its script lets it step aside at phone width", async () => {
     const html = await source();
-    expect(html).not.toMatch(/<nav[^>]*data-collapsed/);
-    expect(html).toContain('sidebar.setAttribute("data-collapsed"');
-    expect(html).toContain("toggle.hidden = false");
+    expect(html).not.toMatch(/<nav[^>]*data-enhanced/);
+    expect(html).toContain('sidebar.dataset.enhanced = "true"');
+    expect(html).toMatch(
+      /\\.sidebar\\[data-enhanced="true"\\] \\{\\s*display: none;/,
+    );
   });
 
   it("marks the current page from the page being built", async () => {

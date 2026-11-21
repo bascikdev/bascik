@@ -205,12 +205,13 @@ describe("dashboard template, built and served", () => {
       expect(markup.match(/<main\b/g), page).toHaveLength(1);
       expect(markup.match(/<h1\b/g), page).toHaveLength(1);
       expect(html, page).toMatch(/<title>[^<]+ - my-dashboard<\/title>/);
+      // The sidebar and the header's phone menu each mark the current page.
       expect(markup.match(/aria-current="page"/g) ?? [], page).toHaveLength(
         page.startsWith("titles" + "/") ||
           page.startsWith("titles\\") ||
           page === "404.html"
           ? 0
-          : 1,
+          : 2,
       );
     }
 
