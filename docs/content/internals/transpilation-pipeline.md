@@ -208,7 +208,7 @@ Each file contains `{ "v": <version>, "output": "<html>" }`. The `v` field is a 
 
 The key is the SHA-256 hex digest of:
 
-1. The cache version integer.
+1. The cache version integer and the installed `@bascik/bascik` version (read once per process by `readVersion()`), so an upgrade never reuses output an older runner produced. The integer still covers changes that keep the version, such as edits in a linked checkout.
 2. The authored script content before relative import specifier rewriting.
 3. `"1"` or `"0"` for build vs. dev mode (`isBuild`), since the same script may produce different output in each mode via the `BASCIK_BUILD` env var.
 4. The source file path (`BASCIK_SOURCE_FILE`).

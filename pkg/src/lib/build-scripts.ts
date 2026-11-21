@@ -93,6 +93,7 @@ import {
   type OutputScope,
 } from "./output-scope.ts";
 import { removeOutputDirectives } from "./output-directives.ts";
+import { readVersion } from "./version.ts";
 import {
   ATTR,
   ANY_BUILD_FLAG,
@@ -166,6 +167,13 @@ const PROCESS_ENV_READ_RE = /\bprocess\.env\.([A-Za-z_$][A-Za-z0-9_$]*)\b/g;
 
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
 export const SCRIPT_CACHE_VERSION = 12;
+
+// The installed Bascik version is part of every key, so upgrading Bascik never
+// serves output that an older runner produced. SCRIPT_CACHE_VERSION still
+// covers changes made without a version change, such as a linked checkout.
+let bascikVersion: Promise<string> | undefined;
+const getBascikVersion = (): Promise<string> =>
+  (bascikVersion ??= readVersion());
 
 // A script (or a local helper it imports) that names either variable can read
 // the file it points at, which static dependency scanning cannot see. Such
@@ -316,6 +324,7 @@ export const clearBuildScriptCaches = (filePath?: string): void => {
   dependenciesByOutputKey.clear();
   dependencyScanCache.clear();
   clearPackageIdentityCache();
+  bascikVersion = undefined;
 };
 
 /** Observe the in-memory caches in tests without exposing the maps. */
@@ -548,6 +557,7 @@ const computeScriptCacheKey = async (
 ): Promise<string> => {
   const hash = createHash("sha256");
   hash.update(String(SCRIPT_CACHE_VERSION));
+  hash.update(`BASCIK:${await getBascikVersion()}`);
   // A variant keeps records of another kind (output shared across pages) apart
   // from page-specific records. Empty for the page-specific key, which keeps
   // existing cache entries valid.
