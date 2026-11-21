@@ -48,11 +48,16 @@ const { state, buildScriptMocks } = vi.hoisted(() => {
       return state.userReadFileMock(filePath, ...args);
     }),
     computePackageIdentity: vi.fn(),
+    readVersion: vi.fn(async () => "1.0.0"),
     // Wraps the real tokenizer so tests can count dependency scans by input.
     scanScript: vi.fn(),
   };
   return { state, buildScriptMocks: mocks };
 });
+
+vi.mock("./version.ts", () => ({
+  readVersion: buildScriptMocks.readVersion,
+}));
 
 vi.mock("./module-specifiers.ts", async (importOriginal) => {
   const actual =
@@ -255,6 +260,7 @@ beforeEach(() => {
     .mockImplementation(async (prefix: string) => `${prefix}mockdir`);
   buildScriptMocks.rm.mockReset().mockResolvedValue(undefined);
   buildScriptMocks.stat.mockReset().mockResolvedValue({ size: 100 });
+  buildScriptMocks.readVersion.mockReset().mockResolvedValue("1.0.0");
   buildScriptMocks.computePackageIdentity
     .mockReset()
     .mockResolvedValue("pkgid:mock");
@@ -1629,6 +1635,24 @@ describe("build-script output cache", () => {
     const entry = JSON.parse(content);
     expect(entry.output).toBe("<p>result</p>");
     expect(entry.v).toBeGreaterThan(0);
+  });
+
+  it("keys entries by the installed Bascik version", async () => {
+    const cachePath = async (): Promise<string> => {
+      mockWriteFile.mockClear();
+      resolveWith("<p>result</p>");
+      await executeBuildScripts("<script data-bascik-build>nodeps()</script>");
+      const jsonCall = mockWriteFile.mock.calls.find(([path]) =>
+        String(path).endsWith(".json"),
+      );
+      return String(jsonCall?.[0]);
+    };
+    const before = await cachePath();
+    clearBuildScriptCaches();
+    buildScriptMocks.readVersion.mockResolvedValue("1.0.1");
+    const after = await cachePath();
+    expect(after).not.toBe(before);
+    expect(after).toMatch(/\.json$/);
   });
 
   it("does not write a cache entry when the script fails", async () => {
