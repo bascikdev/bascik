@@ -193,6 +193,15 @@ describe("release.yml instructions", () => {
     }
   });
 
+  // create-v1.1.0 failed in release.yml because the job ran create's browser
+  // tests without the Chromium install step ci.yml has.
+  it("installs Chromium before create-bascik's tests, which launch a browser", () => {
+    const job = workflow.split(/^  release-create:$/m)[1].split(/^  \S/m)[0];
+    const install = job.indexOf("npx playwright install chromium");
+    expect(install, job).toBeGreaterThan(-1);
+    expect(install).toBeLessThan(job.indexOf("run: yarn test:ci"));
+  });
+
   it("tags origin/main and pushes each documented tag by name to origin", () => {
     const examples = workflow
       .split("\n")

@@ -109,6 +109,10 @@ jobs:
       - name: Build Netlify adapter
         run: yarn adapter:nf:build
 
+      # create's template tests drive the scaffolded sites in Chromium.
+      - name: Install Chromium for template browser regressions
+        run: npx playwright install chromium
+
       - name: Run tests
         working-directory: create
         run: yarn test:ci
