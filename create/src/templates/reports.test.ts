@@ -80,6 +80,28 @@ describe("reports template", () => {
       "localStorage",
     );
   });
+  it("declares only folders that hold a file, so a file at the project root adds none", () => {
+    // A root-level path has no "/": slicing it at -1 once declared "REPORTS.m" and "bascik.config.t".
+    for (const template of TEMPLATES) {
+      for (const adapter of [undefined, ...ADAPTERS]) {
+        const context = { siteName: "my-site", adapter };
+        const parents = new Set(
+          template
+            .files(context)
+            .filter(([path]) => path.includes("/"))
+            .map(([path]) => dirname(path)),
+        );
+        for (const folder of template.directories(context))
+          expect(
+            [...parents].some(
+              (parent) => parent === folder || parent.startsWith(`${folder}/`),
+            ),
+            `${template.name} declares ${folder}`,
+          ).toBe(true);
+      }
+    }
+  });
+
   it("is registered under its name with the documented summary", () => {
     expect(templateNamed("reports")).toBe(REPORTS_TEMPLATE);
     expect(TEMPLATES).toContain(REPORTS_TEMPLATE);
