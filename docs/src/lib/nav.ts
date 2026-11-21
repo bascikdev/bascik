@@ -45,7 +45,6 @@ export const NAV: NavSection[] = [
       { href: "/developer-experience", label: "Developer Experience" },
       { href: "/vs-frameworks", label: "Bascik vs Frameworks" },
       { href: "/getting-started", label: "Getting Started" },
-      { href: "/templates", label: "Create Bascik Templates" },
     ],
   },
   {
@@ -85,6 +84,7 @@ export const NAV: NavSection[] = [
       { href: "/environment-variables", label: "Environment Variables" },
       { href: "/compatibility", label: "Compatibility" },
       { href: "/cli", label: "Command Line Interface (CLI)" },
+      { href: "/templates", label: "Create Bascik Templates" },
       { href: "/package-exports", label: "Package Exports" },
       { href: "/html-helpers", label: "HTML Helpers" },
       { href: "/development-server", label: "Development Server" },
