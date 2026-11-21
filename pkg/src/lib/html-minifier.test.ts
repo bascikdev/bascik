@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import fc from "fast-check";
 import { minifyHtml, extractScriptTags } from "./html-minifier.ts";
 import { domSnapshot } from "./html-parse-oracle.test-helper.ts";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 
 /**
  * The browser's view of `html`: structure and text with comments and
@@ -306,6 +307,18 @@ describe("extractScriptTags", () => {
     },
   );
 
+  it.each(["pre", "listing"])(
+    "keeps the first newline ignored by the parser in a foster-parented %s",
+    (tag) => {
+      for (const newline of ["\n", "\r\n"]) {
+        expectSameParse(`<script>a()</script><table><${tag}>${newline}<style>`);
+        expectSameParse(
+          `<script>a()</script><table><${tag}>${newline}text<style>`,
+        );
+      }
+    },
+  );
+
   it("keeps two identical module scripts in run order when the hoisted one lands in a foster-parented element", () => {
     // The property test's counterexample (seed 870887758): the document ends
     // inside a `<pre>` written in a table, which the parser moves before the
@@ -327,97 +340,105 @@ describe("extractScriptTags", () => {
     );
   });
 
-  it("never changes what the browser builds or which scripts can run, on random malformed markup", () => {
-    // parse5 is the oracle: structure, text, and the set of scripts that can
-    // run must match before and after. A joined script, a script hoisted into
-    // inert markup, a split script, or a changed character reference all fail.
-    const fragment = fc.constantFrom(
-      "<script>a()</script>",
-      "<script type=module>m()</script>",
-      "<script data-bascik-server>s()</script>",
-      '<script type="importmap">{}</script>',
-      "<script>",
-      "</script>",
-      "<scr",
-      "ipt>",
-      "ipt>b()</script>",
-      "<script><!--<script>",
-      "-->",
-      "<!--",
-      "--!>",
-      "<!-->",
-      "<!-- c -->",
-      "<!x>",
-      "</",
-      "<",
-      ">",
-      '"',
-      "'",
-      "=",
-      "x",
-      "&am",
-      "p;",
-      "<p>",
-      "</p>",
-      '<div title="',
-      '">',
-      "<b <",
-      "</div>",
-      "<pre>",
-      "</pre>",
-      "<template>",
-      "</template>",
-      "<textarea>",
-      "</textarea>",
-      "<title>",
-      "</title>",
-      "<noscript>",
-      "</noscript>",
-      "<style>",
-      "</style>",
-      "<plaintext>",
-      "<svg>",
-      "</svg>",
-      "<foreignObject>",
-      "<math>",
-      "<mi>",
-      "<![CDATA[",
-      "]]>",
-      "<table>",
-      "<td>",
-      "<select>",
-      // Whitespace in every context: text, between tags, in values, and in
-      // preformatted and code content.
-      " ",
-      "  ",
-      "\n",
-      "\t",
-      "\f",
-      "\r\n",
-      "\u00a0",
-      "\u3000",
-      '<b title="a  b\nc">',
-      "</b>",
-      "<i class=x>",
-      "</i>",
-      "<listing>",
-      "</listing>",
-      "<xmp>",
-      "</xmp>",
-      "</pre x>",
-      "<svg><script>",
-      "<svg><style>",
-      // Breakout tags, which leave unclosed SVG or MathML.
-      "<span>",
-      "<br>",
-    );
-    fc.assert(
-      fc.property(fc.array(fragment, { maxLength: 16 }), (parts) => {
-        expectSameParse(parts.join(""));
-      }),
-      { numRuns: 4000 },
-    );
-  });
+  const MALFORMED_MARKUP_BOUNDS = propertyBounds(
+    4000,
+    "HTML_MINIFIER_ORACLE_RUNS",
+  );
+  it(
+    "never changes what the browser builds or which scripts can run, on random malformed markup",
+    () => {
+      // parse5 is the oracle: structure, text, and the set of scripts that can
+      // run must match before and after. A joined script, a script hoisted into
+      // inert markup, a split script, or a changed character reference all fail.
+      const fragment = fc.constantFrom(
+        "<script>a()</script>",
+        "<script type=module>m()</script>",
+        "<script data-bascik-server>s()</script>",
+        '<script type="importmap">{}</script>',
+        "<script>",
+        "</script>",
+        "<scr",
+        "ipt>",
+        "ipt>b()</script>",
+        "<script><!--<script>",
+        "-->",
+        "<!--",
+        "--!>",
+        "<!-->",
+        "<!-- c -->",
+        "<!x>",
+        "</",
+        "<",
+        ">",
+        '"',
+        "'",
+        "=",
+        "x",
+        "&am",
+        "p;",
+        "<p>",
+        "</p>",
+        '<div title="',
+        '">',
+        "<b <",
+        "</div>",
+        "<pre>",
+        "</pre>",
+        "<template>",
+        "</template>",
+        "<textarea>",
+        "</textarea>",
+        "<title>",
+        "</title>",
+        "<noscript>",
+        "</noscript>",
+        "<style>",
+        "</style>",
+        "<plaintext>",
+        "<svg>",
+        "</svg>",
+        "<foreignObject>",
+        "<math>",
+        "<mi>",
+        "<![CDATA[",
+        "]]>",
+        "<table>",
+        "<td>",
+        "<select>",
+        // Whitespace in every context: text, between tags, in values, and in
+        // preformatted and code content.
+        " ",
+        "  ",
+        "\n",
+        "\t",
+        "\f",
+        "\r\n",
+        "\u00a0",
+        "\u3000",
+        '<b title="a  b\nc">',
+        "</b>",
+        "<i class=x>",
+        "</i>",
+        "<listing>",
+        "</listing>",
+        "<xmp>",
+        "</xmp>",
+        "</pre x>",
+        "<svg><script>",
+        "<svg><style>",
+        // Breakout tags, which leave unclosed SVG or MathML.
+        "<span>",
+        "<br>",
+      );
+      fc.assert(
+        fc.property(fc.array(fragment, { maxLength: 16 }), (parts) => {
+          expectSameParse(parts.join(""));
+        }),
+        MALFORMED_MARKUP_BOUNDS.options,
+      );
+    },
+    MALFORMED_MARKUP_BOUNDS.timeoutMs,
+  );
 });
 
 describe("minifyHtml", () => {

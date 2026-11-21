@@ -49,6 +49,7 @@ it is not `@bascik/bascik`.
 
 ### Fixed
 
+- HTML minification preserves the browser's handling of an initial newline in `<pre>` and `<listing>` when malformed table markup would otherwise move a script in front of it. See [HTML minification](https://bascik.dev/internals/minification#html-minification-html-minifierts).
 - Upgrading `@bascik/bascik` now runs every build script again. The installed version is part of the build script cache key, so a new release never serves output an older version produced, and you no longer need to delete `node_modules/.cache/bascik` after upgrading. See [Performance: Output Caching](https://bascik.dev/scripts/build#performance-output-caching).
 - `create-bascik`: portfolio restores only its own saved theme, and generated database ignore entries stay specific to the selected template.
 - `create-bascik`: default's icon-only theme toggle follows Contact at the far right of desktop navigation and in keyboard order.
