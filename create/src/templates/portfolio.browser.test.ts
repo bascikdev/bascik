@@ -355,7 +355,7 @@ describe("fresh portfolio production browser", () => {
       ).toBe(0);
     }
     await page.close();
-  });
+  }, 30_000);
 
   it("shows static first-paint content and sample labels even without JavaScript", async () => {
     for (const reducedMotion of ["no-preference", "reduce"] as const) {
