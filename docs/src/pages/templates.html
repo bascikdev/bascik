@@ -18,7 +18,7 @@
       name="description"
       content="Compare all Create Bascik templates, browse live starter sites, and find the command to scaffold the one you want."
     />
-    <title>Create Bascik Templates</title>
+    <title>Templates - Bascik Docs</title>
   </head>
   <body>
     <docs-nav />
@@ -35,7 +35,7 @@
             export default () =>
               renderMdRange("./content/templates.md", { to: "Default" });
           </script>
-          <showcase-grid>
+          <showcase-grid data-columns="1">
             <script data-bascik-build type="text/typescript">
               import { renderTemplateGallery } from "@/lib/template-gallery.ts";
               export default () => renderTemplateGallery();

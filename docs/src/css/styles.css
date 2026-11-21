@@ -283,6 +283,13 @@ body {
   --cblock-header-display: none;
 }
 
+/* A one-line command, such as the install command on a template card. */
+[data-cblock-compact] {
+  --cblock-header-display: none;
+  --cblock-padding: 10px 40px 10px 14px;
+  --cblock-font-size: 0.78rem;
+}
+
 /* ── Tab button: parallelogram active state, used with tab-bar component ── */
 .tab-btn {
   padding: 10px 16px;
@@ -511,7 +518,7 @@ pre code {
   border: none;
   padding: 0;
   color: var(--pre-text);
-  font-size: 0.82rem;
+  font-size: var(--cblock-font-size, 0.82rem);
   line-height: 1.7;
 }
 
