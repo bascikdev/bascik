@@ -100,7 +100,8 @@ export const handlePageWorkerMessage = async (
     const hasDetail =
       detail.stage !== undefined ||
       detail.location !== undefined ||
-      detail.failedDependencies !== undefined;
+      detail.failedDependencies !== undefined ||
+      detail.buildScripts !== undefined;
     port?.postMessage(
       hasDetail
         ? { ok: false, error: errorMsg, detail }
@@ -146,9 +147,11 @@ export const PAGE_WORKER_SELF_EXIT_MS = 1_000;
  * drain so the thread ends on its own with code 0. An unref'd timer exits
  * it if something else still holds the loop open; it never holds it itself.
  * Ending between tasks, not wherever an external `worker.terminate()`
- * lands, keeps the thread from being stopped while V8 is allocating code,
- * which can abort the whole process on Node 24 ("Check failed:
- * jit_page.has_value()").
+ * lands, keeps the thread from being stopped in the middle of a build
+ * script or a module evaluation. It does not keep this thread's teardown
+ * from racing another thread's wasm on Node 24 ("Check failed:
+ * jit_page.has_value()"); `WorkerPool` turns off wasm code GC for that
+ * (`wasm-code-gc.ts`).
  */
 export const endPageWorker = async (
   port: { close(): void },
@@ -232,8 +235,8 @@ if (parentPort && workerData) {
   );
   // This module is the worker's entry, so it finishes evaluating after its
   // whole import graph (top-level awaits included). Only now is it safe for
-  // the pool to terminate this worker: Node can abort the process when a
-  // worker is terminated mid-evaluation (`WorkerPool` `readySignal`). Posted
+  // the pool to stop this worker: Node can abort the process when a worker
+  // is terminated mid-evaluation (`WorkerPool` `readySignal`). Posted
   // after the listener is registered, and never confused with a page result.
   port.postMessage({ ready: true });
 }

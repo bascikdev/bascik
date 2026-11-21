@@ -16,25 +16,13 @@ const replaceOpeningTags = (
     replace,
   );
 import {
-  createContentShield,
   maskElementContents,
   shieldElementContents,
+  shieldHtmlComments,
 } from "./shielding.ts";
 
-const shieldComments = (
-  html: string,
-): {
-  html: string;
-  restore: (value: string) => string;
-} => {
-  const shield = createContentShield(html);
-  return {
-    html: html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-      shield.hide(comment),
-    ),
-    restore: shield.restore,
-  };
-};
+/** Hide comments and SVG/MathML CDATA sections, which hold no attributes. */
+const shieldComments = shieldHtmlComments;
 
 const shieldHtmlScanningContexts = (
   html: string,

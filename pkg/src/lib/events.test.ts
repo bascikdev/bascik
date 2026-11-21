@@ -6,6 +6,10 @@ import {
   runShutdownHandlers,
   _resetShutdownHandlersForTesting,
 } from "./events.ts";
+import {
+  isExitInProgress,
+  resetShutdownStateForTests,
+} from "./exit-stoppers.ts";
 
 describe("eventEmitter", () => {
   beforeEach(() => {
@@ -61,6 +65,26 @@ describe("eventEmitter", () => {
     await runShutdownHandlers();
     expect(fn1).toHaveBeenCalledTimes(1);
     expect(fn2).toHaveBeenCalledTimes(1);
+  });
+
+  // The exec scripts a shutdown stops exit with no code. Reported, a dev
+  // server's Ctrl-C printed "exec error ... exited with code null" for a
+  // parallel script, and "Continuing because pipeline.onExecError is 'warn'"
+  // for a post script; both read the exit flag.
+  it("marks the process as exiting before it stops anything", async () => {
+    resetShutdownStateForTests();
+    let seen: boolean | undefined;
+    registerShutdownHandler(() => {
+      seen = isExitInProgress();
+    });
+    try {
+      expect(isExitInProgress()).toBe(false);
+      await runShutdownHandlers();
+      expect(seen).toBe(true);
+      expect(isExitInProgress()).toBe(true);
+    } finally {
+      resetShutdownStateForTests();
+    }
   });
 
   it("invokes subsequent shutdown handlers even when a preceding handler throws synchronously", async () => {

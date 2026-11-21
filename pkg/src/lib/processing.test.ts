@@ -2251,6 +2251,33 @@ describe("transpilePage – unresolved component tag warning", () => {
     }
   });
 
+  it("does not warn about SVG and MathML elements whose names the custom element spec reserves", async () => {
+    const html = [
+      "<!DOCTYPE html><html><head></head><body>",
+      '<svg><font-face><font-face-src><font-face-uri href="x.svg"><font-face-format></font-face-format></font-face-uri><font-face-name></font-face-name></font-face-src></font-face>',
+      "<missing-glyph></missing-glyph><COLOR-PROFILE></COLOR-PROFILE></svg>",
+      '<math><semantics><mi>x</mi><annotation-xml encoding="text/html"><b>x</b></annotation-xml></semantics></math>',
+      "<font-faces></font-faces>",
+      "</body></html>",
+    ].join("");
+    (readFile as ReturnType<typeof vi.fn>).mockResolvedValue(html);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await transpilePage(PAGE_PATH, {});
+      const warnings = warnSpy.mock.calls
+        .map((call) => String(call[0]))
+        .filter((message) => message.includes("Unresolved component tag"));
+      // Only the near miss is reported.
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("<font-faces>");
+      expect(warnings[0]).not.toMatch(
+        /<(?:font-face|font-face-src|font-face-uri|font-face-format|font-face-name|missing-glyph|color-profile|annotation-xml)>/,
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("still warns about an undeclared tag when others are external, and names only that tag", async () => {
     const html = [
       "<!DOCTYPE html><html><head></head><body>",

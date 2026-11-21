@@ -59,6 +59,7 @@ import {
  * hashed to short hex strings (e.g. `bab12cd3`) for smaller output.
  */
 
+import { withOpenFileSlot } from "./open-file-limit.ts";
 import { readFile } from "node:fs/promises";
 import { cpus } from "node:os";
 import { basename, relative, resolve } from "node:path";
@@ -84,9 +85,11 @@ import { scriptDirectiveFinder } from "./html-patterns.ts";
 
 import { stdout as colorOut, workerEnvironment } from "./colors.ts";
 import { BascikConfig } from "./config.ts";
+import { explicitConfigArgv } from "./config-file-names.ts";
 import {
   addBuildScriptStats,
   createBuildScriptStats,
+  failedPageBuildScriptStats,
   formatBuildScriptSummary,
   type BuildScriptStats,
 } from "./build-script-stats.ts";
@@ -98,6 +101,7 @@ import type { PageWorkerResult } from "./page-worker.ts";
 import {
   failedDependenciesOf,
   fromPageWorkerFailure,
+  type PageWorkerFailure,
 } from "./page-worker-errors.ts";
 import {
   executeRoutesScript,
@@ -136,7 +140,7 @@ import type {
   RouteEntry,
   TranspilePageResult,
 } from "./types.ts";
-import { WorkerPool } from "./worker-pool.ts";
+import { READY_GRACE_MS, WorkerPool } from "./worker-pool.ts";
 import { registerExitStopper } from "./exit-stoppers.ts";
 
 import {
@@ -212,7 +216,11 @@ const pageSourcesHaveServerScripts = async (
 ): Promise<boolean> => {
   const found = await Promise.all(
     pagePaths.map(async (pagePath) =>
-      sourceHasServerScripts(await readFile(pagePath, "utf8").catch(() => "")),
+      sourceHasServerScripts(
+        await withOpenFileSlot(() => readFile(pagePath, "utf8")).catch(
+          () => "",
+        ),
+      ),
     ),
   );
   return found.includes(true);
@@ -347,6 +355,8 @@ export const expandPageToJobs = async (
       pagePath,
     );
   } catch (err) {
+    // As in `transpilePage`: a build fails on a page it cannot read.
+    if (BascikConfig.isBuild) throw err;
     console.warn(
       `[bascik] warning: Could not read page file "${pagePath}": ${(err as Error).message}`,
     );
@@ -700,6 +710,12 @@ export const processPageBatch = async (
 
   const results: (TranspilePageResult | null)[] = [];
 
+  // A failed page returns no result; its error carries what its scripts cost.
+  const addFailedPageStats = (error: unknown): void => {
+    const failed = failedPageBuildScriptStats(error);
+    if (failed && scriptStats) addBuildScriptStats(scriptStats, failed);
+  };
+
   const runJob = async (job: PageJob) => {
     const generation = pagesClaimed.get(job.pagePath)!;
     const result = await transpilePage(
@@ -728,6 +744,7 @@ export const processPageBatch = async (
           pageContent: result.distHtml,
           usedComponentsNames: result.usedComponentsNames,
           fileDependencies: result.fileDependencies,
+          cspHashes: result.cspHashes,
           componentManifest: await devManifestForPage(
             componentList!,
             result.distHtml,
@@ -752,6 +769,7 @@ export const processPageBatch = async (
         try {
           return await runJob(job);
         } catch (error) {
+          addFailedPageStats(error);
           pageErrors.push(normalizePageError(job.pagePath, error));
           return null;
         }
@@ -795,6 +813,7 @@ export const processPageBatch = async (
           try {
             restResults[restIndex.get(job)!] = await runJob(job);
           } catch (error) {
+            addFailedPageStats(error);
             pageErrors.push(normalizePageError(job.pagePath, error));
           }
         }
@@ -934,14 +953,19 @@ export const selectivelyProcessPages = async (path: string): Promise<void> => {
  * workers than permits the floor would give each one a child anyway.
  * `cpus()` can be empty on some platforms and containers; at least one
  * worker keeps the build from waiting forever on a pool that can run nothing.
+ * A number for `pipeline.workers` caps the pool at that many workers on top
+ * of all of this (`maxWorkers`).
  */
 type PagePool = WorkerPool<PageJob, PageWorkerResult | null>;
 
-const pagePoolSize = (workCount: number): number =>
-  Math.max(1, Math.min(cpus().length, workCount, SYSTEM_MAX_CHILD_PROCESSES));
+const pagePoolSize = (workCount: number, maxWorkers: number): number =>
+  Math.max(
+    1,
+    Math.min(cpus().length, workCount, SYSTEM_MAX_CHILD_PROCESSES, maxWorkers),
+  );
 
-const startPagePool = (pageList: string[]): PagePool => {
-  const poolSize = pagePoolSize(pageList.length);
+const startPagePool = (pageList: string[], maxWorkers: number): PagePool => {
+  const poolSize = pagePoolSize(pageList.length, maxWorkers);
   const workerExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
   const workerUrl = new URL(`./page-worker${workerExt}`, import.meta.url);
   return new WorkerPool<PageJob, PageWorkerResult | null>(
@@ -959,13 +983,22 @@ const startPagePool = (pageList: string[]): PagePool => {
         // memory again, so their shares add up to one consistent budget.
         [CHILD_SYSTEM_MAX_VAR]: String(SYSTEM_MAX_CHILD_PROCESSES),
       },
+      // Each worker loads the config itself: without the flag it would
+      // discover one, and compile with a different config than this thread.
+      argv: explicitConfigArgv(),
       // The pool can now be trimmed or torn down while workers are still
       // loading the compiler; it must wait until each has loaded first.
       readySignal: true,
-      // And then ask each to end itself instead of terminating it: an
-      // external terminate that lands while V8 allocates code can abort
-      // Node 24 (`stopSignal` in `WorkerPool`).
+      // And then ask each to end itself instead of terminating it, so no
+      // worker is cut off in the middle of a build script (`stopSignal` in
+      // `WorkerPool`).
       stopSignal: true,
+      // A worker still loading 10 s in is waited for, never terminated
+      // mid-evaluation (that aborts Node); say why the run is waiting.
+      onSlowLoad: () =>
+        console.warn(
+          `[bascik] warning: A page worker is still loading after ${READY_GRACE_MS / 1000} s (usually bascik.config.ts or a module it imports doing work at load time). Waiting for it to finish before stopping it, because stopping a worker in the middle of loading crashes Node.`,
+        ),
     },
   );
 };
@@ -981,9 +1014,10 @@ const fitPagePool = (
   pool: PagePool,
   pageCount: number,
   jobCount: number,
+  maxWorkers: number,
 ): number => {
-  const startSize = pagePoolSize(pageCount);
-  const size = pagePoolSize(jobCount);
+  const startSize = pagePoolSize(pageCount, maxWorkers);
+  const size = pagePoolSize(jobCount, maxWorkers);
   if (size === startSize) return size;
   if (size > startSize) pool.grow(size);
   // Not awaited: the trimmed workers are out of the pool already, and their
@@ -1078,21 +1112,28 @@ export const stopPagePools = async (
 // The running phase's jobs are abandoned, not failed: the process is exiting
 // for its own reason (a crash, a Ctrl-C), and a block of "terminated" page
 // errors reported while it waits would bury that reason and blame the pages.
-registerExitStopper(() =>
-  pagePoolPhases.size === 0 && stoppingPagePools.size === 0
-    ? null
-    : Promise.all([
-        stopPagePools({ abandon: true }),
-        ...stoppingPagePools,
-      ]).then(() => {}),
+// Teardown only: a process that ends by a signal needs no page pool stopped.
+registerExitStopper(
+  () =>
+    pagePoolPhases.size === 0 && stoppingPagePools.size === 0
+      ? null
+      : Promise.all([
+          stopPagePools({ abandon: true }),
+          ...stoppingPagePools,
+        ]).then(() => {}),
+  { teardownOnly: true },
 );
 
 export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   logInfo(colorOut.dim("Starting transpiling..."));
   resetModuleCheckerForBuild();
   invalidateComponentListCache();
-  const useWorkers =
+  const workers =
     options?.useWorkers ?? BascikConfig.pipeline?.workers ?? false;
+  // `pipeline.workers` is a boolean or a positive integer: a number turns
+  // the pool on and is the most page workers it may run.
+  const useWorkers = workers !== false && workers !== 0;
+  const maxWorkers = typeof workers === "number" ? workers : Infinity;
   const start = performance.now();
   // Summed from every page (and the build-once pass of every route template)
   // so the summary can say how much of the phase was build scripts.
@@ -1115,7 +1156,9 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
       );
     }
     const pool =
-      useWorkers && pageList.length > 0 ? startPagePool(pageList) : null;
+      useWorkers && pageList.length > 0
+        ? startPagePool(pageList, maxWorkers)
+        : null;
     return { pageList, pool };
   });
   const phase: PagePoolPhase = { listed };
@@ -1271,6 +1314,7 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
               pageContent: pageBytes,
               usedComponentsNames: result.usedComponentsNames,
               fileDependencies: result.fileDependencies,
+              cspHashes: result.cspHashes,
               componentManifest: await devManifestForPage(
                 componentList,
                 pageBytes,
@@ -1299,6 +1343,10 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
           typeof error === "object" && error !== null && "detail" in error
             ? (error as { detail: unknown }).detail
             : undefined;
+        // The worker counted the failed page's scripts too.
+        const failedStats = (detail as PageWorkerFailure | undefined)
+          ?.buildScripts;
+        if (failedStats) addBuildScriptStats(scriptStats, failedStats);
         const restored = fromPageWorkerFailure(job.pagePath, detail);
         const failedDependencies = failedDependenciesOf(detail);
         if (!BascikConfig.isBuild && failedDependencies.length > 0)
@@ -1313,7 +1361,12 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
     };
 
     try {
-      const poolSize = fitPagePool(pool, pageList.length, allJobs.length);
+      const poolSize = fitPagePool(
+        pool,
+        pageList.length,
+        allJobs.length,
+        maxWorkers,
+      );
       // Pages already open in a browser finish first, so their reload is not
       // delayed by anything else.
       if (openJobs.length > 0) {
@@ -1451,6 +1504,7 @@ export const pageProcessing = (
                 pageContent: distHtml,
                 usedComponentsNames,
                 fileDependencies,
+                cspHashes,
                 componentManifest: await devManifestForPage(
                   componentList,
                   distHtml,

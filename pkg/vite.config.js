@@ -42,7 +42,11 @@ export default defineConfig({
           // without this `vitest bench` runs every benchmark twice.
           benchmark: { exclude: ["bench/**"] },
           env: { BASCIK_VERIFY_SCOPING_TEMPLATES: "1" },
-          globalSetup: ["./vitest.coverage-setup.ts"],
+          // The leak guard fails the run when a test leaves a process running.
+          globalSetup: [
+            "./vitest.coverage-setup.ts",
+            "./vitest.leak-guard-setup.ts",
+          ],
         },
       },
       {

@@ -88,7 +88,7 @@ import {
   serverSidecarRegistry,
   type ServerScriptEntry,
 } from "./server-sidecar.ts";
-import { maskElementContents } from "./shielding.ts";
+import { blankHtmlComments, maskElementContents } from "./shielding.ts";
 import { maskRawTextContent } from "./component-masking.ts";
 import { inOrder } from "./ordered-output.ts";
 import { deduplicateCss } from "./styles.ts";
@@ -231,12 +231,11 @@ const classifyBindings = (
   scopesName = false,
 ): UnsupportedEntry | null => {
   if (!/data-bascik-attr-/i.test(html)) return null;
-  const masked = maskElementContents(
-    html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-      " ".repeat(comment.length),
-    ),
-    ["script", "style", "textarea"],
-  );
+  const masked = maskElementContents(blankHtmlComments(html), [
+    "script",
+    "style",
+    "textarea",
+  ]);
   for (const match of openTags(masked)) {
     const openTag = match.text;
     if (!/data-bascik-attr-/i.test(openTag)) continue;
@@ -287,12 +286,11 @@ const INJECTION_MARKER_RE =
 const countInjectionMarkers = (html: string): Map<string, number> => {
   const counts = new Map<string, number>();
   if (!/data-bascik-(?:prop-|slot|attr-|preserve)/i.test(html)) return counts;
-  const masked = maskElementContents(
-    html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-      " ".repeat(comment.length),
-    ),
-    ["script", "style", "textarea"],
-  );
+  const masked = maskElementContents(blankHtmlComments(html), [
+    "script",
+    "style",
+    "textarea",
+  ]);
   for (const match of openTags(masked)) {
     if (!/data-bascik-/i.test(match.text)) continue;
     for (const attr of scanWholeAttributes(match.text)) {
@@ -579,13 +577,18 @@ const buildEntry = async (
           pageFile: "",
           pagePath: "",
           sourceFile: raw.fileName,
+          emptyPageContext: true,
           onReadsPageContext: () => {
             readsPageContext = true;
           },
         })
       : Promise.resolve(html);
   let textA = await runBuildScripts(recorded.component.fileContent);
-  let textB = await runBuildScripts(verify.fileContent);
+  // A page-context reader is refused below, so its second run is skipped: it
+  // would only repeat a script that may have failed for want of a page.
+  let textB = readsPageContext
+    ? verify.fileContent
+    : await runBuildScripts(verify.fileContent);
   if (readsPageContext)
     return unsupported(
       "build-script-reads-page-context",

@@ -4,6 +4,7 @@ import {
   createContentShield,
   maskElementContents,
   shieldElementContents,
+  shieldHtmlComments,
   shieldPreservedAttribute,
   stripPreserveDirectives,
   __shieldStatsForTests,
@@ -224,6 +225,52 @@ describe("createContentShield", () => {
     __shieldStatsForTests.reset();
     expect(shield.restore(`${outer}!`)).toBe("[inner]!");
     expect(__shieldStatsForTests.restoreScans).toBe(2);
+  });
+});
+
+describe("shieldHtmlComments", () => {
+  const TOKEN = /\x00BASCIK_SHIELD_\d+\x00/g;
+  const hidden = (html: string): string =>
+    shieldHtmlComments(html).html.replace(TOKEN, "[hidden]");
+
+  it("hides each comment and restores it byte for byte", () => {
+    const html = '<!-- a <p class="x"> --><p>keep</p><!--b--!><i>i</i><!---->';
+    const shield = shieldHtmlComments(html);
+    expect(shield.html.replace(TOKEN, "[hidden]")).toBe(
+      "[hidden]<p>keep</p>[hidden]<i>i</i>[hidden]",
+    );
+    expect(shield.restore(shield.html)).toBe(html);
+  });
+
+  it("returns the input itself when there is no comment", () => {
+    const html = '<p class="a">a</p>';
+    const shield = shieldHtmlComments(html);
+    expect(shield.html).toBe(html);
+    expect(shield.restore("x")).toBe("x");
+  });
+
+  it.each([
+    ['<style>.a::before { content: "<!--"; }</style>', "a CSS string"],
+    ["<style>\n<!--\n.a { color: red; }\n-->\n</style>", "a wrapped sheet"],
+    ['<script>const open = "<!--";</script>', "a JavaScript string"],
+    ["<script><!--\nrun();\n//--></script>", "a wrapped script"],
+    ['<script type="application/json">{"a":"<!--"}</script>', "JSON"],
+    ["<textarea><!-- typed --></textarea>", "a textarea value"],
+    ["<title>a <!-- b --></title>", "a title"],
+  ])("leaves %s visible (%s)", (rawText) => {
+    const html = `${rawText}<p class="a">a</p><!-- real -->`;
+    expect(hidden(html)).toBe(`${rawText}<p class="a">a</p>[hidden]`);
+  });
+
+  it("hides a comment the input ends inside, to the end", () => {
+    expect(hidden('<p>a</p><!-- open <p class="x">')).toBe("<p>a</p>[hidden]");
+  });
+
+  it("hides the comments after an element the scan cannot follow", () => {
+    // An unclosed <style> takes the rest of the input as CSS in the browser;
+    // nothing after it is a comment, so nothing is hidden.
+    const unclosed = "<style>.a { color: red; } <!-- x -->";
+    expect(hidden(unclosed)).toBe(unclosed);
   });
 });
 

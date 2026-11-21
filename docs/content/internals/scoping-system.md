@@ -6,6 +6,8 @@ Scoping prevents one component's styles and identifiers from leaking into anothe
 
 All compiler passes use one shielding utility, one token namespace, and one global counter. Restorable shields own their tokens and recursively restore nested content, so overlapping operations cannot consume or swap one another's values. Generated tokens are checked against source text before use.
 
+Passes that must not read commented-out markup hide comments first with `shieldHtmlComments` (`pkg/src/lib/shielding.ts`). It takes its comments from the HTML scanner, not from a `<!--` search, because `<!--` inside a `<style>`, `<script>`, `<textarea>` or `<title>` is that element's text: a CSS string such as `content: "<!--"`, a JSON data block, or a block wrapped in `<!-- ... -->`. A text search would run from there to the next real comment's `-->` and hide the element's end tag and the markup in between. The body of a `<noscript>`, `<iframe>`, `<noembed>`, `<noframes>` or `<xmp>` is the exception: the compiler reads it as markup (a `<noscript>` holds the page for a browser that runs no scripts), so a comment inside one is hidden like any other, and a `<style>` commented out there stays out of the page.
+
 The internal raw-text mask has a different semantic: it replaces content with the same number of spaces for index-safe scanning, then discards the mask. In contrast, author-configured `scoping.preserve` restores the original content after scoping. The shared utility implements both behaviors without treating the internal mask as an author-facing setting.
 
 ## The Naming Scheme
@@ -460,15 +462,16 @@ Implemented in `convertCssIdSelectorsToClasses` in `styles.ts`. The `#id {}` sel
 
 ### CSS comma-separated element selectors
 
-The same context-aware lookahead used for `#id` detection applies here. Adding `)` to the stop set (`[^{};)]*\{`) prevents false positives inside `:is()`, `:where()`, and `:has()` pseudo-functions, because the closing `)` terminates the lookahead before `{` is reached:
+The same selector-position check used for `#id` detection applies here: the first `{`, `;` or `}` after the name must be a `{`. A second check counts open parentheses, so a comma inside `:is()`, `:where()`, `:has()` or `:not()`, or inside a function in a value, is not a list separator. A `(...)` later in the list does not hide the elements before it, and an escaped comma in a class name (`.cols-\[1fr\,auto\]`) is part of the name:
 
 ```
-div:is(p, h2) { }                    →  ) stops lookahead → skipped ✓
-h1, h2 { }                           →  { before ;/}/)} → MATCHES ✓
+div:is(p, h2) { }                     →  comma inside ( ) → skipped ✓
+h1, h2 { }                            →  { before ; or } → MATCHES ✓
+h1, h2:not(.lead), li:nth-child(2) { } →  commas outside ( ) → MATCHES ✓
 transition: color 0.2s, opacity 0.3s; →  ; before { → skipped ✓
 ```
 
-Pass 2 regex: `/(?<=,[ \t]*)[a-z1-6]+(?=[^{};)]*\{)/g`
+Pass 2 regex: `/(,[ \t]*)([a-z][a-z1-6]*)(?![\w|-])/gi`, checked by `replaceInSelectorPosition` in `pkg/src/lib/styles.ts`. Like every element pass it ignores case, because HTML element names are case-insensitive: `H1, H2 {}` scopes both names, and the generated class uses the lowercase name (`b_el_<component>_h2`), which `<H2>` and `<h2>` in the markup both get.
 
 ### Compound and descendant element selectors
 
@@ -493,6 +496,8 @@ Pass 2 regex: `/(?<=,[ \t]*)[a-z1-6]+(?=[^{};)]*\{)/g`
 ```
 
 This works because `bascik__`, `b_el_`, and `b_id_` never appear in CSS property value position. Bare element-to-element combinators with no class anchor (`div p {}`, `p + p {}`, `ul li * {}`) are converted too: each element name becomes its own scoped class, so `div p {}` compiles to `.b_el_card_div .b_el_card_p {}` and matches only elements in the component's template.
+
+A namespace prefix (`svg|rect`, `*|rect`, `|rect`) names a namespace declared with `@namespace`, not an element, so no pass reads it as one: the element passes refuse a name followed by `|`, and a separate pass keeps the namespaced type and appends the element class (`svg|rect.b_el_card_rect`). `ns|*` stays as written, like `*`, and a `|` inside `[...]` or `(...)` (`[xlink|href]`, `:is(svg|rect)`) is left alone.
 
 ### CSS nesting element selectors
 

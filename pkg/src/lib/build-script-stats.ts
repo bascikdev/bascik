@@ -33,6 +33,30 @@ export const addBuildScriptStats = (
   total.childMs += part.childMs;
 };
 
+/**
+ * The counts of a page that failed. A failed page returns no result to carry
+ * them, yet its scripts ran (the one that threw included) and the summary
+ * must count them: the error carries them instead.
+ */
+const failedPageStats = new WeakMap<object, BuildScriptStats>();
+
+/** Remember `stats` as what the page that threw `error` cost. */
+export const recordFailedPageBuildScriptStats = (
+  error: unknown,
+  stats: BuildScriptStats,
+): void => {
+  if (typeof error === "object" && error !== null)
+    failedPageStats.set(error, stats);
+};
+
+/** The counts `recordFailedPageBuildScriptStats` kept for `error`, if any. */
+export const failedPageBuildScriptStats = (
+  error: unknown,
+): BuildScriptStats | undefined =>
+  typeof error === "object" && error !== null
+    ? failedPageStats.get(error)
+    : undefined;
+
 const plural = (count: number, noun: string): string =>
   `${count} ${noun}${count === 1 ? "" : "s"}`;
 

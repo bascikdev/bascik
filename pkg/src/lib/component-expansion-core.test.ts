@@ -73,6 +73,14 @@ import {
   type GoldenEntry,
 } from "./__fixtures__/component-expansion-core.fixture.ts";
 
+// These tests check output, not speed: each file does seconds of real
+// compiling (generated inputs, every repository component, multi-MiB pages).
+// Vitest's 5 s default is a wall-clock limit, so on a loaded machine (CI
+// shards, a load average in the hundreds) it failed tests whose every
+// assertion held. Speed is checked where it is measured, in the
+// *.linear-time.test.ts files.
+vi.setConfig({ testTimeout: 120_000 });
+
 const golden = JSON.parse(
   readFileSync(
     fileURLToPath(
@@ -1302,6 +1310,78 @@ describe("a usage that passes what the template does not declare warns (findings
     );
     expect(warnings.some((w) => w.includes('slot "aside"'))).toBe(true);
     expect(warnings.some((w) => w.includes('prop "tone"'))).toBe(true);
+  });
+
+  describe("a named marker the slot parser gives to no slot of this template", () => {
+    const nested: ComponentList = {
+      "outer-c": {
+        fileName: "src/components/outer-c.html",
+        fileContent:
+          '<div><inner-box><span data-bascik-slot="tail"><i data-bascik-slot="extra">outer-fb</i></span></inner-box></div>',
+      },
+      "inner-box": {
+        fileName: "src/components/inner-box.html",
+        fileContent: '<div><em data-bascik-slot="tail">inner-fb</em></div>',
+      },
+      // A placeholder inside another placeholder's fallback.
+      "fb-card": {
+        fileName: "src/components/fb-card.html",
+        fileContent:
+          '<section><div data-bascik-slot="a"><b data-bascik-slot="b">fb-b</b></div></section>',
+      },
+    };
+
+    it("inside a nested component's slot wrapper: the usage's content for it warns as undeclared", () => {
+      const { warnings, html } = run(
+        '<outer-c><b data-bascik-slot="extra">EXTRA-C</b></outer-c>',
+        nested,
+      );
+      expect(html).not.toContain("EXTRA-C");
+      const hit = warnings.filter((w) => w.includes('slot "extra"'));
+      expect(hit).toHaveLength(1);
+      expect(hit[0]).toContain("<outer-c>");
+    });
+
+    it("inside another placeholder's fallback: the usage's content for it warns as undeclared", () => {
+      const { warnings, html } = run(
+        '<fb-card><i data-bascik-slot="b">B</i></fb-card>',
+        nested,
+      );
+      expect(html).not.toContain(">B<");
+      expect(warnings.filter((w) => w.includes('slot "b"'))).toHaveLength(1);
+    });
+
+    it("never ships its data-bascik-slot attribute: the element is replaced by its content, as an unfilled placeholder is", () => {
+      expect(run("<outer-c></outer-c>", nested).html).toBe(
+        "<div><div>outer-fb</div></div>",
+      );
+      expect(run("<fb-card></fb-card>", nested).html).toBe(
+        "<section>fb-b</section>",
+      );
+    });
+
+    it("a usage-site wrapper inside another wrapper's content renders as its content", () => {
+      expect(
+        run(
+          '<inner-box><span data-bascik-slot="tail"><u data-bascik-slot="deep">D</u></span></inner-box>',
+          nested,
+        ).html,
+      ).toBe("<div>D</div>");
+    });
+
+    it("a wrapper for a component nested inside a slot wrapper still reaches that component", () => {
+      const list: ComponentList = {
+        ...nested,
+        "deep-c": {
+          fileName: "src/components/deep-c.html",
+          fileContent:
+            '<div><inner-box><span data-bascik-slot="tail"><inner-box><u data-bascik-slot="tail">deep</u></inner-box></span></inner-box></div>',
+        },
+      };
+      const { warnings, html } = run("<deep-c></deep-c>", list);
+      expect(html).toBe("<div><div><div>deep</div></div></div>");
+      expect(warnings).toEqual([]);
+    });
   });
 
   it("names children passed to a component with no data-bascik-slot (finding 23)", () => {

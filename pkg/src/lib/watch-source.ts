@@ -25,6 +25,8 @@ import {
 import { isInlineStylesheet, isStaticAssetPath } from "./asset-filter.ts";
 import { createSourceWatchIgnore, sourceWatchRoot } from "./watch-root.ts";
 import { privateDirFor } from "./private-dir.ts";
+import { createPagesRootRemoval } from "./pages-root-removal.ts";
+import { createUnreadableWatchFolders } from "./watch-permission.ts";
 
 /** One filesystem observer owns source/exec overlap, including page edits.
  * Outputs are ignored unconditionally. No timestamp or self-write heuristic
@@ -43,7 +45,8 @@ export const watchSourceCycles = async (
         : [entry.watch]
       : [],
   );
-  const pagesRoot = resolve(BascikConfig.directory.pages);
+  const pagesRootRemoval = createPagesRootRemoval();
+  const pagesRoot = pagesRootRemoval.root;
   const componentRoots = BascikConfig.directory.components.map((root) =>
     resolve(root),
   );
@@ -162,7 +165,8 @@ export const watchSourceCycles = async (
                 pages.add(resolve(page));
             }
             if (kind === "unlinkDir") {
-              if (inPages) {
+              // The pages folder itself maps to the output root.
+              if (inPages && path !== pagesRoot) {
                 await deleteDistDir(path);
               }
               all = true;
@@ -205,9 +209,17 @@ export const watchSourceCycles = async (
               publish("asset-changed");
             }
           }
-          if (staticAssetsInvalidated) await copyStaticAssets();
-          if (all) await processAllPages();
-          else if (pages.size) await processPageBatch([...pages]);
+          // Nothing to compile from a removed pages folder, and a compile
+          // that started before it went fails on it: the warning says so.
+          if (pagesRootRemoval.isMissing()) return;
+          try {
+            if (staticAssetsInvalidated) await copyStaticAssets();
+            if (all) await processAllPages();
+            else if (pages.size) await processPageBatch([...pages]);
+          } catch (error) {
+            if (pagesRootRemoval.isMissing()) return;
+            throw error;
+          }
         },
         { onPageErrors: "throw" },
       ),
@@ -247,7 +259,29 @@ export const watchSourceCycles = async (
     if (booted) cycle.enqueue(path);
     else deferred.add(path);
   });
+  // `rm -rf src` (a folder above the pages folder), and putting it back,
+  // can reach the watcher as no event at all: the folder coming back is
+  // handled as if it had been re-created in place.
+  registerShutdownHandler(
+    pagesRootRemoval.poll(() => {
+      if (!booted) return;
+      changes.set(pagesRoot, "addDir");
+      cycle.enqueue(pagesRoot);
+    }),
+  );
+  // A folder watched again once it is readable (Linux): the watcher ignores
+  // the files already in it, so a page or stylesheet written to it before
+  // the new watch started is never reported. Rescan, as for the pages
+  // folder coming back.
+  const unreadableFolders = createUnreadableWatchFolders({
+    onWatchedAgain: () => {
+      changes.set(pagesRoot, "addDir");
+      if (booted) cycle.enqueue(pagesRoot);
+      else deferred.add(pagesRoot);
+    },
+  });
   registerShutdownHandler(async () => {
+    unreadableFolders.close();
     cycle.close();
     eventEmitter.removeListener("boot-done", onBoot);
     await watcher.close();
@@ -263,6 +297,9 @@ export const watchSourceCycles = async (
       resolveReady();
     });
     watcher.on("error", (error) => {
+      // A folder it cannot read (Linux refuses to watch it) is warned about
+      // once, as the page scan does, and does not fail boot.
+      if (unreadableFolders.handle(watcher, error)) return;
       if (!settled) {
         settled = true;
         reject(error);
@@ -273,9 +310,10 @@ export const watchSourceCycles = async (
       });
     });
   });
-  const compileInitialSources = async (): Promise<void> => {
-    await Promise.all([copyStaticAssets(), processAllPages()]);
-  };
+  const compileInitialSources = (): Promise<void> =>
+    pagesRootRemoval.compileAtBoot(async () => {
+      await Promise.all([copyStaticAssets(), processAllPages()]);
+    });
   if (bootCompile) {
     await bootCompile(compileInitialSources);
   } else {

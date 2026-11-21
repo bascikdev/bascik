@@ -53,6 +53,7 @@ import {
 import { getImportRoot } from "./import-root.ts";
 import { installDataUrlResolveHook } from "./data-url-resolve-hook.ts";
 import { scriptJobOutput } from "./script-output-policy.ts";
+import { isWrappedNonErrorThrow } from "./thrown-value.ts";
 import { createNodeRenderHost } from "./request-render-node.ts";
 import { prepareRenderer, wrapRunner } from "./request-render.ts";
 import type { ComponentManifest } from "./component-manifest-file.ts";
@@ -708,8 +709,12 @@ export const runServerScriptJobOutput = async (
           '`export default () => "<p>Hello</p>";` (see /scripts/server).'
         );
       }
+      // A thrown string, `null` or an empty rejection has no stack to map
+      // either: it is described, and placed where the script starts.
       if (
-        (err instanceof SyntaxError || result.timedOut) &&
+        (err instanceof SyntaxError ||
+          result.timedOut ||
+          isWrappedNonErrorThrow(err)) &&
         !cleanedMsg.includes(`${originalSourcePath}:`)
       )
         return `${cleanedMsg}\n    in the script that starts at ${startsAt}`;

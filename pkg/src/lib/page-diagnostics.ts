@@ -120,6 +120,56 @@ export class PageProcessingAggregateError extends AggregateError {
   }
 }
 
+/**
+ * Headers of the script failures that print themselves (with `console.error`) before they throw:
+ * build scripts (`reportBuildScriptFailure`), routes scripts, and server scripts.
+ */
+const SELF_PRINTED_ERROR_HEADERS = [
+  "[bascik] build script error",
+  "[bascik] routes script error",
+  "[bascik] server script error",
+];
+
+const printedItself = (message: string): boolean =>
+  SELF_PRINTED_ERROR_HEADERS.some((header) => message.includes(header));
+
+/**
+ * What the CLI still has to print for a failure that ended a build, or `null` when the failure
+ * already printed itself. A page error summary keeps every page whose error did not print itself,
+ * so a build script error on one page never hides an unreadable page beside it, and a script
+ * error is never printed twice.
+ */
+export const unprintedBuildFailureMessage = (error: unknown): string | null => {
+  if (error instanceof PageProcessingAggregateError) {
+    const unprinted = error.pageErrors.filter(
+      ({ message }) => !printedItself(message),
+    );
+    if (unprinted.length === 0) return null;
+    if (unprinted.length === error.pageErrors.length) return error.message;
+    const printed = error.pageErrors.length - unprinted.length;
+    const [, ...details] = new PageProcessingAggregateError(
+      unprinted,
+    ).message.split("\n");
+    const total = error.pageErrors.length;
+    return [
+      `Build failed with ${total} page error${total === 1 ? "" : "s"} (${printed} printed above):`,
+      ...details,
+    ].join("\n");
+  }
+  // Several failures joined by `runTranspile` (a parallel exec script and a
+  // routes script failing in the same build): the joined message holds
+  // every child's text, so one self-printed child would hide the others.
+  // Each child is judged on its own.
+  if (error instanceof AggregateError) {
+    const unprinted = error.errors
+      .map((child) => unprintedBuildFailureMessage(child))
+      .filter((message): message is string => message !== null);
+    return unprinted.length > 0 ? unprinted.join("\n") : null;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return printedItself(message) ? null : message;
+};
+
 export const normalizePageError = (
   pagePath: string,
   error: unknown,

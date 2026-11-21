@@ -5,6 +5,7 @@ import {
   scanOpeningTags,
   scanPatternElementContents,
 } from "./element-content-scan.ts";
+import { scanHtmlComments, scanHtmlCommentsAndCdata } from "./html-scanner.ts";
 
 // A global counter plus source collision checks keep generated tokens outside user input.
 const SHIELD_TOKEN_PATTERN = /\x00BASCIK_SHIELD_(\d+)\x00/g;
@@ -84,6 +85,61 @@ export const shieldElementContents = (
   for (const tag of tags)
     result = replaceElementContents(result, tag, false, shield.hide);
   return { html: result, restore: shield.restore };
+};
+
+/**
+ * Hide every HTML comment in `html` behind a shield token, so commented-out
+ * markup is never read as live markup. Comments are the ones the browser
+ * sees: `<!--` inside a `<style>`, `<script>` or `<textarea>` is that
+ * element's text (a CSS or JavaScript string, JSON, a stylesheet or script
+ * wrapped in `<!-- -->`) and stays visible to the passes that read it.
+ * A comment the input ends inside is hidden to the end. A CDATA section in
+ * SVG or MathML content is text the browser never parses as markup, so it is
+ * hidden too: `<svg><text><![CDATA[<p class="x">]]></text></svg>` holds no
+ * `<p>` element and no class.
+ */
+export const shieldHtmlComments = (
+  html: string,
+): { html: string; restore: (value: string) => string } => {
+  const comments = scanHtmlCommentsAndCdata(html);
+  if (comments.length === 0) return { html, restore: (value) => value };
+  const shield = createContentShield(html);
+  const parts: string[] = [];
+  let copiedTo = 0;
+  for (const { start, end } of comments) {
+    parts.push(
+      html.slice(copiedTo, start),
+      shield.hide(html.slice(start, end)),
+    );
+    copiedTo = end;
+  }
+  parts.push(html.slice(copiedTo));
+  return { html: parts.join(""), restore: shield.restore };
+};
+
+/**
+ * Same-length copy of `html` with every comment the browser sees blanked to
+ * spaces, newlines kept so line numbers still hold. Comments are the ones
+ * {@link scanHtmlComments} reports: `<!--` inside a `<style>`, `<script>`,
+ * JSON data block or `<textarea>` is that element's text and stays, and a
+ * comment ends where the browser ends it (`-->`, `--!>`, `<!-->`, or the end
+ * of the input), never at a later `-->` as `/<!--[\s\S]*?-->/g` would.
+ */
+export const blankHtmlComments = (html: string): string => {
+  const comments = scanHtmlComments(html);
+  if (comments.length === 0) return html;
+  const parts: string[] = [];
+  let copiedTo = 0;
+  for (const { start, end } of comments) {
+    if (start < copiedTo) continue;
+    parts.push(
+      html.slice(copiedTo, start),
+      html.slice(start, end).replace(/[^\n]/g, " "),
+    );
+    copiedTo = end;
+  }
+  parts.push(html.slice(copiedTo));
+  return parts.join("");
 };
 
 const PRESERVABLE_ATTRIBUTES = new Set(["id", "name", "class"]);

@@ -19,6 +19,89 @@ describe("analyzeComponentSource", () => {
     }
   });
 
+  it("declares only the named slots the build fills, as its slot parser reads them", () => {
+    const componentNames = new Set(["inner-box"]);
+    const slotsOf = (source: string) =>
+      analyzeComponentSource(source, { componentNames }).slots.map(
+        (slot) => slot.name,
+      );
+    // Inside a nested component's slot wrapper: the nested component's.
+    expect(
+      slotsOf(
+        '<div><inner-box><span data-bascik-slot="tail"><i data-bascik-slot="extra">fb</i></span></inner-box><p data-bascik-slot="own"></p></div>',
+      ),
+    ).toEqual(["own"]);
+    // Directly inside a nested component's usage: also the nested one's.
+    expect(
+      slotsOf(
+        '<inner-box><span data-bascik-slot="tail"></span></inner-box><b data-bascik-slot="mine"></b>',
+      ),
+    ).toEqual(["mine"]);
+    // Inside another placeholder's fallback: never filled.
+    expect(
+      slotsOf(
+        '<div data-bascik-slot="a"><b data-bascik-slot="b">fb</b></div><img data-bascik-slot="c" /><i data-bascik-slot="d"></i>',
+      ),
+    ).toEqual(["a", "d"]);
+    // A usage with no end tag holds nothing (the build reads it as
+    // self-closing), so a marker after it is still this template's.
+    expect(
+      slotsOf('<inner-box><span data-bascik-slot="after">fb</span>'),
+    ).toEqual(["after"]);
+    expect(
+      slotsOf('<inner-box /><span data-bascik-slot="after">fb</span>'),
+    ).toEqual(["after"]);
+    // A marker with no matching end tag is never filled, and does not hide
+    // the markers after it.
+    expect(
+      slotsOf(
+        '<div><span data-bascik-slot="a"/><b data-bascik-slot="b">x</b></div>',
+      ),
+    ).toEqual(["b"]);
+    expect(
+      slotsOf('<p data-bascik-slot="a">x<p data-bascik-slot="b">y</p>'),
+    ).toEqual(["b"]);
+    // Prettier's layout: attributes on their own lines, `>` on the next line.
+    expect(
+      slotsOf(
+        '<inner-box\n  ><span\n    data-bascik-slot="tail"\n  ><i\n      data-bascik-slot="extra"\n    >fb</i\n    ></span\n  ></inner-box\n>\n<p\n  data-bascik-slot="own"\n>o</p\n>',
+      ),
+    ).toEqual(["own"]);
+    // A default slot marker in a nested usage is forwarded, so it still counts.
+    expect(
+      analyzeComponentSource(
+        "<inner-box><div data-bascik-slot>fb</div></inner-box>",
+        { componentNames },
+      ).defaultSlot,
+    ).toEqual({ name: "default" });
+  });
+
+  it.each([
+    ["style", '<style>.a::before { content: "<!--"; }</style>'],
+    ["script", '<script>const open = "<!--";</script>'],
+    [
+      "JSON data block",
+      '<script type="application/json">{"a":"<!--"}</script>',
+    ],
+    ["textarea", "<textarea><!--</textarea>"],
+  ])(
+    "reads `<!--` inside a %s as its text: the props and slots after it are declared",
+    (_where, element) => {
+      const metadata = analyzeComponentSource(
+        `${element}<h2 data-bascik-prop-title></h2><div data-bascik-slot="aside"></div><!-- note -->`,
+      );
+      expect(metadata.props.map((prop) => prop.name)).toEqual(["title"]);
+      expect(metadata.slots.map((slot) => slot.name)).toEqual(["aside"]);
+    },
+  );
+
+  it("does not read a marker inside a comment that holds a <script> tag", () => {
+    const metadata = analyzeComponentSource(
+      "<!-- <script> data-bascik-prop-ghost --><p data-bascik-prop-real></p><script>x()</script>",
+    );
+    expect(metadata.props.map((prop) => prop.name)).toEqual(["real"]);
+  });
+
   it("does not count custom elements named like style or script as styles or scripts", () => {
     const metadata = analyzeComponentSource(
       "<style-guide></style-guide><script-loader></script-loader>",
@@ -56,9 +139,13 @@ describe("analyzeComponentSource", () => {
 
   it("infers unquoted slot names on self-closing tags without trailing slash", () => {
     const metadata = analyzeComponentSource(
-      "<div data-bascik-slot=heroHeader/>",
+      "<div data-bascik-slot=heroHeader/></div>",
     );
     expect(metadata.slots).toEqual([{ name: "heroHeader" }]);
+    // With no end tag the build never fills the marker, so it declares no slot.
+    expect(
+      analyzeComponentSource("<div data-bascik-slot=heroHeader/>").slots,
+    ).toEqual([]);
   });
 
   it("infers named and default slots and component features", () => {

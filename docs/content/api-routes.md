@@ -34,7 +34,7 @@ API route files live in `directory.api` (default: `src/api`). The URL path prefi
 | `src/api/[...path].ts`        | `/api/*` (one or more segments)       |
 | `src/api/files/[...path].ts`  | `/api/files/*` (one or more segments) |
 
-Every `.ts`, `.mts`, `.js` and `.mjs` file in `directory.api` is a route, except type declarations (`types.d.ts`) and tests beside a route (`contact.test.ts`, `contact.spec.mts`). Keep shared helpers outside the folder, for example in `src/lib/` imported as `@/lib/db.ts`: a helper inside it, such as `src/api/db.ts`, is served as `/api/db` and answers `405` to every method it does not export.
+Every `.ts`, `.mts`, `.js` and `.mjs` file in `directory.api` is a route, except type declarations (`types.d.ts`) and tests beside a route (`contact.test.ts`, `contact.spec.mts`). Keep shared helpers outside the folder, for example in `src/lib/`: a helper inside it, such as `src/api/db.ts`, is served as `/api/db` and answers `405` to every method it does not export. A route file is a module Node.js loads as written, so it imports the helper with a relative path (`import { db } from "../lib/db.ts"` in `src/api/contact.ts`). The `@/` alias is rewritten inside `<script>` blocks only ([Script Imports](/scripts/imports#import-root-aliases)); in a route file it fails with `Cannot find package '@/lib'`.
 
 Static segments take precedence over dynamic segments. For example, `src/api/users/me.ts` is matched before `src/api/users/[id].ts` when navigating to `/api/users/me`.
 

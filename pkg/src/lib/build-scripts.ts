@@ -63,7 +63,7 @@ import { BascikConfig } from "./config.ts";
 import { getSiteUrl } from "./environment.ts";
 import { cleanStackTrace, remapRewrittenColumns } from "./stack-trace.ts";
 import { computePagePath } from "./routes.ts";
-import { runDirectiveHandler } from "./script-runner.ts";
+import { echoScriptOutput, runDirectiveHandler } from "./script-runner.ts";
 import {
   LeadingSlashSpecifierError,
   classifySpecifier,
@@ -93,6 +93,7 @@ import {
   type OutputScope,
 } from "./output-scope.ts";
 import { removeOutputDirectives } from "./output-directives.ts";
+import { readVersion } from "./version.ts";
 import {
   ATTR,
   ANY_BUILD_FLAG,
@@ -166,6 +167,13 @@ const PROCESS_ENV_READ_RE = /\bprocess\.env\.([A-Za-z_$][A-Za-z0-9_$]*)\b/g;
 
 // Bump to invalidate all existing disk cache entries (e.g. when key composition changes).
 export const SCRIPT_CACHE_VERSION = 12;
+
+// The installed Bascik version is part of every key, so upgrading Bascik never
+// serves output that an older runner produced. SCRIPT_CACHE_VERSION still
+// covers changes made without a version change, such as a linked checkout.
+let bascikVersion: Promise<string> | undefined;
+const getBascikVersion = (): Promise<string> =>
+  (bascikVersion ??= readVersion());
 
 // A script (or a local helper it imports) that names either variable can read
 // the file it points at, which static dependency scanning cannot see. Such
@@ -316,6 +324,7 @@ export const clearBuildScriptCaches = (filePath?: string): void => {
   dependenciesByOutputKey.clear();
   dependencyScanCache.clear();
   clearPackageIdentityCache();
+  bascikVersion = undefined;
 };
 
 /** Observe the in-memory caches in tests without exposing the maps. */
@@ -548,6 +557,7 @@ const computeScriptCacheKey = async (
 ): Promise<string> => {
   const hash = createHash("sha256");
   hash.update(String(SCRIPT_CACHE_VERSION));
+  hash.update(`BASCIK:${await getBascikVersion()}`);
   // A variant keeps records of another kind (output shared across pages) apart
   // from page-specific records. Empty for the page-specific key, which keeps
   // existing cache entries valid.
@@ -726,6 +736,13 @@ export interface ExecuteBuildScriptOptions {
    * context and are not reported.
    */
   onReadsPageContext?: () => void;
+  /**
+   * Set by the component manifest, which runs a component's build scripts
+   * with an empty page context. A script that read its page context and then
+   * failed (one that opens `BASCIK_PAGE_FILE`, say) is reported through
+   * `onReadsPageContext` instead of as a build script error.
+   */
+  emptyPageContext?: boolean;
   /**
    * Where to count this call's cache hits, misses, and child-process time.
    * The caller owns the object; a page passes one through every pass (page,
@@ -1156,7 +1173,8 @@ export const executeBuildScripts = async (
   if (stats) {
     stats.cached +=
       tasks.filter((task) => !task.settled).length - uncachedTasks.length;
-    stats.ran += uncachedTasks.length;
+    // `ran` is counted per script as it starts, below: a failure under the
+    // "error" policy ends the loop, and the scripts after it never run.
   }
 
   if (uncachedTasks.length > 0) {
@@ -1195,78 +1213,91 @@ export const executeBuildScripts = async (
     // The loop is timed as a whole: the page's own clock is paused for this
     // await, so this is the only place the child time is seen.
     const childrenStarted = performance.now();
-    for (const task of uncachedTasks) {
-      const taskSourceUrlComment =
-        task.moduleSourcePath !== "unknown"
-          ? `\n//# sourceURL=${task.moduleSourcePath}`
-          : "";
-      const taskEnv = {
-        ...extraEnv,
-        BASCIK_SOURCE_FILE: task.sourceFile,
-      };
-      try {
-        await writeFile(
-          task.tmpPath,
-          task.preparedScript + taskSourceUrlComment,
-          "utf8",
-        );
-        const { result, stdout, stderr, readsPageContext } =
-          await runDirectiveHandler<string>(task.tmpPath, "build", {
-            extraEnv: taskEnv,
-          });
-        if (stdout) process.stdout.write(stdout);
-        if (stderr) process.stderr.write(stderr);
-        const output = result;
-        if (task.cacheKey !== null)
-          await writeScriptCache(
-            cacheDir,
-            task.cacheKey,
-            output,
-            readsPageContext,
+    try {
+      for (const task of uncachedTasks) {
+        const taskSourceUrlComment =
+          task.moduleSourcePath !== "unknown"
+            ? `\n//# sourceURL=${task.moduleSourcePath}`
+            : "";
+        const taskEnv = {
+          ...extraEnv,
+          BASCIK_SOURCE_FILE: task.sourceFile,
+        };
+        try {
+          await writeFile(
+            task.tmpPath,
+            task.preparedScript + taskSourceUrlComment,
+            "utf8",
           );
-        // A run that never looked at its page produced what every page gets.
-        if (task.sharedKey !== null && !readsPageContext)
-          await writeScriptCache(cacheDir, task.sharedKey, output, false);
-        task.output = output;
-        task.readsPageContext = readsPageContext;
-      } catch (err: any) {
-        // The script's own output, printed once. Its error report is the message below.
-        if (err?.stdout) process.stdout.write(err.stdout);
-        if (err?.stderr) process.stderr.write(err.stderr);
-        const msg = err instanceof Error ? err.message : String(err);
-        const { location } = task;
-        let errorMsg = `[bascik] build script error`;
-        // The module is padded to the file's own lines, so only the temp path needs renaming,
-        // and columns after a rewritten import on the same line need putting back.
-        const moduleReferences = [
-          task.tmpPath,
-          pathToFileURL(task.tmpPath).href,
-          task.moduleSourcePath,
-        ];
-        const remapped = remapRewrittenColumns(
-          msg,
-          moduleReferences,
-          task.specifierEdits,
-        );
-        const cleanedMsg = cleanStackTrace(
-          remapped,
-          task.tmpPath,
-          task.moduleSourcePath,
-          1,
-        );
-        if (location) {
-          errorMsg += ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`;
+          if (stats) stats.ran++;
+          const { result, stdout, stderr, readsPageContext } =
+            await runDirectiveHandler<string>(task.tmpPath, "build", {
+              extraEnv: taskEnv,
+            });
+          echoScriptOutput({ stdout, stderr });
+          const output = result;
+          if (task.cacheKey !== null)
+            await writeScriptCache(
+              cacheDir,
+              task.cacheKey,
+              output,
+              readsPageContext,
+            );
+          // A run that never looked at its page produced what every page gets.
+          if (task.sharedKey !== null && !readsPageContext)
+            await writeScriptCache(cacheDir, task.sharedKey, output, false);
+          task.output = output;
+          task.readsPageContext = readsPageContext;
+        } catch (err: any) {
+          // The script's own output, printed once. Its error report is the message below.
+          echoScriptOutput({ stdout: err?.stdout, stderr: err?.stderr });
+          if (options?.emptyPageContext && err?.readsPageContext === true) {
+            // The script needs a page and was given none. Its component is
+            // refused through onReadsPageContext; the pages that use it run the
+            // script with their own context and report a real failure there.
+            dropUnmemoizedDependencyLists(task.cacheKey, task.sharedKey);
+            task.output = "";
+            task.readsPageContext = true;
+            continue;
+          }
+          const msg = err instanceof Error ? err.message : String(err);
+          const { location } = task;
+          let errorMsg = `[bascik] build script error`;
+          // The module is padded to the file's own lines, so only the temp path needs renaming,
+          // and columns after a rewritten import on the same line need putting back.
+          const moduleReferences = [
+            task.tmpPath,
+            pathToFileURL(task.tmpPath).href,
+            task.moduleSourcePath,
+          ];
+          const remapped = remapRewrittenColumns(
+            msg,
+            moduleReferences,
+            task.specifierEdits,
+          );
+          const cleanedMsg = cleanStackTrace(
+            remapped,
+            task.tmpPath,
+            task.moduleSourcePath,
+            1,
+          );
+          if (location) {
+            errorMsg += ` in "${location.sourceFile}" at (line ${location.line}, column ${location.column})`;
+          }
+          // Nothing was memoized for either key; drop their pending dependency
+          // lists so a failing script cannot accumulate index state across edits.
+          dropUnmemoizedDependencyLists(task.cacheKey, task.sharedKey);
+          reportBuildScriptFailure(errorMsg, cleanedMsg, location);
+          task.output = "";
+        } finally {
+          await unlink(task.tmpPath).catch(() => {});
         }
-        // Nothing was memoized for either key; drop their pending dependency
-        // lists so a failing script cannot accumulate index state across edits.
-        dropUnmemoizedDependencyLists(task.cacheKey, task.sharedKey);
-        reportBuildScriptFailure(errorMsg, cleanedMsg, location);
-        task.output = "";
-      } finally {
-        await unlink(task.tmpPath).catch(() => {});
       }
+    } finally {
+      // Also when a failure ends the loop: the failed page's summary still
+      // counts the time its scripts took (`recordFailedPageBuildScriptStats`).
+      if (stats) stats.childMs += performance.now() - childrenStarted;
     }
-    if (stats) stats.childMs += performance.now() - childrenStarted;
   }
 
   // A key computed here but never memoized (a shared key whose run read its

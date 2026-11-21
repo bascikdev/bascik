@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
+import { format } from "node:util";
 import {
   executeApiRoute,
   createWebRequest,
@@ -854,6 +858,60 @@ describe("API runtime execution", () => {
         expect(vi.getTimerCount()).toBe(0);
       } finally {
         vi.useRealTimers();
+      }
+    });
+
+    // Misuse: `@/` works in <script> blocks, so it gets pasted into a route
+    // file, where Node reads "@/lib" as a package name.
+    it("misuse: a route module that imports with the @/ alias is told to use a relative import, naming the file", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "bascik-api-alias-"));
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const routeFile = join(dir, "hello.ts");
+        await writeFile(
+          routeFile,
+          `import { greet } from "@/lib/greet.ts";\nexport const GET = () => new Response(greet());\n`,
+        );
+        const res = await executeApiRoute({
+          filePath: routeFile,
+          request: new Request("http://localhost:8080/api/hello"),
+          params: {},
+          remoteIp: "127.0.0.1",
+        });
+        expect(res.status).toBe(500);
+        const logged = errorSpy.mock.calls.map((call) => format(...call));
+        expect(logged.join("\n")).toMatch(
+          /Failed to load API route module .*hello\.ts:[\s\S]*The @\/ alias is available inside <script> blocks only\. In .*hello\.ts use a relative import/,
+        );
+      } finally {
+        errorSpy.mockRestore();
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("a load failure that is not an @/ import is logged without the alias hint", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        vi.spyOn(scriptRegistry, "load").mockRejectedValue(
+          Object.assign(
+            new Error(
+              "Cannot find package 'left-pad' imported from /app/src/api/a.ts",
+            ),
+            { code: "ERR_MODULE_NOT_FOUND" },
+          ),
+        );
+        const res = await executeApiRoute({
+          filePath: "/app/src/api/a.ts",
+          request: new Request("http://localhost:8080/api/a"),
+          params: {},
+          remoteIp: "127.0.0.1",
+        });
+        expect(res.status).toBe(500);
+        const logged = errorSpy.mock.calls.map((call) => format(...call));
+        expect(logged.join("\n")).toContain("left-pad");
+        expect(logged.join("\n")).not.toContain("@/ alias");
+      } finally {
+        errorSpy.mockRestore();
       }
     });
 

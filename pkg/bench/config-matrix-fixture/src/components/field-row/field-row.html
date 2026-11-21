@@ -1,0 +1,36 @@
+<style>
+  .row {
+    display: flex;
+    gap: var(--gap);
+  }
+  label {
+    font-weight: 700;
+  }
+  #field:focus {
+    outline: 4px solid rgb(0, 0, 200);
+  }
+  input::placeholder {
+    color: rgb(120, 120, 120);
+  }
+</style>
+<div class="row" data-testid="field-row" data-probe="row">
+  <form id="frm" data-probe="frm" action="/search" method="get"></form>
+  <label for="field" data-probe="label" data-bascik-prop-label>Label</label>
+  <input
+    id="field"
+    name="q"
+    list="opts"
+    form="frm"
+    placeholder="Type  here"
+    aria-describedby="hint"
+    aria-errormessage="err"
+    data-probe="field"
+  />
+  <datalist id="opts" data-probe="opts">
+    <option value="Dune"></option>
+    <option value="Emma"></option>
+  </datalist>
+  <small id="hint" data-probe="hint">Hint text</small>
+  <small id="err" data-probe="err" hidden>Error</small>
+  <button type="submit" form="frm" data-probe="submit">Go</button>
+</div>

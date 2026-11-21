@@ -9,8 +9,10 @@
  * pool waits for each worker to load before stopping it (`readySignal` in
  * `WorkerPool`); these tests check that the crash net, the dev server's
  * SIGINT / SIGTERM handling and the CLI's own exits go through that, that a
- * worker which never loads cannot hang an exit, and that a second Ctrl-C
- * exits at once.
+ * worker which never loads cannot hang an exit, that a crash waits for a
+ * worker still evaluating a slow config rather than abort, and that a
+ * Ctrl-C always ends the process at once (by the signal when a worker is
+ * still loading: a death by signal runs no exit teardown).
  *
  * They run the real CLI (`src/index.ts`) as a child process with an
  * `--import` preload that, on the main thread only, logs page worker spawns
@@ -121,8 +123,26 @@ const page = (name: string) =>
 // awaits while it loads, which keeps the loading window realistic. With
 // `stuckWorkers`, a page worker never finishes loading (the config awaits
 // for a minute there), to check that no exit waits for it forever.
-const configSource = (port: number, stuckWorkers: boolean) => `
-${stuckWorkers ? `import { isMainThread } from "node:worker_threads";\nif (!isMainThread) await new Promise((r) => setTimeout(r, 60_000));\n` : ""}
+// With `busyWorkersMs`, a page worker evaluates the config for that long
+// after one of its imports had a top-level await: the case where a
+// terminate() or a process exit aborts Node, so no exit may cut it off.
+const configSource = (
+  port: number,
+  stuckWorkers: boolean,
+  busyWorkersMs = 0,
+) => `
+${stuckWorkers ? `import { isMainThread } from "node:worker_threads";\nif (!isMainThread) await new Promise((r) => setTimeout(r, 60_000));\n` : ""}${
+  busyWorkersMs > 0
+    ? `import { isMainThread as mainThread } from "node:worker_threads";
+import { raw } from "./src/lib/books-data.ts";
+let n: number = 0;
+if (!mainThread) {
+  const end = Date.now() + ${busyWorkersMs};
+  while (Date.now() < end) n += raw.length;
+}
+`
+    : ""
+}
 export default {
   directory: { components: ["src/components"] },
   pipeline: { workers: true },
@@ -142,7 +162,7 @@ interface Fixture {
 
 const makeFixture = async (
   name: string,
-  options: { stuckWorkers?: boolean } = {},
+  options: { stuckWorkers?: boolean; busyWorkersMs?: number } = {},
 ): Promise<Fixture> => {
   const root = fixtureRoot(`pool-exit-${name}`);
   roots.push(root);
@@ -151,8 +171,18 @@ const makeFixture = async (
   await writeFixtureFile(
     root,
     "bascik.config.ts",
-    configSource(port, options.stuckWorkers ?? false),
+    configSource(
+      port,
+      options.stuckWorkers ?? false,
+      options.busyWorkersMs ?? 0,
+    ),
   );
+  if (options.busyWorkersMs)
+    await writeFixtureFile(
+      root,
+      "src/lib/books-data.ts",
+      `import { readFile } from "node:fs/promises";\nexport const raw: string = await readFile(new URL(import.meta.url), "utf8");\n`,
+    );
   // Enough pages for one worker per core, so most are still loading when
   // the first one reports ready.
   for (let i = 0; i < Math.max(2, Math.min(8, cpus().length)); i++)
@@ -347,12 +377,24 @@ describe("exiting while page workers load (real CLI)", () => {
     expectNoStopNoise("stuck crash", result);
     expect(result.code, describeRun("stuck crash", result)).toBe(1);
     expect(result.stderr).toContain(CRASH_MESSAGE);
-    // The worker would load in 60 s; the exit waits for it at most ~13 s
-    // (10 s ready grace, then up to 3 s for a loaded worker to stop itself).
+    // The worker would load in 60 s, but it is waiting, not evaluating: the
+    // pool terminates it about 1 s after its 10 s ready grace.
     expect(result.ms, describeRun("stuck crash", result)).toBeLessThan(25_000);
   }, 60_000);
 
-  it("dev: a single Ctrl-C exits within a bounded time even when a page worker never finishes loading", async () => {
+  /** Ended by the signal it was sent, with no V8 / Node fatal error. */
+  const expectEndedBySignal = (
+    label: string,
+    result: Run,
+    signal: NodeJS.Signals,
+  ) => {
+    const all = result.stdout + result.stderr;
+    expect(all, describeRun(label, result)).not.toContain("Check failed");
+    expect(all, describeRun(label, result)).not.toContain("Fatal error in");
+    expect(result.signal, describeRun(label, result)).toBe(signal);
+  };
+
+  it("dev: a single Ctrl-C exits at once, by the signal, when a page worker never finishes loading", async () => {
     const fixture = await makeFixture("stuck-sigint", { stuckWorkers: true });
     const result = await run(
       fixture,
@@ -360,16 +402,93 @@ describe("exiting while page workers load (real CLI)", () => {
       { kind: "SIGINT", at: "spawn", delay: 300 },
       40_000,
     );
-    // The drain timeout (5 s) forces the exit while the worker is still
-    // loading: that forced exit must not abort Node either.
-    expectNoAbort("stuck sigint", result);
+    // The shutdown gives the loading worker SIGNAL_EXIT_TEARDOWN_WAIT_MS
+    // (1 s), then ends by SIGINT rather than wait for it or process.exit()
+    // past it.
+    expectEndedBySignal("stuck sigint", result, "SIGINT");
     expectNoStopNoise("stuck sigint", result);
-    expect(result.code, describeRun("stuck sigint", result)).toBe(1);
     expect(result.stdout).toContain(
       "Received SIGINT, shutting down gracefully",
     );
-    expect(result.stderr).toContain("Graceful shutdown timeout: forcing exit");
-    expect(result.ms, describeRun("stuck sigint", result)).toBeLessThan(25_000);
+    expect(result.stderr).not.toContain("Graceful shutdown timeout");
+    expect(result.ms, describeRun("stuck sigint", result)).toBeLessThan(8_000);
+  }, 60_000);
+
+  it("dev: a single Ctrl-C exits at once, by the signal, while a page worker is still evaluating a slow config", async () => {
+    // Before, the shutdown waited for the worker, then the 5 s drain timeout
+    // ran process.exit() while it was evaluating, which aborts Node.
+    const fixture = await makeFixture("busy-sigint", { busyWorkersMs: 20_000 });
+    const result = await run(
+      fixture,
+      "dev",
+      { kind: "SIGINT", at: "spawn", delay: 300 },
+      40_000,
+    );
+    expectEndedBySignal("busy sigint", result, "SIGINT");
+    expectNoStopNoise("busy sigint", result);
+    expect(result.stdout).toContain(
+      "Received SIGINT, shutting down gracefully",
+    );
+    expect(result.ms, describeRun("busy sigint", result)).toBeLessThan(8_000);
+  }, 60_000);
+
+  it("build: a crash waits for a page worker still evaluating a slow config, says so, then exits 1 without an abort", async () => {
+    // Longer than the 13 s the exit used to wait before it ran
+    // process.exit() anyway.
+    const fixture = await makeFixture("busy-crash", { busyWorkersMs: 15_000 });
+    const result = await run(
+      fixture,
+      "build",
+      { kind: "throw", at: "spawn", delay: 300 },
+      50_000,
+    );
+    expectNoAbort("busy crash", result);
+    expectNoStopNoise("busy crash", result);
+    expect(result.code, describeRun("busy crash", result)).toBe(1);
+    expect(result.stderr).toContain(CRASH_MESSAGE);
+    expect(result.stderr).toContain(
+      "Waiting for a page worker to finish loading before exiting",
+    );
+    expect(result.ms, describeRun("busy crash", result)).toBeGreaterThan(
+      14_000,
+    );
+  }, 70_000);
+
+  it("build: a Ctrl-C while a crash waits for a slow page worker ends the process at once", async () => {
+    const fixture = await makeFixture("busy-crash-sigint", {
+      busyWorkersMs: 60_000,
+    });
+    const { child, done } = start(fixture, "build", {
+      kind: "throw",
+      at: "spawn",
+      delay: 300,
+    });
+    let stderr = "";
+    child.stderr!.on("data", (chunk) => (stderr += chunk));
+    const guard = setTimeout(() => {
+      try {
+        process.kill(-child.pid!, "SIGKILL");
+      } catch {}
+    }, 40_000);
+    try {
+      await waitFor(
+        () =>
+          stderr.includes(
+            "Waiting for a page worker to finish loading before exiting",
+          ),
+        30_000,
+      );
+      const sentAt = Date.now();
+      child.kill("SIGINT");
+      const result = await done;
+      expectEndedBySignal("busy crash sigint", result, "SIGINT");
+      expect(
+        Date.now() - sentAt,
+        describeRun("busy crash sigint", result),
+      ).toBeLessThan(3_000);
+    } finally {
+      clearTimeout(guard);
+    }
   }, 60_000);
 
   it("build: a second crash while the first exit waits for page workers is reported once, under its own heading, not as a second fatal crash", async () => {
@@ -397,8 +516,38 @@ describe("exiting while page workers load (real CLI)", () => {
     );
   }, 60_000);
 
+  // Whoever read the CLI's output is gone (a closed terminal, a killed CI
+  // step, `bascik --build 2>&1 | head`): every write to stderr then fails
+  // with EPIPE. Reporting that failure on the same stream fails again, and
+  // doing so from the crash handler used to loop without ever reaching the
+  // bounded exit, at full CPU, until someone killed the process.
+  for (const kind of ["throw", "throw-twice"] as const) {
+    it(`build: a crash (${kind}) still exits within a bounded time when nothing reads stderr any more`, async () => {
+      const fixture = await makeFixture(`closed-stderr-${kind}`, {
+        stuckWorkers: true,
+      });
+      const { child, done } = start(fixture, "build", {
+        kind,
+        at: "spawn",
+        delay: 300,
+      });
+      child.stdout!.destroy();
+      child.stderr!.destroy();
+      const outcome = await Promise.race([
+        done,
+        new Promise<"hung">((r) => setTimeout(() => r("hung"), 30_000)),
+      ]);
+      expect(outcome, "the CLI never exited").not.toBe("hung");
+      const result = outcome as Run;
+      expect(result.signal, describeRun("closed stderr", result)).toBeNull();
+      expect(result.code, describeRun("closed stderr", result)).toBe(1);
+      expect(count(readLog(fixture.log), "trigger")).toBe(1);
+    }, 60_000);
+  }
+
+  // In dev the first Ctrl-C already ends by the signal within about 1 s
+  // ("a single Ctrl-C exits at once" above); a crash still waits.
   for (const [label, mode, kind] of [
-    ["dev: a second Ctrl-C", "dev", "SIGINT"],
     ["build: a Ctrl-C after a crash", "build", "throw"],
   ] as const) {
     it(`${label} exits at once while the first exit is waiting for page workers to load`, async () => {

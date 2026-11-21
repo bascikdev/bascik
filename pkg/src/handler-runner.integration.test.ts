@@ -392,8 +392,11 @@ describe("runDirectiveHandler real child processes (handler and result transport
       }).catch((err: Error) => err);
       const message = (failure as Error).message;
       expect(message).toMatch(
-        /^Directive script \(data-bascik-build\) failed: stdout maxBuffer length exceeded/,
+        /^Directive script \(data-bascik-build\) failed: it wrote more than 1000 bytes to stdout, so it was stopped and its output is not shown\./,
       );
+      // None of what it wrote to stdout is handed on to be echoed.
+      expect((failure as Error & { stdout?: string }).stdout).toBe("");
+      expect(message).not.toContain("xxxx");
       expect(message).toContain("warning: deprecated option");
       expect(message).not.toContain("timed out");
     } finally {
@@ -451,6 +454,52 @@ describe("runDirectiveHandler real child processes (handler and result transport
           extraEnv: { BASCIK_PAGE_PATH: "/a", BASCIK_PAGE_FILE: "a.html" },
         });
         expect(run.readsPageContext).toBe(expected);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // A failed run writes no result, so the rejection carries the answer: the
+  // component manifest runs scripts with no page, and one that fails after
+  // reading its page context is page-dependent, not broken.
+  it.each([
+    [
+      "throws after reading the page file",
+      `import { readFileSync } from "node:fs"; export default () => readFileSync(process.env.BASCIK_PAGE_FILE, "utf8");`,
+      true,
+    ],
+    [
+      "throws at import time after reading the page path",
+      `const page = process.env.BASCIK_PAGE_PATH; if (!page) throw new Error("no page"); export default () => page;`,
+      true,
+    ],
+    [
+      "exits nonzero after reading the page path",
+      `export default () => { if (!process.env.BASCIK_PAGE_PATH) process.exit(3); return ""; };`,
+      true,
+    ],
+    [
+      "throws without reading the page",
+      `export default () => { throw new Error("boom"); };`,
+      false,
+    ],
+    ["has a syntax error", `export default () => { return "x" +; };`, false],
+  ])(
+    "reports on the rejection whether a build script that %s read page context",
+    async (_name, source, expected) => {
+      const dir = await mkdtemp(join(tmpdir(), "bascik-test-handler-"));
+      try {
+        const modulePath = join(dir, "script.mjs");
+        await writeFile(modulePath, source, "utf8");
+        const failure = await runDirectiveHandler<string>(modulePath, "build", {
+          extraEnv: { BASCIK_PAGE_PATH: "", BASCIK_PAGE_FILE: "" },
+        }).then(
+          () => undefined,
+          (err: unknown) => err as { readsPageContext?: boolean },
+        );
+        expect(failure).toBeDefined();
+        expect(failure?.readsPageContext).toBe(expected);
       } finally {
         await rm(dir, { recursive: true, force: true });
       }

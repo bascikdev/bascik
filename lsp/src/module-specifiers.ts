@@ -20,6 +20,26 @@ export interface Comment {
   end: number;
 }
 
+/**
+ * A value the tokens leave out: a number, a regular expression literal, or
+ * a template literal with holes. Offsets cover the whole literal (a
+ * template's backticks included); a template's holes still give their own
+ * tokens.
+ */
+export interface ValueSpan {
+  type: "number" | "regex" | "template";
+  start: number;
+  end: number;
+}
+
+/** What `scanJavaScript` returns. */
+export interface ScannedJavaScript {
+  tokens: Token[];
+  comments: Comment[];
+  /** Numbers, regular expressions and templates with holes, by start. */
+  values: ValueSpan[];
+}
+
 const isIdentifierStart = (character: string): boolean =>
   /[A-Za-z_$]/.test(character);
 const isIdentifierPart = (character: string): boolean =>
@@ -63,9 +83,7 @@ interface TemplateFrame {
  * and holes still open kept on an explicit stack, so templates nested
  * thousands deep cannot overflow the call stack.
  */
-export const scanJavaScript = (
-  source: string,
-): { tokens: Token[]; comments: Comment[] } => {
+export const scanJavaScript = (source: string): ScannedJavaScript => {
   const known = scanMemo.get(source);
   if (known !== undefined) {
     // Most recently used last, so the oldest is evicted first.
@@ -87,13 +105,12 @@ export const scanJavaScript = (
  * change the arrays they get.
  */
 const SCAN_MEMO_SIZE = 16;
-const scanMemo = new Map<string, { tokens: Token[]; comments: Comment[] }>();
+const scanMemo = new Map<string, ScannedJavaScript>();
 
-const scanJavaScriptSource = (
-  source: string,
-): { tokens: Token[]; comments: Comment[] } => {
+const scanJavaScriptSource = (source: string): ScannedJavaScript => {
   const tokens: Token[] = [];
   const comments: Comment[] = [];
+  const values: ValueSpan[] = [];
   const codeFrame = (stopAtClosingBrace: boolean): CodeFrame => ({
     kind: "code",
     stopAtClosingBrace,
@@ -111,6 +128,12 @@ const scanJavaScriptSource = (
         value: source.slice(frame.tokenStart + 1, end),
         start: frame.tokenStart + 1,
         end,
+      });
+    else
+      values.push({
+        type: "template",
+        start: frame.tokenStart,
+        end: Math.min(end + 1, source.length),
       });
     const outer = stack[stack.length - 1];
     if (outer?.kind === "code") {
@@ -186,6 +209,7 @@ const scanJavaScriptSource = (
       continue;
     }
     if (character === "/" && frame.canStartRegex) {
+      const regexStart = index;
       index++;
       let inCharacterClass = false;
       while (index < source.length) {
@@ -202,6 +226,11 @@ const scanJavaScriptSource = (
           break;
         } else index++;
       }
+      values.push({
+        type: "regex",
+        start: regexStart,
+        end: Math.min(index, source.length),
+      });
       frame.canStartRegex = false;
       frame.statementExpected = false;
       continue;
@@ -229,9 +258,11 @@ const scanJavaScriptSource = (
       continue;
     }
     if (/[0-9]/.test(character)) {
+      const numberStart = index;
       index++;
       while (index < source.length && /[A-Za-z0-9_.]/.test(source[index]))
         index++;
+      values.push({ type: "number", start: numberStart, end: index });
       frame.canStartRegex = false;
       frame.statementExpected = false;
       continue;
@@ -299,6 +330,7 @@ const scanJavaScriptSource = (
   return {
     tokens: tokens.sort((left, right) => left.start - right.start),
     comments: comments.sort((left, right) => left.start - right.start),
+    values: values.sort((left, right) => left.start - right.start),
   };
 };
 

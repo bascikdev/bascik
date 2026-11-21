@@ -408,6 +408,130 @@ export const replaceNamedSlots = (
   return parts.join("");
 };
 
+/**
+ * The named slots `template` declares, as the slot parser reads them: the
+ * wrappers `replaceNamedSlots` fills. A marker inside a nested component's
+ * usage belongs to that component, and a marker inside another named
+ * wrapper's content is never filled, so neither is declared here.
+ */
+export const declaredNamedSlots = (
+  template: string,
+  componentNames: ReadonlySet<string> = new Set(),
+): string[] =>
+  parseNamedSlots(template, componentNames).map(({ slotName }) => slotName);
+
+interface SlotScope {
+  kind: "wrapper" | "component";
+  start: number;
+  contentStart: number;
+  closeIndex: number;
+  /** For a wrapper: the end of its close tag. */
+  endIndex: number;
+}
+
+/**
+ * `template` with every named slot wrapper no component can fill replaced by
+ * its content, as an unfilled placeholder is. Such a wrapper sits inside
+ * another named wrapper's content (a placeholder's fallback, or a wrapper
+ * written for a nested component) with no component usage in between:
+ * `replaceNamedSlots` skips it at this level, and the nested component (if
+ * any) receives it as slot content, never as a wrapper. Without this its
+ * `data-bascik-slot` attribute reached the page.
+ */
+export const removeUnclaimedSlotWrappers = (
+  template: string,
+  componentNames: ReadonlySet<string> = new Set(),
+): string => {
+  if (!template.includes("data-bascik-slot")) return template;
+  const masked = maskRawTextContent(template);
+  const nextWrapper = createSlotWrapperScanner(masked, true);
+  const findClose = createMatchingCloseFinder(template, masked);
+  const scopes: SlotScope[] = [];
+  for (
+    let wrapper = nextWrapper(0);
+    wrapper !== null;
+    wrapper = nextWrapper(wrapper.end)
+  ) {
+    const closeIndex = findClose(wrapper.tagName, wrapper.end);
+    if (closeIndex === -1) continue;
+    const closeTag = closeTagAt(template, wrapper.tagName, closeIndex);
+    scopes.push({
+      kind: "wrapper",
+      start: wrapper.start,
+      contentStart: wrapper.end,
+      closeIndex,
+      endIndex:
+        closeIndex +
+        (closeTag ? closeTag[0].length : `</${wrapper.tagName}>`.length),
+    });
+  }
+  // A lone wrapper cannot sit inside another.
+  if (scopes.length < 2) return template;
+  const lowerMasked = masked.toLowerCase();
+  for (const name of componentNames) {
+    if (!lowerMasked.includes(`<${name.toLowerCase()}`)) continue;
+    let from = 0;
+    for (;;) {
+      const usage = getTag(template, name, undefined, masked, from);
+      const { startIndex, endIndex, contentStart, closeIndex } = usage;
+      if (typeof startIndex !== "number") break;
+      if (
+        typeof contentStart === "number" &&
+        typeof closeIndex === "number" &&
+        closeIndex !== -1
+      )
+        scopes.push({
+          kind: "component",
+          start: startIndex,
+          contentStart,
+          closeIndex,
+          endIndex: closeIndex,
+        });
+      // Continue inside the usage: a usage of the same component nested in
+      // its content is a scope of its own.
+      from =
+        typeof contentStart === "number" && contentStart > startIndex
+          ? contentStart
+          : typeof endIndex === "number" && endIndex > startIndex
+            ? endIndex
+            : startIndex + 1;
+    }
+  }
+  scopes.sort((a, b) => a.start - b.start || b.closeIndex - a.closeIndex);
+  // Document-order sweep: the innermost open scope around each wrapper is
+  // the one it belongs to.
+  const open: SlotScope[] = [];
+  const removed: Array<{ start: number; end: number }> = [];
+  for (const scope of scopes) {
+    while (
+      open.length > 0 &&
+      !(
+        open[open.length - 1].contentStart <= scope.start &&
+        scope.start < open[open.length - 1].closeIndex
+      )
+    )
+      open.pop();
+    const owner = open[open.length - 1];
+    if (scope.kind === "wrapper" && owner?.kind === "wrapper")
+      removed.push(
+        { start: scope.start, end: scope.contentStart },
+        { start: scope.closeIndex, end: scope.endIndex },
+      );
+    open.push(scope);
+  }
+  if (removed.length === 0) return template;
+  removed.sort((a, b) => a.start - b.start);
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const { start, end } of removed) {
+    if (start < cursor) continue;
+    parts.push(template.slice(cursor, start));
+    cursor = end;
+  }
+  parts.push(template.slice(cursor));
+  return parts.join("");
+};
+
 const ROOT_SKIPPED_TAGS = new Set(["link", "meta", "script", "style"]);
 
 /**

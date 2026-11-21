@@ -127,7 +127,31 @@ const planMinification = (htmlString: string): MinificationPlan => {
   const candidates: (HtmlRange & { separate: boolean })[] = [];
   /** End of the last script that runs where it stands; nothing before it may move after it. */
   let keepBefore = 0;
-  const { insertionPoint } = scanHtml(htmlString, {
+  /** The latest run of text in a table, which the parser moves before the table as a whole. */
+  let tableText:
+    (HtmlRange & { beginsAfterPreformattedStart: boolean }) | undefined;
+  let previousToken: HtmlToken | undefined;
+  const scan = scanHtml(htmlString, {
+    token(token) {
+      if (token.kind === "text" && token.inTable) {
+        tableText =
+          tableText?.end === token.start
+            ? { ...tableText, end: token.end }
+            : {
+                start: token.start,
+                end: token.end,
+                beginsAfterPreformattedStart:
+                  previousToken?.kind === "tag" &&
+                  !previousToken.isEndTag &&
+                  (previousToken.name === "pre" ||
+                    previousToken.name === "listing") &&
+                  previousToken.end === token.start &&
+                  (htmlString[token.start] === "\n" ||
+                    htmlString[token.start] === "\r"),
+              };
+      }
+      previousToken = token;
+    },
     // In a table, a comment or script keeps the text runs around it apart,
     // which decides what text moves before the table; an empty comment stands in.
     comment(comment) {
@@ -156,7 +180,21 @@ const planMinification = (htmlString: string): MinificationPlan => {
       } else keepBefore = Math.max(keepBefore, script.end);
     },
   });
-  const hoisted = candidates.filter((script) => script.start >= keepBefore);
+  // Scripts placed before markup the document ends inside must not split the
+  // text in front of it in a table: `\f</` moves before the table whole, but
+  // `\f` alone is whitespace, which stays in it. They go before that text.
+  const insertionPoint =
+    scan.insertionPoint < htmlString.length &&
+    tableText?.end === scan.insertionPoint
+      ? tableText.start
+      : scan.insertionPoint;
+  // A script inserted before the first newline of <pre> or <listing> makes
+  // the parser keep a newline it would otherwise ignore.
+  const hoisted =
+    insertionPoint === tableText?.start &&
+    tableText.beginsAfterPreformattedStart
+      ? []
+      : candidates.filter((script) => script.start >= keepBefore);
   const { html, index } = removeHtmlRanges(
     htmlString,
     [...removals, ...hoisted],

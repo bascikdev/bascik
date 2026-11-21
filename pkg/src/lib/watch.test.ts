@@ -192,6 +192,22 @@ vi.mock("node:fs", () => ({
   existsSync: mockExistsSync,
 }));
 
+// The pages folder is there unless a test says otherwise; its removal is
+// covered for real in dev-pages-folder-removed.integration.test.ts.
+const pagesRootMissing = vi.hoisted(() => vi.fn(() => false));
+vi.mock("./pages-root-removal.js", async () => {
+  const { resolve } = await import("node:path");
+  return {
+    createPagesRootRemoval: () => ({
+      // Resolved like the real root: on Windows it gains the drive letter.
+      root: resolve("/project/src/pages"),
+      isMissing: pagesRootMissing,
+      compileAtBoot: (compile: () => Promise<void>) => compile(),
+      poll: () => () => {},
+    }),
+  };
+});
+
 vi.mock("./file-system.js", () => ({
   copyReplicatePath: mockCopyReplicatePath,
   copyStaticAssets: mockCopyStaticAssets,
@@ -259,7 +275,10 @@ import {
 import { BascikConfig } from "./config.ts";
 import { eventEmitter } from "./events.ts";
 import { clearBootFailure, getBootFailure } from "./boot-failure.ts";
-import { reportComponentLoadFailure } from "./page-diagnostics.ts";
+import {
+  PageProcessingError,
+  reportComponentLoadFailure,
+} from "./page-diagnostics.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -531,6 +550,24 @@ describe("watchFiles – asset watcher (watcher 0)", () => {
     expect(deleteDistDir).toHaveBeenCalledWith("/path/to/dir");
   });
 
+  it("never deletes the output root when the pages folder itself is removed", async () => {
+    pagesRootMissing.mockReturnValue(true);
+    try {
+      const unlinkDir = getHandler(0, "unlinkDir");
+      unlinkDir?.("/project/src/pages");
+      await Promise.resolve();
+      expect(mockDeleteDistDir).not.toHaveBeenCalled();
+      expect(pagesRootMissing).toHaveBeenCalled();
+      // Nor do the rebuilds that follow try to read the missing folder.
+      vi.mocked(processAllPages).mockClear();
+      getHandler(1, "unlink")?.("/project/src/pages/index.html");
+      await new Promise((done) => setTimeout(done, 0));
+      expect(processAllPages).not.toHaveBeenCalled();
+    } finally {
+      pagesRootMissing.mockReturnValue(false);
+    }
+  });
+
   it("rescans static assets when a removed directory is recreated", async () => {
     const unlinkDir = getHandler(0, "unlinkDir");
     const addDir = getHandler(0, "addDir");
@@ -728,6 +765,35 @@ describe("watchFiles – html page watcher (watcher 1)", () => {
     const handler = getHandler(1, "change");
     handler?.("/path/to/page.html");
     expect(pageProcessing).toHaveBeenCalledWith("/path/to/page.html");
+  });
+
+  // A component build script that reads BASCIK_PAGE_FILE folds the page's
+  // content into its cache key through the build-script content memo. A page
+  // edit that does not drop that memo keys the script with the old content,
+  // so the component kept its output from before the edit.
+  it("drops the page's build-script memo on 'change', before recompiling it", () => {
+    const handler = getHandler(1, "change");
+    handler?.("/project/src/pages/release-1.0.html");
+    expect(clearBuildScriptCaches).toHaveBeenCalledWith(
+      "/project/src/pages/release-1.0.html",
+    );
+    expect(mockClearBuildScriptCaches.mock.invocationCallOrder[0]).toBeLessThan(
+      mockPageProcessing.mock.invocationCallOrder[0],
+    );
+  });
+
+  // An editor or `git checkout` can replace a page by deleting and creating
+  // it, which arrives as 'unlink' then 'add', not as 'change'.
+  it("drops the page's build-script memo when the page is removed and added again", () => {
+    getHandler(1, "unlink")?.("/project/src/pages/release-1.0.html");
+    expect(clearBuildScriptCaches).toHaveBeenCalledWith(
+      "/project/src/pages/release-1.0.html",
+    );
+    mockClearBuildScriptCaches.mockClear();
+    getHandler(1, "add")?.("/project/src/pages/release-1.0.html");
+    expect(clearBuildScriptCaches).toHaveBeenCalledWith(
+      "/project/src/pages/release-1.0.html",
+    );
   });
 
   it("calls removePage on 'unlink'", () => {
@@ -2065,6 +2131,44 @@ describe("watchFiles – watch error output (audit 159 finding 48)", () => {
 
     expect(errorSpy).toHaveBeenCalledWith(error.message);
     expect(errorSpy.mock.calls.flat()).not.toContain(error);
+    errorSpy.mockRestore();
+  });
+
+  // Misuse: a page saved half-written (no <body> yet, or an empty file).
+  // The boot compile and `bascik --build` name the page and the reason; a
+  // save must not print the error object with Bascik's own stack instead.
+  it("misuse: a page that fails on save prints the page and the reason, not the error object and its stack", async () => {
+    await watchFiles();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const pagePath = resolve(process.cwd(), "src/pages/about.html");
+    const error = new PageProcessingError(
+      pagePath,
+      "validate markup",
+      new Error("Page does not contain a non-empty <body> element"),
+    );
+    mockPageProcessing.mockRejectedValueOnce(error);
+
+    getHandler(1, "change")?.(pagePath);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Build failed with 1 page error:\n  src/pages/about.html\n    validate markup: Page does not contain a non-empty <body> element",
+    );
+    expect(errorSpy.mock.calls.flat()).not.toContain(error);
+    errorSpy.mockRestore();
+  });
+
+  it("still prints the whole object for an error that names no file", async () => {
+    await watchFiles();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = new TypeError("x is not a function");
+    mockPageProcessing.mockRejectedValueOnce(error);
+
+    getHandler(1, "change")?.("/project/src/pages/index.html");
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(errorSpy).toHaveBeenCalledWith("[bascik] watch error:", error);
     errorSpy.mockRestore();
   });
 });

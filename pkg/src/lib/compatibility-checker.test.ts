@@ -72,6 +72,13 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         '[data-open="true"] { display: block; }',
         ".ok, [aria-expanded='true'] { opacity: 1; }",
         '[id-test="x"] { color: red; }',
+        // A flag or a namespace does not make an attribute selector scoped.
+        "[href$=x i] { color: red; }",
+        '[href$=".pdf" s] { color: red; }',
+        "[ type = checkbox I ] { color: red; }",
+        "[xlink|href] { color: red; }",
+        "[*|href=x] { color: red; }",
+        "[|lang|=en] { color: red; }",
       ],
       negative: [
         ".card[data-state] { color: red; }",
@@ -82,6 +89,10 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "html[data-theme='dark'] .box { color: white; }",
         "/* [data-state] { color: red; } */",
         "/* bascik-ignore css-attribute-selector */\n[data-state] { color: red; }",
+        // A class that starts with a hyphen is scoped like any other.
+        "[data-state].-on { color: red; }",
+        "[data-state] .--open { color: red; }",
+        "[href$=x i].card { color: red; }",
       ],
     },
     "css-is-element-names": {
@@ -96,6 +107,8 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         ".card:has(.hero-img) { display: grid; }",
         ".prose :is(h2, h3) { margin: 0; }",
         ".markdown :is(p, ul, ol, blockquote) { margin-block: 1.5rem; }",
+        ".-prose :is(h2, h3) { margin: 0; }",
+        ".--open :where(p) { margin: 0; }",
         "/* bascik-ignore css-is-element-names */\n:is(h2, h3) { margin: 0; }",
       ],
     },
@@ -166,6 +179,8 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         'document.querySelector( ".card .title" );',
         'document.querySelector("button.btn");',
         'document.querySelector(".list > li");',
+        'document.querySelector(".-mt-4");',
+        'document.querySelector(".--open");',
         'document.getElementsByClassName("btn")[0];',
         "document.getElementsByClassName('btn').item(0);",
       ],

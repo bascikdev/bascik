@@ -459,3 +459,201 @@ describe.each(SERVER_MODES)(
     });
   },
 );
+
+// `throw "text"`, `throw null` and `Promise.reject()` carry no stack, so
+// nothing in the value names the script. The report named only the route
+// ("server script error at "/s": Error: just a string"), and an API route's
+// stack was Bascik's own frames (request-execution.ts toError).
+const THROWS = {
+  string: `throw "just a string";`,
+  null: `throw null;`,
+  empty: `return Promise.reject();`,
+};
+const throwingPage = (directive: string, statement: string): string =>
+  page(
+    "Throws",
+    `    <script ${directive}>\n      export default ${directive === "data-bascik-stream" ? "async function* ()" : "() =>"} {\n        ${directive === "data-bascik-stream" ? 'yield "<p>a</p>";\n        ' : ""}${statement}\n      };\n    </script>`,
+  );
+// The whole sentence, so the copy the build runner embeds is checked too.
+const NOT_AN_ERROR =
+  ", not an Error, so it has no stack trace. bascik --check and the editor mark a literal value thrown or rejected in your code (rule throw-non-error), but not a value thrown through a variable or by a dependency: make that value an Error where it is created.";
+const NON_ERROR_DESCRIPTIONS = {
+  string: `The script threw the string "just a string"${NOT_AN_ERROR}`,
+  null: `The script threw null${NOT_AN_ERROR}`,
+  empty: `The script threw undefined (or rejected with no reason)${NOT_AN_ERROR}`,
+};
+
+describe("build-time scripts that throw a non-Error (real `bascik --build`)", () => {
+  let root: string;
+  let output: string;
+
+  beforeAll(async () => {
+    root = await writeProject({
+      "bascik.config.ts": `export default { scripts: { onBuildScriptError: "warn", onRoutesScriptError: "warn" } };\n`,
+      "src/pages/index.html": page("Home", "    <p>ok</p>"),
+      "src/pages/build-string.html": throwingPage(
+        "data-bascik-build",
+        THROWS.string,
+      ),
+      "src/pages/build-null.html": throwingPage(
+        "data-bascik-build",
+        THROWS.null,
+      ),
+      "src/pages/[slug].html": throwingPage("data-bascik-routes", THROWS.empty),
+    });
+    ({ output } = await runBuild(root));
+  }, 120_000);
+
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it.each([
+    [
+      `[bascik] build script error in "src/pages/build-string.html"`,
+      NON_ERROR_DESCRIPTIONS.string,
+    ],
+    [
+      `[bascik] build script error in "src/pages/build-null.html"`,
+      NON_ERROR_DESCRIPTIONS.null,
+    ],
+    [
+      `[bascik] routes script error in "src/pages/[slug].html"`,
+      NON_ERROR_DESCRIPTIONS.empty,
+    ],
+  ])("%s says what was thrown", (header, description) => {
+    const report = reportFor(output, header);
+    expect(report).toContain(description);
+    expectOnlyUserFrames(report);
+  });
+});
+
+describe.each([
+  {
+    mode: "dev server (`bascik`)",
+    args: [] as string[],
+    build: false,
+    port: 24611,
+  },
+  {
+    mode: "production server (`bascik --server`)",
+    args: ["--server"],
+    build: true,
+    port: 24612,
+  },
+])(
+  "request-time scripts that throw a non-Error (real $mode)",
+  ({ args, build, port }) => {
+    let root: string;
+    let child: ChildProcess;
+    let output = "";
+    const base = `http://localhost:${port}`;
+
+    const waitFor = (pattern: RegExp, timeoutMs = 30_000): Promise<void> =>
+      new Promise((resolveWait, reject) => {
+        const started = Date.now();
+        const check = (): void => {
+          if (pattern.test(output)) return resolveWait();
+          if (Date.now() - started > timeoutMs)
+            return reject(
+              new Error(`${pattern} not printed. Output:\n${output}`),
+            );
+          setTimeout(check, 50);
+        };
+        check();
+      });
+
+    const PAGES = {
+      "src/pages/s/server-string.html": throwingPage(
+        "data-bascik-server",
+        THROWS.string,
+      ),
+      "src/pages/s/server-null.html": throwingPage(
+        "data-bascik-server",
+        THROWS.null,
+      ),
+      "src/pages/s/server-empty.html": throwingPage(
+        "data-bascik-server",
+        THROWS.empty,
+      ),
+      "src/pages/s/stream-string.html": throwingPage(
+        "data-bascik-stream",
+        THROWS.string,
+      ),
+    };
+
+    beforeAll(async () => {
+      root = await writeProject({
+        "src/pages/index.html": page("Home", "    <p>ok</p>"),
+        ...PAGES,
+        "src/api/thrown.ts": `export const GET = () => {\n  throw "api string";\n};\n`,
+      });
+      if (build) {
+        const { code, output: buildOutput } = await runBuild(root);
+        if (code !== 0)
+          throw new Error(`build exited ${code}:\n${buildOutput}`);
+      }
+      child = spawn(process.execPath, [PKG_ENTRY, ...args], {
+        cwd: root,
+        env: childEnv({
+          BASCIK_SERVER_PORT: String(port),
+          BASCIK_ENABLE_TLS: "false",
+        }),
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      child.stdout?.on("data", (data: Buffer) => {
+        output += data.toString();
+      });
+      child.stderr?.on("data", (data: Buffer) => {
+        output += data.toString();
+      });
+      await waitFor(/Server running at/);
+    }, 120_000);
+
+    afterAll(async () => {
+      if (child.exitCode === null) {
+        await new Promise<void>((done) => {
+          child.once("close", () => done());
+          child.kill("SIGINT");
+        });
+      }
+      await rm(root, { recursive: true, force: true });
+    });
+
+    it.each([
+      ["/s/server-string", "s/server-string.html", "string", 500],
+      ["/s/server-null", "s/server-null.html", "null", 500],
+      ["/s/server-empty", "s/server-empty.html", "empty", 500],
+      // Headers are committed before a stream script runs.
+      ["/s/stream-string", "s/stream-string.html", "string", 200],
+    ] as const)(
+      "names the file and line of %s",
+      async (path, file, thrown, status) => {
+        const response = await fetch(`${base}${path}`);
+        expect(response.status).toBe(status);
+        await response.text();
+        const header = `[bascik] server script error at "${path}":`;
+        await waitFor(new RegExp(RegExp.escape(header)));
+        const source = PAGES[`src/pages/${file}` as keyof typeof PAGES];
+        const report = reportFor(output, header);
+        expect(report).toContain(NON_ERROR_DESCRIPTIONS[thrown]);
+        expect(report).toContain(
+          `in the script that starts at src/pages/${file}:${locationOf(source, "export default")}`,
+        );
+        expect(report).not.toMatch(/^Error: /m);
+        expectOnlyUserFrames(report);
+      },
+    );
+
+    it("names an API route's file and prints none of Bascik's frames", async () => {
+      const response = await fetch(`${base}/api/thrown`);
+      expect(response.status).toBe(500);
+      await response.text();
+      await waitFor(/API route handler error \(GET \/api\/thrown\)/);
+      const report = reportFor(output, "[bascik] API route handler error");
+      expect(report).toMatch(/src\/api\/thrown\.ts/);
+      expect(report).toContain('The script threw the string "api string"');
+      expectOnlyUserFrames(report);
+    });
+  },
+);

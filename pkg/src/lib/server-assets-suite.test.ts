@@ -739,7 +739,10 @@ describe("startHttp2Server – static representation failure paths", () => {
 
     await handler(stream, makeHeaders("/style.css", "GET"));
     expect(stream.respond).toHaveBeenCalledWith(
-      expect.objectContaining({ ":status": 404 }),
+      expect.objectContaining({
+        ":status": 404,
+        "content-type": "text/plain; charset=utf-8",
+      }),
     );
   });
 
@@ -762,7 +765,9 @@ describe("startHttp2Server – static representation failure paths", () => {
     },
   );
 
-  it("responds 404 when stat reports ENOENT", async () => {
+  // A stylesheet assets.inlineStyles inlines is not in dist/, so a <link>
+  // left in a page lands here: the 404 says what it is, as the page 404s do.
+  it("responds 404 as text/plain when stat reports ENOENT", async () => {
     mockStat.mockRejectedValueOnce(
       Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
     );
@@ -771,7 +776,153 @@ describe("startHttp2Server – static representation failure paths", () => {
 
     await handler(stream, makeHeaders("/style.css", "GET"));
     expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ":status": 404,
+        "content-type": "text/plain; charset=utf-8",
+      }),
+    );
+    expect(stream.end).toHaveBeenCalledWith("Not Found");
+  });
+
+  it("responds 500 as text/plain when stat fails for another reason", async () => {
+    mockStat.mockRejectedValueOnce(
+      Object.assign(new Error("EACCES"), { code: "EACCES" }),
+    );
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+
+    await handler(stream, makeHeaders("/style.css", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ":status": 500,
+        "content-type": "text/plain; charset=utf-8",
+      }),
+    );
+  });
+
+  // A page name can hold a dot: `release-1.0.html`, a `[version]` route of
+  // `v2.0`. Its URL (the one the sitemap lists) looks like a file with an
+  // extension, but no such file exists, so the page answers.
+  // The first compile has not stored the page yet: a dotted page path gets
+  // the boot page every other page gets, while a missing asset stays a 404.
+  it.each(["/release-1.0", "/docs/v2.0", "/v1.2/"])(
+    "serves the boot page for a dotted path while dev is booting: %s",
+    async (path) => {
+      mockMem.isBooting = true;
+      mockStat.mockRejectedValue(
+        Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+      );
+      mockMem.getPageExact.mockReturnValue(undefined);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+
+      await handler(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ":status": 200,
+          "cache-control": "no-store",
+        }),
+      );
+      expect(String(stream.end.mock.calls[0][0])).toContain(
+        "bascik-live-reload?boot=1",
+      );
+    },
+  );
+
+  it.each(["/cover.png", "/styles.css"])(
+    "still answers 404 for a missing asset while dev is booting: %s",
+    async (path) => {
+      mockMem.isBooting = true;
+      mockStat.mockRejectedValue(
+        Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+      );
+      mockMem.getPageExact.mockReturnValue(undefined);
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+
+      await handler(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({ ":status": 404 }),
+      );
+    },
+  );
+
+  it("answers 404 for a dotted path after boot when no page has it", async () => {
+    mockStat.mockRejectedValue(
+      Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+    );
+    mockMem.getPageExact.mockReturnValue(undefined);
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+
+    await handler(stream, makeHeaders("/release-9.9", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
       expect.objectContaining({ ":status": 404 }),
+    );
+  });
+
+  it.each(["/release-1.0", "/docs/v2.0", "/blog/hello.world"])(
+    "serves the page at a dotted path no static file has: %s",
+    async (path) => {
+      mockStat.mockRejectedValueOnce(
+        Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+      );
+      mockMem.getPageExact.mockImplementation((httpPath: string) =>
+        httpPath === path
+          ? makePage({ content: Buffer.from("<html>Dotted</html>") })
+          : undefined,
+      );
+      const handler = getStreamHandler()!;
+      const stream = makeStream();
+
+      await handler(stream, makeHeaders(path, "GET"));
+      expect(stream.respond).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ":status": 200,
+          "content-type": "text/html; charset=utf-8",
+        }),
+      );
+    },
+  );
+
+  // `v1.2/index.html` is the page `/v1.2/`; `/v1.2` names its folder in
+  // dist, which stat finds, and the page answers as it does for `/blog`.
+  it("serves a dotted folder's index page when the path without the slash is a directory", async () => {
+    mockStat.mockResolvedValueOnce({
+      mtimeMs: 1_705_000_000_000,
+      size: 96,
+      isDirectory: () => true,
+    });
+    mockMem.getPageExact.mockImplementation((httpPath: string) =>
+      httpPath === "/v1.2"
+        ? makePage({ relativePagePath: "pages/v1.2/index.html" })
+        : undefined,
+    );
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+
+    await handler(stream, makeHeaders("/v1.2", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 200 }),
+    );
+    expect(mockReadFile).not.toHaveBeenCalledWith(
+      expect.stringContaining("v1.2"),
+    );
+  });
+
+  it("a static file wins over a page with the same dotted path", async () => {
+    mockStat.mockResolvedValue({ mtimeMs: 1_705_000_000_000, size: 1_024 });
+    mockReadFile.mockResolvedValue(Buffer.from('{"a":1}'));
+    mockMem.getPageExact.mockReturnValue(makePage());
+    const handler = getStreamHandler()!;
+    const stream = makeStream();
+
+    await handler(stream, makeHeaders("/data.json", "GET"));
+    expect(stream.respond).toHaveBeenCalledWith(
+      expect.objectContaining({ ":status": 200, "content-length": 7 }),
+    );
+    expect(stream.respond).not.toHaveBeenCalledWith(
+      expect.objectContaining({ "content-type": "text/html; charset=utf-8" }),
     );
   });
 });

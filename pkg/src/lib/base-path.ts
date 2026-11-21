@@ -2,7 +2,7 @@ import {
   scanElementContents,
   scanOpeningTags,
 } from "./element-content-scan.ts";
-import { createContentShield, shieldElementContents } from "./shielding.ts";
+import { shieldElementContents, shieldHtmlComments } from "./shielding.ts";
 import { trimTrailingSlashes } from "./slashes.ts";
 
 const URL_ATTRIBUTES = new Set([
@@ -251,10 +251,9 @@ const rewriteTagAttributes = (tag: string, base: string): string => {
 export const rewriteHtmlBasePaths = (html: string, base: string): string => {
   if (base === "/") return html;
 
-  const commentShield = createContentShield(html);
-  const withoutComments = html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-    commentShield.hide(comment),
-  );
+  // Only real comments: `<!--` in a script, style or title is its text.
+  const commentShield = shieldHtmlComments(html);
+  const withoutComments = commentShield.html;
   // Since request-time rendering, each expanded usage is rebased on every
   // request and can carry visitor text, so the stylesheet and opening-tag
   // searches are linear scans. They find what

@@ -8,7 +8,11 @@ import { format } from "node:util";
 import { CLI_USAGE, resolveCliAction } from "./lib/cli.ts";
 import { readVersion } from "./lib/version.ts";
 import { installProcessCrashHandlers } from "./lib/crash-net.ts";
-import { exitAfterStopping } from "./lib/exit-stoppers.ts";
+import {
+  exitAfterStopping,
+  exitOnSignalsAfterStopping,
+  isExitInProgress,
+} from "./lib/exit-stoppers.ts";
 import { stripColors } from "./lib/colors.ts";
 
 export { readVersion, installProcessCrashHandlers };
@@ -198,6 +202,13 @@ export const runCli = async (
     case "build":
     default: {
       const { runTranspile } = await import("./transpile.ts");
+      // A build has no server, and a dev boot has none yet: until one takes
+      // the signals over, a SIGINT, SIGTERM or SIGHUP stops the pipeline.exec
+      // children before it ends the process.
+      if (options.exitOnFinish !== false) {
+        const { stopExecChildren } = await import("./lib/exec.ts");
+        exitOnSignalsAfterStopping(stopExecChildren);
+      }
       try {
         if (process.send && process.env.BASCIK_ADAPTER_DEV === "1") {
           const { BascikConfig } = await import("./lib/config.ts");
@@ -214,13 +225,15 @@ export const runCli = async (
         return { action: decision.action, exitCode: 0 };
       } catch (err) {
         if (options.exitOnFinish !== false) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          if (
-            !errMsg.includes("[bascik] build script error") &&
-            !errMsg.includes("[bascik] server script error")
-          ) {
-            console.error(errMsg);
-          }
+          // A signal is already ending the process, and stopping the exec
+          // children is what failed the build: that exit keeps its signal.
+          if (isExitInProgress())
+            return { action: decision.action, exitCode: 1 };
+          // Script errors print themselves; print only what has not been printed.
+          const { unprintedBuildFailureMessage } =
+            await import("./lib/page-diagnostics.ts");
+          const unprinted = unprintedBuildFailureMessage(err);
+          if (unprinted !== null) console.error(unprinted);
           // A failed build or dev boot may still have page workers loading
           // (exiting then can abort Node 24): stop them first.
           exitAfterStopping(1);

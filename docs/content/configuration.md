@@ -23,6 +23,8 @@ Bascik reads the file's `export default` object and the mode exports `dev`, `bui
 
 TypeScript configs work through Node's native type stripping, which supports erasable syntax only (type annotations, interfaces, `import type`). Non-erasable constructs such as `enum` or constructor parameter properties fail at load time with a Node error. Keep the config file to plain JavaScript plus type annotations.
 
+A config may use top-level `await`, for example to read a file before exporting its settings. Every awaited promise must settle: a config, or a module it imports, that awaits a promise that never resolves or rejects stops Bascik with `[bascik] error: bascik.config.js never finished loading` and exit code 1.
+
 ### Config Changes Need a Restart
 
 The dev server does not hot-reload configuration. Bascik deep-freezes the resolved configuration at boot so worker threads, routers, and watchers all see the same values, and reloading it in place could leave them out of sync. When you edit a root config file, the dev server keeps its boot configuration and prints:
@@ -58,7 +60,7 @@ Configuration errors in bascik.config.ts
 5 configuration errors
 ```
 
-Unknown keys are rejected with a "did you mean" suggestion when there is a near miss, so a typo like `minfy:`, `directroy:` or `security.blockScriptUrl` fails loudly instead of being silently ignored. Values are checked against their type as well: a setting that takes `true` or `false` rejects the string `"false"`, a section such as `generate` must be an object, and `scripts.cache` and each `pipeline.exec` entry's `watch`, `cwd`, `env`, `args`, and `timeout` must have the documented shape. Referenced paths (`directory.pages`, `pipeline.watchPaths`, `pipeline.exec[].script`, `assets.inlineStyles`, and TLS key/cert files when TLS is enabled) are checked for existence at startup. A missing `pipeline.exec[].cwd` is only a warning, since an earlier step may create it, and a `cwd` inside `directory.out` (a `post` script that runs in `dist/`) is not reported at all. The `base` option is normalized to a leading and trailing slash, so `docs`, `/docs`, and `/docs/` are all accepted. Use a literal path prefix without a query, fragment, percent escape, backslash, or `.` and `..` segments; full URLs are rejected too.
+Unknown keys are rejected with a "did you mean" suggestion when there is a near miss, so a typo like `minfy:`, `directroy:` or `security.blockScriptUrl` fails loudly instead of being silently ignored. Values are checked against their type as well: a setting that takes `true` or `false` rejects the string `"false"`, a section such as `generate` must be an object literal (a `Map`, `Date`, or class instance is rejected, because its settings would be ignored), a path setting such as `directory.out` or `scripts.importRoot` must not be blank, and `scripts.cache` and each `pipeline.exec` entry's `watch`, `cwd`, `env`, `args`, and `timeout` must have the documented shape. Referenced paths (`directory.pages`, `pipeline.watchPaths`, `pipeline.exec[].script`, `assets.inlineStyles`, and TLS key/cert files when TLS is enabled) are checked for existence at startup. A missing `pipeline.exec[].cwd` is only a warning, since an earlier step may create it, and a `cwd` inside `directory.out` (a `post` script that runs in `dist/`) is not reported at all. The `base` option is normalized to a leading and trailing slash, so `docs`, `/docs`, and `/docs/` are all accepted. Use a literal path prefix without a query, fragment, percent escape, backslash, or `.` and `..` segments; full URLs are rejected too.
 
 ## Create a Config Only for a Non-Default Requirement
 
@@ -94,7 +96,7 @@ The flags that override specific config keys:
 | `--log-level <level>` | `BASCIK_LOG_LEVEL`      | `logging.level` |
 | `--quiet`, `-q`       | `BASCIK_LOG_LEVEL=warn` | `logging.level` |
 
-Each channel gets the config key's rule. `--port` and `BASCIK_SERVER_PORT` take whole digits from 1 to 65535: a bad `--port` is an error, and a bad `BASCIK_SERVER_PORT` such as `8080abc` is ignored with a warning, so the configured port applies instead of part of the value. When `BASCIK_SERVER_PORT` is unset, the server reads `PORT`, the variable many hosting platforms set, by the same rule. `--host` and `BASCIK_SERVER_HOST` take a hostname like `localhost` or `0.0.0.0`, as `http.hostname` does: a URL such as `http://0.0.0.0`, a path, or a host with a port such as `localhost:3000` is an error naming the flag or variable. Pass the port on its own, with `--port`, `BASCIK_SERVER_PORT` or `http.port`. An IPv6 address is written bare, as Node's `server.listen` takes it: `::` binds every interface, `::1` is the loopback, and a link-local address carries its interface as a zone (`fe80::1%en0`). The bracketed form `[::1]` belongs in URLs, so it is an error that says to drop the brackets; the server prints its URL with them (`http://[::1]:8080`).
+Each channel gets the config key's rule. `--port` and `BASCIK_SERVER_PORT` take whole digits from 1 to 65535: a bad `--port` is an error, and a bad `BASCIK_SERVER_PORT` such as `8080abc` is ignored with a warning, so the configured port applies instead of part of the value. When `BASCIK_SERVER_PORT` is unset, the server reads `PORT`, the variable many hosting platforms set, by the same rule. `--host` and `BASCIK_SERVER_HOST` take a hostname like `localhost` or `0.0.0.0`, as `http.hostname` does: a URL such as `http://0.0.0.0`, a path, or a host with a port such as `localhost:3000` is an error naming the flag or variable. Pass the port on its own, with `--port`, `BASCIK_SERVER_PORT` or `http.port`. An IPv6 address is written bare, as Node's `server.listen` takes it: `::` binds every interface, `::1` is the loopback, and a link-local address carries its interface as a zone (`fe80::1%en0`). The bracketed form `[::1]` belongs in URLs, so it is an error that says to drop the brackets; the server prints its URL with them (`http://[::1]:8080`). A port below 1024 needs administrator privileges on most systems, so `bascik --server --port 80` as a normal user stops with `[bascik] error: permission denied to listen on localhost:80 (EACCES)`: use a port of 1024 or higher behind a reverse proxy or your host's port mapping. A `--host` that is not an address of this computer stops with `[bascik] error: cannot listen on ...`.
 
 One setting has a flag and an environment variable but no config key: `--no-pin`, or `BASCIK_PIN_SERVER_URL=0`, turns off [pinning the server address](/developer-experience#what-you-see-in-the-terminal). It describes your own terminal, and the config file is shared by everyone on the project.
 
@@ -251,7 +253,7 @@ Here are just a few ways Bascik puts architectural choices back in your hands:
 - **Custom Minification (`minify`):** Toggle HTML, CSS, and JS minifiers independently, or plug in your own custom async minifiers (like esbuild or terser). TypeScript in referenced `.ts` companions and `type="text/typescript"` blocks is stripped automatically before minification, so no minifier configuration is needed for it.
 - **Granular Attribute Scoping (`scoping.attributes`):** Control exactly which attributes (classes, IDs, or name attributes) are scoped. If you are using Tailwind CSS, you can disable class scoping entirely while keeping ID scoping active.
 - **Exec Failure Behavior (`pipeline.onExecError`):** Choose whether a failing `pipeline.exec` script stops the run (`'error'`) or is reported while it continues (`'warn'`). Defaults to `'warn'` in dev and `'error'` for `--build`.
-- **Parallel Builds (`pipeline.workers`):** Optimize build speeds on larger sites by opting into a multi-core CPU worker pool, or stick to main-thread processing for smaller projects. Defaults to `false` to avoid worker startup overhead on small sites; in dev mode, Bascik advises enabling it when single-threaded transpilation of at least 20 page jobs takes 2.0s or longer on 4+ CPU cores.
+- **Parallel Builds (`pipeline.workers`):** Optimize build speeds on larger sites by opting into a multi-core CPU worker pool, or stick to main-thread processing for smaller projects. `true` starts up to one worker per CPU core (never more than there are pages); a positive integer such as `4` turns the pool on with at most that many workers, which leaves cores free on a shared CI machine. Defaults to `false` to avoid worker startup overhead on small sites; in dev mode, Bascik advises enabling it when single-threaded transpilation of at least 20 page jobs takes 2.0s or longer on 4+ CPU cores.
 - **Error Behavior (`scripts`):** Control error handling separately for `onBuildScriptError`, `onRoutesScriptError`, and `onServerScriptError` (`'error'`, `'warn'`, or `'ignore'`).
 - **Environment Overrides (`dev`, `build`, `server`):** Easily define mode-specific overrides while keeping development logs detailed and verbose.
 
@@ -265,7 +267,7 @@ Set the URL path where the built site will be mounted. The default `/` is a comp
 base: '/docs/',
 ```
 
-Bascik normalizes `docs`, `/docs`, and `/docs/` to `/docs/`. Nested paths such as `/products/docs` normalize to `/products/docs/`. An empty value is treated as `/`, while full URLs such as `https://example.com/docs` are rejected. Use `BASCIK_SITE_URL` for the origin instead.
+Bascik normalizes `docs`, `/docs`, and `/docs/` to `/docs/`. Nested paths such as `/products/docs` normalize to `/products/docs/`. An empty value is treated as `/` and spaces around a value are ignored, but a value of only spaces is rejected, and full URLs such as `https://example.com/docs` are rejected. Use `BASCIK_SITE_URL` for the origin instead.
 
 For a non-root base, the build rewrites root-relative URLs in HTML URL attributes, `srcset`, inline and hoisted CSS, copied stylesheets, and web app manifest URL fields. Absolute URLs, protocol-relative URLs, other schemes, fragments, and already-relative paths remain unchanged. Serving the resulting site under this prefix is described in [Deployment Overview](/deployment).
 
@@ -334,7 +336,7 @@ export default defineConfig({
 });
 ```
 
-By default, any hyphenated tag with no component file prints `Unresolved component tag` during every transpile and appears under "Components with no matching file" in `bascik --check`. Declaring a tag here removes it from both. Typos such as `<my-crd>` are still reported, so keep the list to tags you own on purpose.
+By default, any hyphenated tag with no component file prints `Unresolved component tag` during every transpile and appears under "Components with no matching file" in `bascik --check`. Declaring a tag here removes it from both. Typos such as `<my-crd>` are still reported, so keep the list to tags you own on purpose. The hyphenated SVG and MathML element names that HTML reserves for itself (`annotation-xml`, `color-profile`, `font-face`, `font-face-src`, `font-face-uri`, `font-face-format`, `font-face-name`, `missing-glyph`) are never reported and need no entry.
 
 This option changes diagnostics only. A declared tag is passed to the browser unchanged. If a real component file has the same name, the component still expands. It does not stop `id`, `name`, or `class` scoping inside the element; use [`scoping.preserve`](#scopingpreserve) for that. The two options are independent, and most external elements need only `components.external`.
 
@@ -472,6 +474,8 @@ assets: {
 }
 ```
 
+A stylesheet listed in `assets.inlineStyles` (every `.css` file under `directory.pages` with `inlineStyles: true`) is inlined into each page's `<head>` and not copied to `directory.out`. Remove any `<link rel="stylesheet">` to it: the build warns about one it finds, naming the page and the link, and `bascik --check` reports it.
+
 `assets.exclude` patterns match paths relative to `directory.pages` and provide project-specific exclusions. They do not weaken the built-in deny-list, which always applies. Keep tests and source-only helpers outside `directory.pages`. To copy a separate external asset tree, use a `pipeline.exec` script that writes intentionally selected files to `directory.out`.
 
 Set `assets.symlink` to `true` to use relative links for unchanged development assets, including images, SVGs, PDFs, fonts, media, JSON, and XML. Bascik still copies assets it transforms, such as minified CSS or JavaScript and rewritten web manifests. Every production build, including a targeted `--only` build, writes regular files. If Windows denies symlink creation, Bascik warns once and falls back to copying.
@@ -510,7 +514,7 @@ pipeline: {
       watch: ['content/'],           // re-run on changes in dev mode
     },
   ],
-  workers: false,                    // enable multi-threaded worker pool (defaults to false; dev advises true on large multi-core workloads)
+  workers: false,                    // true, or the most worker threads (e.g. 4), compiles pages in parallel (defaults to false; dev advises true on large multi-core workloads)
   onExecError: 'warn',               // 'warn' | 'error'. Default: 'warn' in dev, 'error' for --build
 }
 ```
@@ -639,7 +643,7 @@ export default defineConfig({
 });
 ```
 
-Unlike `directory.out`, the import root is read-only, so a value that resolves outside the project root is accepted. It must be a non-empty string; if the directory does not exist Bascik prints a warning at startup rather than an error, because a project with no shared helpers is valid. The import root directory is watched automatically in dev mode with `directory.pages` and `directory.components` excluded when nested inside it. See [Monorepos](/how-to/monorepos).
+Unlike `directory.out`, the import root is read-only, so a value that resolves outside the project root is accepted. It must not be a folder that contains the project, such as `..` or `/`: dev would watch every file under it, and `@/` would reach anything on the disk. It must be a non-empty string; if the directory does not exist Bascik prints a warning at startup rather than an error, because a project with no shared helpers is valid. The import root directory is watched automatically in dev mode with `directory.pages` and `directory.components` excluded when nested inside it. See [Monorepos](/how-to/monorepos).
 
 ### `scripts.stripAnsi`
 

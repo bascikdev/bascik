@@ -37,6 +37,145 @@ const expectSameProgram = (source: string): string => {
   return minified;
 };
 
+type AsyncBody = (log: unknown[]) => Promise<unknown>;
+const AsyncFunction = (async () => {}).constructor as new (
+  ...args: string[]
+) => AsyncBody;
+
+/** `run` for the body of an async function, where `await` is an operator. */
+const runAsync = async (code: string): Promise<Run> => {
+  const log: unknown[] = [];
+  let fn: AsyncBody;
+  try {
+    fn = new AsyncFunction("log", code);
+  } catch (error) {
+    return { syntaxError: (error as Error).message, log };
+  }
+  try {
+    await fn(log);
+  } catch (error) {
+    return { threw: (error as Error).constructor.name, log };
+  }
+  return { log };
+};
+
+/** `expectSameProgram` for the body of an async function. */
+const expectSameAsyncProgram = async (source: string): Promise<string> => {
+  const minified = minifyJs(source);
+  const dev = await runAsync(source);
+  expect(dev.syntaxError, `source must be valid: ${source}`).toBeUndefined();
+  const prod = await runAsync(minified);
+  expect(prod.syntaxError, `minified: ${minified}`).toBeUndefined();
+  expect(prod, `minified: ${minified}`).toEqual(dev);
+  return minified;
+};
+
+describe("minifyJs – operators that would join into another token", () => {
+  // `+` and `+` are two operators, `++` is one; a line break or a comment kept them apart.
+  it.each([
+    [
+      "a sign on the next line",
+      "const a = 1, b = '2'\nconst x = a +\n  +b\nlog.push(x)",
+    ],
+    [
+      "a negation on the next line",
+      "const a = 1, b = 2\nconst x = a -\n  -b\nlog.push(x)",
+    ],
+    [
+      "a prefix ++ on the next line",
+      "let a = 1, b = 2\nconst x = a +\n  ++b\nlog.push(x, a, b)",
+    ],
+    [
+      "a prefix -- on the next line",
+      "let a = 1, b = 2\nconst x = a -\n  --b\nlog.push(x, a, b)",
+    ],
+    [
+      "a sign after a blank line",
+      "const a = 1, b = '2'\nconst x = a +\n\n  +b\nlog.push(x)",
+    ],
+    [
+      "a sign after a line comment",
+      "const a = 1, b = '2'\nconst x = a + // then the number\n  +b\nlog.push(x)",
+    ],
+    [
+      "a sign after a block comment",
+      "const a = 1, b = '2'\nconst x = a +/* sign */+ b\nlog.push(x)",
+    ],
+    [
+      "a negation after a block comment",
+      "const a = 1, b = 2\nconst x = a -/* sign */- b\nlog.push(x)",
+    ],
+    [
+      "a prefix ++ after a block comment",
+      "let a = 1, b = 2\nconst x = a +/* then */++b\nlog.push(x, a, b)",
+    ],
+    [
+      "a string then a sign on the next line",
+      "const b = '2'\nconst x = 'a' +\n  +b\nlog.push(x)",
+    ],
+    [
+      "a sign then a string on the next line",
+      "const a = 1\nconst x = a +\n  +'2'\nlog.push(x)",
+    ],
+    [
+      "three plus signs over three lines",
+      "const a = 1, b = '2'\nconst x = a +\n  +\n  +b\nlog.push(x)",
+    ],
+    [
+      "a postfix ++ then a plus line",
+      "let a = 1, b = 2\nconst x = a++\n  + b\nlog.push(x, a)",
+    ],
+  ])("keeps apart %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // `/` and then a regex literal must not become `//`, which comments out the rest.
+  it.each([
+    ["a number", "const x = 6 / /ab/.source.length\nlog.push(x)"],
+    [
+      "a name",
+      "const a = 6\nconst x = a / /ab/.source.length / 3\nlog.push(x)",
+    ],
+    [
+      "a name, regex on the next line",
+      "const a = 6\nconst x = a /\n  /ab/.source.length\nlog.push(x)",
+    ],
+    [
+      "a name, slash on the next line",
+      "const a = 6\nconst x = a\n  / /ab/.source.length\nlog.push(x)",
+    ],
+    [
+      "a call",
+      "const a = () => 6\nconst x = a() / /ab/.source.length\nlog.push(x)",
+    ],
+    [
+      "an index",
+      "const a = [6]\nconst x = a[0] / /ab/.source.length\nlog.push(x)",
+    ],
+    ["a string", "const x = '6' / /ab/.source.length\nlog.push(x)"],
+    ["a template", "const x = `6` / /ab/.source.length\nlog.push(x)"],
+    [
+      "a postfix update",
+      "let a = 6\nconst x = a++ / /ab/.source.length\nlog.push(x, a)",
+    ],
+    [
+      "a regex property",
+      "const x = /abcd/.source.length / /ab/.source.length\nlog.push(x)",
+    ],
+    [
+      "a block comment",
+      "const a = 6\nconst x = a / /* by */ /ab/.source.length\nlog.push(x)",
+    ],
+    [
+      "no space at all",
+      "const a = 6\nconst x = a/ /ab/.source.length\nlog.push(x)",
+    ],
+  ])("keeps a division by a regex after %s", (_name, source) => {
+    const minified = expectSameProgram(source);
+    expect(minified).toContain("log.push(");
+  });
+});
+
 describe("minifyJs – postfix update before division (F035)", () => {
   it("treats `/` after a postfix ++ as division so a trailing // comment stays a comment", () => {
     const source = [
@@ -115,6 +254,178 @@ describe("minifyJs – statement starting with a string or regex literal (F036)"
   });
 });
 
+describe("minifyJs – else or while on the line after a value's closing brace", () => {
+  // The `}` ends an object literal or a function, not the `if` body: `else` needs a `;` first.
+  it.each([
+    [
+      "an object literal",
+      "let x\nif (log.length) x = { a: 1 }\nelse x = { a: 2 }\nlog.push(x.a)",
+    ],
+    [
+      "an empty object",
+      "let x\nif (!log.length) x = {}\nelse x = null\nlog.push(typeof x)",
+    ],
+    [
+      "an object holding a string",
+      "let x\nif (log.length) x = { a: 'b' }\nelse x = { a: `c` }\nlog.push(x.a)",
+    ],
+    [
+      "a returned object",
+      "const f = (a) => {\n  if (a) return { a }\n  else return { a: 0 }\n}\nlog.push(f(1).a, f(0).a)",
+    ],
+    [
+      "a function expression",
+      "let cb\nif (log.length) cb = function () { return 1 }\nelse cb = function () { return 2 }\nlog.push(cb())",
+    ],
+    [
+      "a function expression on several lines",
+      "let cb\nif (log.length) cb = function ()\n{\n  return 1\n}\nelse cb = () => 2\nlog.push(cb())",
+    ],
+    [
+      "an arrow function body",
+      "let cb\nif (log.length) cb = () => { return 1 }\nelse cb = () => { return 2 }\nlog.push(cb())",
+    ],
+    [
+      "an async function expression",
+      "let cb\nif (log.length) cb = async function () {}\nelse cb = () => 2\nlog.push(cb())",
+    ],
+    [
+      "a returned function expression",
+      "const f = (a) => {\n  if (a) return function () { return 1 }\n  else return () => 2\n}\nlog.push(f(1)(), f(0)())",
+    ],
+    [
+      "a class expression",
+      "let C\nif (log.length) C = class { a() { return 1 } }\nelse C = class { a() { return 2 } }\nlog.push(new C().a())",
+    ],
+    [
+      "an object in a call argument list",
+      "let x = 0\nconst f = (...a) => a.length\nif (log.length) x = f({}, {\n})\nelse x = f({\n})\nlog.push(x)",
+    ],
+    [
+      "an object before a while loop",
+      "let n = 0\nconst seen = {}\nwhile (n < 2) n++\nlog.push(n, typeof seen)",
+    ],
+    [
+      "an assigned object before a while loop",
+      "let n = 0, seen\nseen = {}\nwhile (n < 2) { n++ }\nlog.push(n, typeof seen)",
+    ],
+    [
+      "a function expression before a while loop",
+      "let n = 0\nconst f = function () {}\nwhile (n < 2) n++\nlog.push(n, typeof f)",
+    ],
+    [
+      "an object as a do body",
+      "let n = 0, x\ndo x = { n: n++ }\nwhile (n < 2)\nlog.push(n, x.n)",
+    ],
+    [
+      "an object after the colon of a conditional",
+      "let x, b = 0\nif (!log.length) x = b ? {} : {}\nelse x = 1\nlog.push(typeof x)",
+    ],
+    [
+      "an object after a plus",
+      "let x, b = 'a'\nif (!log.length) x = b + {}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "an object after a comparison",
+      "let x, b = 1\nif (!log.length) x = b < {}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "an object after a not",
+      "let x\nif (!log.length) x = !{}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "a function after delete",
+      "let x\nif (!log.length) x = delete function () {}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "an object after delete",
+      "let x\nif (!log.length) x = delete {}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "a function and a class after a conditional",
+      "let a = 2, x\nx = a ? function () {} : class {}\nwhile (a) a--\nlog.push(typeof x, a)",
+    ],
+    [
+      "a function after an arrow",
+      "let f\nif (!log.length) f = (b) => function () { return b }\nelse f = 1\nlog.push(f(3)())",
+    ],
+    [
+      "a class after an arrow",
+      "let f\nif (!log.length) f = () => class { m() { return 4 } }\nelse f = 1\nlog.push(new (f())().m())",
+    ],
+    [
+      "an object after a minus and a multiply",
+      "let x\nif (!log.length) x = 1 - {} * {}\nelse x = 1\nlog.push(x)",
+    ],
+    [
+      "a nested conditional",
+      "let x, a = 0, b = 1\nif (!log.length) x = a ? {} : b ? {} : { k: 1 }\nelse x = 1\nlog.push(x.k)",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // The `}` ends the block that `else` or `while` belongs to: no `;` may come between them.
+  it.each([
+    [
+      "an if block",
+      "let x\nif (log.length) { x = 1 }\nelse { x = 2 }\nlog.push(x)",
+    ],
+    [
+      "an if block holding an object",
+      "let x\nif (log.length) {\n  x = { a: 1 }\n}\nelse {\n  x = { a: 2 }\n}\nlog.push(x.a)",
+    ],
+    [
+      "a nested loop block",
+      "let x = 0\nif (!log.length) for (const a of [1, 2]) { x += a }\nelse x = 9\nlog.push(x)",
+    ],
+    [
+      "a nested try",
+      "let x = 0\nif (!log.length) try { x = 1 } catch { x = 2 }\nelse x = 9\nlog.push(x)",
+    ],
+    [
+      "an else-if chain",
+      "let x = 0\nif (log.length) { x = 1 }\nelse if (x) { x = 2 }\nelse { x = 3 }\nlog.push(x)",
+    ],
+    ["a do block", "let n = 0\ndo {\n  n++\n}\nwhile (n < 2)\nlog.push(n)"],
+    [
+      "a do block holding a function expression",
+      "let n = 0, f\ndo {\n  f = function () { return n }\n  n++\n}\nwhile (n < 2)\nlog.push(n, f())",
+    ],
+    [
+      "a function declaration",
+      "let x = 0\nif (!log.length) { function f() { x = 1 }\n  f()\n}\nelse x = 2\nlog.push(x)",
+    ],
+    [
+      "a labeled block inside an if",
+      "let x = 0\nif (!log.length) a: { x = 1 }\nelse x = 2\nlog.push(x)",
+    ],
+    [
+      "a labeled block as a do body",
+      "let n = 0\ndo a: { n++ }\nwhile (n < 2)\nlog.push(n)",
+    ],
+    [
+      "a labeled block after a conditional",
+      "let n = 0, x = n ? 1 : 2\ndo a: { n++ }\nwhile (n < x)\nlog.push(n)",
+    ],
+    [
+      "a block after a comparison in the header",
+      "let x = 0, a = 2, b = 1\nif (a > b) { x = 1 }\nelse { x = 2 }\nlog.push(x)",
+    ],
+    [
+      "a block after a postfix update",
+      "let n = 0, m = 0\ndo {\n  n++\n}\nwhile (n < 2)\nif (m++ < 0) { m = 9 }\nelse { m += 10 }\nlog.push(n, m)",
+    ],
+    [
+      "a block after an optional chain and a nullish operator",
+      "const o = null\nlet x = 0\nif (o?.k ?? true) { x = 1 }\nelse { x = 2 }\nlog.push(x)",
+    ],
+  ])("keeps %s joined to what follows", (_name, source) => {
+    const minified = expectSameProgram(source);
+    expect(minified).not.toMatch(/\};(?:else|while)/);
+  });
+});
+
 describe("minifyJs – regex after else", () => {
   it("keeps the regex body, quotes and spaces included", () => {
     expectSameProgram(
@@ -124,6 +435,139 @@ describe("minifyJs – regex after else", () => {
         "else / x '/.test(s) && log.push(1)",
       ].join("\n"),
     );
+  });
+});
+
+describe("minifyJs – a declaration keyword at the end of a line", () => {
+  // `var`, `let`, `const`, `function` and `class` need the name on the next line.
+  it.each([
+    ["var", "var\n  a = 1,\n  b = 2\nlog.push(a, b)"],
+    ["const", "const\n  a = 1,\n  b = 2\nlog.push(a, b)"],
+    ["let", "let\n  a = 1,\n  b = 2\na++\nlog.push(a, b)"],
+    ["var then a comment", "var // names\n  a = 1\nlog.push(a)"],
+    [
+      "var then a doc comment",
+      "var\n  /** the first */\n  a = 1,\n  /** the second */\n  b = 2;\nlog.push(a, b)",
+    ],
+    [
+      "const then a pattern",
+      "const\n  { a } = { a: 1 },\n  [b] = [2]\nlog.push(a, b)",
+    ],
+    ["var in a for header", "for (var\n  i = 0; i < 2; i++) log.push(i)"],
+    ["function", "function\nf(a)\n{\n  return a + 1\n}\nlog.push(f(1))"],
+    [
+      "a function expression",
+      "const f = function\ng() { return typeof g }\nlog.push(f())",
+    ],
+    ["class", "class\nA { m() { return 1 } }\nlog.push(new A().m())"],
+    [
+      "a property named var",
+      "const o = { var: 1, let: 2, const: 3, class: 4, function: 5 }\nlet t = o.var\nt += o.let\nt += o.const\nt += o.class\nt += o.function\nlog.push(t)",
+    ],
+    [
+      "a name ending in a keyword",
+      "const $var = 1, _let = 2, myclass = 3\nlet t = $var\nt += _let\nt += myclass\nlog.push(t)",
+    ],
+  ])("continues after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // `let` declares only when a name, `[` or `{` follows it at the start of a statement; in a
+  // classic script it is a variable name anywhere else.
+  it.each([
+    [
+      "a let declaration after a variable named let",
+      "var let = 1\nlet\nx = 2\nlog.push(let, x)",
+    ],
+    [
+      "a let pattern on the next line",
+      "let\n  [a, b] = [1, 2]\nlet\n  { c } = { c: 3 }\nlog.push(a, b, c)",
+    ],
+    ["let in a for header", "for (let\n  i = 0; i < 2; i++) log.push(i)"],
+    ["let after a case", "switch (1) { case 1: let\n  x = 4\n  log.push(x) }"],
+    [
+      "let after a default",
+      "switch (2) { case 1: break\ndefault: let\n  x = 4\n  log.push(x) }",
+    ],
+    [
+      "let after a case with a conditional and an object",
+      "var c = 1\nswitch (1) { case c ? ({ a: 1 }).a : 2: let\n  x = 4\n  log.push(x) }",
+    ],
+    ["let in a block after a label", "a: {\nlet\n  x = 4\n  log.push(x) }"],
+    [
+      "let after a statement without a semicolon",
+      "const a = 1\nlet\n  b = a + 1\nlog.push(b)",
+    ],
+  ])("declares with %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    ["a not line", "var let = 1\nlet\n!log.push(let)"],
+    ["a number line", "var let = 1\nlet\n5\nlog.push(let)"],
+    ["an increment line", "var let = 1\nlet\n++let\nlog.push(let)"],
+    ["a string line", "var let = 1\nlet\n'a'\nlog.push(let)"],
+    ["a name line after an assignment", "var let = 1, x\nx = let\nlog.push(x)"],
+    [
+      "a name line after a prefix increment",
+      "var let = 1\n++let\nlog.push(let)",
+    ],
+    ["a block after an assignment", "var let = 1, x\nx = let\n{ log.push(x) }"],
+    [
+      "a name line after an if header",
+      "var let = 1\nif (let) let\nlog.push(let)",
+    ],
+    [
+      "a name line after a conditional",
+      "var let = 1, a = 0\nconst x = a ? 2 : let\nlog.push(x)",
+    ],
+    [
+      "a name line in an object value",
+      "var let = 1\nconst o = { a: let\n}\nlog.push(o.a)",
+    ],
+    // A label's statement cannot be a declaration, so `let` there is a name.
+    [
+      "a name line after a label",
+      "var let = 1, x = 0\na: let\nx = 2\nlog.push(x)",
+    ],
+    [
+      "a name line after a label in a case",
+      "var let = 1, x = 0\nswitch (1) { case 1: a: let\nx = 2 }\nlog.push(x)",
+    ],
+    [
+      "a name line after a label after a conditional case",
+      "var let = 1, x = 0, c = 1\nswitch (1) { case c ? 1 : 2: a: let\nx = 2 }\nlog.push(x)",
+    ],
+  ])("reads a variable named let before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    ["a call line", "var let = (v) => log.push(v)\nlet\n(1)"],
+    ["an index line", "var let = [5]\nlog.push(let\n[0])"],
+    ["a minus line", "var let = 3\nlog.push(let\n- 1)"],
+  ])("continues a variable named let before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
+describe("minifyJs – a private name spelled like a keyword at the end of a line", () => {
+  // `this.#class` is a value, so the line break after it ends the statement.
+  it.each([
+    [
+      "a declaration keyword",
+      'class A {\n  #class = "x"\n  #let = 2\n  read() {\n    const c = this.#class\n    const l = this.#let\n    return c + l\n  }\n}\nlog.push(new A().read())',
+    ],
+    [
+      "an operator keyword",
+      "class A {\n  #default = 1\n  #new = 2\n  read() {\n    const d = this.#default\n    const n = this.#new\n    return d + n\n  }\n}\nlog.push(new A().read())",
+    ],
+    [
+      "a field without a value",
+      "class A {\n  #class\n  #default\n  set() {\n    this.#class = 1\n    this.#default = 2\n    return this.#class + this.#default\n  }\n}\nlog.push(new A().set())",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
   });
 });
 
@@ -149,6 +593,11 @@ describe("minifyJs – lines starting with ( or [ continue the expression (F037)
     "for (const x of [1, 2]) { if (x) continue\n[x].forEach((v) => log.push(v)) }",
     "outer: for (const x of [1]) { for (const y of [2]) { if (y) continue outer\n(log.push('never')) } }\nlog.push('done')",
     "function* g() { yield\n(1) }\nlog.push([...g()])",
+    // A binding name with no initializer cannot be called or indexed either.
+    "var p\n[true, false].forEach((v) => log.push(v))",
+    "let argv\n[argv] = [7]\nlog.push(argv)",
+    "let a, b\n(() => log.push('iife'))()",
+    "const x = 2\n;[1].forEach((v) => log.push(v, x))",
     // A postfix update cannot be called or indexed, so ASI ends the statement.
     "let i = 1; i++\n(() => log.push(i))()",
     "let i = 1; i--\n[1].forEach((v) => log.push(v, i))",
@@ -156,10 +605,218 @@ describe("minifyJs – lines starting with ( or [ continue the expression (F037)
     expectSameProgram(source);
   });
 
+  // The last binding has no initializer even though an earlier one has: still a name.
+  it.each([
+    [
+      "an index line after `var a = 1, b`",
+      "var a = 1, b\n[2, 3].forEach((v) => log.push(v, a, b))",
+    ],
+    [
+      "a call line after `let a = 1, b`",
+      "let a = 1, b\n(() => log.push('iife', a, b))()",
+    ],
+    [
+      "three bindings, the middle one initialized",
+      "const f = () => 1\nlet a, b = f(), c\n[a, c] = [4, 5]\nlog.push(a, b, c)",
+    ],
+    [
+      "an initializer holding a call and a comma",
+      "const f = (x, y) => x + y\nvar a = f(1, 2), b\n[a].forEach((v) => log.push(v, b))",
+    ],
+    [
+      "an initializer holding an object and an array",
+      "var a = { k: [1, 2] }, b\n[a.k].forEach((v) => log.push(v, b))",
+    ],
+    [
+      "an initializer holding a function with its own declaration",
+      "var a = function () { var x = 1, y\n return x }, b\n[a()].forEach((v) => log.push(v, b))",
+    ],
+    [
+      "a declaration in a function body",
+      "function g() {\n  let a = 1, b\n  [a].forEach((v) => log.push(v, b))\n}\ng()",
+    ],
+    [
+      "a sign line after a bare name",
+      "const z = 3\nvar a = 1, b\n-z\nlog.push(a, b)",
+    ],
+    [
+      "a plus line after a bare declaration",
+      "const z = 3\nlet p\n+z\nlog.push(p)",
+    ],
+    ["a template line after a bare name", "var a = 1, b\n`x`\nlog.push(a, b)"],
+  ])("ends the declaration after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // The statement on the next line declares nothing, so a comma on it does not start a
+  // binding: `y\n(5)` after it is a call, as in the source.
+  it.each([
+    ["an index line", "let p\n[0].forEach(log.push, log), y\n(5)"],
+    ["a parenthesized line", "let p\n(0, y)\n(5)"],
+    ["a not line", "let p\n!function () {}(), y\n(5)"],
+    ["a bitwise not line", "let p\n~p, y\n(5)"],
+    ["an increment after a value", "let p = 1\n++p, y\n(5)\nlog.push(p)"],
+    ["a decrement after a value", "let p = 1\n--p, y\n(5)\nlog.push(p)"],
+    ["a not after a value", "let p = 1\n!p, y\n(5)"],
+    ["a not of a string after a value", "let p = 1\n!'s', y\n(5)"],
+    ["a bitwise not after a value", "let p = 1\n~p, y\n(5)"],
+  ])("ends the declaration before %s", (_name, source) => {
+    expectSameProgram(`const y = (v) => log.push('called', v)\n${source}`);
+  });
+
+  // An operator line after a value continues the initializer, so its commas still declare.
+  it.each([
+    ["a plus line", "let p = 1\n+q+q, r\n[0]\nlog.push(p, r)"],
+    ["a plus and a sign", "let p = 1\n+ +q, r\n[0]\nlog.push(p, r)"],
+    ["a minus and a sign", "let p = 1\n- -q, r\n[0]\nlog.push(p, r)"],
+    ["a plus and a string", "let p = 1\n+'x'+q, r\n[0]\nlog.push(p, r)"],
+    ["an inequality", "let p = 1\n!= q, r\n[0]\nlog.push(p, r)"],
+    ["a strict inequality", "let p = 1\n!== q, r\n[0]\nlog.push(p, r)"],
+  ])("continues the declaration after %s", (_name, source) => {
+    expectSameProgram(`const q = 2\n${source}`);
+  });
+
+  // Not a declaration's last binding: the next line continues the value or the call.
+  it.each([
+    [
+      "a call's last argument",
+      "const f = (a, b) => b\nconst v = [[7]], i = 0\nlog.push(f(1, v\n[i]))",
+    ],
+    [
+      "a name after a statement that followed a declaration",
+      "const o = { b: [9] }\nvar a = 1\nlet c = o, d = o.b\nd\n[0]\nlog.push(a, c.b[0], d)",
+    ],
+    [
+      "an expression statement on the line after a declaration",
+      "const b = [[8]], c = 0\nvar a = 1\nlog, b\n[c]\nlog.push(a, b[0][0])",
+    ],
+    ["a for header", "for (let i = 0, n = 2; i < n; i++) log.push(i)"],
+    [
+      "a for-in header with a name on its own line",
+      "const o = { k: 1 }\nfor (var k\n in o) log.push(k)",
+    ],
+    ["an initializer on the next line", "var a = 1, b\n  = 2\nlog.push(a, b)"],
+    ["a comma on the next line", "var a = 1, b\n  , c = 3\nlog.push(a, b, c)"],
+    [
+      "an object key named const before a shorthand property",
+      "const v = 1, deprecated = 2\nconst o = { const: v, deprecated\n}\nlog.push(o.const, o.deprecated)",
+    ],
+    [
+      "object keys named var and let in a call",
+      "const f = (o) => o\nconst a = 1, b = 2\nlog.push(f({ var: a, b\n}).b, f({ let: 3, a\n}).a)",
+    ],
+    [
+      "a destructuring pattern's names",
+      "const o = { a: 1, b: [[6]] }, i = 0\nconst { a, b } = o\nlog.push(a, b\n[i])",
+    ],
+  ])("still joins %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it("reads a declaration that ends in an initializer as any other line", () => {
+    // `const x = 1\n[1]` is `const x = 1[1]` in the source as well.
+    expect(minifyJs("const x = 1\n[1].map(f)")).toBe("const x=1[1].map(f)");
+    // A property spelled like a keyword is not a declaration.
+    expect(minifyJs("x = a.var\n[0]")).toBe("x=a.var[0]");
+  });
+
   it("joins a keyword with its parenthesized header on the next line", () => {
     expect(minifyJs("if\n(a) b()")).toBe("if(a)b()");
     expect(minifyJs("while\n(a) b()")).toBe("while(a)b()");
     expect(minifyJs("typeof\n(a)")).toBe("typeof(a)");
+  });
+});
+
+describe("minifyJs – any line after a restricted production starts a new statement", () => {
+  it.each([
+    // `return\n-z` returns undefined; `return-z` would return -z.
+    "const z = 5\nlog.push((() => { return\n-z })())",
+    "const z = 5\nlog.push((() => { return\n+z })())",
+    "for (;;) { log.push('once'); break\n+1 }",
+    "for (const x of [1, 2]) { log.push(x); continue\n/re/.test('re') }",
+    "function* g() { yield\n-1 }\nlog.push([...g()])",
+    "a: for (;;) { log.push('a'); break a\n-1 }",
+    "log.push((() => { return\n})())",
+  ])("runs the same program as the source: %j", (source) => {
+    expectSameProgram(source);
+  });
+
+  // A template after a value is a tagged template, but not after a restricted production.
+  it.each([
+    ["return", "log.push((() => { return\n`x` })())"],
+    [
+      "return with a substitution",
+      "const a = 1\nlog.push((() => { return\n`${a}` })())",
+    ],
+    ["yield", "function* g() { yield\n`x` }\nlog.push([...g()])"],
+    ["break", "for (;;) { log.push('once'); break\n`x` }"],
+    ["continue", "for (const x of [1, 2]) { log.push(x); continue\n`x` }"],
+    ["break with a label", "a: for (;;) { log.push('a'); break a\n`x` }"],
+    [
+      "continue with a label",
+      "a: for (const x of [1, 2]) { log.push(x); continue a\n`x` }",
+    ],
+  ])("ends the statement before a template after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a property named return",
+      "const o = { return: (s) => s[0] + '!' }\nconst v = o.return\n`x`\nlog.push(v)",
+    ],
+    [
+      "a name ending in return",
+      "const myreturn = (s) => s[0] + '?'\nconst v = myreturn\n`x`\nlog.push(v)",
+    ],
+    [
+      "a label name after a break on the line before",
+      "const tag = (s) => s[0]\nfor (;;) { log.push(1); break\n}\nconst v = tag\n`x`\nlog.push(v)",
+    ],
+  ])("keeps a tagged template after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it("puts the `;` after the restricted production", () => {
+    expect(minifyJs("function f() { return\n-z }")).toBe(
+      "function f(){return;-z}",
+    );
+    // A property named `return` is a value, and the operator continues it.
+    expect(minifyJs("o.return\n-z")).toBe("o.return-z");
+  });
+});
+
+describe("minifyJs – a line starting with != or !==", () => {
+  // `!=` is a binary operator: the comparison continues the line before it.
+  it.each([
+    ["a name", "const a = 1, b = 2\nconst x = a\n  !== b\nlog.push(x)"],
+    ["a name and !=", "const a = 1, b = '1'\nconst x = a\n  != b\nlog.push(x)"],
+    ["a call", "const a = () => 1\nconst x = a()\n  !== 1\nlog.push(x)"],
+    ["an index", "const a = [1]\nconst x = a[0]\n  !== 2\nlog.push(x)"],
+    ["a string", "const x = 'a'\n  !== 'b'\nlog.push(x)"],
+    ["a template", "const x = `a`\n  !== `b`\nlog.push(x)"],
+    ["an object", "const o = {}\nconst x = {}\n  !== o\nlog.push(x)"],
+    ["a postfix update", "let a = 1\nconst x = a++\n  !== 1\nlog.push(x, a)"],
+    [
+      "a condition over two lines",
+      "const a = 'x', b = 'y'\nif (a.toString('binary')\n  !== b.toString('binary')) log.push('differs')",
+    ],
+  ])("continues the comparison after %s", (_name, source) => {
+    expect(expectSameProgram(source)).not.toContain(";!");
+  });
+
+  it.each([
+    ["a name", "let a = 1, b = 0\na\n!b\nlog.push(a, b)"],
+    [
+      "a string",
+      "const b = () => log.push('b')\nconst a = 'x'\n!b()\nlog.push(a)",
+    ],
+    [
+      "an IIFE",
+      "const a = 1\n!function () { log.push('iife') }()\nlog.push(a)",
+    ],
+  ])("still starts a statement at a lone ! after %s", (_name, source) => {
+    expect(expectSameProgram(source)).toContain(";!");
   });
 });
 
@@ -211,4 +868,1755 @@ describe("minifyJs – semicolon-free statement sequences (property)", () => {
     },
     PARITY_BOUNDS.timeoutMs,
   );
+});
+
+describe("minifyJs – a class field name before a computed or generator member", () => {
+  // `name\n[key] = 1` is two fields: a field name cannot be indexed, so the line break ends it.
+  it.each([
+    [
+      "a field then a computed field",
+      "const k = 'key'\nclass A {\n  first\n  [k] = 1\n}\nconst a = new A()\nlog.push('first' in a, a.key)",
+    ],
+    [
+      "a private field then a computed field",
+      "const k = 'key'\nclass A {\n  #abort\n  [k] = null\n  has() { return #abort in this }\n}\nconst a = new A()\nlog.push(a.has(), a.key)",
+    ],
+    [
+      "a static field then a computed field",
+      "const k = 'key'\nclass A {\n  static first\n  [k] = 1\n}\nlog.push('first' in A, new A().key)",
+    ],
+    [
+      "a field then a computed method",
+      "const k = 'key'\nclass A {\n  first\n\n  // the method\n  [k]() { return 2 }\n}\nconst a = new A()\nlog.push('first' in a, a.key())",
+    ],
+    [
+      "a field then a generator method",
+      "class A {\n  first\n  *items() { yield 1 }\n}\nconst a = new A()\nlog.push('first' in a, [...a.items()])",
+    ],
+    [
+      "a field after a method",
+      "const k = 'key'\nclass A {\n  m() { return 1 }\n  first\n  [k] = 2\n}\nconst a = new A()\nlog.push(a.m(), 'first' in a, a.key)",
+    ],
+    [
+      "a private field after fields with values",
+      "const k = 'key'\nclass A {\n  #paused = false\n  #reason = null\n  #abort\n  [k] = 2\n  has() { return #abort in this && !this.#paused && !this.#reason }\n}\nconst a = new A()\nlog.push(a.has(), a.key)",
+    ],
+    [
+      "a field after a field with a string value",
+      "const k = 'key'\nclass A {\n  label = 'x'\n  first\n  [k] = 2\n}\nconst a = new A()\nlog.push(a.label, 'first' in a, a.key)",
+    ],
+    [
+      "a field after a field with a call value",
+      "const k = 'key', f = () => 1\nclass A {\n  n = f()\n  first\n  *[k]() { yield 2 }\n}\nconst a = new A()\nlog.push(a.n, 'first' in a, [...a.key()])",
+    ],
+    [
+      "a class expression in a field value",
+      "const k = 'key'\nclass A {\n  static Inner = class {\n    first\n    [k] = 3\n  }\n}\nconst i = new A.Inner()\nlog.push('first' in i, i.key)",
+    ],
+    [
+      "a field named async",
+      "const k = 'key'\nclass A {\n  async\n  [k]() { return 4 }\n}\nconst a = new A()\nlog.push('async' in a, a.key())",
+    ],
+    [
+      "a field named by a string",
+      "const k = 'key'\nclass A {\n  'a b'\n  [k] = 1\n}\nconst a = new A()\nlog.push('a b' in a, a.key)",
+    ],
+    [
+      "a field named by a double-quoted string, then a generator",
+      'class A {\n  "a"\n  *items() { yield 1 }\n}\nconst a = new A()\nlog.push("a" in a, [...a.items()])',
+    ],
+    [
+      "a static field named by a string",
+      "const k = 'key'\nclass A {\n  static 'a'\n  [k] = 1\n}\nlog.push('a' in A, new A().key)",
+    ],
+    [
+      "a field named by a computed key",
+      "const j = 'j', k = 'key'\nclass A {\n  [j]\n  [k] = 1\n}\nconst a = new A()\nlog.push('j' in a, a.key)",
+    ],
+    [
+      "three fields named by computed keys",
+      "const i = 'i', j = 'j', k = 'k'\nclass A {\n  [i]\n  [j]\n  [k] = 1\n}\nconst a = new A()\nlog.push('i' in a, 'j' in a, a.k)",
+    ],
+    [
+      "a field named by a computed key holding a string",
+      "const k = 'key'\nclass A {\n  ['j']\n  [k] = 1\n}\nconst a = new A()\nlog.push('j' in a, a.key)",
+    ],
+    [
+      "a field named by a computed key, then a generator",
+      "const j = 'j'\nclass A {\n  [j]\n  *items() { yield 2 }\n}\nconst a = new A()\nlog.push('j' in a, [...a.items()])",
+    ],
+    [
+      "a static field named by a computed key",
+      "const j = 'j', k = 'key'\nclass A {\n  static [j]\n  [k] = 1\n}\nlog.push('j' in A, new A().key)",
+    ],
+    [
+      "a computed field after a string field",
+      "const j = 'j', k = 'key'\nclass A {\n  'a'\n  [j]\n  [k] = 1\n}\nconst a = new A()\nlog.push('a' in a, 'j' in a, a.key)",
+    ],
+    [
+      "a field after a method",
+      "const j = 'j', k = 'key'\nclass A {\n  m() {}\n  [j]\n  [k] = 1\n}\nconst a = new A()\nlog.push('j' in a, a.key)",
+    ],
+  ])("ends %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // `accessor` fields are not in Node yet, so these compare text; each output parses.
+  it.each([
+    ["class A { accessor e\n[f] = 1 }", "class A{accessor e;[f]=1}"],
+    ["class A { accessor e\n*g() {} }", "class A{accessor e;*g(){}}"],
+    [
+      "class A { static accessor e\n[f] = 1 }",
+      "class A{static accessor e;[f]=1}",
+    ],
+    ["class A { accessor #e\n[f] = 1 }", "class A{accessor #e;[f]=1}"],
+    ["class A { accessor 'e'\n[f] = 1 }", "class A{accessor'e';[f]=1}"],
+    ["class A { accessor [e]\n[f] = 1 }", "class A{accessor [e];[f]=1}"],
+  ])("ends an accessor field: %j", (source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
+  });
+
+  // Here the `[` or `*` line belongs to what is before it.
+  it.each([
+    [
+      "static",
+      "const k = 'key'\nclass A {\n  static\n  [k] = 1\n}\nlog.push(A.key)",
+    ],
+    [
+      "get",
+      "const k = 'key'\nclass A {\n  get\n  [k]() { return 2 }\n}\nlog.push(new A().key)",
+    ],
+    [
+      "a static generator",
+      "class A {\n  static\n  *items() { yield 3 }\n}\nlog.push([...A.items()])",
+    ],
+    [
+      "a field value that is indexed",
+      "const b = [4]\nclass A {\n  first = b\n  [0]\n}\nlog.push(new A().first)",
+    ],
+    [
+      "a field value that is indexed twice",
+      "const b = [[4, 5]]\nclass A {\n  first = b\n  [0]\n  [1]\n}\nlog.push(new A().first)",
+    ],
+    [
+      "an object field value that is indexed",
+      "class A {\n  first = { k: 6 }\n  ['k']\n}\nlog.push(new A().first)",
+    ],
+    [
+      "a string field value that is indexed",
+      "class A {\n  first = 'ab'\n  [1]\n}\nlog.push(new A().first)",
+    ],
+    [
+      "a method named by a string",
+      "class A {\n  'm'\n  () { return 7 }\n}\nlog.push(new A().m())",
+    ],
+    [
+      "a method named by a computed key",
+      "const k = 'm'\nclass A {\n  [k]\n  () { return 8 }\n}\nlog.push(new A().m())",
+    ],
+    [
+      "a field named by a computed key with a value on the next line",
+      "const k = 'm'\nclass A {\n  [k]\n  = 9\n}\nlog.push(new A().m)",
+    ],
+    [
+      "a field value that is multiplied",
+      "const b = 5\nclass A {\n  first = b\n  * 2\n}\nlog.push(new A().first)",
+    ],
+    [
+      "an index inside a method",
+      "const b = [6]\nclass A {\n  m() {\n    return b\n      [0]\n  }\n}\nlog.push(typeof new A().m())",
+    ],
+    [
+      "an expression statement inside a method",
+      "const b = [7]\nclass A {\n  m() {\n    const c = b\n    [0]\n    return c\n  }\n}\nlog.push(new A().m())",
+    ],
+  ])("keeps %s joined to the next line", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
+describe("minifyJs – a class field named like a keyword on a line of its own", () => {
+  // `class A {\n  let\n  foo() {}\n}` is a field named `let`, then a method: as a member name
+  // the word takes nothing next, so the line break ends the field.
+  const words = [
+    "else",
+    "do",
+    "try",
+    "finally",
+    "in",
+    "instanceof",
+    "typeof",
+    "void",
+    "delete",
+    "new",
+    "case",
+    "extends",
+    "default",
+    "export",
+    "import",
+    "var",
+    "let",
+    "const",
+    "function",
+    "class",
+  ];
+
+  it.each(words)("ends a field named %s before a method", (word) => {
+    const minified = expectSameProgram(
+      `class A {\n  ${word}\n  foo() { return 1 }\n}\nconst a = new A()\nlog.push(${JSON.stringify(word)} in a, a.foo())`,
+    );
+    expect(minified).toContain(`${word};foo(`);
+  });
+
+  it.each(words)("ends a field named %s before a field", (word) => {
+    expectSameProgram(
+      `class A {\n  ${word}\n  bar = 2\n}\nconst a = new A()\nlog.push(${JSON.stringify(word)} in a, a.bar)`,
+    );
+  });
+
+  it.each(words)("ends a static or private field named %s", (word) => {
+    expectSameProgram(
+      `class A {\n  static ${word}\n  #${word}\n  bar = 2\n  has() { return #${word} in this }\n}\nlog.push(${JSON.stringify(word)} in A, new A().has(), new A().bar)`,
+    );
+  });
+
+  it.each(words)("ends a field named %s before another one", (word) => {
+    // The second word starts a member too: `typeof\nvoid\nx` is three fields.
+    const next = word === "void" ? "typeof" : "void";
+    expectSameProgram(
+      `class A {\n  ${word}\n  ${next}\n  bar = 2\n}\nconst a = new A()\nlog.push(${JSON.stringify(word)} in a, ${JSON.stringify(next)} in a, a.bar)`,
+    );
+  });
+
+  it.each([
+    ["after the modifier on its line", "static static"],
+    ["on the line after the modifier", "static\n  static"],
+  ])("ends a static field named static %s", (_name, member) => {
+    expectSameProgram(
+      `class A {\n  ${member}\n  foo() { return 12 }\n}\nlog.push('static' in A, typeof A.prototype.foo)`,
+    );
+  });
+
+  it.each(words)("ends a field named %s after a field with a value", (word) => {
+    // `in` and `instanceof` after a value continue it (`n = 1\nin\nfoo`), so those two
+    // are only a member name after a `;`.
+    const separator = word === "in" || word === "instanceof" ? ";" : "";
+    expectSameProgram(
+      `class A {\n  n = 1${separator}\n  ${word}\n  foo() { return 3 }\n}\nconst a = new A()\nlog.push(a.n, ${JSON.stringify(word)} in a, a.foo())`,
+    );
+  });
+
+  it.each([
+    [
+      "a method named after the word on the next line",
+      "class A {\n  default\n  () { return 4 }\n}\nlog.push(new A().default())",
+    ],
+    [
+      "a field value on the next line",
+      "class A {\n  let\n  = 5\n}\nlog.push(new A().let)",
+    ],
+    [
+      "a static modifier",
+      "class A {\n  static\n  foo() { return 6 }\n}\nlog.push(typeof A.foo, typeof A.prototype.foo)",
+    ],
+    [
+      "a get modifier",
+      "class A {\n  get\n  foo() { return 7 }\n}\nlog.push(new A().foo)",
+    ],
+    [
+      "a static modifier before a field named let",
+      "class A {\n  static\n  let\n  foo() { return 8 }\n}\nlog.push('let' in A, typeof A.prototype.foo)",
+    ],
+    [
+      "a class expression's heritage on the next line",
+      "class B { n() { return 9 } }\nclass A {\n  static C = class\n  extends\n  B {}\n}\nlog.push(new A.C().n())",
+    ],
+    [
+      "a declaration inside a method",
+      "class A { m() { var\n x = 7\n return x } }\nlog.push(new A().m())",
+    ],
+    [
+      "a declaration inside a static block",
+      "class A { static { let\n y = 8\n log.push(y) } }",
+    ],
+    [
+      "an operator in a field value",
+      "class A {\n  t = typeof\n  log\n  n = 1 instanceof\n  Object\n}\nconst a = new A()\nlog.push(a.t, a.n)",
+    ],
+    [
+      "an `in` after a field value",
+      "const o = { foo: 1 }\nclass A {\n  n = 'foo'\n  in\n  o\n}\nlog.push(new A().n)",
+    ],
+    [
+      "an object literal key",
+      "const o = {\n  let\n  : 9,\n  class\n  : 10\n}\nlog.push(o.let, o.class)",
+    ],
+    [
+      "a nested class in a method",
+      "class A {\n  m() {\n    class\n    B { n() { return 11 } }\n    return new B().n()\n  }\n}\nlog.push(new A().m())",
+    ],
+  ])("keeps %s joined", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
+// A `{` on its own line after a function, method, class or catch header opens that header's
+// body. It is what brace-on-next-line code looks like, and what a TypeScript function with a
+// multi-line return type looks like once its types are stripped to spaces.
+describe("minifyJs – a body brace on the line after its header", () => {
+  it.each([
+    [
+      "function declaration",
+      "function f(a)\n{\n  return a + 1;\n}\nlog.push(f(1));",
+    ],
+    [
+      "default parameter with parentheses",
+      "function f(a, b = (2))\n{\n  return a + b;\n}\nlog.push(f(1));",
+    ],
+    [
+      "function expression",
+      "const f = function (a)\n{\n  return a * 2;\n}\nlog.push(f(2));",
+    ],
+    [
+      "function expression passed as an argument",
+      "[1, 2].forEach(function (n)\n{\n  log.push(n);\n});",
+    ],
+    [
+      "generator",
+      "function* g(a)\n{\n  yield a;\n}\nfunction *h()\n{\n  yield 2;\n}\nlog.push([...g(1), ...h()]);",
+    ],
+    [
+      "async function",
+      "async function f(a)\n{\n  return a;\n}\nlog.push(typeof f(1).then);",
+    ],
+    [
+      "class and its members",
+      [
+        "class A",
+        "{",
+        "  static count = 1",
+        "  static",
+        "  {",
+        "    A.count = 2;",
+        "  }",
+        "  #secret()",
+        "  {",
+        "    return 3;",
+        "  }",
+        "  constructor(a)",
+        "  {",
+        "    this.a = a;",
+        "  }",
+        "  get double()",
+        "  {",
+        "    return this.a * 2;",
+        "  }",
+        "  static make(a)",
+        "  {",
+        "    return new A(a);",
+        "  }",
+        "  ['computed']()",
+        "  {",
+        "    return this.#secret();",
+        "  }",
+        "  'quoted'()",
+        "  {",
+        "    return 4;",
+        "  }",
+        "  *items()",
+        "  {",
+        "    yield this.a;",
+        "  }",
+        "}",
+        "const a = A.make(5);",
+        "log.push(A.count, a.double, a.computed(), a.quoted(), [...a.items()]);",
+      ].join("\n"),
+    ],
+    [
+      "class with a heritage clause",
+      "class B\n{\n  hi()\n  {\n    return 1;\n  }\n}\nclass A extends B\n{\n}\nconst mix = (C) => C;\nclass D extends mix(B)\n{\n}\nlog.push(new A().hi(), new D().hi());",
+    ],
+    [
+      "class expression",
+      "const C = class\n{\n  hi()\n  {\n    return 1;\n  }\n};\nlog.push(new C().hi());",
+    ],
+    [
+      "object literal methods",
+      "const o = {\n  m(a)\n  {\n    return a;\n  },\n  get x()\n  {\n    return 2;\n  },\n  nested: {\n    n()\n    {\n      return 3;\n    }\n  }\n};\nlog.push(o.m(1), o.x, o.nested.n());",
+    ],
+    [
+      "object literal returned and passed",
+      "const make = () =>\n{\n  return {\n    m()\n    {\n      return 1;\n    }\n  };\n};\nconst call = (o) => o.m();\nlog.push(make().m(), call({\n  m()\n  {\n    return 2;\n  }\n}));",
+    ],
+    [
+      "try, catch and finally",
+      "try\n{\n  throw new Error('x');\n}\ncatch (e)\n{\n  log.push(e.message);\n}\nfinally\n{\n  log.push('done');\n}",
+    ],
+    [
+      "catch without a binding",
+      "try\n{\n  throw 1;\n}\ncatch\n{\n  log.push('caught');\n}",
+    ],
+    [
+      "a stripped multi-line return type",
+      "function f(a        )   \n               \n                   \n  {\n  return { ok: a };\n}\nlog.push(f(true).ok);",
+    ],
+    [
+      "a comment between the header and its brace",
+      "function f(a) // adds one\n// to a\n{\n  return a + 1;\n}\nlog.push(f(1));",
+    ],
+  ])("%s", (_name, source) => {
+    const minified = expectSameProgram(source);
+    expect(minified).not.toContain(";{");
+    expect(minified).not.toContain("\n");
+  });
+
+  // The line break ends the statement in each of these: the `{` starts a block of its own.
+  it.each([
+    ["a call", "let n = 0\nconst foo = () => n++\nfoo()\n{\n  log.push(n);\n}"],
+    ["an assignment", "let x\nconst y = 1\nx = y\n{\n  log.push(x);\n}"],
+    ["a declaration", "let a = 1\n{\n  a++;\n}\nlog.push(a);"],
+    [
+      "a method call",
+      "const a = { b: (c) => log.push(c) }\na.b(1)\n{ log.push(2) }",
+    ],
+    [
+      "a constructor call",
+      "function Foo(a) { log.push(a) }\nnew Foo(1)\n{ log.push(2) }",
+    ],
+    [
+      "a call inside a function whose own brace is on the next line",
+      "const g = (a) => log.push(a)\nfunction f(a)\n{\n  g(a)\n  {\n    log.push('block');\n  }\n}\nf(1);",
+    ],
+    [
+      "a call inside a method whose own brace is on the next line",
+      "const g = (a) => log.push(a)\nclass A\n{\n  m(a)\n  {\n    g(a)\n    {\n      log.push('block');\n    }\n  }\n}\nnew A().m(1);",
+    ],
+    [
+      "a property named catch or function",
+      "const p = { catch: (f) => log.push('c'), function: (f) => log.push('f') }\np.catch(1)\n{ log.push(1) }\np.function(2)\n{ log.push(2) }",
+    ],
+    [
+      "a function expression that already has its body",
+      "let x\nx = function () {}\n{ log.push(typeof x) }",
+    ],
+    [
+      "a catch with no binding, then a call",
+      "const b = () => log.push('b')\ntry\n{\n  throw 1;\n}\ncatch\n{\n  b()\n  {\n    log.push('block');\n  }\n}",
+    ],
+  ])("still ends the statement after %s", (_name, source) => {
+    expect(expectSameProgram(source)).toContain(";{");
+  });
+
+  it("joins a class body across a string in its heritage clause", () => {
+    expectSameProgram(
+      "const mix = () => Object;\nclass A extends mix('x')\n{\n  hi()\n  {\n    return 1;\n  }\n}\nlog.push(new A().hi());",
+    );
+  });
+});
+
+describe("minifyJs – a call that only looks like a control header", () => {
+  // `Symbol.for(...)`, `list.with(...)` and `$if(...)` are calls: the line break after them
+  // ends the statement, unlike the one after `for (...)` or `if (...)`.
+  it.each([
+    [
+      "Symbol.for with a string",
+      "const k = Symbol.for('app.key')\nconst y = 2\nlog.push(typeof k, y)",
+    ],
+    [
+      "Symbol.for with a name",
+      "const name = 'k'\nconst k = Symbol.for(name)\nconst y = 2\nlog.push(typeof k, y)",
+    ],
+    [
+      "Array.prototype.with",
+      "const a = [1, 2]\nconst b = a.with(0, 9)\nlog.push(b[0])",
+    ],
+    [
+      "a method named if, while or switch",
+      "const o = { if: (v) => log.push(v), while: (v) => log.push(v), switch: (v) => log.push(v) }\no.if(1)\no.while(2)\no.switch('3')\nlog.push(4)",
+    ],
+    [
+      "a property reached across a line break",
+      "const o = { for: (v) => v }\nconst r = o\n  .for(1)\nlog.push(r)",
+    ],
+    [
+      "a property after a space",
+      "const o = { for: (v) => v }\nconst r = o. for(1)\nlog.push(r)",
+    ],
+    [
+      "an optional call",
+      "const o = { for: (v) => v }\nconst r = o?.for(1)\nlog.push(r)",
+    ],
+    [
+      "a name ending in a keyword after $",
+      "const $if = (v) => v, $for = (v) => v\nconst a = $if(1)\nconst b = $for('2')\nlog.push(a, b)",
+    ],
+    [
+      "a division after such a call",
+      "const o = { with: (v) => v }, g = 2\nconst r = o.with(8) / 2 / g\nlog.push(r)",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    ["for", "for (const a of [1, 2])\n  log.push(a)\nlog.push('done')"],
+    [
+      "if",
+      "const a = 1\nif (a === 1)\n  log.push('one')\nelse\n  log.push('other')",
+    ],
+    ["while", "let n = 0\nwhile (n < 2)\n  n++\nlog.push(n)"],
+    ["nested call", "const f = (v) => v\nif (f(f(1)))\n  log.push('one')"],
+  ])("still joins a real %s header to its body", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // `new Function` bodies cannot hold `for await`, so these compare text.
+  it.each([
+    [
+      "async function f(o) {\n  for await (const a of o)\n  {\n    use(a)\n  }\n}",
+      "async function f(o){for await(const a of o){use(a)}}",
+    ],
+    [
+      "async function f(o) {\n  for await (const a of o)\n    use(a)\n  done()\n}",
+      "async function f(o){for await(const a of o)use(a);done()}",
+    ],
+    [
+      "async function f(o) {\n  for await (const a of o) /x/.test(a) && use(a)\n}",
+      "async function f(o){for await(const a of o)/x/.test(a)&&use(a)}",
+    ],
+    ["const r = o.for\nawait (a)\nb()", "const r=o.for;await(a);b()"],
+    [
+      "(async () => { for\nawait (const x of y)\n z(x)\n})",
+      "(async()=>{for await(const x of y)z(x)})",
+    ],
+    [
+      "async function f(o) {\n  for // each\n  await (const a of o) use(a)\n}",
+      "async function f(o){for await(const a of o)use(a)}",
+    ],
+    [
+      "const o = { for: 1 }\nconst r = o.for\nb()",
+      "const o={for:1};const r=o.for;b()",
+    ],
+  ])("reads the header of `for await`: %j", (source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
+  });
+
+  it("still ends a class field named for at its line break", () => {
+    expectSameProgram(
+      "class A {\n  for\n  m() { return 1 }\n}\nconst a = new A()\nlog.push(a.m(), 'for' in a)",
+    );
+  });
+
+  it.each([
+    [
+      "a string",
+      "const a = 'x'\nswitch (a + 'y')\n{\n  case 'xy':\n    log.push(1)\n}",
+    ],
+    [
+      "a template",
+      "const a = 'x'\nswitch (`${a}y`)\n{\n  case 'xy':\n    log.push(1)\n}",
+    ],
+    ["a regex", "switch (/x/.test('x'))\n{\n  case true:\n    log.push(1)\n}"],
+    [
+      "a call",
+      "const f = (v) => v\nswitch (f(f(1)))\n{\n  case 1:\n    log.push(1)\n}",
+    ],
+    ["a name", "const a = 1\nswitch (a)\n{\n  case 1:\n    log.push(1)\n}"],
+  ])(
+    "joins a switch header holding %s to a `{` on the next line",
+    (_name, source) => {
+      expect(expectSameProgram(source)).not.toContain(";{");
+    },
+  );
+});
+
+describe("minifyJs – a slash after the closing brace of a value", () => {
+  // After an object literal, function or class expression, `/` divides: no regex starts there.
+  it.each([
+    [
+      "an object literal, then a comment",
+      "let x = {}\n/ 2 /* d */\nlog.push(x)",
+    ],
+    [
+      "an object literal on one line",
+      "const g = 2\nconst x = {} / 2 / g\nlog.push(x)",
+    ],
+    [
+      "a function expression",
+      "const g = 2\nconst x = function () {}\n/ 2 / g\nlog.push(x)",
+    ],
+    [
+      "a class expression",
+      "const g = 2\nconst x = class {}\n/ 2 / g\nlog.push(x)",
+    ],
+    [
+      "an object in a call",
+      "const g = 2\nconst f = (v) => v\nconst x = f({} / 2 / g)\nlog.push(x)",
+    ],
+    [
+      "a division that holds quotes",
+      'const g = 2\nconst x = { valueOf: () => 8 }\n/ 2 /"4"\nlog.push(x)',
+    ],
+  ])("divides after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a block",
+      "if (true) { log.push(1) }\n/ x /.test(' x ') && log.push('re')",
+    ],
+    [
+      "a function declaration",
+      "function f() {}\n/ x /.test(' x ') && log.push('re', typeof f)",
+    ],
+    [
+      "an arrow function body",
+      "const f = () => {}\n/ x /.test(' x ') && log.push('re', typeof f)",
+    ],
+  ])("still starts a regex after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
+describe("minifyJs – a line after an arrow function body", () => {
+  // An arrow function cannot be an operand, so a line break after its body ends the statement.
+  it.each([
+    ["a plus sign", "const y = '3'\nlet x = () => {}\n+y\nlog.push(typeof x)"],
+    ["a minus sign", "const y = 3\nlet x = () => {}\n-y\nlog.push(typeof x)"],
+    ["a prefix ++", "let y = 3\nlet x = () => {}\n++y\nlog.push(typeof x, y)"],
+    [
+      "a regex",
+      "let x = () => { return 1 }\n/a/.test('a') && log.push('re')\nlog.push(x())",
+    ],
+    [
+      "an async arrow",
+      "const y = 2\nlet x = async () => {}\n-y\nlog.push(typeof x)",
+    ],
+    [
+      "an arrow in a declaration with an else after it",
+      "let f\nif (log.length) f = () => {}\nelse f = () => { return 2 }\nlog.push(f())",
+    ],
+  ])("ends the statement before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a comma",
+      "const fs = [() => { return 1 }\n, () => 2]\nlog.push(fs.length)",
+    ],
+    [
+      "a closing parenthesis",
+      "const g = (f) => f()\nlog.push(g(() => { return 3 }\n))",
+    ],
+    [
+      "the colon of a conditional",
+      "const f = log.length ? () => { return 1 }\n: () => 2\nlog.push(f())",
+    ],
+    [
+      "a plus sign after an object literal",
+      "const y = 4\nconst x = {}\n+y\nlog.push(x)",
+    ],
+  ])("keeps the expression going before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
+describe("minifyJs – carriage return, line separator and paragraph separator line breaks", () => {
+  // ECMAScript has four line terminators: LF, CR, U+2028 and U+2029.
+  it.each([
+    ["a lone CR", "\r"],
+    ["a line separator", "\u2028"],
+    ["a paragraph separator", "\u2029"],
+    ["CRLF", "\r\n"],
+  ])("ends statements at %s", (_name, eol) => {
+    expectSameProgram(
+      ["let a = 1, b = 2, c = 3", "a = b", "c", "log.push(a, c)"].join(eol),
+    );
+    expectSameProgram(
+      ["const z = 5", "log.push((() => { return", "-z })())"].join(eol),
+    );
+    expectSameProgram(["let a = 1 // one", "log.push(a)"].join(eol));
+    expectSameProgram(
+      ["let b = 1, a = [1]", "b", "++a[0]", "log.push(a)"].join(eol),
+    );
+  });
+
+  it("keeps a line separator inside a string", () => {
+    const source = "const s = 'a\u2028b'\nlog.push(s.length)";
+    expect(expectSameProgram(source)).toContain("'a\u2028b'");
+  });
+});
+
+describe("minifyJs – a block comment that spans lines is a line break", () => {
+  // ECMAScript reads a multi-line comment holding a line terminator as a line terminator.
+  it.each([
+    [
+      "between two statements",
+      "let a = 1, b = 2, c = 3\na = b /*\n*/ c\nlog.push(a, c)",
+    ],
+    [
+      "after return",
+      "const x = 5\nlog.push((() => { return /* a\n b */ x })())",
+    ],
+    ["after break", "for (;;) { log.push('once'); break /*\n*/ -1 }"],
+    [
+      "after a postfix update",
+      "let i = 1, j = 2\ni++ /*\n*/ j\nlog.push(i, j)",
+    ],
+    [
+      "a doc comment between two declarations",
+      "const a = 1 /** first\n */ const b = 2\nlog.push(a, b)",
+    ],
+    [
+      "a comment with a carriage return",
+      "let a = 1, b = 2, c = 3\na = b /*\r*/ c\nlog.push(a, c)",
+    ],
+    [
+      "a comment with a line separator",
+      "let a = 1, b = 2, c = 3\na = b /*\u2028*/ c\nlog.push(a, c)",
+    ],
+  ])("ends the statement at a comment %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "inside an expression",
+      "const a = 1, b = 2\nconst x = a + /*\n*/ b\nlog.push(x)",
+    ],
+    ["on one line", "const a = 1, b = 2\nconst x = a /* + */ + b\nlog.push(x)"],
+    [
+      "between two plus signs",
+      "const a = 1, b = '2'\nconst x = a +/*\n*/+ b\nlog.push(x)",
+    ],
+    [
+      "before a call's parentheses",
+      "const f = () => 3\nconst x = f /*\n*/ ()\nlog.push(x)",
+    ],
+  ])("keeps the expression together across a comment %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
+describe("minifyJs – `extends` on the line after a class name", () => {
+  // `class D\nextends B {}` is one class header: the line break is not a statement end.
+  it.each([
+    [
+      "a class declaration",
+      "class B {}\nclass D\nextends B {}\nlog.push(new D() instanceof B)",
+    ],
+    [
+      "a named class expression",
+      "class B {}\nconst X = class D\n  extends B {}\nlog.push(new X() instanceof B)",
+    ],
+    [
+      "a class declared in a method",
+      "class B {}\nclass A { m() { class D\nextends B {}\n return D } }\nlog.push(new (new A().m())() instanceof B)",
+    ],
+    [
+      "a class expression in a field",
+      "class B {}\nclass A { x = class D\n extends B {} }\nlog.push(new (new A().x)() instanceof B)",
+    ],
+    [
+      "a heritage call and the body on lines of their own",
+      "const mix = (C) => C\nclass B {}\nclass D\n  extends mix(B)\n{\n  m() { return 1 }\n}\nlog.push(new D().m(), new D() instanceof B)",
+    ],
+    [
+      "a comment between the name and extends",
+      "class B {}\nclass D // child\nextends B {}\nlog.push(new D() instanceof B)",
+    ],
+  ])("keeps %s together", (_name, source) => {
+    expect(expectSameProgram(source)).not.toMatch(/;extends/);
+  });
+
+  it.each([
+    [
+      "a method named extends after a field",
+      "class A {\n  foo\n  extends() { return 2 }\n}\nlog.push(new A().extends(), 'foo' in new A())",
+    ],
+    [
+      "a property named extends",
+      "const o = { extends: 3 }\nconst v = o\n  .extends\nlog.push(v)",
+    ],
+  ])("still reads %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
+describe("minifyJs – names with non-ASCII characters or escapes", () => {
+  // An identifier is any Unicode ID_Start/ID_Continue character, `$`, `_`, ZWNJ, ZWJ or a
+  // `\u` escape: a line break or comment between two of them must not join them into one name.
+  it.each([
+    ["an accented name", "let x, y, é = 1\nx = é\ny = é\nlog.push(x, y)"],
+    ["a CJK name", "let x, y, 值 = 2\nx = 值\ny = 1\nlog.push(x, y)"],
+    [
+      "a Greek name at the line start",
+      "let x, a = 1, π\nx = a\nπ = 3\nlog.push(x, π)",
+    ],
+    ["a name ending in ZWNJ", "let x, a\u200c = 1\nx = a\u200c\nlog.push(x)"],
+    ["an astral name", "let x, 𝑥 = 4\nx = 𝑥\nlog.push(x)"],
+    [
+      "a name ending in a \\u escape",
+      "let x, y, ab = 5\nx = a\\u0062\ny = 1\nlog.push(x, y)",
+    ],
+    [
+      "a name ending in a \\u{} escape",
+      "let x, ab = 5\nx = a\\u{62}\nin {}\nlog.push(x)",
+    ],
+    [
+      "an astral \\u{} escape",
+      "let x, 𝑥 = 6\nx = \\u{1D465}\nin {}\nlog.push(x, \\u{1d465})",
+    ],
+    [
+      "a name starting with a \\u escape",
+      "let x, a = 1, b\nx = a\n\\u0062 = 6\nlog.push(x, b)",
+    ],
+    [
+      "an accented name after return",
+      "const é = 7\nlog.push((() => { return/* c */é })())",
+    ],
+    ["an operand after typeof", "const é = 8\nlog.push(typeof/* c */é)"],
+    ["an escape after typeof", "const a = 8\nlog.push(typeof\n\\u0061)"],
+    [
+      "a string after an accented name",
+      "let x, é = 9\nx = é\n'y'\nlog.push(x)",
+    ],
+    [
+      "an accented name before in",
+      "const o = { k: 1 }, kö = 'k'\nlog.push(kö\nin o)",
+    ],
+    [
+      "a name starting with in",
+      "let x, a = 1, iné = 2\nx = a\niné = 3\nlog.push(x, iné)",
+    ],
+    ["a label with an accent", "é: for (;;) { log.push(1); break é\n(2) }"],
+  ])("keeps %s apart", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it("still joins `in` before a non-breaking space", () => {
+    expectSameProgram("const o = { k: 1 }, k = 'k'\nlog.push(k\nin\u00a0o)");
+  });
+});
+
+describe("minifyJs \u2013 a number next to a dot across a line break", () => {
+  // `5.` is a whole number literal, and `1.` would start one: the line break or comment
+  // between a number and a dot keeps them two tokens.
+  it.each([
+    [
+      "a number ending in a dot, then a name",
+      "let x, y = 2\nx = 5.\ny\nlog.push(x, y)",
+    ],
+    ["a zero ending in a dot", "let x, y = 2\nx = 0.\ny\nlog.push(x)"],
+    [
+      "a number with separators ending in a dot",
+      "let x, y = 2\nx = 1_000.\ny\nlog.push(x)",
+    ],
+    [
+      "a number ending in a dot, then a string",
+      "let x\nx = 5.\n'y'\nlog.push(x)",
+    ],
+    ["an integer, then a property line", "log.push(1\n.toString())"],
+    ["a zero, then a property line", "log.push(0\n.toFixed(1))"],
+    [
+      "an integer with separators, then a property line",
+      "log.push(1_000\n.toString())",
+    ],
+    [
+      "a decimal written like an octal, then a property line",
+      "log.push(08\n.toString())",
+    ],
+    ["an integer, a comment, then a dot", "log.push(1/* c */.toString())"],
+    ["an integer, a line comment, then a dot", "log.push(1 // c\n.toString())"],
+    ["an integer, then a space and a dot", "log.push(1 .toString())"],
+    [
+      "a division after a number ending in a dot",
+      "const g = 2\nlet x = 5.\n/ 2 / g\nlog.push(x)",
+    ],
+  ])("keeps apart %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // The dot after these is a property access already: no `;` or space is needed.
+  it.each([
+    ["a decimal", "log.push(1.5\n.toFixed(1))", "log.push(1.5.toFixed(1))"],
+    [
+      "a hex number",
+      "log.push(0x1f\n.toString())",
+      "log.push(0x1f.toString())",
+    ],
+    ["an exponent", "log.push(1e3\n.toString())", "log.push(1e3.toString())"],
+    ["a BigInt", "log.push(1n\n.toString())", "log.push(1n.toString())"],
+    [
+      "a name ending in a digit",
+      "const a1 = 2\nlog.push(a1\n.toString())",
+      "const a1=2;log.push(a1.toString())",
+    ],
+    [
+      "a number with a fraction",
+      "log.push(.5\n.toFixed(1))",
+      "log.push(.5.toFixed(1))",
+    ],
+    [
+      "an exponent ending in a dot",
+      "const y = 1\nlog.push(1e-5.\ny)",
+      "const y=1;log.push(1e-5.y)",
+    ],
+    [
+      "a number ending in a dot, then a dot",
+      "log.push(5.\n.toFixed(1))",
+      "log.push(5..toFixed(1))",
+    ],
+    [
+      "an octal ending in a dot",
+      "const y = 1\nlog.push(07.\ny)",
+      "const y=1;log.push(07.y)",
+    ],
+  ])("joins %s", (_name, source, expected) => {
+    expect(expectSameProgram(source)).toBe(expected);
+  });
+});
+
+describe("minifyJs – HTML-like comments", () => {
+  // A classic script (and a `new Function` body) reads `<!--` anywhere, and `-->` at the start
+  // of a line, as a line comment (ECMAScript Annex B.1.1).
+  it.each([
+    ["a <!-- line", "log.push(1)\n<!-- the next one\nlog.push(2)"],
+    ["a <!-- after code", "let x = 1 <!-- one\nlog.push(x)"],
+    [
+      "a <!-- after an operator",
+      "const a = 1\nconst x = a +\n<!-- c\n2\nlog.push(x)",
+    ],
+    [
+      "a <!-- after a less-than",
+      "const a = 1\nconst x = a < <!-- c\n2\nlog.push(x)",
+    ],
+    ["a --> line", "log.push(1)\n--> the next one\nlog.push(2)"],
+    ["a --> line after a comment", "log.push(1)\n/* a */ --> c\nlog.push(2)"],
+    [
+      "a --> after a comment that spans lines",
+      "log.push(1) /*\n*/ --> c\nlog.push(2)",
+    ],
+    ["a --> at the start", "--> c\nlog.push(1)"],
+    [
+      "a script wrapped in <!-- and //-->",
+      "<!--\nlog.push(1)\nlog.push(2)\n//-->",
+    ],
+    ["a script wrapped in <!-- and -->", "<!--\nlog.push(1)\n-->"],
+    [
+      "a regex line after a <!-- line",
+      "<!-- c\n/a  b/.test('a  b') && log.push('re')",
+    ],
+    [
+      "a string line after a <!-- line",
+      "const a = 1\n<!-- c\n'x'\nlog.push(a)",
+    ],
+  ])("reads %s as a comment", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // These are operators, and the output must not turn them into a comment.
+  it.each([
+    [
+      "a less-than and a not-decrement",
+      "let a = 1, b = 2\nconst x = a < !--b\nlog.push(x, b)",
+    ],
+    [
+      "a less-than, a not, and a decrement",
+      "let a = 1, b = 2\nconst x = a <! --b\nlog.push(x, b)",
+    ],
+    [
+      "a less-than across a line break",
+      "let a = 1, b = 2\nconst x = a <\n!--b\nlog.push(x, b)",
+    ],
+    [
+      "a shift and a not-decrement",
+      "let a = 1, b = 3\nconst x = a <<!--b\nlog.push(x, b)",
+    ],
+    [
+      "a decrement and a greater-than",
+      "let a = 3, b = 1\nconst x = a-->b\nlog.push(x, a)",
+    ],
+    [
+      "a decrement, a space, and a greater-than",
+      "let a = 3, b = 1\nconst x = a-- > b\nlog.push(x, a)",
+    ],
+  ])("keeps %s", (_name, source) => {
+    expect(expectSameProgram(source)).not.toMatch(/<!--/);
+  });
+
+  // A module has no HTML-like comments: there `a <!--b` is `a < !--b`. Keeping the comment's
+  // line and its line break as written runs the same program as either kind of script.
+  // In a script holding `<!--`, comments holding `-->` or `<script` are kept (the HTML parser
+  // reads them); the program stays the same.
+  it.each([
+    ["a line comment", "const s = '<!--'\nlog.push(1) // -->\nlog.push(2)"],
+    [
+      "a block comment",
+      "const s = '<!--', b = 1, c = 2\nconst a = b /* --> */ + c\nlog.push(a)",
+    ],
+    [
+      "a block comment that spans lines",
+      "const s = '<!--'\nlog.push((() => { return /*\n<script>*/ 1 })())",
+    ],
+    [
+      "a division before a line comment",
+      "const s = '<!--', a = 4\nconst x = a / // <script>\n2\nlog.push(x)",
+    ],
+    // The line breaks around a kept one-line block comment still end the statement.
+    [
+      "a block comment on its own line between statements",
+      "const s = '<!--', a = 1\nlet b, x\nx = a\n/* --> */\nb = 2\nlog.push(x, b)",
+    ],
+    [
+      "a block comment on its own line before an update",
+      "const s = '<!--', a = 1\nlet b = 5, x\nx = a\n/* --> */\n++b\nlog.push(x, b)",
+    ],
+    [
+      "a block comment at the end of a line",
+      "const s = '<!--'\nlet x\nx = 1 /* <script> */\nx = 2\nlog.push(x)",
+    ],
+    [
+      "a block comment at the start of a line",
+      "const s = '<!--'\nlet x\nx = 1\n/* <script> */ x = 2\nlog.push(x)",
+    ],
+    [
+      "a block comment before a string line",
+      "const s = '<!--'\nlet x\nx = s /* --> */\n'a'.length\nlog.push(x)",
+    ],
+    [
+      "a block comment after return",
+      "const s = '<!--'\nlog.push((() => { return /* --> */\n1 })())",
+    ],
+    [
+      "a block comment on its own line with CRLF line ends",
+      "const s = '<!--', a = 1\r\nlet b, x\r\nx = a\r\n/* --> */\r\nb = 2\r\nlog.push(x, b)",
+    ],
+  ])("keeps %s holding an HTML marker", (_name, source) => {
+    // codeql[js/bad-tag-filter] Test assertion that the output still holds a marker, not an HTML filter.
+    expect(expectSameProgram(source)).toMatch(/-->|<script>/);
+  });
+
+  it("keeps a <!-- comment and its line break as written", () => {
+    expect(minifyJs("x = a <!--b\nf()")).toBe("x=a<!--b\nf()");
+    expect(minifyJs("<!--\nx = 1\n//-->")).toBe("<!--\nx=1//-->");
+  });
+});
+
+describe("minifyJs – a name spelled like a keyword before a string line", () => {
+  // A string cannot continue a name, so the line break before it ends the statement: only a
+  // keyword that takes an operand (`typeof`, `in`, `else`) keeps the string on its line.
+  it.each([
+    [
+      "a name ending in else",
+      "const $else = 1\nlet x\nx = $else\n'y'.length\nlog.push(x)",
+    ],
+    [
+      "a name ending in typeof",
+      "const a$typeof = 1\nlet x\nx = a$typeof\n'y'\nlog.push(x)",
+    ],
+    ["a name ending in in", "const $in = 1\nlet x\nx = $in\n'y'\nlog.push(x)"],
+    [
+      "a variable named from",
+      "const from = 1\nlet x\nx = from\n'a'.trim()\nlog.push(x)",
+    ],
+    [
+      "a variable named of",
+      "const of = 2\nlet x\nx = of\n'a'.trim()\nlog.push(x)",
+    ],
+    [
+      "a variable named await",
+      "const await = 3\nlet x\nx = await\n'a'.trim()\nlog.push(x)",
+    ],
+    [
+      "a variable named from after a dynamic import",
+      "const from = 4, f = () => {}\nlet x\nf('a')\nx = from\n'y'\nlog.push(x)",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    ["for-of", "for (const c of\n'ab') log.push(c)"],
+    [
+      "a name ending in a keyword, then a division",
+      "const $return = 8, g = 2\nlog.push($return / 2 / g)",
+    ],
+    [
+      "a name ending in typeof, then a division",
+      "const a$typeof = 8, g = 2\nlog.push(a$typeof / 2 /g)",
+    ],
+    ["await in an async function", "(async () => { log.push(await\n'a') })()"],
+  ])("keeps %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // `new Function` bodies cannot hold module syntax, so these compare text.
+  it.each([
+    ["import a from\n'm'", "import a from'm'"],
+    ["export * from\n'm'", "export*from'm'"],
+    ["export { a as from } from\n'm'", "export{a as from}from'm'"],
+    ["import { from } from\n'm'", "import{from}from'm'"],
+    ["export default from\n'y'", "export default from;'y'"],
+    ["export const a = from\n'y'", "export const a=from;'y'"],
+  ])("reads `from` in %j", (source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
+  });
+
+  // `await` is an operator in a module or an async function and a name elsewhere, which the
+  // minifier does not track: the line break stays, so both read it as the source does.
+  it("keeps the line break between await and a string", () => {
+    expect(minifyJs("x = await\n'a'")).toBe("x=await\n'a'");
+  });
+});
+
+describe("minifyJs – a get, set or static modifier before a string-named member", () => {
+  // ECMAScript allows a line break after `get`, `set` and `static`, so the member they modify
+  // can have a string name on the next line. `async` and `accessor` take no line break there,
+  // so after them the line break ends a member named `async` or `accessor`.
+  const shape = (o: object): string =>
+    Object.getOwnPropertyNames(o)
+      .map((key) => {
+        const d = Object.getOwnPropertyDescriptor(o, key)!;
+        return `${key}:${d.get ? "get" : ""}${d.set ? "set" : ""}${typeof d.value}`;
+      })
+      .join();
+  const withShape = (source: string): string =>
+    `const shape = ${shape.toString()}\n${source}`;
+
+  it.each([
+    [
+      "a getter",
+      "class A { get\n'a'() { return 1 } }\nlog.push(shape(A.prototype))",
+    ],
+    ["a setter", "class A { set\n'a'(v) {} }\nlog.push(shape(A.prototype))"],
+    ["a static field", "class A { static\n'a' = 1 }\nlog.push(shape(A))"],
+    ["a static method", 'class A { static\n"a"() {} }\nlog.push(shape(A))'],
+    [
+      "a static getter",
+      "class A { static get\n'a'() { return 1 } }\nlog.push(shape(A))",
+    ],
+    [
+      "a getter after a field",
+      "class A { x = 1\nget\n'a'() { return 1 } }\nlog.push(shape(A.prototype))",
+    ],
+    [
+      "a getter whose parameters are on a third line",
+      "class A { get\n'a'\n() { return 1 } }\nlog.push(shape(A.prototype))",
+    ],
+    [
+      "an object getter",
+      "const o = { get\n'a'() { return 1 } }\nlog.push(shape(o))",
+    ],
+    [
+      "an object setter after another member",
+      "const o = { b: 1, set\n'a'(v) {} }\nlog.push(shape(o))",
+    ],
+    // The same with a name, not a string, on the next line.
+    [
+      "an object getter named by a name",
+      "const o = { get\na() { return 1 } }\nlog.push(shape(o))",
+    ],
+    [
+      "an object setter named by a name",
+      "const o = { set\na(v) {} }\nlog.push(shape(o))",
+    ],
+    [
+      "an object getter and setter after other members",
+      "const o = { b: 1,\n  get\n  a() { return 1 },\n  set\n  a(v) {} }\nlog.push(shape(o))",
+    ],
+    [
+      "an object getter in a call",
+      "const f = (o) => o\nlog.push(shape(f({ get\na() { return 2 } })))",
+    ],
+    [
+      "an object getter named by a computed key",
+      "const k = 'a'\nconst o = { get\n[k]() { return 3 } }\nlog.push(shape(o))",
+    ],
+    [
+      "an object getter named get",
+      "const o = { get\nget() { return 4 } }\nlog.push(shape(o))",
+    ],
+    [
+      "a class getter and setter named by a name",
+      "class A { get\na() { return 1 }\nset\na(v) {} }\nlog.push(shape(A.prototype))",
+    ],
+    [
+      "a static getter named by a name",
+      "class A { static\nget\na() { return 1 } }\nlog.push(shape(A))",
+    ],
+    [
+      "a static method named by a name",
+      "class A { static\na() {} }\nlog.push(shape(A))",
+    ],
+  ])("keeps %s", (_name, source) => {
+    expectSameProgram(withShape(source));
+  });
+
+  it.each([
+    [
+      "a field named async",
+      "class A { async\n'a'() {} }\nlog.push(shape(A.prototype), shape(new A()))",
+    ],
+    [
+      "a field named accessor",
+      "class A { accessor\n'a' = 1 }\nlog.push(shape(new A()))",
+    ],
+    [
+      "a static field named async",
+      "class A { static async\n'a'() {} }\nlog.push(shape(A), shape(A.prototype))",
+    ],
+    [
+      "a property named get",
+      "const o = { get: 1 }\nlet x\nx = o.get\n'a'.length\nlog.push(x)",
+    ],
+    [
+      "a variable named get",
+      "const get = 1\nlet x\nx = get\n'a'.length\nlog.push(x)",
+    ],
+    [
+      "a shorthand property named get in a block",
+      "let get = 1\n{ get\n'a'.length }\nlog.push(get)",
+    ],
+    [
+      "a shorthand property named get before a name in a block",
+      "let get = 1, a = 2\n{ get\na }\nlog.push(get, a)",
+    ],
+    [
+      "an object value named get",
+      "const get = 1, a = 2\nconst o = { b: get\n}\nlog.push(shape(o), a)",
+    ],
+  ])("ends the member or statement after %s", (_name, source) => {
+    expectSameProgram(withShape(source));
+  });
+});
+
+describe("minifyJs – an import or export clause continued on the next line", () => {
+  // In a module, `from` after an import or export clause and `with` after its module
+  // specifier continue the declaration across a line break. `new Function` bodies cannot
+  // hold module syntax, so these compare text; each expected output parses as a module.
+  it.each([
+    ["import { a }\nfrom 'm'", "import{a}from'm'"],
+    ["import { a }\nfrom\n'm'", "import{a}from'm'"],
+    ["import a\nfrom 'm'", "import a from'm'"],
+    ["import * as a\nfrom 'm'", "import*as a from'm'"],
+    ["import a, { b }\nfrom 'm'", "import a,{b}from'm'"],
+    ["import {}\nfrom 'm'", "import{}from'm'"],
+    ["export { a }\nfrom 'm'", "export{a}from'm'"],
+    ["export { a as of }\nfrom\n'm'", "export{a as of}from'm'"],
+    ["export * as a\nfrom 'm'", "export*as a from'm'"],
+    ["export { 'a b' as c }\nfrom 'm'", "export{'a b'as c}from'm'"],
+    [
+      "import a from 'm.json'\nwith { type: 'json' }",
+      "import a from'm.json'with{type:'json'}",
+    ],
+    [
+      "import { a }\nfrom 'm.json'\nwith { type: 'json' }\na()",
+      "import{a}from'm.json'with{type:'json'};a()",
+    ],
+    [
+      "export { a } from 'm.json'\nwith { type: 'json' }",
+      "export{a}from'm.json'with{type:'json'}",
+    ],
+    ["import 'm.css'\nwith { type: 'css' }", "import'm.css'with{type:'css'}"],
+    // `as` continues the clause on either side of a line break.
+    ["import * as\nn from 'm'", "import*as n from'm'"],
+    ["export * as\nn from 'm'", "export*as n from'm'"],
+    ["export * \nas n from 'm'", "export*as n from'm'"],
+    ["export { a as\nb }", "export{a as b}"],
+    ["import { a as\nb } from 'm'", "import{a as b}from'm'"],
+    ["export { a\nas b }", "export{a as b}"],
+    ["import { a\nas b, c\nas d } from 'm'", "import{a as b,c as d}from'm'"],
+    ["export { a as\n'b c' }", "export{a as'b c'}"],
+    ["export { 'a b'\nas c } from 'm'", "export{'a b'as c}from'm'"],
+    ["import { 'a b'\nas c } from 'm'", "import{'a b'as c}from'm'"],
+    ["import { a as as }\nfrom 'm'", "import{a as as}from'm'"],
+    // Inside the braces, `default`, `async` and the like are names being imported or exported.
+    ["export { default }\nfrom 'm'", "export{default}from'm'"],
+    ["export { default as x }\nfrom 'm'", "export{default as x}from'm'"],
+    ["import { default as x }\nfrom 'm'", "import{default as x}from'm'"],
+    ["export { a as default }\nfrom 'm'", "export{a as default}from'm'"],
+    ["export { default\nas x } from 'm'", "export{default as x}from'm'"],
+    ["export { async, let }\nfrom 'm'", "export{async,let}from'm'"],
+    ["import { function as f }\nfrom 'm'", "import{function as f}from'm'"],
+  ])("joins %j", (source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
+  });
+
+  // A name `as` outside the clause is a value like any other.
+  it.each([
+    [
+      "a variable named as after an export",
+      "export { a }\nas\nfoo()",
+      "export{a};as;foo()",
+    ],
+    [
+      "a variable named as after a namespace import",
+      "import * as n from 'a'\nas\nfoo()",
+      "import*as n from'a';as;foo()",
+    ],
+    [
+      "a block after an export",
+      "export { a }\n{\n  let p\n  [1].forEach(f)\n}",
+      "export{a};{let p;[1].forEach(f)}",
+    ],
+    [
+      "a declaration after an export",
+      "export { a }\nlet p\n[1].forEach(f)",
+      "export{a};let p;[1].forEach(f)",
+    ],
+    [
+      "a function after an export",
+      "export { a }\nfunction f(a)\n{\n  return a\n}",
+      "export{a};function f(a){return a}",
+    ],
+    [
+      "a variable named as after an import binding",
+      "import { a as b } from 'a'\nas\nfoo()",
+      "import{a as b}from'a';as;foo()",
+    ],
+  ])("keeps %s apart", (_name, source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
+  });
+
+  it("keeps a classic script's variable named as a value", () => {
+    expectSameProgram(
+      "const as = 1, f = () => log.push('f')\nlet x = as\nf()\nlog.push(x)",
+    );
+  });
+
+  // Outside a clause, `from` is a name and `with` a statement, so the line break still ends
+  // the statement before them.
+  it.each([
+    [
+      "a variable named from after an export",
+      "export { a }\nlet from = 1\nfrom\n'x'.length",
+      "export{a};let from=1;from;'x'.length",
+    ],
+    [
+      "a variable named from after a dynamic import",
+      "import('m')\nfrom\n'x'.length",
+      "import('m');from;'x'.length",
+    ],
+    [
+      "a variable named from after import.meta",
+      "import.meta\nfrom\n'x'.length",
+      "import.meta;from;'x'.length",
+    ],
+    [
+      "a with statement after a string",
+      "x = 'a'\nwith (o) f()",
+      "x='a';with(o)f()",
+    ],
+    [
+      "a with statement after a module specifier and a semicolon",
+      "import 'm';\nwith (o) f()",
+      "import'm';with(o)f()",
+    ],
+  ])("keeps %s apart", (_name, source, expected) => {
+    expect(minifyJs(source)).toBe(expected);
+  });
+
+  it("keeps a classic script's with statement after a string apart", () => {
+    expectSameProgram(
+      "const o = { a: 1 }\nlet x = 'a'\nwith (o) x = a\nlog.push(x)",
+    );
+  });
+});
+
+describe("minifyJs – of at the end of a line in a for header", () => {
+  // No statement ends inside a `for (...)` header: `of` takes its operand on the next line.
+  it.each([
+    ["a name", "const y = [1, 2]\nfor (const x of\n  y) log.push(x)"],
+    ["a not", "const y = ''\nfor (const x of\n  !y ? 'ab' : '') log.push(x)"],
+    [
+      "a destructuring pattern",
+      "const e = Object.entries({ a: 1 })\nfor (const [k, v] of\n  e) log.push(k, v)",
+    ],
+    ["a call", "const f = () => [3]\nfor (let x of\n  f()) log.push(x)"],
+    [
+      "a for header in a function body",
+      "function g(y) {\n  for (const x of\n    y) log.push(x)\n}\ng([4])",
+    ],
+    ["a binding named of", "for (const of of\n  [5, 6]) log.push(of)"],
+  ])("continues the header after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a variable named of",
+      "const of = 1, f = () => log.push('f')\nlet x = of\nf()\nlog.push(x)",
+    ],
+    [
+      "a variable named of in a function in a for header",
+      "const f = () => log.push('f')\nfor (const g of [function () { const of = 1\n  let x = of\n  f()\n  return x }]) log.push(g())",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it("joins `for await` too", () => {
+    expect(
+      minifyJs("async function f(y) { for await (const x of\ny) use(x) }"),
+    ).toBe("async function f(y){for await(const x of y)use(x)}");
+  });
+});
+
+describe("minifyJs – of at the start of a line", () => {
+  // Outside a `for` header `of` is a name (RxJS exports a function named `of`), so a line
+  // starting with it is a new statement after a value, as with any other name.
+  it.each([
+    [
+      "a call after a value",
+      "const of = (v) => log.push(v), f = 1\nconst y = f\nof(2)",
+    ],
+    ["a call after a call", "const of = (v) => log.push(v)\nof(1)\nof(2)"],
+    [
+      "a call after a bare binding",
+      "const of = (v) => log.push(v)\nvar y\nof(3)",
+    ],
+    [
+      "a call after a string",
+      "const of = (v) => log.push(v)\nlog.push('a')\n'b'\nof(4)",
+    ],
+    [
+      "a call after a block",
+      "const of = (v) => log.push(v)\nif (of) { log.push(5) }\nof(6)",
+    ],
+    [
+      "a call after an arrow function in a for header",
+      "const of = (v) => log.push(v)\nfor (const g of [() => { var y = 1\nof(y) }]) g()",
+    ],
+  ])("starts a new statement with %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // In a `for` header it is the keyword, whatever comes before it.
+  it.each([
+    ["a binding", "for (const x\n  of [1, 2]) log.push(x)"],
+    ["an assignment target", "var x\nfor (x\n  of [3]) log.push(x)"],
+    ["a pattern", "for (const [a, b]\n  of [[4, 5]]) log.push(a, b)"],
+    ["an object pattern", "for (const { a }\n  of [{ a: 6 }]) log.push(a)"],
+    [
+      "a binding and a variable named of",
+      "const of = [7]\nfor (const x\n  of\n  of) log.push(x)",
+    ],
+  ])("continues the header after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
+describe("minifyJs – HTML script markers written by joining", () => {
+  // In a script holding `<!--`, the space that keeps `<` from `script` and `--` from `>`
+  // stays; the program is the same.
+  it.each([
+    [
+      "a < script",
+      "const m = '<!--', script = 3, a = 2\nlog.push(a < script > 0)",
+    ],
+    [
+      "a << script",
+      "const m = '<!--', script = 1, a = 2\nlog.push(a <<\nscript)",
+    ],
+    ["a-- > b", "const m = '<!--'\nlet a = 3, b = 1\nlog.push(a-- > b, a)"],
+    [
+      "a-- on a line before > b",
+      "const m = '<!--'\nlet a = 3, b = 1\nlog.push(a--\n> b, a)",
+    ],
+    ["a regex after <", "log.push(1 < /script>/.test('x'))"],
+  ])("keeps %s apart", (_name, source) => {
+    // codeql[js/bad-tag-filter] Test assertion that joining wrote no marker, not an HTML filter.
+    expect(expectSameProgram(source)).not.toMatch(/<script|-->|<\/script/i);
+  });
+});
+
+describe("minifyJs – await or yield at the end of a line", () => {
+  // `await` is an operator in an async function or a module and a name elsewhere; `yield` is
+  // a restricted production in a generator and a name elsewhere. The line break after either
+  // means something different in each, so it stays as written.
+  it.each([
+    ["a name", "const a = 2\nlog.push(await\na)"],
+    ["a declaration", "const a = 3\nlet x = await\na\nlog.push(x)"],
+    ["a sign", "const z = 4\nlog.push(await\n-z)"],
+    ["a not", "const z = 0\nlog.push(await\n!z)"],
+    ["a number", "log.push(await\n5)"],
+    ["an object", "log.push((await\n{ a: 6 }).a)"],
+    ["a template", "log.push(await\n`t`)"],
+    ["a regex", "log.push((await\n/re/g).flags)"],
+    ["a call", "const f = () => 7\nlog.push(await\nf())"],
+  ])(
+    "awaits %s on the next line in an async function",
+    async (_name, source) => {
+      await expectSameAsyncProgram(source);
+    },
+  );
+
+  it.each([
+    [
+      "a name line",
+      "const await = 1, a = 2\nlet x\nx = await\na\nlog.push(x, a)",
+    ],
+    [
+      "a call line",
+      "const await = (v) => v * 2\nlet x = await\n(4)\nlog.push(x)",
+    ],
+    ["a sign line", "const await = 5, z = 1\nlet x = await\n-z\nlog.push(x)"],
+    [
+      "a regex-looking line",
+      "const await = 8, re = 2, g = 2\nlet x = await\n/re/g\nlog.push(x)",
+    ],
+  ])("reads a variable named await before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a name line",
+      "var yield = 1, a = 2\nlet x\nx = yield\na\nlog.push(x, a)",
+    ],
+    [
+      "a call line",
+      "var yield = (v) => v * 2\nlet x = yield\n(4)\nlog.push(x)",
+    ],
+    [
+      "an index line",
+      "var yield = [5, 6], i = 1\nlet x = yield\n[i]\nlog.push(x)",
+    ],
+    ["a sign line", "var yield = 5, z = 1\nlet x = yield\n-z\nlog.push(x)"],
+    [
+      "a tagged template",
+      "var yield = (s) => s[0] + '!'\nlet x = yield\n`t`\nlog.push(x)",
+    ],
+    [
+      "a regex-looking line",
+      "var yield = 8, re = 2, g = 2\nlet x = yield\n/re/g\nlog.push(x)",
+    ],
+  ])("reads a variable named yield before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    ["a call line", "function* g() { yield\n(1) }\nlog.push([...g()])"],
+    ["an index line", "function* g() { yield\n[1] }\nlog.push([...g()])"],
+    [
+      "a name line",
+      "const a = 2\nfunction* g() { yield\na }\nlog.push([...g()])",
+    ],
+    ["a template", "function* g() { yield\n`t` }\nlog.push([...g()])"],
+    ["a regex", "function* g() { yield\n/re/g }\nlog.push([...g()])"],
+    ["a string", "function* g() { yield\n'a' }\nlog.push([...g()])"],
+    [
+      "the ) of a call",
+      "const f = (v) => log.push(v)\nfunction* g() { f(yield\n) }\nconst it = g()\nit.next()\nit.next(1)",
+    ],
+    [
+      "the ] of an array",
+      "function* g() { log.push([yield\n]) }\nconst it = g()\nit.next()\nit.next(2)",
+    ],
+    [
+      "a comma",
+      "function* g() { log.push([yield\n, 3]) }\nconst it = g()\nit.next()\nit.next(2)",
+    ],
+    [
+      "the : of a conditional",
+      "function* g(a) { log.push(a ? yield\n: 4) }\nconst it = g(1)\nit.next()\nit.next(5)",
+    ],
+  ])("ends a generator's yield before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a property named await",
+      "const o = { await: 1 }, a = 2\nlet x = o.await\na\nlog.push(x)",
+    ],
+    [
+      "a property named yield",
+      "const o = { yield: [3] }\nlet x = o.yield\n[0]\nlog.push(x)",
+    ],
+    [
+      "a name ending in await",
+      "const $await = 4, a = 5\nlet x = $await\na\nlog.push(x)",
+    ],
+  ])("joins the line after %s as any other value", (_name, source) => {
+    expect(expectSameProgram(source)).not.toContain("\n");
+  });
+
+  it("writes the line break in place of a semicolon", () => {
+    expect(minifyJs("async function f() { await\na }")).toBe(
+      "async function f(){await\na}",
+    );
+    expect(minifyJs("function* g() { yield\n(a) }")).toBe(
+      "function*g(){yield\n(a)}",
+    );
+    // A line that cannot start an operand reads the same either way.
+    expect(minifyJs("function* g() { f(yield\n) }")).toBe(
+      "function*g(){f(yield)}",
+    );
+  });
+});
+
+describe("minifyJs – a property spelled like a keyword apart from its dot", () => {
+  // `o. return` and `o.\nreturn` are the property `return`: whitespace may separate a `.`
+  // from its name, and a property is a value, never a keyword.
+  it.each([
+    [
+      "a call after a spaced return",
+      "var o = { return: (v) => log.push(v) }\no. return\n(1)",
+    ],
+    [
+      "a call after a return on its own line",
+      "var o = { return: (v) => log.push(v) }\no.\nreturn\n(1)",
+    ],
+    [
+      "a call after an optional chain",
+      "var o = { throw: (v) => log.push(v) }\no?.\nthrow\n(2)",
+    ],
+    [
+      "an index after a spaced break",
+      "var o = { break: [3] }\nlog.push(o. break\n[0])",
+    ],
+    [
+      "a minus after a spaced continue",
+      "var o = { continue: 5 }\nlog.push(o. continue\n- 1)",
+    ],
+    [
+      "a template after a spaced return",
+      "var o = { return: (s) => s[0] }\nlog.push(o. return\n`t`)",
+    ],
+    [
+      "a name line after a spaced new",
+      "var o = { new: 1 }, x = 0, foo = () => log.push(6)\nx = o. new\nfoo()\nlog.push(x)",
+    ],
+    [
+      "a name line after a spaced typeof",
+      "var o = { typeof: 1 }, x = 0, foo = () => log.push(7)\nx = o.\n  typeof\nfoo()\nlog.push(x)",
+    ],
+    [
+      "a call after a spaced yield",
+      "var o = { yield: (v) => log.push(v) }\no. yield\n(8)",
+    ],
+  ])("reads the property before %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  // A keyword that only follows a property or a number still ends its statement.
+  it.each([
+    [
+      "a return after a dot in a number",
+      "function f() { return 1.\n}\nlog.push(f())",
+    ],
+    [
+      "a return after a property",
+      "function f(o) { return\n  o.a\n}\nlog.push(f({ a: 1 }))",
+    ],
+  ])("still ends the statement with %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
+describe("minifyJs – an operator keyword after a spread at the end of a line", () => {
+  // `...typeof`: the keyword after a `...` is an operator, not a property, so it takes its
+  // operand on the next line.
+  it.each([
+    ["typeof in an array", "var x = 'ab'\nlog.push([...typeof\n  x])"],
+    ["new in an array", "var a = [1, 1, 2]\nlog.push([...new\n  Set(a)])"],
+    ["new in a call", "var a = [3]\nlog.push(...new\n  Set(a))"],
+    ["void in an object", "log.push({ ...void\n  0 })"],
+    [
+      "new in an object",
+      "function C() { this.a = 4 }\nlog.push({ ...new\n  C() })",
+    ],
+  ])("continues %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+
+  it.each([
+    [
+      "a property spelled like a keyword after a dot",
+      "var o = { new: 5 }, x = 0, foo = () => log.push(6)\nx = o.new\nfoo()\nlog.push(x)",
+    ],
+    [
+      "a name spread from an object",
+      "var o = { a: [7] }, foo = () => log.push(8)\nlog.push(...o.a)\nfoo()",
+    ],
+  ])("ends the statement after %s", (_name, source) => {
+    expectSameProgram(source);
+  });
+});
+
+describe("minifyJs – a private name spelled like a keyword", () => {
+  // `#return`, `#typeof` and `#if` are names: none of them is the keyword it is spelled like.
+  const inClass = (members: string, body: string): string =>
+    `class A {\n  ${members}\n  m() {\n    ${body}\n  }\n}\nlog.push(new A().m())`;
+
+  it.each([
+    [
+      "#return before a call line",
+      inClass("#return = (v) => v + 1", "return this.#return\n(1)"),
+    ],
+    [
+      "#throw before a sign line",
+      inClass("#throw = 5", "const z = 1\nreturn this.#throw\n-z"),
+    ],
+    [
+      "#break before an index line",
+      inClass("#break = [2, 3]", "return this.#break\n[1]"),
+    ],
+    [
+      "#yield before a call line",
+      inClass("#yield = (v) => v * 2", "return this.#yield\n(4)"),
+    ],
+    [
+      "#return before a tagged template",
+      inClass("#return = (s) => s[0] + '!'", "return this.#return\n`t`"),
+    ],
+    [
+      "#typeof before a division and a comment",
+      inClass(
+        "#typeof = 8",
+        "const g = 2\nconst x = this.#typeof / 2 // c/d\nreturn x / g",
+      ),
+    ],
+    [
+      "#in before a division",
+      inClass("#in = 8", "const g = 2\nreturn this.#in / 2 / g"),
+    ],
+    [
+      "#if before a call line",
+      inClass(
+        "#if = (v) => v",
+        "const x = this.#if(1)\nconst y = 2\nreturn x + y",
+      ),
+    ],
+    [
+      "#let before an index line",
+      inClass("#let = [4, 5]", "const a = 1\nlet x = this.#let\n[a]\nreturn x"),
+    ],
+    [
+      "#class before a brace line",
+      inClass("#class = 6", "let x = this.#class\n{ x++ }\nreturn x"),
+    ],
+    [
+      "#function before a call line",
+      inClass("#function = () => 7", "return this.#function\n()"),
+    ],
+    [
+      "#return after a postfix update",
+      inClass("#return = 1", "this.#return++\nreturn this.#return"),
+    ],
+    [
+      "#static before a computed field",
+      "const k = 'key'\nclass A {\n  #static\n  [k] = 1\n  has() { return #static in this }\n}\nconst a = new A()\nlog.push(a.has(), a.key)",
+    ],
+    [
+      "#get before a computed field",
+      "const k = 'key'\nclass A {\n  #get\n  [k] = 2\n  has() { return #get in this }\n}\nconst a = new A()\nlog.push(a.has(), a.key)",
+    ],
+  ])("reads %s as a name", (_name, source) => {
+    expectSameProgram(source);
+  });
 });

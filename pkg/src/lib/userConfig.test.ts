@@ -80,6 +80,40 @@ describe("loadUserConfig", () => {
     );
   });
 
+  // A promise is an object, so it used to pass as a config with no settings:
+  // everything the promise resolved to was ignored without a word.
+  it("rejects a promise export instead of ignoring what it resolves to", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const p = await writeConfig(
+      `const load = async () => ({ directory: { out: "public" } });
+       export default load();
+       export const build = Promise.resolve({ minify: { css: false } });`,
+    );
+    const error = await loadUserConfig(p).then(
+      () => null,
+      (err: unknown) => err as Error,
+    );
+    expect(error?.message).toContain(p);
+    expect(error?.message).toMatch(
+      /the default export must be an object, not a promise[^\n]*export default await/,
+    );
+    // Each line names the fix for its own export, not `export default`.
+    expect(error?.message).toMatch(
+      /the build export must be an object, not a promise[^\n]*export const build = await/,
+    );
+    expect(error?.message).not.toMatch(/defineConfig/);
+  });
+
+  it("loads a config that awaits its settings before exporting them", async () => {
+    const { loadUserConfig } = await import("./userConfig.ts");
+    const p = await writeConfig(
+      `const load = async () => ({ directory: { out: "public" } });
+       export default await load();`,
+    );
+    const { config } = await loadUserConfig(p);
+    expect(config).toEqual({ directory: { out: "public" } });
+  });
+
   it("rejects a config whose only exports are names Bascik does not read", async () => {
     const { loadUserConfig } = await import("./userConfig.ts");
     const p = await writeConfig(
@@ -568,6 +602,35 @@ describe("resolveConfigPath", () => {
       path: join(dir, "bascik.config.mjs"),
       explicit: false,
     });
+  });
+
+  it("explicitConfigArgv hands a worker thread the --config flag as one resolved argument", async () => {
+    // A worker thread does not inherit process.argv, so the page pool passes
+    // these on; the worker's own findConfigFile must then name the same file.
+    const { explicitConfigArgv, findConfigFile } =
+      await import("./config-file-names.ts");
+    const dir = await mkdtemp(join(tmpdir(), "bascik-cfg-"));
+    dirs.push(dir);
+    const expected = join(dir, "config", "site.mjs");
+    for (const argv of [
+      ["--build", "--config", "config/site.mjs"],
+      ["--config=config/site.mjs", "--build"],
+      ["--config", expected],
+    ]) {
+      const forwarded = explicitConfigArgv(argv, dir);
+      expect(forwarded).toEqual([`--config=${expected}`]);
+      // From another cwd, as a worker that changed directory would see it.
+      expect(findConfigFile(forwarded, tmpdir())).toEqual({
+        path: expected,
+        explicit: true,
+      });
+    }
+    // A discovered config, no config, and a flag with no value forward nothing:
+    // the worker discovers the same file the main thread did.
+    await writeFile(join(dir, "bascik.config.mjs"), `export default {};`);
+    expect(explicitConfigArgv(["--build"], dir)).toEqual([]);
+    expect(explicitConfigArgv([], dir)).toEqual([]);
+    expect(explicitConfigArgv(["--config", "--build"], dir)).toEqual([]);
   });
 
   it("falls back to bascik.config.ts when no .js file exists", async () => {

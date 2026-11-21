@@ -21,7 +21,7 @@ import {
   basename,
 } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { BascikConfig, shouldLog } from "./config.ts";
 import {
@@ -32,6 +32,19 @@ import {
 import { minifyCss } from "./css-minifier.ts";
 import { minifyJs } from "./js-minifier.ts";
 import { isStaticAssetPath } from "./asset-filter.ts";
+import { isNoSuchFileError } from "./fs-errors.ts";
+import { isStrictSourceRead } from "./unreadable-source.ts";
+import {
+  isOpenFileLimitError,
+  OPEN_FILE_LIMIT_FIX,
+  withOpenFileSlot,
+} from "./open-file-limit.ts";
+
+export {
+  forgetUnreadableSourceFile,
+  reportUnreadableSourceFile,
+  setStrictSourceReads,
+} from "./unreadable-source.ts";
 import { rewriteCssBasePaths, rewriteManifestBasePaths } from "./base-path.ts";
 import { manifestCollector } from "./manifest.ts";
 import { trimSlashes, trimTrailingSlashes } from "./slashes.ts";
@@ -370,7 +383,10 @@ export async function copyReplicatePath(
     // vanished from the manifest.
     await manifestCollector.recordFileFromDisk(destPath);
   } catch (err) {
-    console.error("Failed to copy file:", src, err);
+    // A source deleted since its folder was listed is the caller's to
+    // judge (the dev server skips it); anything else is printed here.
+    if (!(isNoSuchFileError(err) && !existsSync(src)))
+      console.error("Failed to copy file:", src, err);
     throw err;
   }
 }
@@ -384,6 +400,8 @@ export async function copyReplicatePath(
  * findings 38, 49, 139).
  */
 export const pagesDirectoryError = (error: unknown): Error => {
+  // A sub-folder's error already names that folder.
+  if (error instanceof UnreadableFolderError) return error;
   const pages =
     relative(process.cwd(), resolve(BascikConfig.directory.pages)) || ".";
   const code = (error as NodeJS.ErrnoException)?.code;
@@ -439,6 +457,63 @@ const safeRealpath = async (path: string): Promise<string> => {
 };
 
 /**
+ * A folder under a scanned root (a pages or components folder) that exists
+ * but cannot be read, most often `chmod 000` or a folder owned by another
+ * user. The message names the folder relative to the project.
+ */
+export class UnreadableFolderError extends Error {
+  readonly folder: string;
+  constructor(folder: string, cause: unknown) {
+    const display =
+      relative(process.cwd(), resolve(folder)).replace(/\\/g, "/") || ".";
+    super(
+      `[bascik] error: could not read folder "${display}": ` +
+        `${cause instanceof Error ? cause.message : String(cause)}. ` +
+        `Its files would be left out. ` +
+        (isOpenFileLimitError(cause)
+          ? OPEN_FILE_LIMIT_FIX
+          : `Make the folder readable, or move it out of the project.`),
+      { cause },
+    );
+    this.name = "UnreadableFolderError";
+    this.folder = display;
+  }
+}
+
+const warnedUnreadableFolders = new Set<string>();
+
+const unreadableSubfolder = (dirPath: string, error: unknown): NestedPaths => {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  // Removed (or replaced by a file) since its parent was listed: nothing to read.
+  if (code === "ENOENT" || code === "ENOTDIR") return [];
+  const unreadable = new UnreadableFolderError(dirPath, error);
+  if (isStrictSourceRead()) throw unreadable;
+  warnUnreadable(unreadable);
+  return [];
+};
+
+// The dev server scans the same folders on every rebuild, and its file
+// watchers report the same folder too: warn once per folder until it is
+// readable again.
+const warnUnreadable = (unreadable: UnreadableFolderError): void => {
+  if (warnedUnreadableFolders.has(unreadable.folder)) return;
+  warnedUnreadableFolders.add(unreadable.folder);
+  console.warn(
+    unreadable.message
+      .replace("[bascik] error:", "[bascik] warning:")
+      .replace("Its files would be left out.", "Skipping the files in it."),
+  );
+};
+
+/**
+ * The dev server's warning for a folder it cannot read, printed once per
+ * folder whether a scan or a file watcher found it (Linux refuses to watch
+ * an unreadable folder; macOS only refuses to list it).
+ */
+export const warnUnreadableFolder = (dirPath: string, error: unknown): void =>
+  warnUnreadable(new UnreadableFolderError(dirPath, error));
+
+/**
  * Recursive directory read that follows symlinks.
  *
  * Symlink policy (prompt 80): a symlinked directory is recursed and a
@@ -459,7 +534,13 @@ const deepReadDir = async (
   try {
     if (isRoot) visited.add(await safeRealpath(dirPath));
     // withFileTypes is what makes it return dirent
-    const dirents = await readdir(dirPath, { withFileTypes: true });
+    const dirents = await withOpenFileSlot(() =>
+      readdir(dirPath, { withFileTypes: true }),
+    );
+    if (warnedUnreadableFolders.size > 0)
+      warnedUnreadableFolders.delete(
+        relative(process.cwd(), resolve(dirPath)).replace(/\\/g, "/") || ".",
+      );
     // Sort directory entries byte-wise at each level for deterministic traversal
     dirents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     const isLink = (dirent: Dirent): boolean =>
@@ -508,9 +589,8 @@ const deepReadDir = async (
 
     return [...realResults, ...linkResults];
   } catch (error) {
-    if (isRoot) throw error;
-    console.warn("Failed to read subdirectory %s", dirPath, error);
-    return [];
+    if (isRoot || error instanceof UnreadableFolderError) throw error;
+    return unreadableSubfolder(dirPath, error);
   }
 };
 
@@ -529,16 +609,42 @@ export const deepReadDirFlat = async (
   return files.filter((filePath) => `${filePath}`.match(filter));
 };
 
+const copiedPageAssets = new Set<string>();
+
+/**
+ * The static assets under directory.pages the last copies wrote to the
+ * output directory, so the dev server can clear them when the whole pages
+ * folder is removed and no per-file event arrives.
+ */
+export const copiedPageAssetPaths = (): string[] => [...copiedPageAssets];
+
+export const forgetCopiedPageAsset = (filePath: string): void => {
+  copiedPageAssets.delete(filePath);
+};
+
 export const copyStaticAssets = async (): Promise<void> => {
   const pagesRoot = BascikConfig.directory.pages;
   const allPageFiles = await readPagesDirectory();
   const pageAssetFiles = allPageFiles.filter((filePath) =>
     isStaticAssetPath(filePath, pagesRoot, true),
   );
+  for (const filePath of pageAssetFiles) copiedPageAssets.add(filePath);
 
   await Promise.all(
     pageAssetFiles.map((filePath) =>
-      copyReplicatePath(filePath, BascikConfig.directory.out),
+      withOpenFileSlot(() =>
+        copyReplicatePath(filePath, BascikConfig.directory.out),
+      ).catch((error: unknown) => {
+        // Deleted while the dev server was copying it (a folder being
+        // removed): its own unlink event clears it. A build has no such race.
+        if (
+          BascikConfig.isBuild ||
+          !isNoSuchFileError(error) ||
+          existsSync(filePath)
+        )
+          throw error;
+        copiedPageAssets.delete(filePath);
+      }),
     ),
   );
 };

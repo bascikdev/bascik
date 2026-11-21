@@ -15,6 +15,7 @@ const {
   const makeProcess = () => {
     const handlers: Record<string, ((...args: unknown[]) => void)[]> = {};
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
         handlers[event] = handlers[event] || [];
@@ -119,7 +120,11 @@ import {
   resetActiveExecChildrenForTests,
 } from "./exec.ts";
 import { type FrameworkClock } from "./clock.ts";
-import { stopBeforeExit } from "./exit-stoppers.ts";
+import {
+  markShutdownStarted,
+  resetShutdownStateForTests,
+  stopBeforeExit,
+} from "./exit-stoppers.ts";
 
 const cfg = BascikConfig as {
   pipeline: { exec: typeof BascikConfig.pipeline.exec };
@@ -136,6 +141,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetShutdownStateForTests();
   resetActiveExecChildrenForTests();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -226,6 +232,27 @@ describe("runExecPhase", () => {
     cfg.pipeline.exec = [{ script: "scripts/fail.ts", phase: "pre" }];
     await expect(runExecPhase("pre")).rejects.toThrow(
       'exec "scripts/fail.ts" exited with code 1',
+    );
+  });
+
+  // Node reports no exit code for a process a signal ended.
+  it("names the signal, not 'code null', when a script is killed", async () => {
+    mockSpawn.mockImplementationOnce((() => {
+      const proc = {
+        pid: 4100,
+        kill: vi.fn(),
+        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          if (event === "close")
+            Promise.resolve().then(() => cb(null, "SIGKILL"));
+          return proc;
+        }),
+      };
+      return proc;
+    }) as never);
+    cfg.pipeline.exec = [{ script: "scripts/oom.ts", phase: "pre" }];
+    const failure = await runExecPhase("pre").catch((error) => error);
+    expect((failure as Error).message).toBe(
+      '[bascik] exec "scripts/oom.ts" was ended by SIGKILL',
     );
   });
 });
@@ -387,9 +414,9 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
     // One failure prints exactly one stderr line; exec-failed only feeds the
     // SSE build-error overlay, which does not log.
     expect(errorSpy).toHaveBeenCalledTimes(1);
+    // The message alone: the stack would show only Bascik's own frames.
     expect(errorSpy).toHaveBeenCalledWith(
-      "[bascik] exec error:",
-      expect.any(Error),
+      '[bascik] exec error: exec "scripts/fail.ts" exited with code 1',
     );
     errorSpy.mockRestore();
   });
@@ -435,6 +462,35 @@ describe("startExecDev: dev parallel outcome publication (prompt 137)", () => {
     errorSpy.mockRestore();
   });
 
+  // A dev server's graceful shutdown stops the parallel scripts itself: one
+  // ending then is not a failure, so nothing reads as one.
+  it("reports nothing for a parallel script that ends while Bascik shuts down", async () => {
+    cfg.pipeline.exec = [{ script: "scripts/watch.ts", phase: "parallel" }];
+    (cfg.pipeline as any).onExecError = "error";
+    setNextExitCode(null as unknown as number);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    try {
+      const handle = startExecParallel();
+      markShutdownStarted();
+      await startExecDev({ parallel: handle });
+      await handle.catch(() => {});
+      await new Promise((done) => setTimeout(done, 10));
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(mockEventEmit).not.toHaveBeenCalledWith(
+        "exec-failed",
+        expect.anything(),
+      );
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      delete (cfg.pipeline as any).onExecError;
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
   it("publishes parallel outcomes even when no watched entries exist", async () => {
     cfg.pipeline.exec = [{ script: "scripts/par1.ts", phase: "parallel" }];
     const handle = startExecParallel();
@@ -455,6 +511,7 @@ describe("startExecDev", () => {
     const closes: ((code: number) => void)[] = [];
     mockSpawn.mockImplementation(() => {
       const child = {
+        pid: 4100,
         kill: vi.fn(),
         on: vi.fn((event: string, callback: (...args: unknown[]) => void) => {
           if (event === "close") closes.push((code) => callback(code));
@@ -604,6 +661,7 @@ describe("startExecDev", () => {
 
   it("names the missing working directory instead of the Node binary when cwd does not exist", async () => {
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "error") {
@@ -636,10 +694,70 @@ describe("startExecDev", () => {
   });
 });
 
+describe("a script whose spawn failed", () => {
+  // A spawn that fails (a typo'd `cwd`: ENOENT) has no pid, but Node keeps
+  // the handle with pid 0 until the error is emitted on the next tick.
+  // `child.kill()` then calls kill(0, signal), which signals Bascik's own
+  // process group: a stop in that window ended the whole Vitest run.
+  // Nothing is really signaled here: every kill is a mock.
+  it.each([undefined, 0, -1])(
+    "is never signaled when its pid is %s, by a stop or a timeout",
+    async (pid) => {
+      vi.useFakeTimers();
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+      const handlers: Record<string, (...args: unknown[]) => void> = {};
+      const proc = {
+        pid,
+        kill: vi.fn(),
+        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          handlers[event] = cb;
+          return proc;
+        }),
+        once: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          handlers[`once:${event}`] = cb;
+          return proc;
+        }),
+        removeListener: vi.fn(),
+      };
+      mockSpawn.mockImplementationOnce(() => proc as any);
+      // `ps` lists pid 0 (the kernel) and processes it is the parent of.
+      mockSpawnSync.mockReturnValue({
+        status: 0,
+        stdout: [
+          "0 0 Fri Oct 30 10:00:00 2026",
+          "1 0 Fri Oct 30 10:00:00 2026",
+        ].join("\n"),
+      });
+      const run = runScript({
+        script: "scripts/gen.ts",
+        cwd: "missing",
+        timeout: 10,
+      });
+      void run.catch(() => undefined);
+      const stopping = stopBeforeExit();
+      // Past the stop's SIGKILL deadline (200 ms) and the timeout's SIGTERM
+      // (10 ms) and SIGKILL (510 ms), before the timeout gives up (1010 ms).
+      vi.advanceTimersByTime(600);
+      const error = Object.assign(new Error("spawn node ENOENT"), {
+        code: "ENOENT",
+      });
+      handlers.error?.(error);
+      handlers["once:error"]?.(error);
+      await vi.advanceTimersByTimeAsync(1_500);
+      await stopping;
+      await expect(run).rejects.toThrow(/working directory "missing"/);
+      expect(proc.kill).not.toHaveBeenCalled();
+      for (const [target] of kill.mock.calls)
+        expect(Number(target)).toBeGreaterThan(0);
+    },
+  );
+});
+
 describe("exec timeout escalation and lifecycle", () => {
   it("escalates SIGTERM at timeout deadline and SIGKILL 500ms later if not exited", async () => {
     vi.useFakeTimers();
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn(() => proc),
     };
@@ -1121,6 +1239,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "close") closeCb = cb;
@@ -1150,6 +1269,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "close") closeCb = cb;
@@ -1175,6 +1295,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let errorCb: ((err: Error) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "error") errorCb = cb;
@@ -1197,6 +1318,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "close") closeCb = cb;
@@ -1233,6 +1355,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "close") closeCb = cb;
@@ -1263,6 +1386,7 @@ describe("exec timeout escalation and lifecycle", () => {
     vi.useFakeTimers();
     let closeCb: ((code: number) => void) | undefined;
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn((event: string, cb: any) => {
         if (event === "close") closeCb = cb;
@@ -1488,6 +1612,7 @@ describe("exec timeout escalation and lifecycle", () => {
     };
 
     const proc = {
+      pid: 4100,
       kill: vi.fn(),
       on: vi.fn(() => {
         return proc;

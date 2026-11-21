@@ -75,7 +75,8 @@ yarn pkg:bench
 
 Integration tests spawn real processes, servers, and worker threads and are
 long-running, so they run in their own Vitest project and their own CI job,
-separate from the fast unit suite.
+separate from the fast unit suite. The `pkg` integration project fails a
+run that leaves a process running (see [Leaked Process Guard](#leaked-process-guard)).
 
 ```sh
 # Workspace-wide integration tests
@@ -464,6 +465,24 @@ Some integration tests measure the runtime itself rather than a single feature:
 - `profile-workload.integration.test.ts` and `profile-fixture-tls.integration.test.ts` validate the profiling harness itself.
 
 These tests run isolated native processes. A failing run keeps its private report directory and prints the path, and a passing run cleans up after itself.
+
+### Leaked Process Guard
+
+Integration tests start real CLI builds, dev servers, and `pipeline.exec` scripts. A test that fails or times out between starting a process and stopping it leaves that process running after the run, as an orphan that no later run notices. The `integration` project of `pkg` therefore runs a guard as a Vitest global setup (`pkg/vitest.leak-guard-setup.ts`, with the detection in `pkg/src/lib/process-leak-guard.test-helper.ts`). After the last test it looks for processes the run started that are still alive, and when it finds any it fails the run with one line per process: PID, age, and command line. It then kills them, so a leak does not hold a port or a lock when the next run starts.
+
+An orphan has lost its parent, so the process tree alone cannot link it to the run. The guard recognizes its own processes in three ways:
+
+- **A run ID in the environment.** The setup puts `BASCIK_TEST_LEAK_GUARD_RUN=<random ID>` in `process.env` before the first worker starts. Every child inherits it, and `ps e` prints the environment a process started with, so a detached or reparented process is still found.
+- **Descendants.** Any process whose parent chain still reaches the Vitest process.
+- **Tracked descendants.** A `ps` sample every two seconds remembers each descendant by PID and start time. This finds a child that was started with a replaced `env`, and a macOS system binary such as `/bin/sh` (macOS does not show their environment), after it is orphaned.
+
+A process that matches none of these is never reported or killed. Processes that are still exiting get two seconds; only one that is alive at every look in that time counts as a leak. The report never prints a process's environment, which can hold secrets. The guard does nothing on Windows, and where `ps` is missing or does not accept the options (BusyBox) it prints that it could not check and lets the run pass.
+
+A run whose Vitest process is killed (a closed terminal, a canceled CI job, an agent's command timeout) never reaches that check, and no test cleanup runs either. The run ID starts with the PID of the run's Vitest process, so the next run's setup finds processes whose run is gone, kills them, and prints them as a warning without failing. It leaves out its own Vitest process, every process above it, and what it has started: a Vitest process started from inside a run that was later killed carries that run's ID too.
+
+When the guard fails a run, the test that started the process is the one to fix. End the process in `afterEach`, `onTestFinished`, or a `finally`, so a failed assertion still reaches it, and wait for its exit. Cleanup in `afterEach` or `onTestFinished` also runs when the test times out; a `finally` behind an `await` that never settles does not. A fixture process that deliberately ignores SIGTERM should end itself after a bounded time.
+
+The guard's own tests are `process-leak-guard.test.ts` (parsing and selection against fake process tables) and `process-leak-guard.integration.test.ts`, which leaves a real orphan behind with `__fixtures__/leak-guard/leaker.ts` and runs Vitest itself on a fixture project to check that a passing run with a leak exits with code 1.
 
 ## Benchmarks and Profiling
 

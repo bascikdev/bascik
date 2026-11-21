@@ -319,7 +319,7 @@ Media queries work as written. Class names inside them are scoped like any other
 
 ## @keyframes Scoping
 
-Keyframe names are prefixed too, and so are the `animation` declarations that use them, so two components can both define `pulse` without colliding:
+Keyframe names are prefixed too, and so are the `animation` declarations that use them, so two components can both define `pulse` without colliding. A vendor-prefixed `@-webkit-keyframes` rule and the `-webkit-animation` declarations that use it are scoped the same way:
 
 ```css
 /* you write */

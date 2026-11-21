@@ -280,7 +280,7 @@ for (const target of ["cloudflare", "cloudflare-pages", "netlify"]) {
       ).not.toContain("__bascik_adapter_dev");
       expect(log).not.toContain("getcwd(): No such file or directory");
       if (target === "netlify")
-        expect(log).not.toContain("Static server listening to 3999");
+        expect(log).not.toMatch(/Static server listening to 3999(?!\d)/);
       await stopAdapterChild(child);
       child = undefined;
       const ports = new Set([

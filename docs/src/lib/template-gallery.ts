@@ -40,7 +40,7 @@ export async function renderTemplateGallery() {
               `/assets/demos/template-${slug}@2x.webp`,
               "",
               undefined,
-              "(max-width: 620px) calc(100vw - 50px), 528px",
+              "(max-width: 620px) calc(100vw - 50px), 824px",
             ),
           )}
         </div>

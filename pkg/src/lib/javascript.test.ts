@@ -2027,6 +2027,60 @@ describe("prefixElementAttribute – JS regex scoping design decision boundaries
     );
     expect(isolated.fileContent).not.toContain("<!-- The <script>(function()");
   });
+
+  // `<!--` in a script is code. Read as a comment, it ran to the next `-->`
+  // (or the end of the file) and hid the scripts in between from the IIFE
+  // wrapper, so two instances declared the same top-level `const`.
+  it.each([
+    [
+      'a "<!--" string in an earlier data block',
+      '<script type="application/json">{"open":"<!--"}</script>' +
+        '<p id="panel"></p><!-- note -->' +
+        "<script>const shared = 1;</script>",
+    ],
+    [
+      'a "<!--" string in the script itself',
+      '<p id="panel"></p><script>const shared = "<!--";</script>',
+    ],
+    [
+      "a script wrapped in <!-- //-->",
+      '<p id="panel"></p><script><!--\nconst shared = 1;\n//--></script>',
+    ],
+  ])("wraps a classic script despite %s", (_name, html) => {
+    const isolated = namespaceScriptTags(makeComponent(html)).fileContent;
+    expect(isolated).toMatch(/<script>\(function\(\) \{\n[^]*const shared = /);
+    expect(isolated).toContain("})();");
+  });
+});
+
+describe("prefixElementAttribute - comment-like text in raw text elements", () => {
+  // The same misreading hid every element between the `<!--` and the next
+  // `-->` from id and class scoping, while the stylesheet was still scoped.
+  it.each([
+    [
+      "a JSON data block",
+      '<script type="application/json">{"open":"<!--"}</script>',
+    ],
+    ["a script string", '<script>window.open1 = "<!--";</script>'],
+    ["a CSS string", '<style>.x::before { content: "<!--"; }</style>'],
+    ["a textarea value", "<textarea><!-- typed</textarea>"],
+  ])("scopes the markup after %s", (_name, rawText) => {
+    let component = makeScopedComponent(
+      `${rawText}<p class="one" id="x">one</p><!-- <i class="off" id="off"></i> --><b class="one" id="y">two</b>`,
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.fileContent).toContain(
+      `<p class="${scopeClass("one")}" id="${scope("x")}">one</p>`,
+    );
+    expect(component.fileContent).toContain(
+      `<b class="${scopeClass("one")}" id="${scope("y")}">two</b>`,
+    );
+    // The real comment is still left as written.
+    expect(component.fileContent).toContain(
+      '<!-- <i class="off" id="off"></i> -->',
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2643,6 +2697,113 @@ describe("prefixElementAttribute – backslash before a closing quote", () => {
     expect(c.fileContent).toBe(
       `<input data-path="C:\\Users\\" id="${scope("field")}" name="${scope("field")}">`,
     );
+  });
+});
+
+describe("prefixElementAttribute – attribute selector contents", () => {
+  // Nothing inside `[...]` is a class, id or element selector, whatever
+  // follows the value: an `i` or `s` flag, a namespace, or whitespace.
+  it.each([
+    "a[href$=.pdf i]",
+    "a[href$=.pdf s]",
+    "a[href$=.pdf I ]",
+    "a[ href $= .pdf i ]",
+    "a[xlink|href$=.svg]",
+    "a[*|href$=.svg i]",
+    'a[href$=".pdf" i]',
+  ])("keeps the value of %j as written", (selector) => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<a class="pdf link" href="/a.pdf">x</a>',
+        `.link {} .pdf {} .svg {} ${selector} { color: red }`,
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toContain(
+      `${selector.replace(/^a/, `.${elementClass("a")}`)} { color: red }`,
+    );
+  });
+
+  it("still scopes the element after an attribute selector with a flag", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<p class="link" data-state="OPEN"><span>x</span></p>',
+        ".link[data-state=open i] span { color: red }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("link")}[data-state=open i] .${elementClass("span")} { color: red }`,
+    );
+  });
+
+  it("keeps an id-like value as written and still scopes the class after it", () => {
+    let component = makeComponent(
+      '<a id="top" class="link" href="#top">x</a>',
+      "#top {} .link {} a[href^=#top i].link { color: red }",
+    );
+    component = prefixElementAttribute(component, "id", "test1234");
+    component = prefixElementAttribute(component, "class", "test1234");
+    expect(component.cssFileContent).toContain(
+      `.${elementClass("a")}[href^=#top i].${scopeClass("link")} { color: red }`,
+    );
+  });
+});
+
+describe("prefixElementAttribute – class names that start with a hyphen", () => {
+  // `-mt-4` and `--active` are CSS identifiers (CSS Syntax 3, "would start
+  // an identifier"), so they are scoped like any class, in CSS and markup.
+  it("scopes the selector and the class attribute token", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<div class="-mt-4 --active mt-4">x</div>',
+        ".-mt-4 { margin-top: -1rem } .--active { color: red }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("-mt-4")} { margin-top: -1rem } .${scopeClass("--active")} { color: red }`,
+    );
+    expect(result.fileContent).toBe(
+      `<div class="${scopeClass("-mt-4")} ${scopeClass("--active")} mt-4">x</div>`,
+    );
+  });
+
+  it("scopes a hyphen class that only a script names", () => {
+    const result = prefixElementAttribute(
+      makeComponent(
+        `<div class="box">x</div><script>document.querySelector(".box").classList.add("--open"); document.querySelectorAll(".-mt-4");</script>`,
+        ".box {} .--open { color: red } .-mt-4 { margin: 0 }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.fileContent).toContain(
+      `classList.add("${scopeClass("--open")}")`,
+    );
+    expect(result.fileContent).toContain(
+      `querySelectorAll(".${scopeClass("-mt-4")}")`,
+    );
+  });
+
+  it("leaves a hyphen before a digit or a dot in a value alone", () => {
+    // `.-1` is not a class selector (`-1` is a number), and `-.5em` is a
+    // negative number.
+    const result = prefixElementAttribute(
+      makeComponent(
+        '<p class="a -1">x</p>',
+        ".a { margin: -.5em; translate: 0 -.25rem }",
+      ),
+      "class",
+      "test1234",
+    );
+    expect(result.cssFileContent).toBe(
+      `.${scopeClass("a")} { margin: -.5em; translate: 0 -.25rem }`,
+    );
+    expect(result.fileContent).toBe(`<p class="${scopeClass("a")} -1">x</p>`);
   });
 });
 

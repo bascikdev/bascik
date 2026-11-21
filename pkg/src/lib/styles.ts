@@ -1,9 +1,14 @@
 import { readFile } from "node:fs/promises";
+import { withOpenFileSlot } from "./open-file-limit.ts";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { minifyAttributeName } from "./names.ts";
 import { maskCssSyntax } from "./css-tokenizer.ts";
-import { createContentShield, shieldElementContents } from "./shielding.ts";
+import {
+  createContentShield,
+  shieldElementContents,
+  shieldHtmlComments,
+} from "./shielding.ts";
 import { readStartTagAttributes } from "./html-scanner.ts";
 import {
   createMarkerWalk,
@@ -45,6 +50,11 @@ const elementOpenTags = (
   });
 import type { BascikComponent } from "./types.ts";
 import { decodeSource, stripBom } from "./source-text.ts";
+import {
+  forgetUnreadableSourceFile,
+  reportUnreadableSourceFile,
+  UnreadableSourceError,
+} from "./unreadable-source.ts";
 
 /**
  * The class Bascik generates for an element selector: `p { }` in component
@@ -162,12 +172,21 @@ const CSS_UNIT_KEYWORDS = new Set([
 
 /**
  * `css.replace(pattern, ...)` for a pattern capturing `(prefix)(element)`,
- * replacing a match only when the first `{`, `}` or `;` (and `)` when
- * `parenStops`) after it is a `{`: what `(?=[^{};]*\{)` answered, the test
- * that an element name sits in selector position. The lookahead rescanned
- * to the next stop from every candidate, quadratic in a long selector list
- * or a long run of text without a stop; match ends only grow, so one
- * forward cursor answers them all in a single scan.
+ * replacing a match only when the first `{`, `}` or `;` after it is a `{`:
+ * what `(?=[^{};]*\{)` answered, the test that an element name sits in
+ * selector position. The lookahead rescanned to the next stop from every
+ * candidate, quadratic in a long selector list or a long run of text without
+ * a stop; match ends only grow, so one forward cursor answers them all in a
+ * single scan.
+ *
+ * With `outsideParens`, a match is also refused when it starts inside
+ * parentheses (`h2` in `:is(p, h2)`, `0` in `rgb(0, 0, 0)`), inside an
+ * attribute selector (`xlink|href` in `a[ xlink|href ]`) or at an escaped
+ * character (the comma of `.cols-\[1fr\,auto\]`). A second forward cursor
+ * counts the parentheses and brackets open since the last `{`, `}` or `;`,
+ * so a `(...)`
+ * later in the list (`h1, h2:not(.lead), h3`) does not hide the elements
+ * before it.
  *
  * A match never spans a stop past its first character (only an escaped one
  * inside a scoped class name), so a match the lookahead refused lies in a
@@ -177,14 +196,34 @@ const CSS_UNIT_KEYWORDS = new Set([
 const replaceInSelectorPosition = (
   css: string,
   pattern: RegExp,
-  parenStops: boolean,
+  outsideParens: boolean,
   convert: (prefix: string, elementName: string) => string,
 ): string => {
   // The first stop at or after the last match end asked about.
   let stop = -1;
+  // The parentheses open at `depthAt`, counted from the last stop before it.
+  let depth = 0;
+  let depthAt = 0;
   return css.replace(
     pattern,
     (match: string, prefix: string, elementName: string, offset: number) => {
+      if (outsideParens) {
+        for (; depthAt < offset; depthAt++) {
+          const code = css.charCodeAt(depthAt);
+          if (code === 92 /* \ */) depthAt++;
+          else if (code === 40 /* ( */ || code === 91 /* [ */) depth++;
+          else if (code === 41 /* ) */ || code === 93 /* ] */)
+            depth = Math.max(0, depth - 1);
+          else if (
+            code === 123 /* { */ ||
+            code === 125 /* } */ ||
+            code === 59 /* ; */
+          )
+            depth = 0;
+        }
+        // Past `offset` means a backslash escapes the match's first character.
+        if (depth > 0 || depthAt > offset) return match;
+      }
       const end = offset + match.length;
       if (end > stop) {
         stop = end;
@@ -193,8 +232,7 @@ const replaceInSelectorPosition = (
           if (
             code === 123 /* { */ ||
             code === 125 /* } */ ||
-            code === 59 /* ; */ ||
-            (parenStops && code === 41) /* ) */
+            code === 59 /* ; */
           )
             break;
         }
@@ -216,11 +254,14 @@ export const convertCssElementSelectorsToClasses = (
   const seen = new Set<string>();
   const elementsConvertedClasses: string[] = [];
 
-  const toClass = (elementName: string): string => {
+  const toClass = (authoredName: string): string => {
     // CSS unit keywords (rem, vw, px, …) are not HTML elements.  A syntax
     // error in the user's CSS can place them at column 0 where the regex
     // would otherwise match.  Return unchanged so the unit is preserved as-is.
-    if (CSS_UNIT_KEYWORDS.has(elementName.toLowerCase())) return elementName;
+    // HTML element names are ASCII case-insensitive in selectors and in
+    // markup, so `H2`, `h2` and `<H2>` all share the lowercase class.
+    const elementName = authoredName.toLowerCase();
+    if (CSS_UNIT_KEYWORDS.has(elementName)) return authoredName;
     if (!seen.has(elementName)) {
       seen.add(elementName);
       elementsConvertedClasses.push(elementName);
@@ -256,22 +297,23 @@ export const convertCssElementSelectorsToClasses = (
     `${prefix}${toClass(elementName)}`;
   let result = replaceInSelectorPosition(
     shielded,
-    /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?![\w-])/gim,
+    /(^\s*|[;{}]\s*)([a-z][a-z1-6]*)(?![\w|-])/gim,
     false,
     prefixed,
   );
 
   // Pass 2: same-line comma-separated selector list, e.g. `h1, h2 { }`.
   // Multi-line lists (`h1,\nh2`) are already handled by Pass 1.
-  // The context-aware lookahead [^{};)]*\{ confirms selector position:
-  //   - In selector context, `{` follows before any `;` or `}`.
-  //   - In value context (property values, gradient functions, etc.) a
-  //     `;`, `}`, or `)` always appears before the next `{`.
-  // Adding `)` to the stop set is essential — it prevents false positives
-  // inside :is(), :where(), :has() pseudo-functions (e.g. h2 in :is(p, h2)).
+  // Two checks confirm selector position:
+  //   - In selector context, `{` follows before any `;` or `}`; a property
+  //     value ends at a `;` or `}` first.
+  //   - The comma is outside parentheses, which keeps the pass out of :is(),
+  //     :where(), :has() and :not() arguments (h2 in `:is(p, h2)`) and out of
+  //     functions in a value. A `(...)` after the comma is no obstacle, so
+  //     every element of `h1, h2:not(.lead), li:nth-child(2)` is converted.
   result = replaceInSelectorPosition(
     result,
-    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w-])/g,
+    /(,[ \t]*)([a-z][a-z1-6]*)(?![\w|-])/gi,
     true,
     prefixed,
   );
@@ -286,15 +328,35 @@ export const convertCssElementSelectorsToClasses = (
   //     `> h2 { }`, `+ li { }`, `~ span { }`.
   result = replaceInSelectorPosition(
     result,
-    /(&(?:(?:::?[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])+(?:\s*[>+~]\s*|\s+)|\s*(?:[>+~]\s*)?))([a-z][a-z1-6]*)(?![\w-])/g,
+    /(&(?:(?:::?[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])+(?:\s*[>+~]\s*|\s+)|\s*(?:[>+~]\s*)?))([a-z][a-z1-6]*)(?![\w|-])/gi,
     false,
     prefixed,
   );
   result = replaceInSelectorPosition(
     result,
-    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w-])/g,
+    /((?:^|[;{}])\s*[>+~]\s*)([a-z][a-z1-6]*)(?![\w|-])/gi,
     false,
     prefixed,
+  );
+
+  // Pass 3b: namespaced type selectors (Selectors Level 4 `ns|E`, `*|E`,
+  // `|E`). The prefix names a namespace declared with `@namespace`, not an
+  // element, so the passes above refuse a name followed by `|`. The type
+  // keeps its namespace and gains the element class (`svg|rect` becomes
+  // `svg|rect.b_el_card_rect`): a class cannot follow `ns|` on its own, and
+  // keeping the type keeps the namespace check. `ns|*` is a universal
+  // selector and, like `*`, stays as written. Brackets and parentheses are
+  // skipped, so `[xlink|href]` and `:is(svg|rect)` are untouched.
+  result = replaceInSelectorPosition(
+    result,
+    /((?:^|[\s;{},>+~&])(?:[a-z_][\w-]*|\*)?\|)([a-z][a-z1-6]*)(?![\w|-])/gim,
+    true,
+    (prefix, elementName) => {
+      const elementClass = toClass(elementName);
+      return elementClass.startsWith(".")
+        ? `${prefix}${elementName}${elementClass}`
+        : `${prefix}${elementName}`;
+    },
   );
 
   // Pass 4: element selectors that are descendants of an already-scoped class.
@@ -334,7 +396,7 @@ export const convertCssElementSelectorsToClasses = (
     // a descendant combinator.
     result = replaceInSelectorPosition(
       result,
-      /((?:\.(?:(?:bascik__|b_(?:el|id)_)(?:[\w-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:[ \t\n\r\f]|(?![ \t\n\r\f]))|\\[^\n0-9a-fA-F])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\((?=[^){};]*?\.(?:bascik__[\w-]|b_(?:el|id)_[\w-]|b[0-9a-zA-Z]{11}))[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w-])/g,
+      /((?:\.(?:(?:bascik__|b_(?:el|id)_)(?:[\w-]|\\(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{1,5}(?![0-9a-fA-F]))(?:[ \t\n\r\f]|(?![ \t\n\r\f]))|\\[^\n0-9a-fA-F])+|b[0-9a-zA-Z]{11})|:(?:is|where|has|not)\((?=[^){};]*?\.(?:bascik__[\w-]|b_(?:el|id)_[\w-]|b[0-9a-zA-Z]{11}))[^){};]*\))(?:::[a-z-]+|:[a-z-]+(?:\([^){};]*\))?|\[[^\]{};]*\])*(?:\s*[>+~]\s*|\s+)(?:\*(?:\s*[>+~]\s*|\s+))*)([a-z][a-z1-6]*)(?![\w|-])/gi,
       false,
       prefixed,
     );
@@ -458,13 +520,8 @@ export const injectClassIntoTag = (
 const shieldNonMarkupHtml = (
   html: string,
 ): { html: string; restore: (value: string) => string } => {
-  const commentShield = createContentShield(html);
-  const withoutComments = html.includes("<!--")
-    ? html.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-        commentShield.hide(comment),
-      )
-    : html;
-  const rawText = shieldElementContents(withoutComments, [
+  const commentShield = shieldHtmlComments(html);
+  const rawText = shieldElementContents(commentShield.html, [
     "script",
     "style",
     "textarea",
@@ -525,14 +582,21 @@ export const addElementClassesInHtml = (
   return shielded.restore(result);
 };
 
+// `@keyframes` or a vendor-prefixed `@-webkit-keyframes`, in any case (an
+// at-rule name is ASCII case-insensitive). The prefixed rule declares the
+// name a prefixed `-webkit-animation` refers to, so both are scoped.
+const KEYFRAMES_AT_RULE = /@(?:-[a-z]+-)?keyframes/i;
+
 export const getKeyframeNames = (css: string): string[] | null => {
-  if (!css.includes("@keyframes") && !css.includes("@KEYFRAMES")) return null;
+  if (!KEYFRAMES_AT_RULE.test(css)) return null;
   // Anchor on the @keyframes at-rule itself so only the declared animation
   // name is captured — never `from`/`to`/percentage selectors or idents that
   // merely appear later in the stylesheet. Full CSS ident: [\w-]+ covers
   // dashed (fade-in), digit (spin2), and uppercase (pulseFast) names.
   const { css: shielded } = shieldCssStrings(css);
-  const matches = shielded.matchAll(/@keyframes\s+([\w-]+)\s*\{/gi);
+  const matches = shielded.matchAll(
+    /@(?:-[a-z]+-)?keyframes\s+([\w-]+)\s*\{/gi,
+  );
   const names = [...new Set([...matches].map((m) => m[1]))];
   return names.length ? names : null;
 };
@@ -746,7 +810,7 @@ export const prefixKeyframes = (css: string, componentName: string): string => {
   const { css: shielded, restore } = shieldCssStrings(css);
   const replaced = shielded
     .replace(
-      /(@keyframes\s+)([\w-]+)(?=\s*\{)/gi,
+      /(@(?:-[a-z]+-)?keyframes\s+)([\w-]+)(?=\s*\{)/gi,
       (_match, prefix: string, name: string) =>
         `${prefix}${scopedNames.get(name) ?? name}`,
     )
@@ -1178,13 +1242,25 @@ export const shieldCssStrings = (
   const shield = createContentShield(css);
   // Quoted strings (with escape handling), url(...) contents, and unquoted
   // attribute-selector values (so a[href$=.pdf] keeps `[...]` visible to
-  // selector passes while hiding `.pdf` from class-selector regexes).
+  // selector passes while hiding `.pdf` from class-selector regexes). The
+  // attribute may carry a namespace (`[xlink|href=…]`, `[*|href=…]`) and the
+  // value an `i` or `s` flag (`[href$=.pdf i]`, Selectors Level 4).
   const shielded = css.replace(
-    /("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\)|(\[\s*[\w-]+\s*[~|^$*]?=\s*)([^\]"'\s]+)(?=\s*\])/gi,
-    (match, _str?: string, attrPrefix?: string, unquotedVal?: string) =>
-      attrPrefix !== undefined && unquotedVal !== undefined
+    // An escape outside a string (`.it\'s`) is part of a name, never a quote
+    // that opens a string, so it is matched first and kept as written.
+    /(\\[\s\S])|("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\)|(\[\s*(?:(?:[\w-]+|\*)?\|)?[\w-]+\s*[~|^$*]?=\s*)([^\]"'\s]+)(?=\s*(?:[is]\s*)?\])/gi,
+    (
+      match,
+      escape?: string,
+      _str?: string,
+      attrPrefix?: string,
+      unquotedVal?: string,
+    ) => {
+      if (escape !== undefined) return escape;
+      return attrPrefix !== undefined && unquotedVal !== undefined
         ? `${attrPrefix}${shield.hide(unquotedVal)}`
-        : shield.hide(match),
+        : shield.hide(match);
+    },
   );
   return {
     css: shielded,
@@ -1201,13 +1277,16 @@ const CSS_ESCAPE_SOURCE = String.raw`\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\n\r\f])?|
 /**
  * The class name after each `.` in CSS whose strings and `url()` contents are
  * shielded: an identifier that starts with a letter, `_`, a non-ASCII
- * character or an escape, and runs over word characters, `-`, non-ASCII
- * characters and escapes (`.md\:flex`, `.w-1\/2`, `.\31 0`). An escaped
- * dot (`#my\.id`) is part of a name, never the start of a class.
+ * character or an escape, optionally after one `-`, or with `--` (`.-mt-4`,
+ * `.--active`; CSS Syntax 3, "would start an identifier"), and runs over
+ * word characters, `-`, non-ASCII characters and escapes (`.md\:flex`,
+ * `.w-1\/2`, `.\31 0`). A `-` before a digit or a `.` starts a number
+ * (`-.5em`), never a class. An escaped dot (`#my\.id`) is part of a name,
+ * never the start of a class.
  */
 const cssClassSelectorNames = (): RegExp =>
   new RegExp(
-    String.raw`(?<=(?:^|[^\\])(?:\\\\)*\.)(?:[a-zA-Z_\u0080-\uffff]|${CSS_ESCAPE_SOURCE})(?:[\w\u0080-\uffff-]|${CSS_ESCAPE_SOURCE})*`,
+    String.raw`(?<=(?:^|[^\\])(?:\\\\)*\.)(?:--|-?(?:[a-zA-Z_\u0080-\uffff]|${CSS_ESCAPE_SOURCE}))(?:[\w\u0080-\uffff-]|${CSS_ESCAPE_SOURCE})*`,
     "g",
   );
 
@@ -1298,14 +1377,64 @@ const shieldAtRulePreludes = (
   };
 };
 
+// A character that continues an identifier, number or dimension token.
+const CSS_NAME_CHAR = /[\w\-\\\u0080-\uffff]/;
+
+/**
+ * Whether the text on each side of a removed comment would join into one
+ * token without it (CSS Syntax: a comment separates tokens). `1px/**\/2px`
+ * is two dimensions, but `1px2px` is one; `.a/**\/.b` is already `.a.b`.
+ */
+const commentSeparatesTokens = (
+  before: string | undefined,
+  after: string | undefined,
+  afterNext: string | undefined,
+): boolean => {
+  if (before === undefined || after === undefined) return false;
+  // `/` then `*` would open a new comment.
+  if (before === "/") return after === "*";
+  // A name before `(` would become a function token (`and/**/(` is not
+  // `and(`); `-` before `>` and `!` before `-` could form `-->` or `<!--`.
+  if (after === "(") return CSS_NAME_CHAR.test(before);
+  if (after === ">") return before === "-";
+  if (after === "-" && before === "!") return true;
+  if (CSS_NAME_CHAR.test(after))
+    // Names and numbers (`0/**/auto`), and a hash or at-keyword
+    // (`#/**/fff`), a signed or decimal number (`+/**/1`, `./**/5`).
+    return CSS_NAME_CHAR.test(before) || "#@+.".includes(before);
+  if (!/[0-9]/.test(before)) return false;
+  // A percentage (`1/**/%`) or a decimal (`1/**/.5`).
+  return after === "%" || (after === "." && /[0-9]/.test(afterNext ?? ""));
+};
+
 export const removeCommentsFromCss = (css: string): string => {
+  if (!css.includes("/*")) return css;
   // Single-pass: strings/url() win over comment detection so apostrophes
   // inside comments (e.g. `/* the logo's angle */`) are never mistaken for
-  // the start of a CSS string literal.
-  return css.replace(
-    /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*[\s\S]*?\*\//g,
-    (_match, stringOrUrl?: string) => stringOrUrl ?? "",
-  );
+  // the start of a CSS string literal. A backslash escapes any character in
+  // a string, a newline included (a line continuation), as in shieldCssStrings.
+  // Outside a string an escape (`\'`, `\/`) is part of a name: kept as
+  // written, never the start of a string or a comment. A comment with no
+  // `*/` runs to the end of the stylesheet (CSS Syntax), so it is removed
+  // too: left in, it would swallow the CSS Bascik joins after it.
+  const pattern =
+    /(\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|url\(\s*(?:[^)"']|"[^"]*"|'[^']*')*\s*\))|\/\*(?:[\s\S]*?\*\/|[\s\S]*$)/g;
+  let result = "";
+  let copiedTo = 0;
+  for (const match of css.matchAll(pattern)) {
+    result += css.slice(copiedTo, match.index);
+    copiedTo = match.index + match[0].length;
+    if (match[1] !== undefined) {
+      result += match[1];
+      continue;
+    }
+    // A comment right after this one decides the separator itself, once it
+    // sees the text that follows it.
+    if (css.startsWith("/*", copiedTo)) continue;
+    if (commentSeparatesTokens(result.at(-1), css[copiedTo], css[copiedTo + 1]))
+      result += " ";
+  }
+  return result + css.slice(copiedTo);
 };
 
 // ─── CSS @import Resolution & Scoping ────────────────────────────────────────
@@ -1596,6 +1725,27 @@ const wrapPlannedCss = (css: string, plan: CssImportPlan): string =>
   );
 
 /**
+ * An `@import`-ed stylesheet that exists but cannot be read fails a build
+ * like the component stylesheet that imports it (warns once in dev). Any
+ * other failure, such as one deleted since it was planned, keeps the warning.
+ */
+const reportUnreadableImport = (targetPath: string, error: unknown): void => {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  if (
+    error instanceof UnreadableSourceError ||
+    (typeof code === "string" && code !== "ENOENT")
+  ) {
+    reportUnreadableSourceFile("imported stylesheet", targetPath, error);
+    return;
+  }
+  console.warn(
+    "[bascik] warning: Failed to read imported CSS file %s:",
+    targetPath,
+    error,
+  );
+};
+
+/**
  * Resolves and inlines local `@import` statements in a CSS string asynchronously.
  * Remote `@import` statements (e.g. Google Fonts) are preserved.
  *
@@ -1620,8 +1770,9 @@ export const resolveCssImports = async (
 
     try {
       const importedRaw = cleanImportedCss(
-        decodeSource(await readFile(plan.targetPath)),
+        decodeSource(await withOpenFileSlot(() => readFile(plan.targetPath))),
       );
+      forgetUnreadableSourceFile(plan.targetPath);
       const nestedResolved = await resolveCssImports(
         importedRaw,
         plan.targetPath,
@@ -1634,11 +1785,7 @@ export const resolveCssImports = async (
         wrapPlannedCss(nestedResolved, plan),
       );
     } catch (err) {
-      console.warn(
-        "[bascik] warning: Failed to read imported CSS file %s:",
-        plan.targetPath,
-        err,
-      );
+      reportUnreadableImport(plan.targetPath, err);
       result = replaceCssImport(result, plan.fullStatement, "");
     }
   }
@@ -1668,6 +1815,7 @@ export const resolveCssImportsSync = (
       const importedRaw = cleanImportedCss(
         stripBom(readFileSync(plan.targetPath, "utf-8")),
       );
+      forgetUnreadableSourceFile(plan.targetPath);
       const nestedResolved = resolveCssImportsSync(
         importedRaw,
         plan.targetPath,
@@ -1680,11 +1828,7 @@ export const resolveCssImportsSync = (
         wrapPlannedCss(nestedResolved, plan),
       );
     } catch (err) {
-      console.warn(
-        "[bascik] warning: Failed to read imported CSS file %s:",
-        plan.targetPath,
-        err,
-      );
+      reportUnreadableImport(plan.targetPath, err);
       result = replaceCssImport(result, plan.fullStatement, "");
     }
   }
@@ -1693,16 +1837,10 @@ export const resolveCssImportsSync = (
 };
 
 /**
- * Hoist all preserved `@import` statements (e.g. remote font / stylesheet URLs)
- * to the top of the CSS block, deduplicating identical imports.
- *
- * This ensures strict compliance with W3C CSS Cascading and Inheritance Level 4,
- * which requires @import rules to precede all other style rules.
- */
-/**
  * A function returning the `{}` nesting depth at an offset of `css`, for
  * offsets asked in increasing order. Braces in strings and comments do not
- * count.
+ * count, and an offset inside a string or comment has depth -1: what stands
+ * there is text, not a statement.
  */
 const braceDepthScanner = (css: string): ((offset: number) => number) => {
   let index = 0;
@@ -1726,12 +1864,63 @@ const braceDepthScanner = (css: string): ((offset: number) => number) => {
       else if (char === "}" && depth > 0) depth--;
       index++;
     }
-    return depth;
+    return index > offset ? -1 : depth;
   };
 };
 
+// A top-level `@namespace <prefix> <url>;` statement, the URL a string or a
+// `url()`. An unquoted `url()` holds no `(`, space or quote, so each attempt
+// stops at the next `url(` and many unclosed ones stay linear. A default
+// namespace (no prefix) does not match.
+const NAMESPACE_STATEMENT =
+  /@namespace\s+(?!url\()[\w\u0080-\uffff-]+\s+(?:url\(\s*(?:(?:"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'|[^()\s"'\\]+)\s*)?\)|"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*')\s*;/gi;
+
+/**
+ * Hoist `@import` statements (and the `@layer` statements that precede
+ * them), then the prefixed `@namespace` statements, to the top of the
+ * page's combined component CSS, deduplicating identical imports. CSS
+ * Cascading 4 requires `@import` rules to precede all other style rules.
+ *
+ * CSS Namespaces 3 ignores an `@namespace` rule after any rule other than
+ * `@charset` and `@import`, and a selector that uses an undeclared prefix
+ * (`svg|rect`) is invalid. Component stylesheets are joined into one, so a
+ * component's own `@namespace` usually lands after another component's
+ * rules. A prefix only applies to selectors that name it, so moving the
+ * statement up changes no other component; identical statements are
+ * written once. A default namespace (`@namespace url(…);`) would restrict
+ * every component's selectors, so it stays where it was written.
+ */
 export const hoistCssImports = (css: string): string => {
-  if (!css || !css.includes("@import")) return css;
+  if (!css || !/@namespace/i.test(css)) return hoistImportStatements(css);
+  const depthAt = braceDepthScanner(css);
+  const namespaces = new Set<string>();
+  let rest = "";
+  let copiedTo = 0;
+  for (const statement of css.matchAll(NAMESPACE_STATEMENT)) {
+    if (depthAt(statement.index) !== 0) continue;
+    namespaces.add(statement[0]);
+    rest += css.slice(copiedTo, statement.index);
+    copiedTo = statement.index + statement[0].length;
+  }
+  if (namespaces.size === 0) return hoistImportStatements(css);
+  rest += css.slice(copiedTo);
+  const imports = hoistImportStatementParts(rest);
+  const hoisted = [...(imports?.hoisted ?? []), ...namespaces].join("\n");
+  const body = imports ? imports.body : rest.trim();
+  return body ? `${hoisted}\n${body}` : hoisted;
+};
+
+const hoistImportStatements = (css: string): string => {
+  const parts = hoistImportStatementParts(css);
+  if (!parts) return css;
+  const hoisted = parts.hoisted.join("\n");
+  return parts.body ? `${hoisted}\n${parts.body}` : hoisted;
+};
+
+const hoistImportStatementParts = (
+  css: string,
+): { hoisted: string[]; body: string } | null => {
+  if (!css || !css.includes("@import")) return null;
 
   // An `@import` statement, or an `@layer a, b;` statement. The spec lets
   // `@layer` statements precede `@import`, and a statement that names the
@@ -1748,13 +1937,20 @@ export const hoistCssImports = (css: string): string => {
     /@import\s+(?:url\((?:\s*(?:"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'|`[^`\\]*(?:\\[\s\S][^`\\]*)*`)\s*|(?=([^)]*))\1)\)|"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"|'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'|`[^`\\]*(?:\\[\s\S][^`\\]*)*`)[^;{}@]*;|@layer\s+[\w.-]+(?:\s*,\s*[\w.-]+)*\s*;/gi;
   // Only top-level `@layer` statements move: one inside `@media` must stay
   // there.
+  // `@import` or `@layer` text inside a string (`content: "@import …;"`) is
+  // not a statement and stays where it is.
   const depthAt = braceDepthScanner(css);
-  const matches = [...css.matchAll(statementRegex)];
+  const depths = new Map<number, number>();
+  const matches = [...css.matchAll(statementRegex)].filter((statement) => {
+    const depth = depthAt(statement.index);
+    depths.set(statement.index, depth);
+    return depth !== -1;
+  });
   const hoistableLayerStatements = new Set(
     matches
       .filter(
         (statement) =>
-          !/^@import/i.test(statement[0]) && depthAt(statement.index) === 0,
+          !/^@import/i.test(statement[0]) && depths.get(statement.index) === 0,
       )
       .map((statement) => statement.index),
   );
@@ -1762,8 +1958,12 @@ export const hoistCssImports = (css: string): string => {
   // layer where it stands, so a statement after it must stay after it, or
   // the layers it names would move ahead of that one.
   let layerOrderFixedFrom = css.length;
+  const layerDepthAt = braceDepthScanner(css);
   for (const layer of css.matchAll(/@layer\b/gi)) {
-    if (!hoistableLayerStatements.has(layer.index)) {
+    if (
+      !hoistableLayerStatements.has(layer.index) &&
+      layerDepthAt(layer.index) !== -1
+    ) {
       layerOrderFixedFrom = layer.index;
       break;
     }
@@ -1778,7 +1978,7 @@ export const hoistCssImports = (css: string): string => {
   statements.forEach((statement, index) => {
     if (/^@import/i.test(statement[0])) lastImport = index;
   });
-  if (lastImport === -1) return css;
+  if (lastImport === -1) return null;
   const hoisted: string[] = [];
   const seen = new Set<string>();
   let cleanedCss = "";
@@ -1796,8 +1996,7 @@ export const hoistCssImports = (css: string): string => {
   }
   cleanedCss += css.slice(copiedTo);
 
-  const body = cleanedCss.trim();
-  return body ? `${hoisted.join("\n")}\n${body}` : hoisted.join("\n");
+  return { hoisted, body: cleanedCss.trim() };
 };
 
 export const getComponentCss = async (
@@ -1810,10 +2009,16 @@ export const getComponentCss = async (
     (cssFileName) => cssFileName.replace(/\.css$/, ".html") === htmlFileName,
   );
   if (!cssFileName) return;
+  let source: Buffer;
   try {
-    const raw = removeCommentsFromCss(
-      decodeSource(await readFile(cssFileName)),
-    );
+    source = await withOpenFileSlot(() => readFile(cssFileName));
+  } catch (error) {
+    reportUnreadableSourceFile("component stylesheet", cssFileName, error);
+    return;
+  }
+  forgetUnreadableSourceFile(cssFileName);
+  try {
+    const raw = removeCommentsFromCss(decodeSource(source));
     return await resolveCssImports(
       raw,
       cssFileName,
@@ -1821,6 +2026,8 @@ export const getComponentCss = async (
       importDependencies,
     );
   } catch (error) {
+    // An unreadable imported stylesheet, already worded for the user.
+    if (error instanceof UnreadableSourceError) throw error;
     console.warn("warning: Failed to read css for %s", htmlFileName, error);
   }
 };
@@ -2262,12 +2469,11 @@ export const extractInlineStyles = (
   // Mask HTML comments before shielding element contents so that a literal
   // `<style>` reference inside a comment (e.g. "keep CSS in this file's
   // <style> block") is never mistaken for a real style tag opener.
-  const commentShield = createContentShield(html);
-  const htmlWithMaskedComments = html.includes("<!--")
-    ? html.replace(/<!--[\s\S]*?(?:-->|$)/g, (match) =>
-        commentShield.hide(match),
-      )
-    : html;
+  // The scanner reports only real comments: `<!--` inside a `<style>` block
+  // (a CSS string, or a stylesheet wrapped in `<!-- -->`) is CSS text, and
+  // hiding it would send the shield token out with the extracted CSS.
+  const commentShield = shieldHtmlComments(html);
+  const htmlWithMaskedComments = commentShield.html;
 
   const shielded = shieldElementContents(htmlWithMaskedComments, [
     "code",

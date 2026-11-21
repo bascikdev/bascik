@@ -825,6 +825,55 @@ describe("invokeWithDeadline with chunks: a handler that returns a generator", (
     expect(aborted.aborted).toBe(true);
   });
 
+  // The abort reason is the caller's, not a value the generator threw.
+  it("a non-Error abort reason keeps its own message, between pulls and during one", async () => {
+    const between = new AbortController();
+    const first = await invokeWithDeadline(
+      async function* () {
+        yield "a";
+        yield "b";
+      },
+      { chunks: true, signal: between.signal },
+    );
+    await first.source!.next();
+    between.abort("client went away");
+    const betweenPulls = await first.source!.next();
+
+    const during = new AbortController();
+    const second = await invokeWithDeadline(
+      async function* () {
+        await new Promise(() => {});
+        yield "never";
+      },
+      { chunks: true, signal: during.signal },
+    );
+    const pull = second.source!.next();
+    during.abort({ code: "SHUTDOWN" });
+    const duringPull = await pull;
+
+    expect(betweenPulls.aborted).toBe(true);
+    expect(betweenPulls.error?.message).toBe("client went away");
+    expect(duringPull.aborted).toBe(true);
+    expect(duringPull.error?.message).toBe('{"code":"SHUTDOWN"}');
+  });
+
+  it("a generator that throws a string part-way is described as thrown", async () => {
+    const result = await invokeWithDeadline(
+      async function* () {
+        yield "a";
+        throw "out of stock";
+      },
+      { chunks: true, signal: new AbortController().signal },
+    );
+    await result.source!.next();
+    const failed = await result.source!.next();
+    expect(failed.ok).toBe(false);
+    expect(failed.aborted).toBe(false);
+    expect(failed.error?.message).toMatch(
+      /^The script threw the string "out of stock", not an Error/,
+    );
+  });
+
   it("close() runs the generator's finally once, clears the deadline, and is safe to call again", async () => {
     const { clock, pending } = manualClock();
     const cleanedUp = vi.fn();

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Matrix Home</title>
+    <meta name="description" content="Matrix fixture home page" />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main" data-probe="skip">Skip</a>
+    <main id="main" class="container" data-probe="main">
+      <h1 data-probe="h1">Books &amp; authors</h1>
+      <rich-card
+        data-bascik-prop-title="Dune"
+        data-bascik-prop-author="Frank Herbert"
+        data-bascik-prop-link="/guide/intro?a=1&amp;b=2#top"
+      >
+        <p data-probe="slot1">Slotted <em>one</em></p>
+      </rich-card>
+      <rich-card
+        data-bascik-prop-title="Emma"
+        data-bascik-prop-author="Jane Austen"
+        data-bascik-prop-link="https://example.org/x"
+      >
+        <field-row data-bascik-prop-label="Search"></field-row>
+      </rich-card>
+      <field-row data-bascik-prop-label="Second"></field-row>
+      <svg-badge></svg-badge>
+      <svg-badge></svg-badge>
+      <a href="/guide/intro" data-probe="nav1">Guide</a>
+      <a href="guide/intro#top" data-probe="nav2">Guide rel</a>
+      <img
+        src="/img/dot.svg"
+        alt="dot"
+        width="10"
+        height="10"
+        data-probe="img"
+      />
+      <ul data-probe="built">
+        <script data-bascik-build>
+          import { html } from "@bascik/bascik/html";
+          import { books } from "@/lib/books.ts";
+          export default () =>
+            html`${books.map((b) => html`<li>${b.title} by ${b.author} (${b.rating})</li>`)}`;
+        </script>
+      </ul>
+      <pre data-probe="pre">
+  keep
+    this   spacing
+</pre>
+      <textarea data-probe="ta">
+ line1
+   line2</textarea>
+    </main>
+    <script>
+      document.getElementById("main").setAttribute("data-page-script", "ran");
+      const x = 1;
+      const y = x;
+      ++window.__count || (window.__count = 1);
+    </script>
+  </body>
+</html>

@@ -18,6 +18,8 @@ import {
   mergeAttributesOntoRoot,
 } from "./component-inheritance.ts";
 import {
+  blankForeignCdata,
+  maskBlankedHtml,
   maskRawTextContent,
   spliceRawTextMask,
   spliceWindow,
@@ -35,6 +37,7 @@ import {
   extractNamedSlotContent,
   keepSlotRoot,
   replaceDefaultSlots,
+  removeUnclaimedSlotWrappers,
   replaceNamedSlots,
   withoutSlotWrappers,
 } from "./component-slots.ts";
@@ -452,7 +455,11 @@ export const expandComponents = (
     }
     return found;
   };
-  let masked = maskRawTextContent(transpiledHtmlBody);
+  // The page with its SVG and MathML CDATA sections blanked (the page
+  // itself when it has none), which the mask is read from: a splice reads
+  // tokens from it, so nothing inside a section opens a comment or element.
+  let maskSource = blankForeignCdata(transpiledHtmlBody);
+  let masked = maskBlankedHtml(maskSource);
   // Search cursor (prompt 63). Replacement happens at the FIRST unresolved
   // component, so the prefix before its start is fully resolved and cannot
   // gain new tags; the next search resumes at that start (not its end, so
@@ -526,7 +533,7 @@ export const expandComponents = (
     } else openInstances = [];
     const splicedMask: ReturnType<typeof spliceRawTextMask> | null = offsets
       ? spliceRawTextMask(
-          transpiledHtmlBody,
+          maskSource,
           masked,
           offsets.startIndex,
           offsets.endIndex,
@@ -537,6 +544,7 @@ export const expandComponents = (
           maskFacts,
         )
       : null;
+    const sourceIsBody = maskSource === transpiledHtmlBody;
     transpiledHtmlBody = replaceTag(
       transpiledHtmlBody,
       component.name,
@@ -562,10 +570,18 @@ export const expandComponents = (
         ),
       );
       masked = splicedMask.masked;
+      // The splice brought in no CDATA section (else it fell back), so the
+      // template goes into the blanked page as written.
+      maskSource = sourceIsBody
+        ? transpiledHtmlBody
+        : maskSource.slice(0, offsets.startIndex) +
+          transpiledTag +
+          maskSource.slice(offsets.endIndex);
       searchFrom = offsets.startIndex;
     } else {
       closeFacts = undefined;
-      masked = maskRawTextContent(transpiledHtmlBody);
+      maskSource = blankForeignCdata(transpiledHtmlBody);
+      masked = maskBlankedHtml(maskSource);
       chargeScan(transpiledHtmlBody.length);
       rescanFromStart = true;
       searchState.attributeCheckpoint = undefined;
@@ -771,8 +787,8 @@ export const expandComponents = (
           // The unscoped template where the build has it, the scoped one
           // where a request render first sees the markup.
           declared = mergeDeclared(
-            declaredMembers(unscopedTemplate),
-            declaredMembers(component.fileContent ?? ""),
+            declaredMembers(unscopedTemplate, componentNames),
+            declaredMembers(component.fileContent ?? "", componentNames),
           );
           declaredByName.set(usage.name, declared);
         }
@@ -828,8 +844,13 @@ export const expandComponents = (
       let transpiledTag: string;
       const hasTemplateSlot =
         component.fileContent.includes("data-bascik-slot");
-      if (hasTemplateSlot)
-        component.fileContent = keepSlotRoot(component.fileContent);
+      if (hasTemplateSlot) {
+        componentNames ??= new Set(Object.keys(componentList));
+        component.fileContent = removeUnclaimedSlotWrappers(
+          keepSlotRoot(component.fileContent),
+          componentNames,
+        );
+      }
       const hasUsageSlot = Boolean(
         component.innerContent &&
         component.innerContent.includes("data-bascik-slot"),
@@ -854,8 +875,16 @@ export const expandComponents = (
         let childSearchFrom = 0;
         // The usage site's default slot content, computed once. It is also what a default slot
         // marker written inside a nested child's usage tag receives (see below).
+        // A usage-site wrapper inside another wrapper's content is slot
+        // content no component reads as a wrapper: it renders as its content.
+        const usageContent = hasUsageSlot
+          ? removeUnclaimedSlotWrappers(
+              component.innerContent ?? "",
+              componentNames,
+            )
+          : component.innerContent;
         const defaultSlotContent = extractDefaultSlotContent(
-          component.innerContent,
+          usageContent,
           componentNames,
         );
         while (childSearchFrom < slotTemplate.length) {
@@ -907,7 +936,7 @@ export const expandComponents = (
         }
         // Resolve named slots from the usage inner HTML.
         const namedSlots = extractNamedSlotContent(
-          component.innerContent,
+          usageContent,
           componentNames,
         );
         slotTemplate = replaceNamedSlots(
@@ -984,7 +1013,8 @@ export const expandComponents = (
           "",
           masked,
         );
-        masked = maskRawTextContent(transpiledHtmlBody);
+        maskSource = blankForeignCdata(transpiledHtmlBody);
+        masked = maskBlankedHtml(maskSource);
         chargeScan(transpiledHtmlBody.length);
         rescanFromStart = true;
         // replaceTag without offsets re-searches from the document start and

@@ -1,0 +1,40 @@
+<style>
+  .ring {
+    fill: url(#grad);
+    stroke: rgb(0, 0, 0);
+  }
+  svg {
+    width: 40px;
+    height: 40px;
+  }
+</style>
+<svg
+  viewBox="0 0 40 40"
+  role="img"
+  aria-labelledby="svgtitle"
+  data-testid="svg-badge"
+  data-probe="svg"
+>
+  <title id="svgtitle" data-probe="svgtitle">Badge</title>
+  <defs>
+    <linearGradient id="grad" data-probe="grad">
+      <stop offset="0" stop-color="red" />
+      <stop offset="1" stop-color="blue" />
+    </linearGradient>
+    <clipPath id="clip" data-probe="clip">
+      <circle cx="20" cy="20" r="18" />
+    </clipPath>
+    <circle id="dot" cx="5" cy="5" r="3" data-probe="dot" />
+  </defs>
+  <circle class="ring" cx="20" cy="20" r="18" data-probe="ring" />
+  <rect
+    x="0"
+    y="0"
+    width="40"
+    height="40"
+    fill="url(#grad)"
+    clip-path="url(#clip)"
+    data-probe="rect"
+  />
+  <use href="#dot" data-probe="use" />
+</svg>

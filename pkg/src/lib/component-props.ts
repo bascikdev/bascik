@@ -20,7 +20,7 @@ import {
   replaceSpans,
   wordTagNameEnd as tagNameEnd,
 } from "./element-content-scan.ts";
-import { findCommentEnd } from "./html-scanner.ts";
+import { scanHtmlCommentsAndCdata } from "./html-scanner.ts";
 import {
   ANIMATION_VALUES,
   BLOCKED_URL,
@@ -363,9 +363,10 @@ export const injectPropAttributes = (
   }
 
   const commentShield = createContentShield(fileContent);
-  const withoutComments = fileContent.includes("<!--")
-    ? hideComments(fileContent, commentShield.hide)
-    : fileContent;
+  const withoutComments =
+    fileContent.includes("<!--") || fileContent.includes("<![CDATA[")
+      ? hideComments(fileContent, commentShield.hide)
+      : fileContent;
   const rawShield = shieldElementContents(withoutComments, [
     "script",
     "style",
@@ -511,18 +512,18 @@ export const injectPropAttributes = (
  * Replace each comment with `hide(comment)`. A comment ends where the browser
  * ends it (`-->`, `--!>`, `<!-->`, `<!--->`, or the end of input), so a
  * marker after `--!>` is live markup and is acted on; a later `-->` must not
- * stretch the comment over it.
+ * stretch the comment over it. A `<!--` inside a `<style>`, `<script>`, JSON
+ * data block or `<textarea>` is that element's text and starts no comment
+ * (`scanHtmlComments`). A CDATA section in SVG or MathML is text, so a
+ * marker written in it is hidden too (`scanHtmlCommentsAndCdata`).
  */
 const hideComments = (html: string, hide: (text: string) => string): string => {
   let result = "";
   let cursor = 0;
-  let start = html.indexOf("<!--");
-  while (start !== -1) {
-    const end = findCommentEnd(html, start);
-    const stop = end === -1 ? html.length : end;
-    result += html.slice(cursor, start) + hide(html.slice(start, stop));
-    cursor = stop;
-    start = end === -1 ? -1 : html.indexOf("<!--", stop);
+  for (const { start, end } of scanHtmlCommentsAndCdata(html)) {
+    if (start < cursor) continue;
+    result += html.slice(cursor, start) + hide(html.slice(start, end));
+    cursor = end;
   }
   return result + html.slice(cursor);
 };
@@ -561,9 +562,10 @@ export const injectProps = (
   )
     return fileContent;
   const commentShield = createContentShield(fileContent);
-  const withoutComments = fileContent.includes("<!--")
-    ? hideComments(fileContent, commentShield.hide)
-    : fileContent;
+  const withoutComments =
+    fileContent.includes("<!--") || fileContent.includes("<![CDATA[")
+      ? hideComments(fileContent, commentShield.hide)
+      : fileContent;
   const rawShield = shieldElementContents(withoutComments, [
     "script",
     "style",

@@ -397,11 +397,14 @@ describe.each([true, false])(
     // sizes reach the instance limit, so that cost is linear in the output
     // too, and growth cannot see it. What fails it is the cost against the
     // copying the substitutions do anyway, one splice of the fragment each
-    // (`spliceCopies`): the highest of four runs on an M-series Mac, with and
-    // without coverage, is the calibration; a re-mask per instance costs
-    // tens of times it. The growth, over the usages that reach the limit
-    // (as above), still fails a pass quadratic in the output.
-    const NESTED_COST: CalibratedRatio = { plain: 2.06, coverage: 3.58 };
+    // (`spliceCopies`): a re-mask per instance costs tens of times it. The
+    // highest of four runs on an M-series Mac was 2.06 plain and 3.58 with
+    // coverage, but the Linux x64 CI runner measured 4.19 plain (against a
+    // limit of 4.12), so the plain calibration is set from Linux: 3.0, a
+    // limit of 6, still several times under a re-mask per instance. The
+    // growth, over the usages that reach the limit (as above), still fails
+    // a pass quadratic in the output.
+    const NESTED_COST: CalibratedRatio = { plain: 3.0, coverage: 3.58 };
     it.each([
       ["after a lone <", "<bare-card><"],
       ["after <<", "<bare-card><<"],

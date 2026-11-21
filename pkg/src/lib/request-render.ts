@@ -77,6 +77,7 @@ import {
   type FragmentNeighbor,
 } from "./html-minifier.ts";
 import { SEAM_SEPARATOR } from "./html-scanner.ts";
+import { isReservedCustomElementName } from "./reserved-element-names.ts";
 import {
   applyScopingResult,
   instantiateTemplate,
@@ -998,7 +999,7 @@ export function wrapRunner(
             `${entry.filePath}${line !== undefined ? `:${line}` : ""} cannot be rendered at request time ` +
             `(${reason}${detail ? `: ${detail}` : ""}).`,
         );
-      } else if (!host.externalTags(tag)) {
+      } else if (!isReservedCustomElementName(tag) && !host.externalTags(tag)) {
         host.warnOnce!(
           key,
           `[bascik] Unresolved component tag <${tag}> in ${mode}-script output at "${httpPath}": ` +

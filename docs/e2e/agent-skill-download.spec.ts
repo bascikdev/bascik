@@ -18,6 +18,7 @@ const docsDir = fileURLToPath(new URL("..", import.meta.url));
 const pkgIndex = join(docsDir, "../pkg/dist/index.js");
 const skillsDir = join(docsDir, "../skills");
 const authored = join(skillsDir, "bascik/SKILL.md");
+const BOOT_PAGE_TITLE = "<title>Building site\u2026</title>";
 
 async function freePort(): Promise<number> {
   const server = createServer();
@@ -40,7 +41,14 @@ async function download(
   for (let attempt = 0; attempt < attempts && !signal.aborted; attempt++) {
     try {
       const response = await fetch(url, { redirect: "manual" });
-      if (response.status === 200) return response;
+      // While the first compile runs, a path with no file yet and no known file type (an
+      // untyped `.md` too) gets the boot page, which reloads into the real answer: SKILL.md
+      // comes from a pre producer and can be written after the server starts listening.
+      if (
+        response.status === 200 &&
+        !(await response.clone().text()).includes(BOOT_PAGE_TITLE)
+      )
+        return response;
     } catch {
       /* server not listening yet */
     }
@@ -222,10 +230,22 @@ export { dev, build };
         response!.arrayBuffer(),
       ]);
       expect(Buffer.from(body).equals(source)).toBe(true);
-      const control = await fetch(
-        `http://localhost:${port}/content/getting-started.md`,
-        { redirect: "manual" },
-      );
+      // SKILL.md comes from a pre producer, so it can arrive before the first
+      // compile ends. Until then the dev server answers any path that may
+      // be a page (an untyped `.md` too) with its boot page, which reloads
+      // into the real answer; ask again until the boot page is gone.
+      const controlUrl = `http://localhost:${port}/content/getting-started.md`;
+      let control = await fetch(controlUrl, { redirect: "manual" });
+      for (
+        const deadline = Date.now() + 90_000;
+        control.status === 200 &&
+        (await control.clone().text()).includes(BOOT_PAGE_TITLE) &&
+        Date.now() < deadline;
+      ) {
+        await new Promise((done) => setTimeout(done, 250));
+        control = await fetch(controlUrl, { redirect: "manual" });
+      }
+      // The dev server never serves the docs' Markdown sources.
       expect(control.status).not.toBe(200);
 
       const [postSearch, postLlms, postSearchBytes, postLlmsBytes] =

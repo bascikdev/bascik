@@ -88,7 +88,7 @@ A component template can use another component. To pass the outer component's de
 
 The `<p>` becomes the inner component's default slot content. When the outer tag is empty, the marker's own content is used. Each instance forwards its own content.
 
-Only the default slot is forwarded. A named wrapper written between the inner component's tags (`<div data-bascik-slot="head">`) fills the inner component's named slot, and the outer component's named slots are filled separately by the outer usage. Forwarding works through any depth of nesting.
+Only the default slot is forwarded. A named wrapper written between the inner component's tags (`<div data-bascik-slot="head">`) fills the inner component's named slot, and the outer component's named slots are filled separately by the outer usage. Forwarding works through any depth of nesting. A named marker inside such a wrapper, or inside another named placeholder's fallback, is no slot of either component: the outer component does not declare it, so content passed for it is dropped with the "does not declare" warning, and the marker element is replaced by its own content, as an unfilled placeholder is.
 
 ## Whitespace Handling
 

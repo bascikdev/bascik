@@ -12,6 +12,7 @@ import {
   SPILLED_ENV_FILE_VAR,
 } from "./script-runner.ts";
 import { BascikConfig } from "./config.ts";
+import { describeNonErrorThrow } from "./thrown-value.ts";
 
 export type DirectiveKind = "build" | "routes";
 
@@ -26,6 +27,16 @@ export interface DirectiveHandlerResult<T = unknown> {
    */
   readsPageContext: boolean;
 }
+
+/**
+ * The error a failed directive script rejects with. `readsPageContext` is
+ * true when the script had looked at its page context before it failed.
+ */
+export type DirectiveHandlerError = Error & {
+  stdout?: string;
+  stderr?: string;
+  readsPageContext?: boolean;
+};
 
 export interface DirectiveHandlerOptions {
   extraEnv?: Record<string, string>;
@@ -79,6 +90,40 @@ process.env = new Proxy(process.env, {
     return Reflect.ownKeys(target);
   },
 });
+// A script that fails writes no result, so a failed run says here whether it
+// had looked at its page. The component manifest runs a script with no page:
+// one that needs a page and throws without it is page-dependent, not broken.
+process.on("exit", (code) => {
+  if (code === 0 || !readsPageContext) return;
+  try {
+    writeFileSync(resultFile + ".page-context", "", { mode: 0o600 });
+  } catch {
+    // best effort
+  }
+});
+
+// Bascik holds the other end of stdin for as long as it lives and never
+// writes to it. Its end therefore means Bascik is gone (stopped, killed, or
+// its page worker ended): nothing will read this script's result, and the
+// timeout that would have stopped it is gone too. Stop instead of running on.
+// Unref'd, so stdin alone never keeps a finished script alive. Only for the
+// pipe Bascik starts a script with: a terminal or a file says nothing about
+// who started the script.
+try {
+  const stdin = process.stdin;
+  if (!stdin.isTTY && typeof stdin.unref === "function") {
+    stdin.unref();
+    stdin.on("end", () => process.exit(1));
+    stdin.resume();
+  }
+} catch {
+  // No usable stdin: nothing to watch.
+}
+
+// A thrown string, null or empty rejection: what it was, since it names no line.
+// Bound to its name here, so the call below holds even if a build of this
+// package renames the function.
+const describeNonErrorThrow = ${describeNonErrorThrow.toString()};
 
 let mod;
 try {
@@ -87,7 +132,7 @@ try {
   // A caught SyntaxError carries no location. Left uncaught at the top level,
   // Node prints the file, the line, and a caret under the offending token.
   if (err instanceof SyntaxError) throw err;
-  console.error(err && (err.stack || err.message) ? err.stack || err.message : String(err));
+  console.error(err && (err.stack || err.message) ? err.stack || err.message : describeNonErrorThrow(err));
   process.exit(1);
 }
 
@@ -105,7 +150,7 @@ async function main() {
   try {
     result = await mod.default();
   } catch (err) {
-    console.error(err && (err.stack || err.message) ? err.stack || err.message : String(err));
+    console.error(err && (err.stack || err.message) ? err.stack || err.message : describeNonErrorThrow(err));
     process.exit(1);
   }
 
@@ -156,7 +201,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  console.error(err && (err.stack || err.message) ? err.stack || err.message : describeNonErrorThrow(err));
   process.exit(1);
 });
 `;
@@ -210,6 +255,31 @@ const getRunnerDirectory = async (recreated = false): Promise<string> => {
   return getRunnerDirectory(true);
 };
 
+/** A byte count as the limit reads in prose: whole megabytes, or bytes. */
+const formatLimit = (bytes: number): string =>
+  bytes >= 1024 * 1024 && bytes % (1024 * 1024) === 0
+    ? `${bytes / (1024 * 1024)} MB`
+    : `${bytes} bytes`;
+
+/**
+ * Print what a build or routes script wrote, once, before anything Bascik
+ * prints about it. Text that does not end with a newline ("Loading...")
+ * gets one, so the next line (a located error header, a page count) starts
+ * on a line of its own.
+ */
+export const echoScriptOutput = (output: {
+  stdout?: unknown;
+  stderr?: unknown;
+}): void => {
+  for (const [text, stream] of [
+    [output.stdout, process.stdout],
+    [output.stderr, process.stderr],
+  ] as const) {
+    if (typeof text !== "string" || text === "") continue;
+    stream.write(text.endsWith("\n") ? text : `${text}\n`);
+  }
+};
+
 /**
  * Executes a prepared user module in a fresh Node.js child process, invoking its default export
  * once with zero arguments and transferring the result across a private result file.
@@ -231,6 +301,7 @@ export const runDirectiveHandler = async <T = unknown>(
   const runDir = await getRunnerDirectory();
   const runnerScriptPath = join(runDir, "runner.mjs");
   const resultFilePath = join(runDir, `${++resultCounter}.result.json`);
+  const pageContextMarkerPath = `${resultFilePath}.page-context`;
 
   const childEnv: Record<string, string | undefined> = {
     ...process.env,
@@ -323,6 +394,14 @@ export const runDirectiveHandler = async <T = unknown>(
           // Checked before the timeout: Node also kills the child, with the same
           // signal, when its output goes over maxBuffer.
           const stoppedByNode = typeof failure.code === "string";
+          // Over the output limit, Node stops the child and hands back the
+          // first `maxBuffer` bytes of that stream: megabytes of it, with no
+          // newline, that would bury the error report. None of it is shown.
+          const overLimit =
+            failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
+          const overStream = /^stderr\b/.test(failure.message)
+            ? "stderr"
+            : "stdout";
           const withReport = (reason: string): string =>
             report ? `${reason}\n${report}` : reason;
           // Exit code 13 is Node's "unsettled top-level await": the script
@@ -334,22 +413,33 @@ export const runDirectiveHandler = async <T = unknown>(
             /(?:^|\n)Warning: Detected unsettled top-level await at [^\n]*(?:\n[^\n]*\n[ \t]*\^[^\n]*)?/;
           const unsettled =
             failure.code === 13 && unsettledWarning.test(report);
-          failure.message = unsettled
-            ? (() => {
-                const logged = report.replace(unsettledWarning, "").trim();
-                const reason = `Directive script (data-bascik-${kind}) ended without finishing its top-level await: a promise it awaited never settled (resolved or rejected), so the script stopped before returning any output. Make sure every awaited promise resolves or rejects.`;
-                return logged ? `${reason}\n${logged}` : reason;
-              })()
-            : stoppedByNode
-              ? withReport(
-                  `Directive script (data-bascik-${kind}) failed: ${withoutRunnerFrames(failure.message).split("\n")[0]}`,
-                )
-              : timedOut
+          const overLimitReason = `Directive script (data-bascik-${kind}) failed: it wrote more than ${formatLimit(maxBuffer)} to ${overStream}, so it was stopped and its output is not shown. Write large data to a file, or return it, instead of logging it.`;
+          // Its stderr is still its report when only stdout overflowed.
+          failure.message = overLimit
+            ? overStream === "stdout"
+              ? withReport(overLimitReason)
+              : overLimitReason
+            : unsettled
+              ? (() => {
+                  const logged = report.replace(unsettledWarning, "").trim();
+                  const reason = `Directive script (data-bascik-${kind}) ended without finishing its top-level await: a promise it awaited never settled (resolved or rejected), so the script stopped before returning any output. Make sure every awaited promise resolves or rejects.`;
+                  return logged ? `${reason}\n${logged}` : reason;
+                })()
+              : stoppedByNode
                 ? withReport(
-                    `Directive script (data-bascik-${kind}) timed out after ${timeoutMs}ms`,
+                    `Directive script (data-bascik-${kind}) failed: ${withoutRunnerFrames(failure.message).split("\n")[0]}`,
                   )
-                : report || withoutRunnerFrames(failure.message);
-          reject(Object.assign(failure, { stdout: cleanedStdout, stderr: "" }));
+                : timedOut
+                  ? withReport(
+                      `Directive script (data-bascik-${kind}) timed out after ${timeoutMs}ms`,
+                    )
+                  : report || withoutRunnerFrames(failure.message);
+          reject(
+            Object.assign(failure, {
+              stdout: overLimit ? "" : cleanedStdout,
+              stderr: "",
+            }),
+          );
         } else {
           resolve({ stdout: cleanedStdout, stderr: cleanedStderr });
         }
@@ -369,6 +459,13 @@ export const runDirectiveHandler = async <T = unknown>(
           settle(err, rawStdout ?? "", rawStderr ?? "");
         },
       );
+    }).catch(async (err: DirectiveHandlerError) => {
+      // The runner leaves this marker when a failed script had read its page.
+      err.readsPageContext = await stat(pageContextMarkerPath).then(
+        () => true,
+        () => false,
+      );
+      throw err;
     });
 
     // Verify result file exists and is within limit before reading into parent
@@ -431,6 +528,7 @@ export const runDirectiveHandler = async <T = unknown>(
   } finally {
     await cleanupSpill().catch(() => {});
     await rm(resultFilePath, { force: true }).catch(() => {});
+    await rm(pageContextMarkerPath, { force: true }).catch(() => {});
     semaphore.release();
   }
 };

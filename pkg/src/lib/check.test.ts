@@ -65,6 +65,10 @@ vi.mock("./file-system.js", () => ({
   getRelativePath: (filePath: string) => filePath,
   getProjectPath: (filePath: string) => filePath,
   deepReadDirFlat: deepReadDirFlatMock,
+  setStrictSourceReads: () => {},
+  UnreadableFolderError: class extends Error {
+    folder = "";
+  },
 }));
 
 vi.mock("./components.js", () => ({
@@ -347,6 +351,83 @@ describe("checkProject", () => {
     );
   });
 
+  describe("links to a stylesheet assets.inlineStyles inlines", () => {
+    const mutable = BascikConfig as unknown as {
+      assets: typeof BascikConfig.assets;
+    };
+    let originalAssets: typeof BascikConfig.assets;
+    beforeEach(() => {
+      originalAssets = mutable.assets;
+      mutable.assets = {
+        ...originalAssets,
+        inlineStyles: ["src/pages/css/styles.css"],
+      };
+    });
+    afterEach(() => {
+      mutable.assets = originalAssets;
+    });
+
+    it("warns with the page, line and href of a leftover <link>", async () => {
+      await setupProject({
+        "src/pages/css/styles.css": "body{color:red}",
+        "src/pages/index.html":
+          '<html>\n<head>\n  <link rel="stylesheet" href="/css/styles.css">\n</head><body>hi</body></html>',
+        "src/components/site-head/site-head.html":
+          '<link\n  rel="stylesheet"\n  href="/css/styles.css"\n/>',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "src/pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "site-head": {
+          fileName: join(workDir, "src/components/site-head/site-head.html"),
+        },
+      });
+
+      const findings = await checkProject();
+      const links = findings.items.filter(
+        (item) => item.category === "inlined-stylesheet-link",
+      );
+      expect(links).toHaveLength(2);
+      expect(links[0]).toMatchObject({
+        severity: "warning",
+        locations: [
+          {
+            filePath: expect.stringMatching(/src[\\/]pages[\\/]index\.html$/),
+            line: 3,
+            column: 3,
+          },
+        ],
+      });
+      expect(links[0].message).toContain(
+        '<link rel="stylesheet" href="/css/styles.css">',
+      );
+      expect(links[1].locations[0]).toMatchObject({
+        filePath: expect.stringMatching(
+          /src[\\/]components[\\/]site-head[\\/]site-head\.html$/,
+        ),
+        line: 1,
+      });
+      expect(findings.errors).toBe(0);
+    });
+
+    it("does not warn once the <link> is removed, or for a stylesheet that is still copied", async () => {
+      await setupProject({
+        "src/pages/css/styles.css": "body{color:red}",
+        "src/pages/css/print.css": "body{color:black}",
+        "src/pages/index.html":
+          '<html><head><link rel="stylesheet" href="/css/print.css"></head><body>hi</body></html>',
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "src/pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+
+      const findings = await checkProject();
+      expect(
+        findings.items.filter(
+          (item) => item.category === "inlined-stylesheet-link",
+        ),
+      ).toEqual([]);
+    });
+  });
+
   describe("API route table validations (Prompt 49)", () => {
     it("reports error when two route files resolve to the same URL", async () => {
       await setupProject({
@@ -460,6 +541,104 @@ describe("checkProject", () => {
       } finally {
         (BascikConfig as any).components = original;
       }
+    });
+
+    it("does not report SVG and MathML elements whose names the custom element spec reserves", async () => {
+      await setupProject({
+        "pages/index.html": [
+          '<svg><font-face font-family="X"><font-face-src><font-face-uri href="x.svg"><font-face-format string="svg"></font-face-format></font-face-uri><font-face-name name="X"></font-face-name></font-face-src></font-face>',
+          '<missing-glyph></missing-glyph><color-profile name="p"></color-profile></svg>',
+          '<math><semantics><mi>x</mi><annotation-xml encoding="application/mathml+xml"><mi>x</mi></annotation-xml></semantics></math>',
+          // A near miss is still a typo worth reporting.
+          "<font-faces></font-faces><Annotation-XML-x></Annotation-XML-x>",
+        ].join("\n"),
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+      const findings = await checkProject();
+      const unmatched = findings.items.filter(
+        (i) => i.category === "unmatched-tag",
+      );
+      expect(unmatched.map((i) => i.message).sort()).toEqual([
+        "<annotation-xml-x>",
+        "<font-faces>",
+      ]);
+    });
+
+    it.each([
+      ["style", `<style>.a::before { content: "<!--"; }</style>`],
+      ["script", `<script>const open = "<!--";</script>`],
+      [
+        "JSON data block",
+        `<script type="application/json">{"a": "<!--"}</script>`,
+      ],
+      ["textarea", `<textarea><!--</textarea>`],
+    ])(
+      "`<!--` inside a %s is text: the tags after it are still read",
+      async (_where, element) => {
+        await setupProject({
+          "pages/index.html": `${element}\n<used-card></used-card>\n<my-typo></my-typo>\n<!-- a real comment -->`,
+          "components/used-card/used-card.html": "<div>used</div>",
+        });
+        listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+        listComponentsMock.mockResolvedValue({
+          "used-card": {
+            fileName: join(workDir, "components/used-card/used-card.html"),
+          },
+        });
+        const findings = await checkProject();
+        expect(
+          findings.items.filter((i) => i.category === "unused-component"),
+        ).toEqual([]);
+        const unmatched = findings.items.filter(
+          (i) => i.category === "unmatched-tag",
+        );
+        expect(unmatched.map((i) => i.message)).toEqual(["<my-typo>"]);
+        expect(unmatched[0].locations).toEqual([
+          { filePath: expect.stringContaining("index.html"), line: 3 },
+        ]);
+      },
+    );
+
+    it("a tag inside an SVG CDATA section is text, not a usage", async () => {
+      await setupProject({
+        "pages/index.html":
+          "<svg>\n  <text><![CDATA[see <b>it</b>: <used-card></used-card> <my-typo></my-typo>]]></text>\n</svg>\n<div><![CDATA[x]]><real-typo></real-typo></div>",
+        "components/used-card/used-card.html": "<div>used</div>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({
+        "used-card": {
+          fileName: join(workDir, "components/used-card/used-card.html"),
+        },
+      });
+      const findings = await checkProject();
+      expect(
+        findings.items
+          .filter((i) => i.category === "unused-component")
+          .map((i) => i.message),
+      ).toEqual([expect.stringContaining("used-card")]);
+      // In HTML content `<![CDATA[x]]>` is a comment that ends at its `>`.
+      expect(
+        findings.items
+          .filter((i) => i.category === "unmatched-tag")
+          .map((i) => i.message),
+      ).toEqual(["<real-typo>"]);
+    });
+
+    it("a tag inside an unclosed comment is not read, and lines after a multi-line comment stay right", async () => {
+      await setupProject({
+        "pages/index.html":
+          "<!--\n<gone-a></gone-a>\n-->\n<my-typo></my-typo>\n<!-- <gone-b></gone-b>",
+      });
+      listPagesMock.mockResolvedValue([join(workDir, "pages/index.html")]);
+      listComponentsMock.mockResolvedValue({});
+      const findings = await checkProject();
+      const unmatched = findings.items.filter(
+        (i) => i.category === "unmatched-tag",
+      );
+      expect(unmatched.map((i) => i.message)).toEqual(["<my-typo>"]);
+      expect(unmatched[0].locations[0].line).toBe(4);
     });
 
     it("checkProject prints nothing directly to console", async () => {

@@ -18,10 +18,20 @@
  * into human and JSON formatters.
  */
 
+import { withOpenFileSlot } from "./open-file-limit.ts";
 import { readFile, readdir } from "node:fs/promises";
 import { resolve, relative, join, dirname, extname } from "node:path";
 import { existsSync, statSync } from "node:fs";
-import { listPages, getRelativePath, deepReadDirFlat } from "./file-system.ts";
+import {
+  listPages,
+  getRelativePath,
+  deepReadDirFlat,
+  UnreadableFolderError,
+} from "./file-system.ts";
+import {
+  setStrictSourceReads,
+  UnreadableSourceError,
+} from "./unreadable-source.ts";
 import { findComponentRoot } from "./component-roots.ts";
 import {
   NATIVE_HTML_ELEMENTS,
@@ -37,7 +47,8 @@ import {
   formatGeneratedIdClassCollision,
 } from "./generated-id-classes.ts";
 import { BascikConfig } from "./config.ts";
-import { maskElementContents } from "./shielding.ts";
+import { blankHtmlComments, maskElementContents } from "./shielding.ts";
+import { blankForeignCdata } from "./component-masking.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
 import {
   scanApiRouteFiles,
@@ -88,6 +99,10 @@ import {
 import { readComponentManifest } from "./component-manifest-file.ts";
 import type { ComponentList } from "./types.ts";
 import { privateDirFor } from "./private-dir.ts";
+import {
+  findInlinedStylesheetLinks,
+  inlinedStylesheetLinkMessage,
+} from "./inline-style-links.ts";
 
 export type FindingSeverity = "error" | "warning";
 
@@ -173,7 +188,9 @@ async function walkFiles(dir: string, ext: string): Promise<string[]> {
   const out: string[] = [];
   let entries;
   try {
-    entries = await readdir(dir, { withFileTypes: true });
+    entries = await withOpenFileSlot(() =>
+      readdir(dir, { withFileTypes: true }),
+    );
   } catch {
     return out;
   }
@@ -266,12 +283,12 @@ const scanTagOccurrences = (
   re: RegExp,
   toTag: (matched: string) => string | undefined,
 ): TagOccurrence[] => {
-  // Strip comments first while preserving newlines
-  const noComments = html.replace(/<!--[\s\S]*?-->/g, (match) => {
-    const newlines = match.match(/\n/g);
-    return newlines ? newlines.join("") : " ";
-  });
-  const stripped = stripElementContents(noComments);
+  // Blank comments first (newlines kept). Only the comments the browser
+  // sees: `<!--` inside a <style>, script or <textarea> is that element's text.
+  // A tag written in an SVG or MathML CDATA section is text too.
+  const stripped = stripElementContents(
+    blankForeignCdata(blankHtmlComments(html)),
+  );
   const occurrences: TagOccurrence[] = [];
   let counted = 0;
   let line = 1;
@@ -505,7 +522,7 @@ const createScriptModuleReader = () => {
     seen.add(file);
     let text: string;
     try {
-      text = await readFile(file, "utf8");
+      text = await withOpenFileSlot(() => readFile(file, "utf8"));
     } catch {
       return;
     }
@@ -739,6 +756,19 @@ const findComponentCycles = (graph: Map<string, Set<string>>): string[][] => {
 export const checkProject = async (
   options: { fix?: boolean; typescript?: boolean } = {},
 ): Promise<CheckFindings> => {
+  // As in a build, a folder the check cannot read is an error, not a skip.
+  setStrictSourceReads(true);
+  try {
+    return await checkProjectFiles(options);
+  } finally {
+    setStrictSourceReads(undefined);
+  }
+};
+
+const checkProjectFiles = async (options: {
+  fix?: boolean;
+  typescript?: boolean;
+}): Promise<CheckFindings> => {
   const items: CheckFinding[] = [];
   const configSource = resolveConfigSourcePath();
 
@@ -815,10 +845,19 @@ export const checkProject = async (
     (error) => error.key === "directory.pages",
   );
   let pageList: string[] = [];
+  let pagesUnreadable = false;
   try {
     pageList = (await listPages()) ?? [];
   } catch (error) {
-    if (!pagesRejected)
+    pagesUnreadable = true;
+    if (error instanceof UnreadableFolderError)
+      items.push({
+        category: "pages-directory",
+        severity: "error",
+        message: error.message.replace(/^\[bascik\] error: /, ""),
+        locations: [{ filePath: error.folder }],
+      });
+    else if (!pagesRejected)
       items.push({
         category: "pages-directory",
         severity: "error",
@@ -831,7 +870,12 @@ export const checkProject = async (
     process.cwd(),
     BascikConfig.directory?.pages ?? "src/pages",
   );
-  if (!pagesRejected && existsSync(pagesDir) && pageList.length === 0) {
+  if (
+    !pagesRejected &&
+    !pagesUnreadable &&
+    existsSync(pagesDir) &&
+    pageList.length === 0
+  ) {
     items.push({
       category: "pages-directory",
       severity: "error",
@@ -859,7 +903,9 @@ export const checkProject = async (
     for (const filePath of componentFilePaths) {
       let raw: string;
       try {
-        raw = stripBom(await readFile(filePath, "utf-8"));
+        raw = stripBom(
+          await withOpenFileSlot(() => readFile(filePath, "utf-8")),
+        );
       } catch {
         continue;
       }
@@ -935,7 +981,25 @@ export const checkProject = async (
         locations,
       });
     }
-    if (!matchedDuplicate && !matchedIdClassCollision && !located) {
+    if (
+      error instanceof UnreadableFolderError ||
+      error instanceof UnreadableSourceError
+    ) {
+      // Located at the folder or file, as for a pages folder, not at the config.
+      items.push({
+        category: "component-list",
+        severity: "error",
+        message: message.replace(/^\[bascik\] error: /, ""),
+        locations: [
+          {
+            filePath:
+              error instanceof UnreadableFolderError
+                ? error.folder
+                : error.file,
+          },
+        ],
+      });
+    } else if (!matchedDuplicate && !matchedIdClassCollision && !located) {
       items.push({
         category: "component-list",
         severity: "error",
@@ -954,7 +1018,13 @@ export const checkProject = async (
     if (componentRoots.length > 0) {
       const htmlFiles = (
         await Promise.all(
-          componentRoots.map((root) => deepReadDirFlat(root, /\.html$/i)),
+          // An unreadable folder is already reported above.
+          componentRoots.map((root) =>
+            deepReadDirFlat(root, /\.html$/i).catch((error: unknown) => {
+              if (error instanceof UnreadableFolderError) return [];
+              throw error;
+            }),
+          ),
         )
       ).flat();
       const nameToPaths = new Map<string, string[]>();
@@ -986,7 +1056,7 @@ export const checkProject = async (
   const scanResults = await Promise.all(
     allFilePaths.map(async (filePath) => {
       try {
-        const html = await readFile(filePath, "utf8");
+        const html = await withOpenFileSlot(() => readFile(filePath, "utf8"));
         return {
           filePath,
           html,
@@ -1006,6 +1076,28 @@ export const checkProject = async (
       }
     }),
   );
+
+  // A stylesheet assets.inlineStyles inlines is not copied to the output, so
+  // a <link> to it left in a page or a component 404s (the build warns too).
+  const pageFiles = new Set(pageList);
+  for (const { filePath, html } of scanResults) {
+    const fromFile = pageFiles.has(filePath) ? filePath : undefined;
+    for (const link of findInlinedStylesheetLinks(html, fromFile)) {
+      const before = html.slice(0, link.offset);
+      items.push({
+        category: "inlined-stylesheet-link",
+        severity: "warning",
+        message: inlinedStylesheetLinkMessage(link.href),
+        locations: [
+          {
+            filePath: toDisplay(filePath),
+            line: before.split("\n").length,
+            column: link.offset - before.lastIndexOf("\n"),
+          },
+        ],
+      });
+    }
+  }
 
   const isExternalTag = createExternalTagMatcher(
     BascikConfig.components?.external,
@@ -1289,7 +1381,7 @@ export const checkProject = async (
           let fileFailed = false;
           let html: string;
           try {
-            html = await readFile(file, "utf-8");
+            html = await withOpenFileSlot(() => readFile(file, "utf-8"));
           } catch {
             continue;
           }
@@ -1500,6 +1592,13 @@ const CATEGORY_META: Record<string, { title: string; description: string }> = {
     title: "Configuration validation",
     description:
       "Configuration keys, values, and path references that need correction.",
+  },
+  "inlined-stylesheet-link": {
+    title: "Links to a stylesheet assets.inlineStyles inlines",
+    description:
+      "assets.inlineStyles puts these stylesheets into every page's <head> and does\n" +
+      'not copy them to the output, so a <link rel="stylesheet"> to one answers\n' +
+      "404. Remove the <link>; the styles are already in the page.",
   },
   "missing-site-url": {
     title: "Missing site URL",

@@ -606,6 +606,44 @@ describe("attr-binding classification", () => {
     });
   });
 
+  it.each([
+    ["style", `<style>.w::before { content: "<!--"; }</style>`],
+    ["script", `<script>const open = "<!--";</script>`],
+    [
+      "JSON data block",
+      `<script type="application/json">{"a": "<!--"}</script>`,
+    ],
+    ["textarea", `<textarea><!--</textarea>`],
+  ])(
+    "`<!--` inside a %s is text: a scoped binding after it is still found",
+    async (_where, element) => {
+      const manifest = await build({
+        "text-card": {
+          fileName: "src/components/text-card.html",
+          fileContent: `<div class="w">\n  ${element}\n  <span data-bascik-attr-id="v">x</span>\n  <!-- a real comment -->\n</div>`,
+          cssFileContent: ".w { color: red }",
+        },
+      });
+      expect(entryOf(manifest, "text-card").unsupported).toEqual({
+        reason: "attr-binding-to-scoped-attribute",
+        detail:
+          "its data-bascik-attr-id binding targets an attribute scoping rewrites",
+        line: 3,
+      });
+    },
+  );
+
+  it("a binding inside an unclosed comment is never found: the comment runs to the end", async () => {
+    const manifest = await build({
+      "open-card": {
+        fileName: "src/components/open-card.html",
+        fileContent: `<div class="w"><p>x</p></div>\n<!-- <span data-bascik-attr-id="v">x</span>`,
+        cssFileContent: ".w { color: red }",
+      },
+    });
+    expect(entryOf(manifest, "open-card").unsupported).toBeUndefined();
+  });
+
   it("with name scoping off (the default), name and usemap bindings are supported and render like the build", async () => {
     config.scoping.attributes = { class: true, id: true, name: false };
     const list: ComponentList = {
@@ -1157,6 +1195,26 @@ describe("component build scripts", () => {
     },
   );
 
+  it("a printed marker after `<!--` in a printed <style> is still found", async () => {
+    const output = `<style>.built::before { content: "<!--"; }</style><div data-bascik-slot="x">default x</div><!-- note -->`;
+    const list: ComponentList = {
+      "printed-style-card": printingCard("printed-style-card", output),
+    };
+    runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) =>
+      String(options?.extraEnv?.BASCIK_SOURCE_FILE).includes(
+        "printed-style-card",
+      )
+        ? { result: output, stdout: "", stderr: "", readsPageContext: false }
+        : defaultHandler(),
+    );
+    const manifest = await build(list);
+    expect(entryOf(manifest, "printed-style-card").unsupported).toEqual({
+      reason: "scoping-template-unavailable",
+      detail:
+        "its build script printed data-bascik-slot, which a usage would be injected into at request time but never at page time",
+    });
+  });
+
   it("a printed nested usage with a valued prop and an authored marker stay supported", async () => {
     const list = { ...printedMarkerCards(), ...nestedCards() };
     runDirectiveHandlerMock.mockImplementation(async (_t, _k, options) =>
@@ -1240,6 +1298,59 @@ describe("component build scripts", () => {
     expect(entryOf(manifest, "ctx-card").template).toBeNull();
     // Its siblings are unaffected.
     expect(entryOf(manifest, "built-card").unsupported).toBeUndefined();
+  });
+
+  // A script that opens BASCIK_PAGE_FILE (the documented way to read the
+  // page's own HTML) throws when the manifest runs it with no page. That is
+  // a page-dependent component, not a broken build.
+  it("a build script that reads its page context and then fails without a page is unsupported, not a build error", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      runDirectiveHandlerMock.mockImplementation(
+        async (_target, _kind, options) => {
+          if (
+            !String(options?.extraEnv?.BASCIK_SOURCE_FILE).includes("ctx-card")
+          )
+            return defaultHandler();
+          throw Object.assign(
+            new Error("Error: ENOENT: no such file or directory, open ''"),
+            { stdout: "", stderr: "", readsPageContext: true },
+          );
+        },
+      );
+      const manifest = await build(buildScriptCards());
+      expect(entryOf(manifest, "ctx-card").unsupported).toEqual({
+        reason: "build-script-reads-page-context",
+        detail:
+          "its build script read BASCIK_PAGE_PATH, BASCIK_PAGE_FILE or BASCIK_ROUTE, so its output differs per page",
+      });
+      expect(entryOf(manifest, "ctx-card").template).toBeNull();
+      expect(entryOf(manifest, "built-card").unsupported).toBeUndefined();
+      // The script ran once: the verify run is not a second failure.
+      expect(
+        runDirectiveHandlerMock.mock.calls.filter(([, , options]) =>
+          String(options?.extraEnv?.BASCIK_SOURCE_FILE).includes("ctx-card"),
+        ),
+      ).toHaveLength(1);
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("a build script that fails without having read its page context still fails the build", async () => {
+    runDirectiveHandlerMock.mockImplementation(
+      async (_target, _kind, options) => {
+        if (!String(options?.extraEnv?.BASCIK_SOURCE_FILE).includes("ctx-card"))
+          return defaultHandler();
+        throw Object.assign(new Error("Error: boom"), {
+          stdout: "",
+          stderr: "",
+          readsPageContext: false,
+        });
+      },
+    );
+    await expect(build(buildScriptCards())).rejects.toThrow(/boom/);
   });
 
   it("the on-disk cache record keeps readsPageContext: a build after clearBuildScriptCaches() is answered from disk and still unsupported", async () => {
@@ -1397,13 +1508,14 @@ describe("components are built concurrently, reported in order", () => {
     });
     await build(cards(["a-card", "b-card", "c-card"]));
     // Each component's two runs print (the second is a cache hit, silent).
+    // Echoed output always ends with a newline.
     expect(order).toEqual([
       "warn a",
-      "stdout a",
+      "stdout a\n",
       "warn b",
-      "stdout b",
+      "stdout b\n",
       "warn c",
-      "stdout c",
+      "stdout c\n",
     ]);
     // Outside a manifest build, output is not held back.
     console.warn("after");

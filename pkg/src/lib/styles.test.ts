@@ -344,6 +344,55 @@ describe("prefixKeyframes", () => {
     expect(result).toContain(`@keyframes ${scoped}`);
     expect(result).toContain(`animation: ${scoped} 1s`);
   });
+
+  // `-webkit-animation: k` names the keyframes `@-webkit-keyframes k`
+  // declares; renaming one without the other breaks the animation in
+  // browsers that read only the prefixed rules.
+  it("scopes a vendor-prefixed @keyframes name with its references", () => {
+    const scoped = "bascik__my-comp__keyframe__spin";
+    const result = prefixKeyframes(
+      "@-webkit-keyframes spin { from { opacity: 0; } }\n" +
+        ".box { -webkit-animation: spin 1s; animation-name: spin; }",
+      "my-comp",
+    );
+    expect(result).toContain(`@-webkit-keyframes ${scoped} {`);
+    expect(result).toContain(`-webkit-animation: ${scoped} 1s`);
+    expect(result).toContain(`animation-name: ${scoped}`);
+    expect(getKeyframeNames("@-moz-keyframes fade{to{opacity:0}}")).toEqual([
+      "fade",
+    ]);
+  });
+
+  it("scopes the prefixed and unprefixed rules of one animation to one name", () => {
+    const result = prefixKeyframes(
+      "@-webkit-keyframes spin { to { opacity: 0; } }\n" +
+        "@keyframes spin { to { opacity: 0; } }\n" +
+        ".box { -webkit-animation: spin 1s; animation: spin 1s; }",
+      "my-comp",
+    );
+    expect(result).not.toMatch(/\bspin\b(?!__)/);
+    expect(result.match(/bascik__my-comp__keyframe__spin/g)).toHaveLength(4);
+    // A name that only looks like a prefix is left alone.
+    expect(getKeyframeNames("@webkit-keyframes x{} @-keyframes y{}")).toBe(
+      null,
+    );
+    // An at-rule name is ASCII case-insensitive.
+    expect(getKeyframeNames("@-WebKit-KeyFrames a{} @KeyFrames b{}")).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  it("scopes a vendor-prefixed @keyframes in a component style tag", () => {
+    const { html } = scopeInlineStyleTags(
+      '<style>@-webkit-keyframes spin { from { opacity: 0; } to { opacity: 1; } }\n.a { -webkit-animation: spin 1s; }</style><p class="a">x</p>',
+      "c",
+    );
+    expect(html).toContain("@-webkit-keyframes bascik__c__keyframe__spin {");
+    expect(html).toContain("-webkit-animation: bascik__c__keyframe__spin 1s");
+    // Keyframe stops are not element selectors.
+    expect(html).toContain("from { opacity: 0; }");
+  });
 });
 
 describe("removeIdSelectors", () => {
@@ -420,6 +469,156 @@ describe("removeCommentsFromCss", () => {
     const css = `.a { content: "/* not a comment */"; color: red; }`;
     const result = removeCommentsFromCss(css);
     expect(result).toContain('"/* not a comment */"');
+  });
+
+  // CSS Syntax: a comment separates tokens, so `1px/**/2px` is two
+  // dimensions. Dropping it must not merge them into `1px2px`.
+  it("keeps the tokens on each side of a comment apart", () => {
+    expect(removeCommentsFromCss("a{margin:1px/**/2px}")).toBe(
+      "a{margin:1px 2px}",
+    );
+    expect(removeCommentsFromCss("a{margin:0/* x */auto}")).toBe(
+      "a{margin:0 auto}",
+    );
+    expect(removeCommentsFromCss("a{margin:1px/**//* y */2px}")).toBe(
+      "a{margin:1px 2px}",
+    );
+    expect(removeCommentsFromCss("a{color:#/**/fff}")).toBe("a{color:# fff}");
+    expect(removeCommentsFromCss("a{width:1/**/.5em}")).toBe("a{width:1 .5em}");
+    expect(removeCommentsFromCss("a{width:1/**/%}")).toBe("a{width:1 %}");
+    // `/` then `*` would open a new comment.
+    expect(removeCommentsFromCss("a{b:1//**/*2}")).toBe("a{b:1/ *2}");
+  });
+
+  // A name right before `(` is a function token (`and(`), and `-->` and
+  // `<!--` are CDC and CDO tokens, so a comment there separates them too.
+  it("keeps a name apart from a ( and CDC/CDO characters apart", () => {
+    expect(
+      removeCommentsFromCss("@media screen and/**/(min-width:1px){}"),
+    ).toBe("@media screen and (min-width:1px){}");
+    expect(removeCommentsFromCss("@media not/* x */(color){}")).toBe(
+      "@media not (color){}",
+    );
+    expect(removeCommentsFromCss("a{b:--/**/>c}")).toBe("a{b:-- >c}");
+    expect(removeCommentsFromCss("a{b:<!/**/--c}")).toBe("a{b:<! --c}");
+    // A function written with a comment after its `(` is unchanged.
+    expect(removeCommentsFromCss("a{b:rgb(/**/1 2 3)}")).toBe(
+      "a{b:rgb(1 2 3)}",
+    );
+    expect(removeCommentsFromCss("a{b:calc(1px/**/)}")).toBe("a{b:calc(1px)}");
+  });
+
+  it("adds nothing where a space would change a selector or a value", () => {
+    // A space here would add a descendant combinator.
+    expect(removeCommentsFromCss(".a/**/.b{}")).toBe(".a.b{}");
+    expect(removeCommentsFromCss("a/**/:hover{}")).toBe("a:hover{}");
+    expect(removeCommentsFromCss("a/**/[href]{}")).toBe("a[href]{}");
+    expect(removeCommentsFromCss("a{margin:1px /**/ 2px}")).toBe(
+      "a{margin:1px  2px}",
+    );
+    expect(removeCommentsFromCss("a{color:red/**/;}")).toBe("a{color:red;}");
+    expect(removeCommentsFromCss("/* a */.a{}/* b */")).toBe(".a{}");
+  });
+
+  it("keeps non-ASCII names, escapes and keywords apart across a comment", () => {
+    expect(removeCommentsFromCss("a{font:12px/**/serif}")).toBe(
+      "a{font:12px serif}",
+    );
+    expect(removeCommentsFromCss("a{b:café/**/x}")).toBe("a{b:café x}");
+    expect(removeCommentsFromCss("a{b:x/**/\\31}")).toBe("a{b:x \\31}");
+    expect(removeCommentsFromCss("a{b:1/**/-2}")).toBe("a{b:1 -2}");
+    // A comment inside a string or url() is text, not a comment.
+    expect(removeCommentsFromCss('a{b:url(a/**/b) "c/**/d"}')).toBe(
+      'a{b:url(a/**/b) "c/**/d"}',
+    );
+  });
+
+  it("keeps scoped style tag values apart across a comment", () => {
+    const { html } = scopeInlineStyleTags(
+      "<style>p { margin: 1px/**/2px; }</style><p>x</p>",
+      "c",
+    );
+    expect(html).toContain("margin: 1px 2px");
+  });
+
+  // CSS Syntax: a backslash before a newline inside a string continues the
+  // string on the next line, so `/* x */` there is text, not a comment.
+  it("keeps comment-like text in a string continued over a line break", () => {
+    const double = '.a::after { content: "one \\\n/* two */ three"; }';
+    expect(removeCommentsFromCss(double)).toBe(double);
+    const single = ".a::after { content: 'one \\\r\n/* two */ three'; }";
+    expect(removeCommentsFromCss(single)).toBe(single);
+    const { html } = scopeInlineStyleTags(
+      `<style>.a::after { content: "one \\\n/* two */ three"; }</style><p class="a">x</p>`,
+      "c",
+    );
+    expect(html).toContain('content: "one \\\n/* two */ three"');
+  });
+
+  it("still removes a comment after a string that ends in an escaped quote", () => {
+    expect(removeCommentsFromCss('a{b:"x\\"" /* c */}')).toBe('a{b:"x\\"" }');
+    expect(removeCommentsFromCss('a{b:"x\\\\" /* c */}')).toBe('a{b:"x\\\\" }');
+  });
+
+  // CSS Syntax: outside a string, a backslash escapes the next character,
+  // so `\'` and `\"` are part of a name and `\/` is not the start of `/*`.
+  it("reads an escaped quote or slash outside a string as part of a name", () => {
+    expect(
+      removeCommentsFromCss(".it\\'s /* note */ { color: red; } /* it's */"),
+    ).toBe(".it\\'s  { color: red; } ");
+    expect(removeCommentsFromCss('.a\\"b /* c */ {}')).toBe('.a\\"b  {}');
+    expect(removeCommentsFromCss(".a\\/* x */ {}")).toBe(".a\\/* x */ {}");
+    // An escaped backslash ends before the quote, so the quote opens a string.
+    expect(removeCommentsFromCss("a{b:\\\\'/* c */'}")).toBe(
+      "a{b:\\\\'/* c */'}",
+    );
+  });
+});
+
+// CSS Syntax: a comment with no `*/` runs to the end of the stylesheet. Left
+// in place, it would swallow whatever Bascik joins after it.
+describe("removeCommentsFromCss – unclosed comment", () => {
+  it("removes a comment that runs to the end of the stylesheet", () => {
+    expect(removeCommentsFromCss(".a { color: red; } /* unclosed")).toBe(
+      ".a { color: red; } ",
+    );
+    expect(removeCommentsFromCss(".a{margin:1px/* unclosed")).toBe(
+      ".a{margin:1px",
+    );
+    // `/*` inside a string is text, even when the string is the last token.
+    expect(removeCommentsFromCss('.a::after { content: "/* x" }')).toBe(
+      '.a::after { content: "/* x" }',
+    );
+  });
+
+  it("keeps the style blocks after one that ends in an unclosed comment", () => {
+    const { css } = extractInlineStyles(
+      '<style media="print">.a { color: red; } /* oops</style><style>.b { color: blue; }</style><p>x</p>',
+    );
+    expect(css).not.toContain("/*");
+    expect(css).toContain("@media print {\n.a { color: red; }\n}");
+    expect(css).toContain(".b { color: blue; }");
+  });
+});
+
+describe("shieldCssStrings – escapes outside strings", () => {
+  it("does not open a string at an escaped quote in a selector", () => {
+    const css = ".it\\'s { color: red; } .b { content: 'x'; }";
+    const { css: shielded, restore } = shieldCssStrings(css);
+    expect(shielded).toContain(".it\\'s { color: red; } .b { content: ");
+    expect(shielded).not.toContain("'x'");
+    expect(restore(shielded)).toBe(css);
+  });
+
+  it("scopes every rule of a style tag with an escaped quote in a class name", () => {
+    const { html } = scopeInlineStyleTags(
+      "<style>.it\\'s { color: red; } .b { color: blue; } .c::after { content: 'x'; }</style><p class=\"b\">x</p>",
+      "c",
+    );
+    expect(html).not.toContain("\u0000");
+    expect(html).toContain(".bascik__c__it\\'s { color: red; }");
+    expect(html).toContain(".bascik__c__b { color: blue; }");
+    expect(html).toContain("content: 'x'");
   });
 });
 
@@ -940,6 +1139,80 @@ describe("convertCssElementSelectorsToClasses – pseudo-classes and pseudo-elem
     );
     // h2 appears after a comma inside :is() — it must NOT be converted
     expect(elementsConvertedClasses).not.toContain("h2");
+  });
+
+  // A `)` later in a same-line list used to end the selector-position check,
+  // so every element before it (after the first) kept its bare tag name and
+  // the rule applied to the whole page instead of the component.
+  it.each([
+    [
+      "h1, h2:not(.lead), h3 { margin: 0; }",
+      ".b_el_my-comp_h1, .b_el_my-comp_h2:not(.lead), .b_el_my-comp_h3 { margin: 0; }",
+    ],
+    [
+      "p, input:not([type=checkbox]) { margin: 0; }",
+      ".b_el_my-comp_p, .b_el_my-comp_input:not([type=checkbox]) { margin: 0; }",
+    ],
+    [
+      "li:first-child, li:last-child, li:nth-child(2) { margin: 0; }",
+      ".b_el_my-comp_li:first-child, .b_el_my-comp_li:last-child, .b_el_my-comp_li:nth-child(2) { margin: 0; }",
+    ],
+    [
+      "tr:nth-child(even) td, tr:nth-of-type(2n+1) th { margin: 0; }",
+      ".b_el_my-comp_tr:nth-child(even) .b_el_my-comp_td, .b_el_my-comp_tr:nth-of-type(2n+1) .b_el_my-comp_th { margin: 0; }",
+    ],
+    [
+      "@media (min-width: 40em) { a:hover, button:focus-within, li:nth-child(2) { margin: 0; } }",
+      "@media (min-width: 40em) { .b_el_my-comp_a:hover, .b_el_my-comp_button:focus-within, .b_el_my-comp_li:nth-child(2) { margin: 0; } }",
+    ],
+    [
+      "section{a:is(.x),em:not(.y),b{margin:0}}",
+      ".b_el_my-comp_section{.b_el_my-comp_a:is(.x),.b_el_my-comp_em:not(.y),.b_el_my-comp_b{margin:0}}",
+    ],
+  ])(
+    "converts every element of a same-line list with a later `(...)`: %s",
+    (source, expected) => {
+      expect(convertCssElementSelectorsToClasses(source, "my-comp").css).toBe(
+        expected,
+      );
+    },
+  );
+
+  it.each([
+    ["a:not(p, h2), h3:is(b, i), em { margin: 0; }", ["a", "h3", "em"]],
+    ["div:is(p, h2:not(b, i), em) { margin: 0; }", ["div"]],
+    [".el { color: rgb(0, 0, 0); font: a, small }", []],
+    [".el { width: min(1px, calc(2px, 3em)), em; }", []],
+  ])(
+    "keeps a comma inside parentheses out of the list: %s",
+    (source, expected) => {
+      expect(
+        convertCssElementSelectorsToClasses(source, "my-comp")
+          .elementsConvertedClasses,
+      ).toEqual(expected);
+    },
+  );
+
+  it.each([
+    String.raw`.bascik__my-comp__cols-\[1fr\,auto\] { margin: 0; }`,
+    String.raw`.bascik__my-comp__a\,p { margin: 0; }`,
+    String.raw`.bascik__my-comp__w-\(a\,b { margin: 0; }`,
+  ])("leaves an escaped comma in a class name alone: %s", (source) => {
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(source, "my-comp");
+    expect(css).toBe(source);
+    expect(elementsConvertedClasses).toEqual([]);
+  });
+
+  it("converts an element after a class whose name escapes a parenthesis", () => {
+    expect(
+      convertCssElementSelectorsToClasses(
+        String.raw`p, .bascik__my-comp__w-\(1px, h2 { margin: 0; }`,
+        "my-comp",
+      ).css,
+    ).toBe(
+      String.raw`.b_el_my-comp_p, .bascik__my-comp__w-\(1px, .b_el_my-comp_h2 { margin: 0; }`,
+    );
   });
 
   it("does NOT convert property-value commas: 'transition: color 0.2s, opacity 0.3s'", () => {
@@ -2544,6 +2817,57 @@ describe("extractInlineStyles", () => {
     expect(html).not.toContain("<style>.demo-box");
     expect(css).toBe(".demo-box { border: 1px solid; }");
   });
+
+  // `<style>` is a raw text element: `<!--` inside it is CSS, not a comment.
+  // Its text was hidden behind a shield token as a comment and never restored,
+  // so the token (or nothing) reached the page's stylesheet.
+  it.each([
+    [
+      "a comment-like CSS string",
+      '<style>.note::before { content: "<!-- a -->"; }</style><p class="note">n</p>',
+      '.note::before { content: "<!-- a -->"; }',
+      '<p class="note">n</p>',
+    ],
+    [
+      "a stylesheet wrapped in CDO and CDC",
+      '<style>\n<!--\n.two { color: red; }\n-->\n</style><p class="two">t</p>',
+      "<!--\n.two { color: red; }\n-->",
+      '<p class="two">t</p>',
+    ],
+    [
+      "an unclosed `<!--` in a string, with a real comment after the block",
+      '<style>.a::after { content: "<!--"; }</style><p class="a">a</p><!-- real -->',
+      '.a::after { content: "<!--"; }',
+      '<p class="a">a</p><!-- real -->',
+    ],
+    [
+      "a real comment before the block and comment-like CSS inside it",
+      '<!-- note --><style>.b { content: "-->"; } .c { content: "<!--"; }</style><p class="b">b</p>',
+      '.b { content: "-->"; } .c { content: "<!--"; }',
+      '<!-- note --><p class="b">b</p>',
+    ],
+  ])(
+    "keeps %s inside a <style> block as CSS",
+    (_name, input, expectedCss, expectedHtml) => {
+      const { html, css } = extractInlineStyles(input);
+      expect(css).toBe(expectedCss);
+      expect(html).toBe(expectedHtml);
+      expect(css + html).not.toContain("BASCIK_SHIELD");
+    },
+  );
+
+  it("leaves an unclosed comment that mentions <style> as written", () => {
+    const input = '<p class="a">a</p><!-- <style>.a { color: red; }</style>';
+    expect(extractInlineStyles(input)).toEqual({ html: input, css: "" });
+  });
+
+  // A <noscript> body is markup for a browser without scripts, so a
+  // stylesheet commented out inside one must not reach the page.
+  it("leaves a <style> commented out inside <noscript> as written", () => {
+    const input =
+      '<noscript><!-- <style>.a { color: blue; }</style> --><p class="a">a</p></noscript>';
+    expect(extractInlineStyles(input)).toEqual({ html: input, css: "" });
+  });
 });
 
 describe("Resilience to regex replacement patterns (TDD)", () => {
@@ -2744,6 +3068,40 @@ describe("CSS @import resolution and hoisting", () => {
       expect(wrapped).toContain("@layer utilities {");
       expect(wrapped).toContain("@supports (display: flex) {");
       expect(wrapped).toContain(".btn { color: red; }");
+    });
+  });
+
+  describe("hoistCssImports – @import text inside a string", () => {
+    // The statement search ran over strings too, so the text of a `content`
+    // string became a real `@import` at the top of the page stylesheet (a
+    // request to that URL) and the string was left empty.
+    it.each([
+      '.a::before { content: "@import url(https://example.com/a.css);"; }\n.b { top: 0 }',
+      ".a::before { content: '@import \"./a.css\";'; }\n.b { top: 0 }",
+      '.a::before { content: "@layer a, b; @import url(a.css);"; }',
+      '.a[title="@import url(a.css);"] { top: 0 }',
+    ])("leaves %s as written", (css) => {
+      expect(hoistCssImports(css)).toBe(css);
+    });
+
+    it("still hoists a real @import that follows such a string", () => {
+      expect(
+        hoistCssImports(
+          '.a::before { content: "@import url(a.css);"; }\n@import url(https://example.com/b.css);\n.b { top: 0 }',
+        ),
+      ).toBe(
+        '@import url(https://example.com/b.css);\n.a::before { content: "@import url(a.css);"; }\n\n.b { top: 0 }',
+      );
+    });
+
+    it("still moves a top-level @layer statement that precedes a real @import", () => {
+      expect(
+        hoistCssImports(
+          '.a::before { content: "@layer x, y;"; }\n@layer base, theme;\n@import url(b.css) layer(theme);',
+        ),
+      ).toBe(
+        '@layer base, theme;\n@import url(b.css) layer(theme);\n.a::before { content: "@layer x, y;"; }',
+      );
     });
   });
 
@@ -3399,4 +3757,178 @@ describe("extractInlineStyles – media attribute values", () => {
       expect(css).toBe(".card { color: red }");
     },
   );
+});
+
+describe("convertCssElementSelectorsToClasses – element names in any case", () => {
+  // HTML element names are ASCII case-insensitive in selectors and markup.
+  const scope = (css: string, html: string) => {
+    const result = convertCssElementSelectorsToClasses(css, "card");
+    return {
+      css: result.css,
+      html: addElementClassesInHtml(
+        html,
+        "card",
+        result.elementsConvertedClasses,
+      ),
+    };
+  };
+
+  it.each([
+    ["H1, H2 { color: red }", ".b_el_card_h1, .b_el_card_h2 { color: red }"],
+    ["h1, H2 {}", ".b_el_card_h1, .b_el_card_h2 {}"],
+    [".bascik__card__x H2 {}", ".bascik__card__x .b_el_card_h2 {}"],
+    [".x {\n  & > H2 {}\n}", ".x {\n  & > .b_el_card_h2 {}\n}"],
+    [".x {\n  > H2 {}\n}", ".x {\n  > .b_el_card_h2 {}\n}"],
+  ])("scopes %j like its lowercase form", (css, expected) => {
+    expect(convertCssElementSelectorsToClasses(css, "card").css).toBe(expected);
+  });
+
+  it("gives the markup the class the rule names, whatever case either side uses", () => {
+    const { css, html } = scope(
+      "H1 { color: red }\nh1 .y { color: blue }\nH2, Li { margin: 0 }",
+      "<H1>a</H1><h1>b</h1><h2>c</h2><H2>d</H2><LI>e</LI>",
+    );
+    expect(css).toBe(
+      ".b_el_card_h1 { color: red }\n.b_el_card_h1 .y { color: blue }\n.b_el_card_h2, .b_el_card_li { margin: 0 }",
+    );
+    expect(html).toBe(
+      '<H1 class="b_el_card_h1">a</H1><h1 class="b_el_card_h1">b</h1><h2 class="b_el_card_h2">c</h2><H2 class="b_el_card_h2">d</H2><LI class="b_el_card_li">e</LI>',
+    );
+  });
+
+  it("still leaves an uppercase root element alone", () => {
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses("HTML, BODY { margin: 0 }", "card");
+    expect(css).toBe("HTML, BODY { margin: 0 }");
+    expect(elementsConvertedClasses).toEqual([]);
+  });
+
+  it("does not touch an uppercase word in a declaration value", () => {
+    const css = ".a { font-family: Georgia, Times; }";
+    expect(convertCssElementSelectorsToClasses(css, "card").css).toBe(css);
+  });
+});
+
+describe("convertCssElementSelectorsToClasses – namespace prefixes", () => {
+  // Selectors Level 4 `ns|E`: the prefix names a namespace declared with
+  // `@namespace`, never an element. The type keeps its namespace and gains
+  // the element class, so the rule stays scoped and still checks the namespace.
+  const SVG_NS = "@namespace svg url(http://www.w3.org/2000/svg);\n";
+
+  it.each([
+    [
+      `${SVG_NS}svg|rect { fill: red }`,
+      `${SVG_NS}svg|rect.b_el_card_rect { fill: red }`,
+    ],
+    ["*|rect {}", "*|rect.b_el_card_rect {}"],
+    ["|rect {}", "|rect.b_el_card_rect {}"],
+    ["h1, svg|rect {}", ".b_el_card_h1, svg|rect.b_el_card_rect {}"],
+    [
+      ".bascik__card__x svg|rect {}",
+      ".bascik__card__x svg|rect.b_el_card_rect {}",
+    ],
+    ["svg|rect p {}", "svg|rect.b_el_card_rect .b_el_card_p {}"],
+    [".x {\n  & > svg|rect {}\n}", ".x {\n  & > svg|rect.b_el_card_rect {}\n}"],
+    ["svg|RECT:hover {}", "svg|RECT.b_el_card_rect:hover {}"],
+  ])("scopes the element part of %j", (css, expected) => {
+    const result = convertCssElementSelectorsToClasses(css, "card");
+    expect(result.css).toBe(expected);
+    expect(result.elementsConvertedClasses).not.toContain("svg");
+  });
+
+  it("gives the markup the class the namespaced rule names", () => {
+    const { css, elementsConvertedClasses } =
+      convertCssElementSelectorsToClasses(`${SVG_NS}svg|rect {}`, "card");
+    expect(css).toContain("svg|rect.b_el_card_rect");
+    expect(
+      addElementClassesInHtml(
+        "<svg><rect /></svg>",
+        "card",
+        elementsConvertedClasses,
+      ),
+    ).toBe('<svg><rect class="b_el_card_rect" /></svg>');
+  });
+
+  it.each(["ns|* {}", "*|* {}", "|* {}"])(
+    "leaves the universal selector %j as written, like a bare `*`",
+    (css) => {
+      const result = convertCssElementSelectorsToClasses(css, "card");
+      expect(result.css).toBe(css);
+      expect(result.elementsConvertedClasses).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["a[xlink|href] {}", ".b_el_card_a[xlink|href] {}"],
+    ["a[ xlink|href ] {}", ".b_el_card_a[ xlink|href ] {}"],
+    ["p[lang|=en] {}", ".b_el_card_p[lang|=en] {}"],
+    [":is(svg|rect) {}", ":is(svg|rect) {}"],
+  ])(
+    "leaves a namespaced attribute or :is() argument in %j alone",
+    (css, expected) => {
+      expect(convertCssElementSelectorsToClasses(css, "card").css).toBe(
+        expected,
+      );
+    },
+  );
+});
+
+describe("deduplicateCss – @namespace statements", () => {
+  // CSS Namespaces 3: an @namespace rule must follow @charset and @import
+  // and precede every other rule, or the browser ignores it, and a selector
+  // that uses its undeclared prefix (`svg|rect`) is then invalid.
+  const SVG = "@namespace svg url(http://www.w3.org/2000/svg);";
+
+  it("moves a component's prefixed @namespace above the other components' rules", () => {
+    const css = deduplicateCss([
+      { name: "aa-one", cssFileContent: ".b_el_aa-one_p { color: red }" },
+      {
+        name: "bb-two",
+        cssFileContent: `${SVG}\nsvg|rect.b_el_bb-two_rect { fill: red }`,
+      },
+    ]);
+    expect(css).toBe(
+      `${SVG}\n.b_el_aa-one_p { color: red } \nsvg|rect.b_el_bb-two_rect { fill: red }`,
+    );
+  });
+
+  it("places it after the hoisted @import statements", () => {
+    const css = hoistCssImports(
+      `.a {}\n@import url(https://x.test/a.css);\n${SVG}\nsvg|rect {}`,
+    );
+    expect(css).toBe(
+      `@import url(https://x.test/a.css);\n${SVG}\n.a {}\n\n\nsvg|rect {}`,
+    );
+  });
+
+  it.each([
+    ["a quoted URL", '@namespace xl "http://www.w3.org/1999/xlink";'],
+    [
+      "an uppercase at-rule",
+      "@NAMESPACE svg url('http://www.w3.org/2000/svg');",
+    ],
+  ])("hoists one written with %s", (_label, statement) => {
+    expect(hoistCssImports(`.a {}\n${statement}`)).toBe(`${statement}\n.a {}`);
+  });
+
+  it("writes a namespace two components declare the same way once", () => {
+    const css = deduplicateCss([
+      { name: "aa-one", cssFileContent: `${SVG}\nsvg|a.x {}` },
+      { name: "bb-two", cssFileContent: `${SVG}\nsvg|g.y {}` },
+    ]);
+    expect(css.split("@namespace").length - 1).toBe(1);
+    expect(css.startsWith(SVG)).toBe(true);
+  });
+
+  it.each([
+    [
+      "a default namespace, which would apply to every component's rules",
+      ".a {}\n@namespace url(http://www.w3.org/2000/svg);\n.b {}",
+    ],
+    ["@namespace text in a string", '.a { content: "@namespace svg url(x);" }'],
+    ["an @namespace inside a block", "@media print { @namespace s url(x); }"],
+    ["an @namespace in a comment", ".a {}\n/* @namespace s url(x); */"],
+  ])("leaves %s where it is", (_label, css) => {
+    expect(hoistCssImports(css)).toBe(css);
+  });
 });

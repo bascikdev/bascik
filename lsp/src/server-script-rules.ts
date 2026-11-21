@@ -10,6 +10,11 @@ import {
   findHandWrittenEscapers,
 } from "./hand-written-escaper.js";
 import { maskCommentsAndStrings } from "./api-rules.js";
+import {
+  THROW_NON_ERROR_RULE,
+  findNonErrorThrows,
+  nonErrorThrowMessage,
+} from "./throw-non-error.js";
 import { escapeRegExp } from "./analyzer.js";
 import {
   HTML_MODULE,
@@ -57,6 +62,8 @@ export interface ServerScriptDiagnostic {
    * a call to esc(), and that parameter.
    */
   escaper?: { start: number; end: number; param: string; block: boolean };
+  /** throw-non-error only: the range is one string or template literal, which `new Error(...)` can wrap. */
+  wrapInError?: boolean;
 }
 
 export interface AnalyzeOptions {
@@ -350,6 +357,23 @@ export function analyzeServerScriptSource(
         ...(escaper.delegate ? { escaper: escaper.delegate } : {}),
       });
     }
+
+  // throw-non-error: in every script that runs in Node, a thrown or
+  // rejected value that is not an Error has no stack, so the runtime report
+  // can only name where the script starts. Mark the line here instead.
+  if (!opts.hasSrcAttribute)
+    for (const found of findNonErrorThrows(body))
+      diagnostics.push({
+        code: THROW_NON_ERROR_RULE,
+        message: nonErrorThrowMessage(
+          found,
+          body.slice(found.start, found.end),
+        ),
+        severity: "warning",
+        start: found.start,
+        end: found.end,
+        ...(found.wrappable ? { wrapInError: true } : {}),
+      });
 
   // Part C: sink rules and server-script-unescaped-markup, per template hole.
   const imports = findHtmlImports(body);

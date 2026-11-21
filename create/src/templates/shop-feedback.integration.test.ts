@@ -355,9 +355,10 @@ db.close();`,
       .poll(() => page.getByTestId("site-header-cart-count").innerText())
       .toBe("1");
     await page.getByTestId("book-detail-view-cart").click();
-    expect(await page.getByTestId("cart-list").innerText()).toContain(
-      "Pit Lane Coach Jacket",
-    );
+    await page
+      .getByTestId("cart-list-line")
+      .filter({ hasText: "Pit Lane Coach Jacket" })
+      .waitFor({ state: "visible" });
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
       await page.setViewportSize({ width: 1440, height: 900 });

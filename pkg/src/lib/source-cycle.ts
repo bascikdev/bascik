@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import type { ExecEntry } from "./types.ts";
 import { execWatchCoversPath } from "./exec.ts";
 import { locateBuildError } from "./build-error.ts";
+import { isExitInProgress } from "./exit-stoppers.ts";
 import {
   nativeClock,
   type FrameworkClock,
@@ -65,8 +66,12 @@ export const createSourceCycle = (options: {
     try {
       await options.run(entry);
     } catch (error) {
-      report(error, entry);
-      options.onExecFailure?.(error, entry);
+      // Bascik is shutting down and stopped the script itself (Ctrl-C during
+      // an edit's run): not a failure to report or act on.
+      if (!isExitInProgress()) {
+        report(error, entry);
+        options.onExecFailure?.(error, entry);
+      }
       throw error;
     }
   };
@@ -151,7 +156,7 @@ export const createSourceCycle = (options: {
       });
     } catch (error) {
       for (const path of paths) failed.add(path);
-      if (!hadError) report(error);
+      if (!hadError && !isExitInProgress()) report(error);
     } finally {
       options.emitter.removeListener("build-error", onError);
     }

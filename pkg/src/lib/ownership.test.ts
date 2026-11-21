@@ -194,6 +194,28 @@ describe("ownership inventory persistence & integrity", () => {
     await rm(privateDirFor(tempDir), { recursive: true, force: true });
   });
 
+  it("writes owners in key order, whatever order they were inserted in", async () => {
+    const z = "/abs/src/pages/z.html";
+    const a = "/abs/src/pages/a.html";
+    const upper = "/abs/src/pages/B.html";
+    await writeOwnershipInventory({
+      ...emptyInventory(),
+      owners: {
+        [z]: entry(z, "pages/z.html", [{ file: "z.html", route: "/z" }]),
+        [a]: entry(a, "pages/a.html", [{ file: "a.html", route: "/a" }]),
+        [upper]: entry(upper, "pages/B.html", [
+          { file: "B.html", route: "/B" },
+        ]),
+      },
+    });
+    const written = JSON.parse(
+      await readFile(join(privateDirFor(tempDir), "ownership.json"), "utf8"),
+    ) as OwnershipInventory;
+    // Code-unit order, as the tracker sorts: not locale order, so the bytes
+    // do not depend on the machine.
+    expect(Object.keys(written.owners)).toEqual([upper, a, z]);
+  });
+
   it("rejects corrupt ownership metadata by falling back to a safe additive build and warns", async () => {
     await writeFile(
       join(privateDirFor(tempDir), "ownership.json"),

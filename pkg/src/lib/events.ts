@@ -1,5 +1,5 @@
 import EventEmitter from "node:events";
-import { stopBeforeExit } from "./exit-stoppers.ts";
+import { markShutdownStarted, stopBeforeExit } from "./exit-stoppers.ts";
 
 export const eventEmitter = new EventEmitter();
 // Every open browser tab adds a `transpiled` + `asset-changed` listener for its
@@ -19,12 +19,24 @@ export const _resetShutdownHandlersForTesting = () => {
   _shutdownHandlers = [];
 };
 
-export const runShutdownHandlers = async (): Promise<void> => {
+/**
+ * Run the shutdown handlers and the exit stoppers. `signal`: the shutdown is
+ * a signal's, so it does not wait for the page worker pools (the caller
+ * ends with `endProcess(code, signal)`, by the signal if one is still
+ * loading); without it, it waits for them too.
+ */
+export const runShutdownHandlers = async (
+  options: { signal?: NodeJS.Signals } = {},
+): Promise<void> => {
   const errors: unknown[] = [];
-  // Every caller exits next: stop the page worker pools too (bounded, never
-  // rejects), since exiting while a page worker is still loading can abort
-  // Node 24 (`exit-stoppers.ts`).
-  const promises: Promise<void>[] = [stopBeforeExit() ?? Promise.resolve()];
+  // Every caller exits next, so the scripts stopped below are not failures.
+  markShutdownStarted();
+  // Every caller exits next: stop the exec children and the page worker
+  // pools too (never rejects); exiting while a page worker is still loading
+  // aborts Node (`exit-stoppers.ts`).
+  const promises: Promise<void>[] = [
+    stopBeforeExit(options) ?? Promise.resolve(),
+  ];
 
   for (const fn of _shutdownHandlers) {
     try {

@@ -16,7 +16,7 @@ import { LANDING_ICONS } from "./templates/landing/icons.js";
  * The `@bascik/bascik` release a new project depends on. The agent skills are
  * installed from the same release's tag, so the two always match.
  */
-export const BASCIK_VERSION = "1.0.0";
+export const BASCIK_VERSION = "1.0.1";
 
 // ─── Templates and adapters ───────────────────────────────────────────────────
 
@@ -100,7 +100,7 @@ export interface StarterTemplate {
  * rejects a compatibility date newer than itself and the adapter pins a recent one.
  */
 const WRANGLER_VERSION = "^4.153.0";
-const NETLIFY_CLI_VERSION = "^27.16.2";
+const NETLIFY_CLI_VERSION = "^27.17.0";
 
 export const PACKAGE_JSON = (
   name: string,
@@ -156,7 +156,7 @@ export const PACKAGE_JSON = (
         devDependencies: {
           ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0" }),
           ...(netlify && { "@bascik/adapter-netlify": "^1.0.0" }),
-          "@bascik/language-server": "^1.0.0",
+          "@bascik/language-server": "^1.1.0",
           "@playwright/test": "^1.62.0",
           "@types/node": "^24.0.0",
           "@vitest/coverage-v8": "^5.0.3",

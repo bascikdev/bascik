@@ -4,15 +4,17 @@ Bascik ships a repeatable benchmarking and profiling harness in `pkg/bench/` for
 
 ## Tooling Overview
 
-| Command (from the repository root)                  | Entry point                       | Purpose                                                                               |
-| --------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------- |
-| `yarn pkg:bench`                                    | `pkg/bench/*.bench.ts`            | Vitest throughput microbenchmarks on fixed in-memory inputs                           |
-| `yarn workspace @bascik/bascik profile:compare`     | `pkg/bench/compiler-compare.ts`   | Paired baseline versus candidate compiler builds with byte-identity verification      |
-| `yarn workspace @bascik/bascik profile:fuzz`        | `pkg/bench/compiler-fuzz.ts`      | Seeded differential checks against a built baseline compiler                          |
-| `yarn workspace @bascik/bascik profile:summary`     | `pkg/bench/profile-summary.ts`    | Read-only CPU sample and hot-line summaries                                           |
-| `yarn workspace @bascik/bascik profile:compiler`    | `pkg/bench/compiler-timeline.ts`  | Cold, warm, and live-edit compiler timelines on an isolated project copy              |
-| `yarn workspace @bascik/bascik profile:workload`    | `pkg/bench/profile-workload.ts`   | Bounded runtime captures (HTTP/1.1, HTTP/2 with TLS, static serving, dev, and builds) |
-| `node pkg/bench/profile-boundaries.ts <report-dir>` | `pkg/bench/profile-boundaries.ts` | Resource-boundary capture with optional heap allocation sampling                      |
+| Command (from the repository root)                  | Entry point                        | Purpose                                                                               |
+| --------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------- |
+| `yarn pkg:bench`                                    | `pkg/bench/*.bench.ts`             | Vitest throughput microbenchmarks on fixed in-memory inputs                           |
+| `yarn workspace @bascik/bascik profile:compare`     | `pkg/bench/compiler-compare.ts`    | Paired baseline versus candidate compiler builds with byte-identity verification      |
+| `yarn workspace @bascik/bascik profile:fuzz`        | `pkg/bench/compiler-fuzz.ts`       | Seeded differential checks against a built baseline compiler                          |
+| `yarn workspace @bascik/bascik profile:minify`      | `pkg/bench/minify-differential.ts` | The built-in JavaScript minifier's output compared with its own input on real files   |
+| `yarn workspace @bascik/bascik profile:matrix`      | `pkg/bench/config-matrix.ts`       | One fixture site built under many configurations and compared in a browser            |
+| `yarn workspace @bascik/bascik profile:summary`     | `pkg/bench/profile-summary.ts`     | Read-only CPU sample and hot-line summaries                                           |
+| `yarn workspace @bascik/bascik profile:compiler`    | `pkg/bench/compiler-timeline.ts`   | Cold, warm, and live-edit compiler timelines on an isolated project copy              |
+| `yarn workspace @bascik/bascik profile:workload`    | `pkg/bench/profile-workload.ts`    | Bounded runtime captures (HTTP/1.1, HTTP/2 with TLS, static serving, dev, and builds) |
+| `node pkg/bench/profile-boundaries.ts <report-dir>` | `pkg/bench/profile-boundaries.ts`  | Resource-boundary capture with optional heap allocation sampling                      |
 
 ## Throughput Microbenchmarks (`yarn pkg:bench`)
 
@@ -45,6 +47,14 @@ yarn workspace @bascik/bascik profile:fuzz \
 
 Use absolute package paths with built `dist/lib/` directories. The default candidate is the current workspace package; defaults are 2,000 cases per target and seed `31337`. Use `--targets expansion,props,slots,tags,masking,javascript` to select groups. To replay a failure, select one target and pass its reported `--seed` and `--path`. A mismatch exits nonzero. This is an opt-in developer check, not a substitute for real builds, worker tests, or browser tests.
 
+`profile:minify` checks the built-in JavaScript minifier against the source it was given instead of against an earlier minifier, so it also finds bugs that every revision has. It minifies each `.js`, `.mjs`, and `.cjs` file under the paths you pass, has esbuild print the source and the result in one canonical form, and reports every file whose minified text no longer parses or parses to a different program, with a shrunk input for the first failures:
+
+```sh
+yarn workspace @bascik/bascik profile:minify "$PWD/node_modules" --sample 3000
+```
+
+The options and limits are in `pkg/bench/README.md`.
+
 `profile:summary` reads an existing V8 CPU profile and prints self time, inclusive time, and hot source lines:
 
 ```sh
@@ -53,6 +63,8 @@ yarn workspace @bascik/bascik profile:summary \
 ```
 
 Functions are identified by full URL, line, and column. Recursive frames count once per inclusive sample, and negative sampler deltas are clamped to zero. Totals include idle and GC samples; they are not end-to-end build durations. Locations are those recorded in the profile, without source-map remapping. The command does not modify the capture. Both utilities have unit tests in the normal package suite.
+
+`profile:matrix` checks configuration interactions instead of speed. It builds the fixture in `pkg/bench/config-matrix-fixture/` under about 70 configurations (every combination of the four minifiers, `pipeline.workers`, the `generate` outputs, base paths, the security toggles, directory overrides, and pairs of the risky ones), loads each build in Chromium, and compares it with the default build: rendered text, computed styles, boxes, which element each ID reference resolves to, the effect of each client script, and console errors. Variants that must not change output at all, such as `pipeline.workers: true`, are compared byte for byte. Run `yarn pkg:build` first; `pkg/bench/README.md` documents the options and how to add a variant.
 
 ## Private Report Directories
 

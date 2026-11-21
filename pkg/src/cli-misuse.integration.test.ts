@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,8 +17,28 @@ import {
 const execFileAsync = promisify(execFile);
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), "index.ts");
 const roots: string[] = [];
+// Process ids a test started outside `run`. A failed assertion must not
+// leave a dev server or its exec script running after the test.
+const startedPids = new Set<number>();
 
 afterEach(async () => {
+  // A pipeline.exec script records its PIDs in the project. A test that
+  // failed before it read them never added them to startedPids, and killing
+  // the CLI below orphans the script.
+  for (const root of roots) {
+    try {
+      const pids = JSON.parse(readFileSync(join(root, "pids.json"), "utf8"));
+      for (const pid of pids as number[]) startedPids.add(pid);
+    } catch {
+      // The test wrote no PIDs.
+    }
+  }
+  for (const pid of startedPids) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {}
+  }
+  startedPids.clear();
   await Promise.all(roots.splice(0).map(cleanupFixture));
 });
 
@@ -81,7 +101,7 @@ describe("CLI misuse messages", { timeout: 60_000 }, () => {
 
   it("gives the same message from the dev server instead of an `Error:`-prefixed one (finding 49)", async () => {
     const root = await project("no-pages-dev", {});
-    const { code, output } = await run(root, ["--port", "44010", "--no-pin"]);
+    const { code, output } = await run(root, ["--port", "24010", "--no-pin"]);
     expect(code).toBe(1);
     expect(output).toMatch(
       /^\[bascik\] error: pages directory "src\/pages" \(directory\.pages\) does not exist/m,
@@ -221,9 +241,10 @@ setInterval(() => {}, 1000);
       const { spawn } = await import("node:child_process");
       const child = spawn(
         process.execPath,
-        [cli, "--port", "44012", "--no-pin"],
+        [cli, "--port", "24012", "--no-pin"],
         { cwd: root, stdio: ["ignore", "pipe", "pipe"] },
       );
+      startedPids.add(child.pid!);
       let output = "";
       child.stdout.on("data", (d: Buffer) => (output += d.toString()));
       child.stderr.on("data", (d: Buffer) => (output += d.toString()));
@@ -243,6 +264,7 @@ setInterval(() => {}, 1000);
       expect(existsSync(pidsPath), output).toBe(true);
       const { readFile } = await import("node:fs/promises");
       const pids = JSON.parse(await readFile(pidsPath, "utf8")) as number[];
+      for (const pid of pids) startedPids.add(pid);
 
       child.kill("SIGHUP");
       const result = await exited;
@@ -250,6 +272,98 @@ setInterval(() => {}, 1000);
       expect(result, output).toEqual({ code: 0, signal: null });
       await new Promise((r) => setTimeout(r, 300));
       expect(pids.filter(alive), output).toEqual([]);
+    },
+    60_000,
+  );
+
+  // Not misuse: the documented way to read the page's own HTML. Once a page
+  // has a server script, the component manifest runs every component's build
+  // script with no page; a script that needs one must not fail the build.
+  it("builds a site whose component build script opens BASCIK_PAGE_FILE when a page also has a server script", async () => {
+    const root = await project("page-file-component", {
+      "src/components/page-title/page-title.html": `<h1 data-testid="page-title"><script data-bascik-build>
+  import { readFileSync } from "node:fs";
+  export default () =>
+    /<title>([^<]+)<\\/title>/.exec(readFileSync(process.env.BASCIK_PAGE_FILE, "utf8"))[1];
+</script></h1>`,
+      "src/pages/index.html": page(
+        `<page-title></page-title><script data-bascik-server>export default () => "<p>now</p>";</script>`,
+        "Home title",
+      ),
+    });
+    const { code, output } = await run(root, ["--build"]);
+    expect(output).not.toContain("build script error");
+    expect(code, output).toBe(0);
+    const { readFile } = await import("node:fs/promises");
+    expect(await readFile(join(root, "dist/index.html"), "utf8")).toContain(
+      "Home title</h1>",
+    );
+  });
+});
+
+describe("build scripts when Bascik is gone", () => {
+  const alive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // A page whose build script records its PID and then takes a minute.
+  const slowPage = `<!doctype html><html lang="en"><head><title>P</title></head><body><h1>Hi</h1>
+<script data-bascik-build>
+import { writeFileSync } from "node:fs";
+writeFileSync("script-pid.json", JSON.stringify(process.pid));
+await new Promise((resolve) => setTimeout(resolve, 60_000));
+export default () => "<p>done</p>";
+</script></body></html>`;
+
+  it.skipIf(process.platform === "win32").each([
+    [
+      "a dev server stopped with SIGTERM",
+      ["--port", "24014", "--no-pin"],
+      "SIGTERM",
+    ],
+    ["a build killed with SIGKILL", ["--build"], "SIGKILL"],
+  ] as const)(
+    "%s leaves no data-bascik-build script running",
+    async (_name, args, signal) => {
+      const root = await project(`script-orphan-${signal.toLowerCase()}`, {
+        "src/pages/index.html": slowPage,
+      });
+      const { spawn } = await import("node:child_process");
+      const child = spawn(process.execPath, [cli, ...args], {
+        cwd: root,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      startedPids.add(child.pid!);
+      let output = "";
+      child.stdout.on("data", (d: Buffer) => (output += d.toString()));
+      child.stderr.on("data", (d: Buffer) => (output += d.toString()));
+      const exited = new Promise<void>((done) =>
+        child.once("exit", () => done()),
+      );
+      const pidPath = join(root, "script-pid.json");
+      const deadline = Date.now() + 30_000;
+      while (
+        !existsSync(pidPath) &&
+        child.exitCode === null &&
+        Date.now() < deadline
+      )
+        await new Promise((r) => setTimeout(r, 50));
+      expect(existsSync(pidPath), output).toBe(true);
+      const { readFile } = await import("node:fs/promises");
+      const scriptPid = JSON.parse(await readFile(pidPath, "utf8")) as number;
+      startedPids.add(scriptPid);
+      expect(alive(scriptPid)).toBe(true);
+
+      child.kill(signal);
+      await exited;
+
+      // Nothing is left to read the script's result or to time it out.
+      await expect.poll(() => alive(scriptPid), { timeout: 5000 }).toBe(false);
     },
     60_000,
   );

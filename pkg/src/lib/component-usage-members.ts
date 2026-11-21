@@ -10,6 +10,8 @@
  * content declare nothing.
  */
 import { maskRawTextContent } from "./component-masking.ts";
+import { declaredNamedSlots } from "./component-slots.ts";
+import { blankHtmlComments } from "./shielding.ts";
 
 export interface DeclaredMembers {
   /** Lowercase named slots. */
@@ -26,8 +28,16 @@ const PROP_RECEIVER_RE = /data-bascik-prop-([\w-]+)/gi;
 const ATTR_BINDING_RE =
   /data-bascik-attr-[\w:.-]+\s*=\s*(?:"([\w-]+)"|'([\w-]+)'|([\w-]+))/gi;
 
-/** The slots and props a component template declares. */
-export const declaredMembers = (template: string): DeclaredMembers => {
+/**
+ * The slots and props a component template declares. Named slots are the
+ * wrappers the slot parser fills (`declaredNamedSlots`): a marker inside a
+ * nested component's usage (one of `componentNames`) or inside another named
+ * wrapper's content is never filled for this template, so it declares nothing.
+ */
+export const declaredMembers = (
+  template: string,
+  componentNames: ReadonlySet<string> = new Set(),
+): DeclaredMembers => {
   const masked = maskRawTextContent(template);
   const slots = new Set<string>();
   const props = new Set<string>();
@@ -35,8 +45,9 @@ export const declaredMembers = (template: string): DeclaredMembers => {
   for (const match of masked.matchAll(SLOT_MARKER_RE)) {
     const name = (match[1] ?? match[2] ?? match[3] ?? "").trim();
     if (name === "") hasDefaultSlot = true;
-    else slots.add(name.toLowerCase());
   }
+  for (const name of declaredNamedSlots(template, componentNames))
+    slots.add(name.trim().toLowerCase());
   for (const match of masked.matchAll(PROP_RECEIVER_RE))
     props.add(match[1].toLowerCase());
   for (const match of masked.matchAll(ATTR_BINDING_RE))
@@ -56,7 +67,7 @@ export const mergeDeclared = (
 
 /** Whether default slot content carries anything but whitespace and comments. */
 export const hasRenderableContent = (content: string): boolean =>
-  content.replace(/<!--[\s\S]*?(?:-->|$)/g, "").trim() !== "";
+  blankHtmlComments(content).trim() !== "";
 
 /**
  * The innermost `bascik-source-file` marker open at `index`: the page or the

@@ -773,6 +773,28 @@ describe("injectProps", () => {
       ).toBe(`${comment}<p>Hi</p><!-- <b data-bascik-prop-title></b> -->`);
   });
 
+  it.each([
+    ["textarea", "<textarea><!--</textarea>"],
+    [
+      "JSON data block",
+      '<script type="application/json">{"a":"<!--"}</script>',
+    ],
+    ["style", '<style>.a::before { content: "<!--"; }</style>'],
+  ])(
+    "reads `<!--` inside a %s as its text: the receiver and binding after it are filled",
+    (_where, element) => {
+      const template = `${element}<h2 data-bascik-prop-title>f</h2><a data-bascik-attr-href="link">l</a><!-- note -->`;
+      expect(injectProps(template, { title: "Dune" })).toBe(
+        `${element}<h2>Dune</h2><a data-bascik-attr-href="link">l</a><!-- note -->`,
+      );
+      expect(
+        injectPropAttributes(template, { link: "/dune" }, undefined, () => {}),
+      ).toBe(
+        `${element}<h2 data-bascik-prop-title>f</h2><a href="/dune">l</a><!-- note -->`,
+      );
+    },
+  );
+
   it("leaves a receiver inside an unclosed comment as written", () => {
     expect(
       injectProps(
@@ -1466,6 +1488,14 @@ describe("listComponents – unbalanced braces in component CSS", () => {
     expect(messageOf(error)).toMatch(/remove the "}"/i);
   });
 
+  it('still finds a missing } after a "<!--" CSS string, on its own line', async () => {
+    const error = await listWith(
+      "feature-card",
+      '<style>\n  .a::before { content: "<!--"; }\n  .a { color: red;\n</style>\n<p class="a">x</p>\n<!-- a real comment -->\n',
+    );
+    expect(messageOf(error)).toMatch(/feature-card\.html:3\b/);
+  });
+
   it("fails on a missing } in the companion stylesheet, naming its own file and line", async () => {
     const error = await listWith(
       "book-card",
@@ -1495,6 +1525,14 @@ describe("listComponents – unbalanced braces in component CSS", () => {
     [
       "<style> text inside a <textarea>",
       '<p class="a">x</p>\n<textarea><style>.a {</style></textarea>\n',
+    ],
+    [
+      'a "<!--" CSS string before a real comment',
+      '<style>\n  .a::before { content: "<!--"; }\n  .a { color: red; }\n</style>\n<p class="a">x</p>\n<!-- a real comment -->\n',
+    ],
+    [
+      "a stylesheet wrapped in <!-- -->",
+      '<style>\n<!--\n  .a { color: red; }\n-->\n</style>\n<p class="a">x</p>\n',
     ],
   ])("accepts %s", async (_label, html) => {
     expect(await listWith("good-card", html)).toBeUndefined();

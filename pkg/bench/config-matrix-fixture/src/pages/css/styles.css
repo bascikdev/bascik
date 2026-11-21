@@ -1,0 +1,22 @@
+@font-face {
+  font-family: "Matrix Sans";
+  src: local("Helvetica"), local("Arial");
+  font-display: swap;
+}
+:root {
+  --accent: rgb(10, 20, 30);
+  --gap: 8px;
+}
+body {
+  font-family: "Matrix Sans", sans-serif;
+  margin: 0;
+  counter-reset: section;
+}
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+}
+/* a comment with } braces { */
+.skip-link:focus {
+  outline: 2px solid red;
+}

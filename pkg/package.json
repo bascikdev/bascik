@@ -18,7 +18,7 @@
   "bugs": {
     "url": "https://github.com/bascikdev/bascik/issues"
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bascikdev/bascik.git",
@@ -66,10 +66,10 @@
   },
   "optionalDependencies": {
     "chokidar": "^6.0.0",
-    "parse5": "^8.1.0"
+    "parse5": "^8.1.1"
   },
   "peerDependencies": {
-    "@bascik/language-server": "^1.0.0"
+    "@bascik/language-server": "^1.1.0"
   },
   "peerDependenciesMeta": {
     "@bascik/language-server": {
@@ -79,8 +79,8 @@
   "devDependencies": {
     "0x": "^6.0.0",
     "@mdn/browser-compat-data": "^8.1.8",
-    "@playwright/test": "^1.64.1",
-    "@swc/core": "^1.16.21",
+    "@playwright/test": "^1.65.0",
+    "@swc/core": "^1.16.22",
     "@types/css-tree": "^3.2.0",
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.1.0",
@@ -98,7 +98,7 @@
     "postcss": "^8.5.32",
     "typescript": "^7.0.2",
     "typescript-6": "npm:typescript@^6.0.3",
-    "vite": "^8.3.5",
+    "vite": "^8.3.8",
     "vitest": "^5.1.0",
     "web-features": "^3.45.0",
     "webidl2": "^24.5.0"
@@ -138,6 +138,8 @@
     "profile:compiler": "node bench/compiler-timeline.ts",
     "profile:compare": "node bench/compiler-compare.ts",
     "profile:fuzz": "node bench/compiler-fuzz.ts",
+    "profile:minify": "node bench/minify-differential.ts",
+    "profile:matrix": "node bench/config-matrix.ts",
     "profile:summary": "node bench/profile-summary.ts"
   }
 }

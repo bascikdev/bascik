@@ -1439,13 +1439,13 @@ export const scanHtml = (
       if (
         current &&
         current.namespace !== "html" &&
+        current.integrationPoint === NOT_AN_INTEGRATION_POINT &&
         html.startsWith("[CDATA[", start + 2)
       ) {
-        // Parsers disagree on CDATA directly inside an integration point
-        // (`<svg><title><![CDATA[`), so the scan stops there.
-        if (current.integrationPoint !== NOT_AN_INTEGRATION_POINT)
-          return giveUpAt(start);
-        // A CDATA section is text in foreign content.
+        // A CDATA section is text in foreign content. Directly inside an
+        // integration point (`<svg><title><![CDATA[`, `<math><mi>`) Blink,
+        // Gecko and parse5 allow no CDATA section, so `<![CDATA[` starts a
+        // bogus comment that ends at the first `>`, as in HTML content below.
         const close = html.indexOf("]]>", start + 9);
         if (close === -1) return endAt(start);
         emitMarkup("markup", start, close + 3);
@@ -1498,6 +1498,121 @@ const pendingLookahead = (
   const before = text.charCodeAt(run - 1);
   if (before === 38 /* & */) return "amp";
   return before === 60 /* < */ && run === text.length ? "lt" : "";
+};
+
+/** Raw text elements whose body the compiler reads as markup, not as code or a value. */
+const MARKUP_BODY_ELEMENTS = new Set([
+  "noscript",
+  "iframe",
+  "noembed",
+  "noframes",
+  "xmp",
+]);
+const MARKUP_BODY_ELEMENT_PATTERN =
+  /<(?:noscript|iframe|noembed|noframes|xmp)/i;
+
+/**
+ * Every comment in `html`, in document order, as the browser reads it. A
+ * `<!--` inside a raw text element (`<style>`, `<script>`, `<textarea>`) is
+ * that element's text, not a comment, so a CSS string such as
+ * `content: "<!--"` starts none. `/<!--[\s\S]*?-->/g` cannot tell the two
+ * apart and runs from such a string to the next real comment's `-->`.
+ *
+ * The body of a `<noscript>`, `<iframe>`, `<noembed>`, `<noframes>` or
+ * `<xmp>` is text to a browser that runs scripts, but the compiler reads it
+ * as markup (a `<noscript>` holds the page for a browser that does not), so
+ * the comments in such a body are reported too, as the markup parse of that
+ * body finds them. A comment the body ends inside ends with the body.
+ *
+ * Past the point where the scan can no longer follow the browser's parse
+ * (`stoppedAt`), every `<!--` counts, as that regex counted it.
+ */
+export const scanHtmlComments = (html: string): HtmlRange[] =>
+  scanCommentsAndCdata(html, false);
+
+/**
+ * Every comment (as {@link scanHtmlComments} finds them) and every CDATA
+ * section in SVG or MathML content, in document order. A CDATA section in
+ * foreign content is text, so markup-looking text in it (`<![CDATA[<p>]]>`)
+ * is no element and must not be rewritten. In HTML content `<![CDATA[` starts
+ * a bogus comment that ends at the first `>`, which is a markup token the
+ * rewriting passes already skip. A CDATA section inside an SVG `<script>` or
+ * `<style>` is that element's code and is not reported. A CDATA section the
+ * input ends inside is reported to the end, as an unclosed comment is.
+ */
+export const scanHtmlCommentsAndCdata = (html: string): HtmlRange[] =>
+  scanCommentsAndCdata(html, html.includes("<![CDATA["));
+
+/**
+ * The inside of every complete CDATA section in SVG or MathML content (from
+ * just after `<![CDATA[` to just before `]]>`), in document order: text the
+ * browser shows, which holds no element, comment or raw-text element. A
+ * CDATA section inside an SVG `<script>` or `<style>` is that element's code
+ * and is not reported, and `<![CDATA[` in HTML content or directly inside an
+ * integration point is a bogus comment, never a section.
+ */
+export const scanForeignCdataText = (html: string): HtmlRange[] => {
+  const sections: HtmlRange[] = [];
+  if (!html.includes("<![CDATA[")) return sections;
+  scanHtml(html, {
+    token: ({ kind, start, end, inForeign, inForeignCode }) => {
+      // A bogus comment that happens to end in `]]>` is reported too: its
+      // inside is a comment's, no markup either.
+      if (
+        kind === "markup" &&
+        inForeign &&
+        !inForeignCode &&
+        html.startsWith("<![CDATA[", start) &&
+        html.startsWith("]]>", end - 3)
+      )
+        sections.push({ start: start + 9, end: end - 3 });
+    },
+  });
+  return sections;
+};
+
+const scanCommentsAndCdata = (html: string, cdata: boolean): HtmlRange[] => {
+  const comments: HtmlRange[] = [];
+  if (!cdata && !html.includes("<!--")) return comments;
+  const markupBodies = MARKUP_BODY_ELEMENT_PATTERN.test(html);
+  const { stoppedAt } = scanHtml(html, {
+    comment: ({ start, end }) => comments.push({ start, end }),
+    // Tokens cost an object each, so they are read only when such an element
+    // or a CDATA section may be present.
+    token:
+      markupBodies || cdata
+        ? ({ kind, name, start, end, inForeign, inForeignCode }) => {
+            if (
+              cdata &&
+              // An unparsed token here is a CDATA section or bogus comment
+              // the input ends inside: text or a comment to the end.
+              ((kind === "markup" && inForeign) || kind === "unparsed") &&
+              !inForeignCode &&
+              html.startsWith("<![CDATA[", start)
+            ) {
+              comments.push({ start, end });
+              return;
+            }
+            if (!markupBodies) return;
+            if (kind !== "raw" || !MARKUP_BODY_ELEMENTS.has(name)) return;
+            for (const comment of scanCommentsAndCdata(
+              html.slice(start, end),
+              cdata,
+            ))
+              comments.push({
+                start: start + comment.start,
+                end: start + comment.end,
+              });
+          }
+        : undefined,
+  });
+  let start = stoppedAt < html.length ? html.indexOf("<!--", stoppedAt) : -1;
+  while (start !== -1) {
+    const end = findCommentEnd(html, start);
+    comments.push({ start, end: end === -1 ? html.length : end });
+    start = end === -1 ? -1 : html.indexOf("<!--", end);
+  }
+  return comments;
 };
 
 /** An empty comment: parsed as nothing, and it ends any pending `<` or `&` lookahead. */

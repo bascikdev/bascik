@@ -1,4 +1,6 @@
-import { Worker } from "node:worker_threads";
+import type { Worker } from "node:worker_threads";
+import { avoidWasmWrapperRace } from "./wasm-code-gc.ts";
+import { startWorker } from "./worker-exec-argv.ts";
 
 /**
  * A task the worker itself reported as failed (`{ ok: false, error }`). A
@@ -45,9 +47,32 @@ interface Slot<Task, Result> {
 /** The message a `readySignal` worker posts once its script has loaded. */
 const READY_MESSAGE_KEY = "ready";
 
-/** How long stopping a `readySignal` worker waits for it to load before
- * terminating it anyway, so a worker stuck loading cannot hang shutdown. */
-const READY_GRACE_MS = 10_000;
+/**
+ * How long stopping a `readySignal` worker waits for it to load before it
+ * starts checking whether the worker is stuck. A worker still loading past
+ * it is never terminated while its thread is running JavaScript: Node aborts
+ * the whole process when a worker is terminated (or the process exits) in
+ * the middle of evaluating a module that waited for a top-level await, and
+ * a page worker's module graph has them (`userConfig.ts` awaits the user's
+ * config). A `bascik.config.ts` that does a lot of work at load time keeps
+ * every page worker busy that long, and is slow, not stuck.
+ */
+export const READY_GRACE_MS = 10_000;
+
+/** Past `READY_GRACE_MS`, how often stopping a still-loading worker samples
+ * its event loop to tell a busy worker from one that is waiting. */
+export const LOAD_CHECK_MS = 1_000;
+
+/**
+ * The event loop utilization below which a still-loading worker counts as
+ * waiting (on a promise, a timer, I/O) rather than evaluating. A waiting
+ * worker is stuck on something that may never come, and terminating it is
+ * safe: no module is executing (only a wait that ends in the very instant
+ * of the terminate could still race it). A busy one is evaluating, however
+ * long it takes, and the pool waits for it: there is deliberately no time
+ * bound on that, since a deadline there is exactly the abort.
+ */
+const WAITING_UTILIZATION = 0.05;
 
 /** The message a `stopSignal` worker ends itself on. */
 const STOP_MESSAGE = { stop: true } as const;
@@ -67,6 +92,68 @@ const MAX_STARTUP_ATTEMPTS = 4;
 
 const NO_VIABLE_REQUEST =
   "WorkerPool has no viable workers: worker startup failed repeatedly; check the worker module";
+
+/** The no-viable-workers error, naming why the last worker could not even
+ * be constructed when that is known (a bad path, a rejected Node flag). */
+const noViableWorkers = (lastStartupError: string | undefined): Error =>
+  new Error(
+    lastStartupError
+      ? `${NO_VIABLE_REQUEST} (last error: ${lastStartupError})`
+      : NO_VIABLE_REQUEST,
+  );
+
+const TIMED_OUT = Symbol("timed out");
+
+/**
+ * Wait for `loaded` for at most `ms`: true when it settled first. The timer
+ * never outlives the wait, and the wait takes no more turns than a plain
+ * race, so a worker that is already loaded is asked to stop as soon as
+ * before.
+ */
+const loadsWithin = async (
+  loaded: Promise<void>,
+  ms: number,
+): Promise<boolean> => {
+  let timer: NodeJS.Timeout | undefined;
+  const first = await Promise.race([
+    loaded,
+    new Promise<typeof TIMED_OUT>((resolve) => {
+      timer = setTimeout(() => resolve(TIMED_OUT), ms);
+    }),
+  ]);
+  clearTimeout(timer);
+  return first !== TIMED_OUT;
+};
+
+type LoopUsage = { idle: number; active: number };
+
+/** The worker's event loop time so far, or undefined when it cannot be read. */
+const loopUsage = (worker: Worker): LoopUsage | undefined => {
+  try {
+    const { idle, active } = worker.performance.eventLoopUtilization();
+    return Number.isFinite(idle) && Number.isFinite(active)
+      ? { idle, active }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Did the worker spend the interval between two samples waiting rather
+ * than running JavaScript? Any doubt (a sample that could not be read, an
+ * interval with no measured time) counts as busy, since terminating a
+ * worker that is evaluating aborts the process.
+ */
+const isWaiting = (
+  previous: LoopUsage | undefined,
+  current: LoopUsage | undefined,
+): boolean => {
+  if (!previous || !current) return false;
+  const active = current.active - previous.active;
+  const total = active + (current.idle - previous.idle);
+  return total > 0 && active / total < WAITING_UTILIZATION;
+};
 
 /** Zero workers would strand every queued task forever. */
 const assertPoolSize = (size: number): void => {
@@ -98,6 +185,8 @@ export class WorkerPool<Task, Result> {
   #abandoned = false;
   #capacityExhausted = false;
   #consecutiveStartupFailures: number;
+  /** Why the last `new Worker` threw, for the no-viable-workers error. */
+  #lastStartupError: string | undefined;
   /** Most workers the pool keeps, set by `shrink` and `grow`. A replacement
    * for a crashed worker restores capacity only up to it. */
   #capacity: number;
@@ -108,35 +197,49 @@ export class WorkerPool<Task, Result> {
   #trimming = new Set<Promise<unknown>>();
 
   #env: NodeJS.ProcessEnv | undefined;
+  #argv: string[] | undefined;
   #readySignal: boolean;
   #stopSignal: boolean;
+  /** Called once, cleared after. */
+  #onSlowLoad: (() => void) | undefined;
 
   /**
+   * `argv`: arguments the worker script sees in `process.argv`. A worker
+   * thread does not inherit this thread's, so a flag the worker reads for
+   * itself (`--config`) has to be passed on here.
+   *
    * `readySignal`: the worker script posts `{ ready: true }` once its module
    * graph has finished evaluating, and the pool never terminates a worker
-   * before that (or before `READY_GRACE_MS`). Node 24 can abort the whole
-   * process ("Check failed: (location_) != nullptr") when a worker is
-   * terminated while it is still evaluating ES modules with top-level await,
-   * and a pool that is started early and trimmed, or torn down after a
-   * failure, can otherwise stop workers that are still loading.
+   * that is still evaluating it. Node aborts the whole process ("Check
+   * failed: (location_) != nullptr" on Node 24, "Check failed: !is_null()"
+   * on Node 26, in `SourceTextModule::ExecuteAsyncModule`) when a worker is
+   * terminated, or the process exits, while V8 is running a module that
+   * waited for a dependency's top-level await, and a pool that is started
+   * early and trimmed, or torn down after a failure, can otherwise stop
+   * workers that are still loading. Stopping waits for the signal; past
+   * `READY_GRACE_MS` it samples the worker's event loop every
+   * `LOAD_CHECK_MS` and terminates the worker only once it is waiting
+   * rather than evaluating (stuck on a promise that may never settle), so a
+   * slow worker is waited for however long it takes and a stuck one cannot
+   * hang shutdown. `onSlowLoad` is called once, the first time a stop waits
+   * past the grace, for the caller to say why it is waiting (never for a
+   * pool terminated with `abandon`).
    *
    * `stopSignal`: the worker script ends itself (lets its event loop drain)
    * when it receives `{ stop: true }`, and the pool stops a worker by posting
    * that and waiting for its `exit`, terminating it only when it has not
    * exited after `STOP_GRACE_MS`. With `readySignal` too, the stop message
-   * goes once the worker has loaded, and a worker that has not loaded by
-   * the ready deadline is terminated without it. An external `worker.terminate()` stops
-   * the thread wherever it is, and V8 can abort the whole process when that
-   * lands while the worker is still allocating code: CI saw "Check failed:
-   * jit_page.has_value()" (SIGTRAP) on Node 24.22.1 when a page worker was
-   * terminated right after it loaded. Node 24's V8 (13.6) has a race between
-   * terminated worker threads and wasm code GC freeing a shared import
-   * wrapper twice (nodejs/node#66366 and #64500, fixed upstream in V8
-   * 9b8ca54d5a and 68210d500a, backport nodejs/node#66376 still open). Page
-   * workers run wasm without asking for it: Node strips the types of every
-   * `.ts` module they load (a `bascik.config.ts`, a TypeScript helper,
-   * Bascik's own source in tests) with Amaro, which is swc compiled to wasm.
-   * A worker that ends itself between tasks is never interrupted that way.
+   * goes once the worker has loaded, and a stuck worker that never loaded
+   * is terminated without it. A worker that ends itself
+   * between tasks is never interrupted in the middle of module evaluation or
+   * a build script.
+   *
+   * Neither option prevents the abort CI kept seeing on Node 24 ("Check
+   * failed: jit_page.has_value()", SIGTRAP): that is V8 13.6 freeing a
+   * shared wasm import wrapper twice when one thread tiers it up while the
+   * last thread that used it is torn down, however that thread stops
+   * (`wasm-code-gc.ts`). The pool turns off wasm code GC before its first
+   * worker starts, which closes it.
    */
   constructor(
     workerScript: string,
@@ -144,17 +247,24 @@ export class WorkerPool<Task, Result> {
     initData: unknown,
     options: {
       env?: NodeJS.ProcessEnv;
+      argv?: string[];
       readySignal?: boolean;
       stopSignal?: boolean;
+      onSlowLoad?: () => void;
     } = {},
   ) {
+    this.#onSlowLoad = options.onSlowLoad;
     this.#env = options.env;
+    this.#argv = options.argv;
     this.#readySignal = options.readySignal ?? false;
     this.#stopSignal = options.stopSignal ?? false;
     this.#workerScript = workerScript;
     this.#initData = initData;
     this.#consecutiveStartupFailures = 0;
+    this.#lastStartupError = undefined;
     this.#capacity = size;
+    // Before any worker exists: every thread of the process uses the flag.
+    avoidWasmWrapperRace();
     for (let i = 0; i < size; i++) {
       this.#spawn();
     }
@@ -164,18 +274,20 @@ export class WorkerPool<Task, Result> {
     if (this.#terminated || this.#capacityExhausted) return;
     let worker: Worker;
     try {
-      const execArgv = process.execArgv.filter(
-        (arg) => !arg.startsWith("--input-type"),
-      );
-      worker = new Worker(this.#workerScript, {
+      // This thread's Node options, `--max-old-space-size` and loaders
+      // included, minus `--input-type` (see worker-exec-argv.ts).
+      worker = startWorker(this.#workerScript, {
         workerData: this.#initData,
-        execArgv,
         // Only passed when asked for. Omitting it keeps the default: a copy of this thread's environment.
         ...(this.#env ? { env: this.#env } : {}),
+        // Appended to the worker's own process.argv, which starts without this thread's arguments.
+        ...(this.#argv?.length ? { argv: this.#argv } : {}),
       });
     } catch (error) {
       // Constructor failure (missing/unloadable module). Treat as a startup
       // failure so a broken worker never triggers an endless respawn loop.
+      this.#lastStartupError =
+        error instanceof Error ? error.message : String(error);
       this.#noteStartupFailure();
       return;
     }
@@ -245,6 +357,7 @@ export class WorkerPool<Task, Result> {
       // retirement replaced unconditionally.
       slot.completedAny = true;
       this.#consecutiveStartupFailures = 0;
+      this.#lastStartupError = undefined;
       if (message.ok) job.resolve(message.result);
       else job.reject(new WorkerTaskError(message.error, message.detail));
     }
@@ -270,6 +383,7 @@ export class WorkerPool<Task, Result> {
     slot.pending = null;
     slot.completedAny = true;
     this.#consecutiveStartupFailures = 0;
+    this.#lastStartupError = undefined;
     job.reject(
       new Error(
         `Worker result could not be received (it did not survive the thread boundary): ${error?.message ?? String(error)}`,
@@ -324,6 +438,7 @@ export class WorkerPool<Task, Result> {
     if (this.#slots.length >= this.#capacity) return;
     if (slot.completedAny) {
       this.#consecutiveStartupFailures = 0;
+      this.#lastStartupError = undefined;
       this.#spawn();
     } else {
       this.#noteStartupFailure();
@@ -337,7 +452,7 @@ export class WorkerPool<Task, Result> {
     this.#consecutiveStartupFailures += 1;
     if (this.#consecutiveStartupFailures >= MAX_STARTUP_ATTEMPTS) {
       this.#capacityExhausted = true;
-      this.#settleAllQueued(new Error(NO_VIABLE_REQUEST));
+      this.#settleAllQueued(noViableWorkers(this.#lastStartupError));
     } else {
       this.#spawn();
     }
@@ -436,28 +551,42 @@ export class WorkerPool<Task, Result> {
   /** As `#stop`, but a rejecting `worker.terminate()` reaches the caller
    * (the `terminate()` contract). */
   async #stopForTerminate(slot: Slot<Task, Result>): Promise<number> {
-    let loaded = true;
-    if (this.#readySignal) {
-      let timer: NodeJS.Timeout | undefined;
-      await Promise.race([
-        slot.loaded,
-        new Promise<void>((resolve) => {
-          timer = setTimeout(() => {
-            loaded = false;
-            resolve();
-          }, READY_GRACE_MS);
-        }),
-      ]);
-      clearTimeout(timer);
-    }
-    // A worker that is still evaluating its modules at the ready deadline has
-    // no listener for the stop message yet; asking it would only add
-    // STOP_GRACE_MS before the terminate() that ends it anyway.
+    const loaded =
+      !this.#readySignal ||
+      (await loadsWithin(slot.loaded, READY_GRACE_MS)) ||
+      (await this.#whileStillLoading(slot));
+    // A stuck worker never got as far as its stop message listener; asking
+    // it would only add STOP_GRACE_MS before the terminate() that ends it.
     if (this.#stopSignal && loaded) {
       const code = await this.#askToStop(slot);
       if (code !== undefined) return code;
     }
     return slot.worker.terminate();
+  }
+
+  /**
+   * A worker still loading past `READY_GRACE_MS`: true once it has loaded
+   * (or exited), false once it has stopped evaluating without loading,
+   * which only a terminate() ends. Never resolves while the worker is busy
+   * evaluating its modules (see `readySignal`).
+   */
+  async #whileStillLoading(slot: Slot<Task, Result>): Promise<boolean> {
+    // Not on the way out of the process: the reason for the exit stays the
+    // only thing reported (`abandon`).
+    const onSlowLoad = this.#abandoned ? undefined : this.#onSlowLoad;
+    this.#onSlowLoad = undefined;
+    try {
+      onSlowLoad?.();
+    } catch {
+      // A reporting hook never changes how the worker is stopped.
+    }
+    let previous = loopUsage(slot.worker);
+    for (;;) {
+      if (await loadsWithin(slot.loaded, LOAD_CHECK_MS)) return true;
+      const current = loopUsage(slot.worker);
+      if (isWaiting(previous, current)) return false;
+      previous = current;
+    }
   }
 
   /**
@@ -506,7 +635,7 @@ export class WorkerPool<Task, Result> {
         return;
       }
       if (this.#capacityExhausted) {
-        reject(new Error(NO_VIABLE_REQUEST));
+        reject(noViableWorkers(this.#lastStartupError));
         return;
       }
       this.#queue.push({ task, resolve, reject });

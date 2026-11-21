@@ -19,6 +19,7 @@ import {
   type ApiRouteMatch,
 } from "./api-routes.ts";
 import {
+  apiRouteLoadFailureReport,
   createWebRequest,
   executeApiRoute,
   declaresBodyOverLimit,
@@ -54,7 +55,7 @@ const rejectForbiddenMethod = async (
     console.error(
       "[bascik] Failed to load API route module %s:",
       match.route.filePath,
-      (err as Error)?.stack ?? String(err),
+      apiRouteLoadFailureReport(err),
     );
     const body = "Internal Server Error";
     res.respond(500, {

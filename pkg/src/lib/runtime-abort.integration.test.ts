@@ -524,6 +524,81 @@ describe("Runtime abort and deadline settlement ordering (integration)", () => {
       expect(result.error?.message).toBe("plain string abort reason");
     });
 
+    // The abort reason is the caller's (a deadline, a client that left, a
+    // shutdown), not a value the script threw: it is never described as one.
+    it.each([
+      ["a number", 503, "503"],
+      ["an object", { cause: "shutdown" }, '{"cause":"shutdown"}'],
+    ])(
+      "an abort reason that is %s keeps its own message mid-call",
+      async (_label, reason, message) => {
+        const controller = new AbortController();
+        const registry = new ScriptRegistry();
+        loadSpy = vi.spyOn(registry, "load").mockResolvedValue({
+          filePath: "non-error-mid.js",
+          module: {
+            default: () => {
+              queueMicrotask(() => controller.abort(reason));
+              return new Promise(() => {});
+            },
+          },
+          version: 0,
+        });
+
+        const result = await registry.invoke("non-error-mid.js", [], {
+          signal: controller.signal,
+        });
+
+        expect(result.ok).toBe(false);
+        expect(result.aborted).toBe(true);
+        expect(result.error).toBeInstanceOf(Error);
+        expect(result.error?.message).toBe(message);
+      },
+    );
+
+    it("an Error abort reason is reported as that same Error", async () => {
+      const reason = new Error("client disconnected");
+      const controller = new AbortController();
+      controller.abort(reason);
+      const registry = new ScriptRegistry();
+      loadSpy = vi.spyOn(registry, "load").mockResolvedValue({
+        filePath: "error-reason.js",
+        module: { default: () => {} },
+        version: 0,
+      });
+
+      const result = await registry.invoke("error-reason.js", [], {
+        signal: controller.signal,
+      });
+
+      expect(result.aborted).toBe(true);
+      expect(result.error).toBe(reason);
+    });
+
+    it("a script that throws a string is still described as thrown", async () => {
+      const controller = new AbortController();
+      const registry = new ScriptRegistry();
+      loadSpy = vi.spyOn(registry, "load").mockResolvedValue({
+        filePath: "throws-string.js",
+        module: {
+          default: () => {
+            throw "plain string from the script";
+          },
+        },
+        version: 0,
+      });
+
+      const result = await registry.invoke("throws-string.js", [], {
+        signal: controller.signal,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.aborted).toBeFalsy();
+      expect(result.error?.message).toMatch(
+        /^The script threw the string "plain string from the script", not an Error/,
+      );
+    });
+
     /**
      * Settlement contract under an injected clock: whichever of the handler
      * promise and the deadline settles first wins. Both settle in the same

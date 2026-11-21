@@ -611,6 +611,20 @@ describe("every diagnostic can be named", () => {
     },
   );
 
+  it.each([
+    ["a comment that holds a <script> tag", "<!-- <script> -->"],
+    [
+      "a <style> holding `<!--`",
+      '<style>a::before { content: "<!--"; }</style>',
+    ],
+  ])("reads the slot tags after %s", (_case, before) => {
+    const found = emitted(
+      "/site/src/pages/a.html",
+      `${before}<my-card><p data-bascik-slot="missing">x</p></my-card><script>a()</script><!-- end -->`,
+    );
+    expect(found.map((d) => d.code)).toContain("undeclared-slot");
+  });
+
   it("treats an unsupplied attr prop as a hint, not a warning, because it cannot see pages built from Markdown", () => {
     const [found] = emitted(
       "/site/src/components/my-card.html",

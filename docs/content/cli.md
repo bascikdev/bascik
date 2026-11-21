@@ -116,7 +116,7 @@ bascik init --no-skills  # skip the agent skills
 
 - creates `src/pages/index.html` and `src/components/`
 - adds `node_modules/`, `dist/`, `node_modules/.cache/bascik/`, and the generated TLS files `bascik-privkey.pem` and `bascik-cert.pem` to `.gitignore`, keeping the file's line endings
-- adds `"type": "module"`, the `dev` and `build` scripts, and the `@bascik/bascik` dependency to `package.json`; the dependency is a caret range on the running version (such as `^1.0.0`) and is skipped when `dependencies` or `devDependencies` already lists it
+- adds `"type": "module"`, the `dev` and `build` scripts, and the `@bascik/bascik` dependency to `package.json`; the dependency is a caret range on the running version (such as `^1.0.1`) and is skipped when `dependencies` or `devDependencies` already lists it
 - sets up VS Code and writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief)
 - asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version
 
@@ -349,7 +349,7 @@ While the dev server is active, Bascik incrementally updates your build as files
 
 Development and production builds handle page failures differently. The dev server logs a failed page, finishes booting, and continues serving every page that compiled successfully. Saving a fix retries that page without requiring a server restart.
 
-`bascik --build` treats missing or unreadable configured directories (except a missing default `src/components/`, which means no components), pages without a non-empty `<body>`, runaway component expansion (a page over the [`components.expansionLimits`](/configuration#componentsexpansionlimits) of 10,000 component instances or 50 Mi characters), and output directory or file write failures as hard errors. Under the default [`scripts.onBuildScriptError: "error"`](/configuration#scripts), the first build-script failure stops the build at once; other page failures are collected and reported together as `Build failed with N page error(s)`, each with its project-relative path. The build then exits nonzero and does not print `Build complete`.
+`bascik --build` treats missing or unreadable configured directories (except a missing default `src/components/`, which means no components), a folder inside one, or a component file, stylesheet, or script, that cannot be read (`could not read folder "src/pages/drafts"`, `could not read component file "src/components/book-card.html"`), pages without a non-empty `<body>`, runaway component expansion (a page over the [`components.expansionLimits`](/configuration#componentsexpansionlimits) of 10,000 component instances or 50 Mi characters), and output directory or file write failures as hard errors. It checks that it can write the output directory and the private build folder beside it (`.bascik/dist`) before compiling, so a read-only folder stops the build at once with `[bascik] error: cannot write the private build folder ".bascik/dist" (EACCES)`. Under the default [`scripts.onBuildScriptError: "error"`](/configuration#scripts), the first build-script failure stops the build at once; other page failures are collected and reported together as `Build failed with N page error(s)`, each with its project-relative path. A build, routes, or server script error prints itself as it happens, so the summary leaves it out and counts it, as in `Build failed with 3 page errors (1 printed above):`. The build then exits nonzero and does not print `Build complete`.
 
 ```terminal
 Build failed with 2 page errors:
@@ -460,6 +460,7 @@ Project-level findings (missing site URL, config validation, pages directory) ci
 | Multiple API route files resolving to one URL, or ambiguous catch-all pairs                            | `route-collision`              | Error    |
 | Malformed or non-final API catch-all (`[...]`, `x[...a]`, `[...a]/b.ts`)                               | `invalid-catch-all`            | Error    |
 | Unmatched component tag usage                                                                          | `unmatched-tag`                | Warning  |
+| A `<link rel="stylesheet">` to a file `assets.inlineStyles` inlines, which is not copied to `dist/`    | `inlined-stylesheet-link`      | Warning  |
 | Unused component file                                                                                  | `unused-component`             | Warning  |
 | WHATWG HTML5 parse errors in compiled `dist/` HTML files                                               | `dist-html-spec`               | Error    |
 | Components a server or stream script cannot return (read from the last build)                          | `request-render-unsupported`   | Warning  |

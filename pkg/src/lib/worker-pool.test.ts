@@ -1,19 +1,28 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { WorkerPool, WorkerTaskError } from "./worker-pool.ts";
+import { resetWorkerExecArgvForTests } from "./worker-exec-argv.ts";
 
 interface FakeWorker {
   emit: (event: string, ...args: unknown[]) => boolean;
   postMessage: ReturnType<typeof vi.fn>;
   terminate: ReturnType<typeof vi.fn>;
+  /** Event loop time so far, as `worker.performance` reports it. */
+  loop: { idle: number; active: number };
+  performance: { eventLoopUtilization: ReturnType<typeof vi.fn> };
 }
 
-const { workers, WorkerMock } = vi.hoisted(() => {
+const { workers, WorkerMock, spawnFake } = vi.hoisted(() => {
   // Minimal EventEmitter stand-in (the real node:events import is not
   // available inside vi.hoisted factories).
   class FakeWorkerImpl {
     #listeners = new Map<string, Array<(...args: unknown[]) => void>>();
     postMessage = vi.fn();
     terminate = vi.fn().mockResolvedValue(0);
+    // A loading worker is busy by default: all of its time is active.
+    loop = { idle: 0, active: 0 };
+    performance = {
+      eventLoopUtilization: vi.fn(() => ({ ...this.loop, utilization: 0 })),
+    };
 
     on(event: string, listener: (...args: unknown[]) => void): this {
       const list = this.#listeners.get(event) ?? [];
@@ -29,17 +38,29 @@ const { workers, WorkerMock } = vi.hoisted(() => {
     }
   }
   const workers: FakeWorkerImpl[] = [];
-  const WorkerMock = vi.fn(function (this: FakeWorkerImpl) {
+  const spawnFake = () => {
     const w = new FakeWorkerImpl();
     workers.push(w);
     return w;
+  };
+  const WorkerMock = vi.fn(function (
+    this: FakeWorkerImpl,
+    ..._args: unknown[]
+  ) {
+    return spawnFake();
   });
-  return { workers, WorkerMock };
+  return { workers, WorkerMock, spawnFake };
 });
 
 vi.mock("node:worker_threads", () => ({
   Worker: WorkerMock,
 }));
+
+const { avoidWasmWrapperRace } = vi.hoisted(() => ({
+  avoidWasmWrapperRace: vi.fn(() => true),
+}));
+
+vi.mock("./wasm-code-gc.ts", () => ({ avoidWasmWrapperRace }));
 
 const makePool = (size = 2) =>
   new WorkerPool<string, string>("/fake/worker.js", size, { init: true });
@@ -57,6 +78,7 @@ const failWith = (worker: FakeWorker, error: string) => {
 beforeEach(() => {
   workers.length = 0;
   WorkerMock.mockClear();
+  resetWorkerExecArgvForTests();
 });
 
 describe("WorkerPool", () => {
@@ -85,6 +107,26 @@ describe("WorkerPool", () => {
     expect((WorkerMock.mock.calls[0] as unknown[])[1]).not.toHaveProperty(
       "env",
     );
+  });
+
+  it("gives workers the arguments it was handed, and none when it was handed none", () => {
+    new WorkerPool<string, string>(
+      "/fake/worker.js",
+      1,
+      {},
+      { argv: ["--config=/project/config/site.mjs"] },
+    );
+    expect(WorkerMock).toHaveBeenLastCalledWith(
+      "/fake/worker.js",
+      expect.objectContaining({ argv: ["--config=/project/config/site.mjs"] }),
+    );
+    for (const argv of [undefined, []]) {
+      WorkerMock.mockClear();
+      new WorkerPool<string, string>("/fake/worker.js", 1, {}, { argv });
+      expect((WorkerMock.mock.calls[0] as unknown[])[1]).not.toHaveProperty(
+        "argv",
+      );
+    }
   });
 
   it("dispatches tasks to idle workers and resolves with the result", async () => {
@@ -307,6 +349,89 @@ describe("WorkerPool", () => {
       // New callers settle promptly with a useful error instead of hanging.
       await expect(pool.run("forever")).rejects.toThrow(/no viable workers/);
       await pool.terminate();
+    });
+
+    describe("Node flags this thread was started with", () => {
+      const realExecArgv = process.execArgv;
+      afterEach(() => {
+        process.execArgv = realExecArgv;
+        WorkerMock.mockImplementation(function () {
+          return spawnFake();
+        });
+      });
+
+      /** `new Worker` refusing per-process flags, as Node does. */
+      const refusePerProcessFlags = () =>
+        WorkerMock.mockImplementation(function (
+          this: unknown,
+          ...args: unknown[]
+        ) {
+          const options = args[1] as { execArgv?: string[] };
+          const bad = (options.execArgv ?? []).filter((arg) =>
+            /^--(max-old-space-size|stack-size)=/.test(arg),
+          );
+          if (bad.length > 0) {
+            throw Object.assign(
+              new TypeError(
+                `Initiated Worker with invalid execArgv flags: ${bad.join(", ")}`,
+              ),
+              { code: "ERR_WORKER_INVALID_EXEC_ARGV" },
+            );
+          }
+          return spawnFake();
+        });
+
+      it("starts workers without --input-type and the flags Node refuses, keeping the rest", async () => {
+        process.execArgv = [
+          "--max-old-space-size=4096",
+          "--import=./preload.mjs",
+          "--stack-size=900",
+          "--input-type=module",
+          "--conditions=dev",
+        ];
+        refusePerProcessFlags();
+        const pool = makePool(2);
+        // One refused attempt, then both workers start from the remembered list.
+        expect(WorkerMock).toHaveBeenCalledTimes(3);
+        expect(workers).toHaveLength(2);
+        for (const call of WorkerMock.mock.calls.slice(1)) {
+          expect((call as unknown[])[1]).toMatchObject({
+            execArgv: ["--import=./preload.mjs", "--conditions=dev"],
+          });
+        }
+        const done = pool.run("task-a");
+        const busy = workers.find((w) => w.postMessage.mock.calls.length > 0);
+        completeWith(busy!, "ok");
+        await expect(done).resolves.toBe("ok");
+        await pool.terminate();
+      });
+
+      it("names the constructor error when no worker can start at all", async () => {
+        WorkerMock.mockImplementation(function () {
+          throw new Error("Cannot find module '/fake/worker.js'");
+        });
+        const pool = makePool(1);
+        expect(WorkerMock).toHaveBeenCalledTimes(4);
+        await expect(pool.run("t")).rejects.toThrow(
+          "no viable workers: worker startup failed repeatedly; check the worker module (last error: Cannot find module '/fake/worker.js')",
+        );
+        await pool.terminate();
+      });
+
+      it("does not name a constructor error after a worker has since run a task", async () => {
+        WorkerMock.mockImplementationOnce(function () {
+          throw new Error("transient");
+        });
+        const pool = makePool(1);
+        const first = pool.run("t1");
+        completeWith(workers[0], "r1");
+        await expect(first).resolves.toBe("r1");
+        for (let i = 0; i < 5; i++) workers[workers.length - 1].emit("exit", 1);
+        const error = await pool.run("t2").catch((e: Error) => e);
+        expect(String(error)).toMatch(/no viable workers/);
+        expect(String(error)).not.toContain("transient");
+        await pool.terminate();
+      });
     });
 
     it("does not duplicate idle entries for a worker that reports message then exit", async () => {
@@ -723,6 +848,53 @@ describe("WorkerPool", () => {
   // nullptr") when a worker is terminated while it is still evaluating an
   // ES module graph with top-level await, which the page worker's is. A pool
   // whose workers announce when they have loaded never stops one before.
+  // Node 24's V8 frees a shared wasm import wrapper twice when one thread
+  // tiers it up while the last thread using it is torn down, however that
+  // thread stops ("Check failed: jit_page.has_value()"). The pool turns off
+  // wasm code GC before its first worker exists (`wasm-code-gc.ts`).
+  describe("wasm code GC", () => {
+    it("is turned off before the first worker starts", () => {
+      let workersAtCall = -1;
+      avoidWasmWrapperRace.mockImplementationOnce(() => {
+        workersAtCall = WorkerMock.mock.calls.length;
+        return true;
+      });
+      makePool(2);
+      expect(avoidWasmWrapperRace).toHaveBeenCalledTimes(1);
+      expect(workersAtCall).toBe(0);
+      expect(WorkerMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("is turned off for every pool kind, with or without the stop options", () => {
+      new WorkerPool("/fake/worker.js", 1, {});
+      new WorkerPool("/fake/worker.js", 1, {}, { readySignal: true });
+      new WorkerPool("/fake/worker.js", 1, {}, { stopSignal: true });
+      expect(avoidWasmWrapperRace).toHaveBeenCalledTimes(3);
+    });
+
+    it("still starts every worker where nothing had to change (another V8, or the user asked for wasm code GC)", async () => {
+      avoidWasmWrapperRace.mockImplementationOnce(() => false);
+      const pool = makePool(2);
+      expect(pool.size).toBe(2);
+      const task = pool.run("t1");
+      const busy = workers.find((w) =>
+        w.postMessage.mock.calls.some(([message]) => message === "t1"),
+      );
+      expect(busy).toBeDefined();
+      completeWith(busy!, "r1");
+      await expect(task).resolves.toBe("r1");
+      await pool.terminate();
+    });
+
+    it("is not asked again for replacements and growth, which start after it", () => {
+      const pool = makePool(1);
+      workers[0].emit("exit", 1);
+      pool.grow(3);
+      expect(WorkerMock).toHaveBeenCalledTimes(4);
+      expect(avoidWasmWrapperRace).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("readySignal", () => {
     const makeReadyPool = (size = 2) =>
       new WorkerPool<string, string>(
@@ -768,16 +940,163 @@ describe("WorkerPool", () => {
       await expect(terminated).resolves.toBeUndefined();
     });
 
-    it("stops a worker that never loads after a grace period instead of hanging", async () => {
+    /** Advance fake time while the worker's thread spends it busy or waiting. */
+    const spend = async (worker: FakeWorker, ms: number, busy: boolean) => {
+      for (let left = ms; left > 0; left -= 100) {
+        const step = Math.min(100, left);
+        if (busy) worker.loop.active += step;
+        else worker.loop.idle += step;
+        await vi.advanceTimersByTimeAsync(step);
+      }
+    };
+
+    it("never terminates a worker that is still evaluating past the grace period, and stops it once it loads", async () => {
+      vi.useFakeTimers();
+      try {
+        const pool = makeReadyPool(1);
+        let done = false;
+        const terminated = pool.terminate().then(() => (done = true));
+        // A bascik.config.ts that works for a minute at load time: slow, not stuck.
+        await spend(workers[0], 60_000, true);
+        expect(workers[0].terminate).not.toHaveBeenCalled();
+        expect(done).toBe(false);
+        ready(workers[0]);
+        await terminated;
+        expect(workers[0].terminate).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("terminates a worker that never loads once it is waiting rather than evaluating", async () => {
       vi.useFakeTimers();
       try {
         const pool = makeReadyPool(1);
         const terminated = pool.terminate();
-        await vi.advanceTimersByTimeAsync(9_000);
+        await spend(workers[0], 9_000, false);
         expect(workers[0].terminate).not.toHaveBeenCalled();
-        await vi.advanceTimersByTimeAsync(2_000);
-        expect(workers[0].terminate).toHaveBeenCalled();
+        // Past the grace, the first check that finds it waiting ends it.
+        await spend(workers[0], 2_100, false);
+        expect(workers[0].terminate).toHaveBeenCalledTimes(1);
         await terminated;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps waiting while a stuck-looking worker is busy, and terminates it only after it starts waiting", async () => {
+      vi.useFakeTimers();
+      try {
+        const pool = makeReadyPool(1);
+        const terminated = pool.terminate();
+        await spend(workers[0], 20_000, true);
+        expect(workers[0].terminate).not.toHaveBeenCalled();
+        await spend(workers[0], 1_100, false);
+        expect(workers[0].terminate).toHaveBeenCalledTimes(1);
+        await terminated;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("counts an event loop it cannot read as busy, never as waiting", async () => {
+      vi.useFakeTimers();
+      try {
+        const pool = makeReadyPool(1);
+        workers[0].performance.eventLoopUtilization.mockImplementation(() => {
+          throw new Error("not available");
+        });
+        let done = false;
+        const terminated = pool.terminate().then(() => (done = true));
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(workers[0].terminate).not.toHaveBeenCalled();
+        // An exit still ends the wait.
+        workers[0].emit("exit", 1);
+        await terminated;
+        expect(done).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("trims a slow worker only once it loads, and a busy trim never blocks the rest of the pool", async () => {
+      vi.useFakeTimers();
+      try {
+        const pool = makeReadyPool(2);
+        // The first idle worker is the one trimmed.
+        const [slow, kept] = workers;
+        const trimmed = pool.shrink(1);
+        expect(pool.size).toBe(1);
+        ready(kept);
+        const task = pool.run("t1");
+        completeWith(kept, "r1");
+        await expect(task).resolves.toBe("r1");
+        await spend(slow, 15_000, true);
+        expect(slow.terminate).not.toHaveBeenCalled();
+        ready(slow);
+        await trimmed;
+        expect(slow.terminate).toHaveBeenCalledTimes(1);
+        expect(kept.terminate).not.toHaveBeenCalled();
+        await pool.terminate();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("calls onSlowLoad once when a stop waits past the grace period, and never for an abandoned pool", async () => {
+      vi.useFakeTimers();
+      try {
+        const onSlowLoad = vi.fn();
+        const pool = new WorkerPool<string, string>(
+          "/fake/worker.js",
+          2,
+          {},
+          { readySignal: true, onSlowLoad },
+        );
+        const terminated = pool.terminate();
+        await vi.advanceTimersByTimeAsync(9_000);
+        expect(onSlowLoad).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(onSlowLoad).toHaveBeenCalledTimes(1);
+        for (const w of workers) ready(w);
+        await terminated;
+
+        const quiet = vi.fn();
+        const abandoned = new WorkerPool<string, string>(
+          "/fake/worker.js",
+          1,
+          {},
+          { readySignal: true, onSlowLoad: quiet },
+        );
+        const exiting = abandoned.terminate({ abandon: true });
+        await vi.advanceTimersByTimeAsync(15_000);
+        ready(workers[workers.length - 1]);
+        await exiting;
+        expect(quiet).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("stops the worker as usual when onSlowLoad throws", async () => {
+      vi.useFakeTimers();
+      try {
+        const pool = new WorkerPool<string, string>(
+          "/fake/worker.js",
+          1,
+          {},
+          {
+            readySignal: true,
+            onSlowLoad: () => {
+              throw new Error("reporter failed");
+            },
+          },
+        );
+        const terminated = pool.terminate();
+        await vi.advanceTimersByTimeAsync(12_000);
+        ready(workers[0]);
+        await expect(terminated).resolves.toBeUndefined();
+        expect(workers[0].terminate).toHaveBeenCalledTimes(1);
       } finally {
         vi.useRealTimers();
       }
@@ -915,29 +1234,55 @@ describe("WorkerPool", () => {
       await Promise.resolve();
       expect(stopsPosted(workers[0])).toBe(0);
       workers[0].emit("message", { ready: true });
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise((resolve) => setImmediate(resolve));
       expect(stopsPosted(workers[0])).toBe(1);
       workers[0].emit("exit", 0);
       await terminated;
       expect(workers[0].terminate).not.toHaveBeenCalled();
     });
 
-    it("with readySignal, terminates a worker that never loaded at the ready deadline without asking it to stop", async () => {
+    it("with readySignal, terminates a stuck worker that never loaded without asking it to stop", async () => {
       vi.useFakeTimers();
       try {
         const pool = makeStopPool(1, true);
         const terminated = pool.terminate();
+        // Waiting (idle event loop), not evaluating.
+        workers[0].loop.idle = 1;
         await vi.advanceTimersByTimeAsync(9_000);
+        workers[0].loop.idle = 9_000;
         expect(stopsPosted(workers[0])).toBe(0);
         expect(workers[0].terminate).not.toHaveBeenCalled();
-        // A worker still evaluating its modules has no listener for the stop
+        await vi.advanceTimersByTimeAsync(1_000);
+        workers[0].loop.idle = 11_000;
+        // A worker still in its module graph has no listener for the stop
         // message, so waiting STOP_GRACE_MS for a reply would only push the
         // terminate() to the exit bound.
         await vi.advanceTimersByTimeAsync(1_000);
         expect(stopsPosted(workers[0])).toBe(0);
         expect(workers[0].terminate).toHaveBeenCalledTimes(1);
         await terminated;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("with readySignal, asks a slow worker to stop once it loads instead of terminating it at the deadline", async () => {
+      vi.useFakeTimers();
+      try {
+        const pool = makeStopPool(1, true);
+        const terminated = pool.terminate();
+        for (let t = 0; t < 30_000; t += 500) {
+          workers[0].loop.active += 500;
+          await vi.advanceTimersByTimeAsync(500);
+        }
+        expect(stopsPosted(workers[0])).toBe(0);
+        expect(workers[0].terminate).not.toHaveBeenCalled();
+        workers[0].emit("message", { ready: true });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(stopsPosted(workers[0])).toBe(1);
+        workers[0].emit("exit", 0);
+        await terminated;
+        expect(workers[0].terminate).not.toHaveBeenCalled();
       } finally {
         vi.useRealTimers();
       }

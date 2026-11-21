@@ -119,8 +119,9 @@ describe("extension packaging", () => {
       );
       expect(typescriptInputs).toEqual([]);
       expect(TYPESCRIPT_EXTERNALS).toEqual(["typescript", "typescript-6"]);
-      // TypeScript alone is about 9 MB; the server with its TypeScript support stays well under 1 MB.
-      expect(statSync(outfile).size).toBeLessThan(1_000_000);
+      // TypeScript alone is about 9 MB; the server with its TypeScript support stays well under
+      // 1.5 MB (about 1.01 MB with the throw-non-error rule).
+      expect(statSync(outfile).size).toBeLessThan(1_500_000);
     } finally {
       rmSync(work, { recursive: true, force: true });
     }

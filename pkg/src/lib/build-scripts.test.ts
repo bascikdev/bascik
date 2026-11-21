@@ -48,11 +48,16 @@ const { state, buildScriptMocks } = vi.hoisted(() => {
       return state.userReadFileMock(filePath, ...args);
     }),
     computePackageIdentity: vi.fn(),
+    readVersion: vi.fn(async () => "1.0.0"),
     // Wraps the real tokenizer so tests can count dependency scans by input.
     scanScript: vi.fn(),
   };
   return { state, buildScriptMocks: mocks };
 });
+
+vi.mock("./version.ts", () => ({
+  readVersion: buildScriptMocks.readVersion,
+}));
 
 vi.mock("./module-specifiers.ts", async (importOriginal) => {
   const actual =
@@ -255,6 +260,7 @@ beforeEach(() => {
     .mockImplementation(async (prefix: string) => `${prefix}mockdir`);
   buildScriptMocks.rm.mockReset().mockResolvedValue(undefined);
   buildScriptMocks.stat.mockReset().mockResolvedValue({ size: 100 });
+  buildScriptMocks.readVersion.mockReset().mockResolvedValue("1.0.0");
   buildScriptMocks.computePackageIdentity
     .mockReset()
     .mockResolvedValue("pkgid:mock");
@@ -390,6 +396,46 @@ describe("executeBuildScripts", () => {
     await executeBuildScripts(html, file, null, { stats: warm });
     expect(mockExecFile).not.toHaveBeenCalled();
     expect(warm).toEqual({ ran: 0, cached: 3, childMs: 0 });
+  });
+
+  it("counts only the scripts that started when the first one fails under the 'error' policy", async () => {
+    // The first script fails and ends the page; the two after it never run.
+    rejectWith("first script exploded");
+    const html =
+      "<script data-bascik-build>a()</script>" +
+      "<script data-bascik-build>b()</script>" +
+      "<script data-bascik-build>c()</script>";
+    const stats = { ran: 0, cached: 0, childMs: 0 };
+    await expect(
+      executeBuildScripts(html, "src/pages/fails-first.html", null, { stats }),
+    ).rejects.toThrow();
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
+    expect(stats.ran).toBe(1);
+    expect(stats.cached).toBe(0);
+    // The failed script's time is still charged to the page.
+    expect(stats.childMs).toBeGreaterThan(0);
+  });
+
+  it("counts every script that ran when a failure is tolerated under 'warn'", async () => {
+    (BascikConfig as any).scripts = {
+      ...BascikConfig.scripts,
+      onBuildScriptError: "warn",
+    };
+    rejectWith("tolerated failure");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const html =
+        "<script data-bascik-build>a()</script>" +
+        "<script data-bascik-build>b()</script>";
+      const stats = { ran: 0, cached: 0, childMs: 0 };
+      await executeBuildScripts(html, "src/pages/warns.html", null, { stats });
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+      expect(stats.ran).toBe(2);
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
   });
 
   it("replaces a data-bascik-build script tag with handler returned markup", async () => {
@@ -966,7 +1012,8 @@ describe("executeBuildScripts", () => {
       },
     );
     await executeBuildScripts("<script data-bascik-build>x</script>");
-    expect(stderrSpy).toHaveBeenCalledWith("warning: something unusual");
+    // With the newline it lacked, so the next line starts on its own.
+    expect(stderrSpy).toHaveBeenCalledWith("warning: something unusual\n");
     stderrSpy.mockRestore();
   });
 
@@ -1588,6 +1635,24 @@ describe("build-script output cache", () => {
     const entry = JSON.parse(content);
     expect(entry.output).toBe("<p>result</p>");
     expect(entry.v).toBeGreaterThan(0);
+  });
+
+  it("keys entries by the installed Bascik version", async () => {
+    const cachePath = async (): Promise<string> => {
+      mockWriteFile.mockClear();
+      resolveWith("<p>result</p>");
+      await executeBuildScripts("<script data-bascik-build>nodeps()</script>");
+      const jsonCall = mockWriteFile.mock.calls.find(([path]) =>
+        String(path).endsWith(".json"),
+      );
+      return String(jsonCall?.[0]);
+    };
+    const before = await cachePath();
+    clearBuildScriptCaches();
+    buildScriptMocks.readVersion.mockResolvedValue("1.0.1");
+    const after = await cachePath();
+    expect(after).not.toBe(before);
+    expect(after).toMatch(/\.json$/);
   });
 
   it("does not write a cache entry when the script fails", async () => {
@@ -2399,6 +2464,101 @@ describe("build-script output cache", () => {
     await expect(executeBuildScripts(html)).rejects.toThrow(
       /build script error/,
     );
+  });
+
+  // A script that writes more than the 10 MB output limit is stopped by Node.
+  // Its 10 MB were echoed first, with no newline, so the located error
+  // header was glued to the end of that line.
+  it.each(["stdout", "stderr"])(
+    "does not echo a script's %s past the output limit, and the error header starts its own line",
+    async (stream) => {
+      const flood = "x".repeat(4096);
+      mockExecFile.mockImplementation(
+        (
+          _cmd: unknown,
+          _args: unknown,
+          _opts: unknown,
+          cb: (err: Error | null, stdout?: string, stderr?: string) => void,
+        ) =>
+          cb(
+            Object.assign(new Error(`${stream} maxBuffer length exceeded`), {
+              code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+              killed: true,
+              signal: "SIGTERM",
+            }),
+            stream === "stdout" ? flood : "",
+            stream === "stderr" ? flood : "",
+          ),
+      );
+      const written: string[] = [];
+      const out = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(
+          (chunk: any) => (written.push(String(chunk)), true),
+        );
+      const err = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(
+          (chunk: any) => (written.push(String(chunk)), true),
+        );
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const error = (await executeBuildScripts(
+          "<p><script data-bascik-build>flood()</script></p>",
+          "src/pages/index.html",
+        ).catch((e: unknown) => e)) as Error;
+        expect(written.join("")).not.toContain(flood);
+        expect(error.message).not.toContain(flood);
+        expect(error.message).toMatch(
+          new RegExp(
+            `^\\[bascik\\] build script error in "src/pages/index.html" at \\(line 1, column 4\\):\\nDirective script \\(data-bascik-build\\) failed: it wrote more than 10 MB to ${stream}, so it was stopped and its output is not shown\\.`,
+          ),
+        );
+      } finally {
+        out.mockRestore();
+        err.mockRestore();
+        errorSpy.mockRestore();
+      }
+    },
+  );
+
+  // A failing script whose last write had no newline ("Loading..."): the
+  // header must still start on a line of its own.
+  it("ends a failing script's echoed output with a newline before the error", async () => {
+    mockExecFile.mockImplementation(
+      (
+        _cmd: unknown,
+        _args: unknown,
+        _opts: unknown,
+        cb: (err: Error | null, stdout?: string, stderr?: string) => void,
+      ) =>
+        cb(
+          Object.assign(new Error("Command failed"), { code: 1 }),
+          "Loading...",
+          "Error: boom\n",
+        ),
+    );
+    const order: string[] = [];
+    const out = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk: any) => (order.push(String(chunk)), true));
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation((line: unknown) => void order.push(String(line)));
+    try {
+      await executeBuildScripts(
+        "<p><script data-bascik-build>boom()</script></p>",
+        "src/pages/index.html",
+      ).catch(() => undefined);
+      const text = order.join("");
+      expect(text).toContain("Loading...\n");
+      expect(text.indexOf("Loading...\n")).toBeLessThan(
+        text.indexOf("[bascik] build script error"),
+      );
+    } finally {
+      out.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   it("throws a BuildScriptError that carries the failing script's location as data", async () => {

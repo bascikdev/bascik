@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { access } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { extname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isMainThread } from "node:worker_threads";
 import {
   CONFIG_FILE_LIST,
   CONFIG_FILE_NAMES,
@@ -34,6 +35,32 @@ export const importUserConfig = async (
   configPath: string,
 ): Promise<UserConfigModule> => {
   return (await import(pathToFileURL(configPath).href)) as UserConfigModule;
+};
+
+/**
+ * A config (or a module it imports) whose top-level await waits on a promise
+ * that never settles leaves the event loop empty while its import is still
+ * pending. Node then exits with code 13 and "Detected unsettled top-level
+ * await at .../pkg/src/index.ts", which names Bascik's file, not the
+ * config. `beforeExit` fires first, when the loop empties: while the import
+ * is pending, that can only be the config, so it is reported by name and the
+ * process exits 1. Main thread only: a worker never owns the process.
+ */
+const failIfConfigNeverSettles = (configPath: string): (() => void) => {
+  if (!isMainThread) return () => {};
+  const onBeforeExit = () => {
+    const display =
+      relative(process.cwd(), configPath).replace(/\\/g, "/") || configPath;
+    console.error(
+      `[bascik] error: ${display} never finished loading: a top-level ` +
+        "`await` in it, or in a module it imports, waits on a promise that " +
+        "never resolves or rejects. Make that promise settle, or move the " +
+        "work out of the config's top level.",
+    );
+    process.exit(1);
+  };
+  process.on("beforeExit", onBeforeExit);
+  return () => process.off("beforeExit", onBeforeExit);
 };
 
 /**
@@ -137,20 +164,30 @@ const rejectRemovedKeys = (cfg: UserConfig, exportName: string): void => {
 /** The exports Bascik reads from a config module. */
 const CONFIG_EXPORTS = ["default", "dev", "build", "server"] as const;
 
+/** A promise, or anything else `await` would unwrap. */
+const isThenable = (value: unknown): boolean =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as { then?: unknown }).then === "function";
+
 const describeValue = (value: unknown): string =>
   value === null
     ? "null"
     : Array.isArray(value)
       ? "an array"
-      : typeof value === "function"
-        ? "a function (Bascik reads the object, it does not call it)"
-        : `${typeof value} ${typeof value === "string" ? JSON.stringify(value) : String(value)}`;
+      : isThenable(value)
+        ? "a promise (Bascik reads the object, it does not wait for it)"
+        : typeof value === "function"
+          ? "a function (Bascik reads the object, it does not call it)"
+          : `${typeof value} ${typeof value === "string" ? JSON.stringify(value) : String(value)}`;
 
 /**
  * A config file whose settings Bascik would never see is an error, not a
  * zero config: every setting in it would be ignored and never validated.
  * That is a read export that is not a plain object (a function, a string,
- * null), or a module whose only exports are names Bascik does not read
+ * null, or a promise, whose settings are on the value it resolves to, as
+ * with `export default loadSettings()` for an async `loadSettings`), or a
+ * module whose only exports are names Bascik does not read
  * (`export const config = ...`). A module that exports nothing at all gets a
  * warning: the defaults apply, as with no file.
  */
@@ -163,13 +200,23 @@ const assertReadableExports = (
   for (const name of CONFIG_EXPORTS) {
     const value = exports?.[name];
     if (value === undefined) continue;
-    if (typeof value === "object" && value !== null && !Array.isArray(value))
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      !Array.isArray(value) &&
+      !isThenable(value)
+    )
       continue;
     const declaration =
       name === "default" ? "export default" : `export const ${name} =`;
+    // A promise already holds the settings: the fix is to await it, under
+    // the same export name.
+    const fix = isThenable(value)
+      ? `\`${declaration} await ...\` to export what it resolves to`
+      : `\`${declaration} defineConfig({ ... })\``;
     problems.push(
       `  the ${name} export must be an object, not ${describeValue(value)}. ` +
-        `Write \`${declaration} defineConfig({ ... })\`.`,
+        `Write ${fix}.`,
     );
   }
   if (problems.length > 0)
@@ -254,6 +301,7 @@ export const loadUserConfig = async (
   // surface with its message and the config path — never be misreported as
   // "no config found" while defaults silently apply.
   let mod: UserConfigModule;
+  const stopWatchingForUnsettledAwait = failIfConfigNeverSettles(configPath);
   try {
     mod = await importUserConfig(configPath);
   } catch (err) {
@@ -268,6 +316,8 @@ export const loadUserConfig = async (
         (hint ? `\n${hint}` : ""),
       { cause: err },
     );
+  } finally {
+    stopWatchingForUnsettledAwait();
   }
 
   assertReadableExports(mod, configPath);

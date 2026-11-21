@@ -1,4 +1,5 @@
 import { stat } from "node:fs/promises";
+import { listenError } from "./listen-errors.ts";
 import { liveReloadVersionOf } from "./live-reload.ts";
 import { pipeline } from "node:stream/promises";
 import http2 from "node:http2";
@@ -20,6 +21,7 @@ import {
   registerShutdownHandler,
   runShutdownHandlers,
 } from "./events.ts";
+import { handOverSignals, STOP_SIGNALS } from "./exit-stoppers.ts";
 import { getHttpPath } from "./paths.ts";
 import { cspHeadersForPage } from "./csp-header-node.ts";
 import { MIME_MAP } from "./mime.ts";
@@ -286,8 +288,11 @@ export const onError = (
   try {
     if (!res.headersSent) {
       if (isNoSuchFileError(error)) {
-        res.respond(404, { ...secHeaders });
-        res.end();
+        res.respond(404, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
+        res.end("Not Found");
         return 404;
       } else {
         // Try serving custom 500 page from memory store
@@ -578,8 +583,11 @@ export const createRequestHandler = () => {
     try {
       if (!req.path) {
         responseStatus = 400;
-        res.respond(400, { ...secHeaders });
-        return res.end();
+        res.respond(400, {
+          "content-type": "text/plain; charset=utf-8",
+          ...secHeaders,
+        });
+        return res.end("Bad Request");
       }
 
       // Parse the request pathname once so routing decisions are never
@@ -769,7 +777,22 @@ export const createRequestHandler = () => {
       const ext = (
         extname(pathname) || (dotfileName.startsWith(".") ? dotfileName : "")
       ).toLowerCase();
-      if (ext && !ext.match(/^\.htm.*$/) && !pathname.endsWith("/")) {
+      // A page name can hold a dot too (`release-1.0.html`, a `[version]`
+      // route of `v2.0`, the folder `v1.2/`): when no file has the path and a
+      // page does, the request leaves this block for the page lookup.
+      // During the dev server's first compile the page may not be in memory
+      // yet, so a dotted path with no file and no known file type goes to the
+      // page lookup too, which serves the boot page (a missing `.png` stays a
+      // 404). The boot page reloads into a 404 if no page lands there.
+      const mayBeBootingPage =
+        !BascikConfig.isProdServer &&
+        (mem.isBooting || Boolean(getBootFailure())) &&
+        !MIME_MAP.has(ext);
+      staticAsset: if (
+        ext &&
+        !ext.match(/^\.htm.*$/) &&
+        !pathname.endsWith("/")
+      ) {
         // Path traversal guard: resolved path must stay inside dist/
         const safePath = pathname.replace(/^\/+/, ""); // strip leading slashes
         const fullPath = resolve(distDir, safePath);
@@ -783,7 +806,10 @@ export const createRequestHandler = () => {
           !fullPath.startsWith(distDirPrefix)
         ) {
           responseStatus = 400;
-          res.respond(400, { ...secHeaders });
+          res.respond(400, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
           res.end("Bad Request");
           return;
         }
@@ -812,13 +838,24 @@ export const createRequestHandler = () => {
         try {
           fileStat = await stat(fullPath);
         } catch (err) {
+          if (
+            isNoSuchFileError(err) &&
+            (mayBeBootingPage || mem.getPageExact(pathname))
+          )
+            break staticAsset;
           responseStatus = isNoSuchFileError(err) ? 404 : 500;
-          res.respond(responseStatus, { ...secHeaders });
+          res.respond(responseStatus, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
           res.end(
             responseStatus === 404 ? "Not Found" : "Internal Server Error",
           );
           return;
         }
+        // `/v1.2` is the folder of the page `v1.2/index.html`, not a file.
+        if (fileStat.isDirectory?.() && mem.getPageExact(pathname))
+          break staticAsset;
 
         const mimeType =
           MIME_MAP.get(ext.toLowerCase()) ?? "application/octet-stream";
@@ -861,7 +898,10 @@ export const createRequestHandler = () => {
         if (!delivery) {
           if (res.destroyed) return;
           responseStatus = 404;
-          res.respond(404, { ...secHeaders });
+          res.respond(404, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
           res.end("Not Found");
           return;
         }
@@ -978,8 +1018,11 @@ export const createRequestHandler = () => {
         // Disable in production serve mode.
         if (BascikConfig.isProdServer) {
           responseStatus = 404;
-          res.respond(404, { ...secHeaders });
-          return res.end();
+          res.respond(404, {
+            "content-type": "text/plain; charset=utf-8",
+            ...secHeaders,
+          });
+          return res.end("Not Found");
         }
 
         const isHead = req.method === "HEAD";
@@ -1177,6 +1220,7 @@ export const createRequestHandler = () => {
 
       if (
         !exactPage &&
+        !mayBeBootingPage &&
         pathname.split(".").length > 1 &&
         !/\.html?$/i.test(pathname)
       ) {
@@ -1525,7 +1569,7 @@ export const startServerInstance = async (
           : Promise.resolve();
         void release.then(() => {
           if (err.code === "EADDRINUSE") portInUse(p);
-          else reject(err);
+          else reject(listenError(err, p, hostname));
         });
       };
       server.once("error", errorHandler);
@@ -1559,7 +1603,7 @@ export const startServerInstance = async (
   // General runtime error handler
   server.on("error", (error) => console.error(error));
 
-  // ── Graceful shutdown on SIGTERM / SIGINT / SIGHUP ───────────────────────
+  // ── Graceful shutdown on SIGTERM / SIGINT / SIGHUP / SIGQUIT / SIGUSR2 ──
   const drainTimeout =
     BascikConfig.http.timeouts?.drain ?? DEFAULT_DRAIN_TIMEOUT_MS;
 
@@ -1571,44 +1615,41 @@ export const startServerInstance = async (
     runShutdownHandlers,
   });
 
-  process.setMaxListeners(process.getMaxListeners() + 3);
+  process.setMaxListeners(process.getMaxListeners() + STOP_SIGNALS.length);
   // Each handler runs once, so a repeat of the same signal takes the
   // default action and ends the process at once. In dev the first signal
-  // also removes the other handler: any further Ctrl-C or SIGTERM ends the
+  // also removes the other handlers: any further Ctrl-C or SIGTERM ends the
   // process at once while the shutdown waits (for connections to drain, or
   // for page workers to finish loading). The production server keeps the
-  // other handler (a no-op once shutting down), so a process manager's
+  // other handlers (a no-op once shutting down), so a process manager's
   // SIGTERM after a Ctrl-C cannot cut the connection drain short.
+  // A supervisor or IDE that stops the server with SIGHUP, a Ctrl+\ (SIGQUIT)
+  // or nodemon's restart (SIGUSR2) signals only this process; by default it
+  // would die without running the exit stoppers and orphan pipeline.exec
+  // children (audit 159 finding 142). Each is treated as SIGTERM.
+  const shutdownHandlers = new Map(
+    STOP_SIGNALS.map((signal) => [
+      signal,
+      () => {
+        if (!BascikConfig.isProdServer) releaseShutdownSignals();
+        void gracefulShutdown(signal);
+      },
+    ]),
+  );
   const releaseShutdownSignals = () => {
-    process.removeListener("SIGTERM", sigtermHandler);
-    process.removeListener("SIGINT", sigintHandler);
-    process.removeListener("SIGHUP", sighupHandler);
+    for (const [signal, handler] of shutdownHandlers)
+      process.removeListener(signal, handler);
   };
-  const onFirstSignal = () => {
-    if (!BascikConfig.isProdServer) releaseShutdownSignals();
-  };
-  const sigtermHandler = () => {
-    onFirstSignal();
-    void gracefulShutdown("SIGTERM");
-  };
-  const sigintHandler = () => {
-    onFirstSignal();
-    void gracefulShutdown("SIGINT");
-  };
-  // A supervisor or IDE that stops the server with SIGHUP signals only this
-  // process; by default it would die without running the exit stoppers and
-  // orphan pipeline.exec children (audit 159 finding 142). Treat it as SIGTERM.
-  const sighupHandler = () => {
-    onFirstSignal();
-    void gracefulShutdown("SIGHUP");
-  };
-  process.once("SIGTERM", sigtermHandler);
-  process.once("SIGINT", sigintHandler);
-  process.once("SIGHUP", sighupHandler);
+  // The CLI's own listeners covered the time before this server existed.
+  handOverSignals();
+  for (const [signal, handler] of shutdownHandlers)
+    process.once(signal, handler);
 
   server.once("close", () => {
     releaseShutdownSignals();
-    process.setMaxListeners(Math.max(0, process.getMaxListeners() - 3));
+    process.setMaxListeners(
+      Math.max(0, process.getMaxListeners() - STOP_SIGNALS.length),
+    );
   });
 
   return origin;

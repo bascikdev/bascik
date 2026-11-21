@@ -12,7 +12,7 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   getActiveExecChildrenCount,
   runScript,
@@ -104,6 +104,23 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // A test that failed while its script was still running: the reset below
+  // only forgets the script, so end it and what it started first. The
+  // grandchild by its own PID too, for the tests where Bascik cannot confirm
+  // it and leaves it alone.
+  // After a turn of the event loop: a spawn that failed (the missing cwd
+  // test) reports on the next tick, and until then its child has no PID, so
+  // stopping it would signal PID 0, this process's own group.
+  await new Promise((resolve) => setImmediate(resolve));
+  await stopBeforeExit();
+  try {
+    const pid = Number(readFileSync(join(project, "grandchild.pid"), "utf8"));
+    // Never 0 (a file read while it was being written): that is this
+    // process's own group.
+    if (Number.isInteger(pid) && pid > 1) process.kill(pid, "SIGKILL");
+  } catch {
+    // No grandchild, or already gone.
+  }
   vi.restoreAllMocks();
   resetActiveExecChildrenForTests();
   await rm(project, { recursive: true, force: true });
@@ -139,6 +156,49 @@ writeFileSync("ran.txt", process.cwd());
       'exec "scripts/sync.mjs": working directory "packagez/site" does not exist',
     );
   });
+
+  // Until the spawn error is emitted on the next tick, Node keeps the failed
+  // child's handle with pid 0, and `child.kill()` is kill(0, SIGTERM): it
+  // signals the caller's whole process group. Run in a process of its own
+  // group, so a regression ends only that process.
+  it.skipIf(process.platform === "win32")(
+    "a stop right after a spawn that failed does not signal Bascik's own process group",
+    async () => {
+      await mkdir(join(project, "scripts"));
+      await writeFile(join(project, "scripts", "sync.mjs"), "");
+      const driver = join(project, "driver.mjs");
+      await writeFile(
+        driver,
+        `const { runScript } = await import(${JSON.stringify(new URL("./exec.ts", import.meta.url).href)});
+const { stopBeforeExit } = await import(${JSON.stringify(new URL("./exit-stoppers.ts", import.meta.url).href)});
+const run = runScript({ script: "scripts/sync.mjs", cwd: "missing" }).catch((error) => error);
+await stopBeforeExit();
+console.log("result:", (await run).message);
+await new Promise((done) => setTimeout(done, 300));
+console.log("survived");
+`,
+      );
+      // A process group of its own (`detached`), and stdout captured.
+      const child = spawn(process.execPath, [driver], {
+        cwd: project,
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      child.stdout!.on("data", (chunk) => (stdout += chunk));
+      child.stderr!.on("data", (chunk) => (stderr += chunk));
+      const timer = setTimeout(() => child.kill("SIGKILL"), 20_000);
+      const signal = await new Promise<NodeJS.Signals | null>((done) =>
+        child.once("close", (_code, sig) => done(sig)),
+      );
+      clearTimeout(timer);
+      const result = { signal, stdout, stderr };
+      expect(result.signal, result.stderr).toBeNull();
+      expect(result.stdout).toContain('working directory "missing"');
+      expect(result.stdout).toContain("survived");
+    },
+  );
 });
 
 describe.skipIf(process.platform === "win32")(

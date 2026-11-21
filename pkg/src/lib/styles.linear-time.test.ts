@@ -110,6 +110,16 @@ describe("element selector passes stay linear on long stretches without a stop",
         `${Array.from({ length: n }, () => "h2").join(", ")} { color: red }`,
     ],
     [
+      "a long selector list with pseudo-class arguments (Pass 2)",
+      (n: number) =>
+        `${Array.from({ length: n }, () => "h2:not(.a)").join(", ")} { color: red }`,
+    ],
+    [
+      "a long list inside unclosed parentheses (Pass 2)",
+      (n: number) =>
+        `div:is(${Array.from({ length: n }, () => "h2").join(", ")} { color: red }`,
+    ],
+    [
       "a long selector list over many lines (Pass 1)",
       (n: number) =>
         `${Array.from({ length: n }, () => "h2").join(",\n")} { color: red }`,
@@ -175,6 +185,26 @@ describe("hoistCssImports stays linear on unterminated statements", () => {
     [
       "imports between rules (pinned)",
       (n: number) => ".a{color:red}\n@import 'x.css';\n".repeat(n),
+    ],
+    [
+      "many @namespace with an unclosed url(",
+      (n: number) => "@namespace s url(".repeat(n),
+    ],
+    [
+      "an @namespace url( full of spaces",
+      (n: number) => `@namespace s url(${" ".repeat(n)}x`,
+    ],
+    [
+      "many unclosed @namespace strings",
+      (n: number) => '@namespace s "'.repeat(n),
+    ],
+    [
+      "distinct namespaces between rules",
+      (n: number) =>
+        Array.from(
+          { length: n },
+          (_, i) => `.a{color:red}\n@namespace s${i} url(x${i});\n`,
+        ).join(""),
     ],
   ])(
     "on %s",

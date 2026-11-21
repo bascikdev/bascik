@@ -6,6 +6,10 @@ import { getTag, listComponents, maskRawTextContent } from "./components.ts";
 import { stampDirectiveSources } from "./directive-source.ts";
 import { createExternalTagMatcher } from "./external-components.ts";
 import {
+  findInlinedStylesheetLinks,
+  inlinedStylesheetLinkMessage,
+} from "./inline-style-links.ts";
+import {
   getDirectoryPath,
   getDistPagePath,
   getRelativePath,
@@ -24,6 +28,8 @@ import {
 import {
   createBuildScriptStats,
   formatPageBuildScriptStats,
+  recordFailedPageBuildScriptStats,
+  type BuildScriptStats,
 } from "./build-script-stats.ts";
 import { collectAllScriptDeps, executeBuildScripts } from "./build-scripts.ts";
 import {
@@ -166,7 +172,32 @@ export const writeTranspiledPage = async (
   );
 };
 
+/**
+ * Compile one page. A page that fails throws, and its error carries what its
+ * build scripts cost (`failedPageBuildScriptStats`), so the summary still
+ * counts the scripts that ran on it.
+ */
 export const transpilePage = async (
+  ...args: Parameters<typeof transpileCountedPage> extends [
+    unknown,
+    ...infer Rest,
+  ]
+    ? Rest
+    : never
+): Promise<TranspilePageResult | null> => {
+  // Build-script children run while the page's clock is paused, so their
+  // cost is counted separately and named on the page's line.
+  const scriptStats = createBuildScriptStats();
+  try {
+    return await transpileCountedPage(scriptStats, ...args);
+  } catch (error) {
+    recordFailedPageBuildScriptStats(error, scriptStats);
+    throw error;
+  }
+};
+
+const transpileCountedPage = async (
+  scriptStats: BuildScriptStats,
   pagePath: string,
   componentList?: ComponentList,
   globalStylesHtml?: string,
@@ -186,9 +217,6 @@ export const transpilePage = async (
   const resume = () => {
     seg = performance.now();
   };
-  // Build-script children run while the clock above is paused, so their cost
-  // is counted separately and named on the page's line.
-  const scriptStats = createBuildScriptStats();
 
   const relativePagePath = route
     ? resolveRoutePath(getRelativePath(pagePath, "pages"), route.params)
@@ -222,6 +250,11 @@ export const transpilePage = async (
         rawHtml = routesResult.cleanedHtml;
       }
     } catch (err) {
+      // A build that cannot read a page must not finish without it and exit
+      // 0: the failure is reported with the other page errors. In dev the
+      // file may have been deleted since the watcher saw it, so it is only
+      // a warning there.
+      if (BascikConfig.isBuild) throw err;
       console.warn(
         `[bascik] warning: Could not read page file "${pagePath}": ${(err as Error).message}`,
       );
@@ -397,6 +430,17 @@ export const transpilePage = async (
         `[bascik] Unresolved component tag${unresolved.size > 1 ? "s" : ""} in "${relativePagePath}": ` +
           `${[...unresolved].map((t) => `<${t}>`).join(", ")} — no matching component file found. ` +
           `Run \`bascik --check\` for a full report.`,
+      );
+    }
+  }
+
+  // A stylesheet that assets.inlineStyles inlines is not copied to the
+  // output, so a <link> to it that the page (or a component) still has
+  // would answer 404 without a word.
+  for (const chunk of [transpiledHeadContent, transpiledHtmlBody]) {
+    for (const link of findInlinedStylesheetLinks(chunk, pagePath)) {
+      console.warn(
+        `[bascik] ${relativePagePathForDiagnostics(pagePath)}: ${inlinedStylesheetLinkMessage(link.href)}`,
       );
     }
   }

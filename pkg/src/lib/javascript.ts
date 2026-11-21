@@ -74,6 +74,7 @@
  * that variables declared inside one component cannot leak into another.
  */
 
+import { withOpenFileSlot } from "./open-file-limit.ts";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, relative } from "node:path";
 import { getUniqueId, minifyAttributeName } from "./names.ts";
@@ -187,6 +188,7 @@ import {
 import {
   createContentShield,
   shieldElementContents,
+  shieldHtmlComments,
   shieldPreservedAttribute,
   stripPreserveDirectives,
 } from "./shielding.ts";
@@ -198,6 +200,10 @@ import {
 } from "./id-references.ts";
 import type { BascikComponent } from "./types.ts";
 import { decodeSource } from "./source-text.ts";
+import {
+  forgetUnreadableSourceFile,
+  reportUnreadableSourceFile,
+} from "./unreadable-source.ts";
 import {
   createNamedOpenTagScanner,
   createOpenTagScanner,
@@ -669,13 +675,11 @@ export const prefixElementAttribute = (
   // static HTML string literals inside client, server, and stream scripts have
   // their class/id/name attributes scoped.
   const nonScriptRawShield = (() => {
-    const commentShield = createContentShield(component.fileContent);
-    const withoutComments = component.fileContent.includes("<!--")
-      ? component.fileContent.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-          commentShield.hide(comment),
-        )
-      : component.fileContent;
-    const rawElements = shieldElementContents(withoutComments, [
+    // `<!--` in a script or style (a string, JSON, a `<!-- -->` wrapper) is
+    // not a comment; hiding from it to a later `-->` left the markup between
+    // them unscoped.
+    const commentShield = shieldHtmlComments(component.fileContent);
+    const rawElements = shieldElementContents(commentShield.html, [
       "style",
       "textarea",
     ]);
@@ -734,13 +738,8 @@ export const prefixElementAttribute = (
     /\sstyle\s*=/i.test(scopedAttrsHtml)
   ) {
     const styleShield = (() => {
-      const commentShield = createContentShield(scopedAttrsHtml);
-      const withoutComments = scopedAttrsHtml.includes("<!--")
-        ? scopedAttrsHtml.replace(/<!--[\s\S]*?(?:-->|$)/g, (comment) =>
-            commentShield.hide(comment),
-          )
-        : scopedAttrsHtml;
-      const rawElements = shieldElementContents(withoutComments, [
+      const commentShield = shieldHtmlComments(scopedAttrsHtml);
+      const rawElements = shieldElementContents(commentShield.html, [
         "style",
         "textarea",
       ]);
@@ -873,7 +872,7 @@ export const prefixElementAttribute = (
         /(?:querySelector(?:All)?|closest|matches)\s*\(\s*["']([^"']*)["']\s*\)/gm,
       )) {
         for (const tokenMatch of callMatch[1].matchAll(
-          /(?<![a-zA-Z0-9_-])\.([a-zA-Z_][a-zA-Z0-9_-]*)/g,
+          /(?<![a-zA-Z0-9_-])\.((?:--|-?[a-zA-Z_])[a-zA-Z0-9_-]*)/g,
         )) {
           addIfNew(tokenMatch[1]);
         }
@@ -1376,11 +1375,12 @@ export const getComponentScripts = async (
   for (const scriptPath of matchingScriptFiles) {
     let code: string;
     try {
-      code = decodeSource(await readFile(scriptPath));
+      code = decodeSource(await withOpenFileSlot(() => readFile(scriptPath)));
     } catch (err) {
-      console.warn("warning: Failed to read script for %s", scriptPath, err);
+      reportUnreadableSourceFile("component script", scriptPath, err);
       continue;
     }
+    forgetUnreadableSourceFile(scriptPath);
     const relPath = relative(process.cwd(), scriptPath).replace(/\\/g, "/");
     // Referenced `.ts` browser scripts are transformed here, before scoping
     // and before any optional `minify.js` step, so raw TypeScript never
@@ -1418,13 +1418,10 @@ export const namespaceScriptTags = (
   // Script-looking examples in HTML comments are documentation, not browser
   // code. Shield comments before scanning for script tags so a fake opener in
   // a comment cannot be paired with a later real </script> and wrapped into an
-  // invalid runtime script.
-  const commentShield = createContentShield(component.fileContent);
-  const commentMaskedContent = component.fileContent.includes("<!--")
-    ? component.fileContent.replace(/<!--[\s\S]*?-->/g, (comment) =>
-        commentShield.hide(comment),
-      )
-    : component.fileContent;
+  // invalid runtime script. `<!--` inside a real script (a string, or the
+  // old `<!-- ... //-->` wrapper) is code, not a comment, and stays visible.
+  const commentShield = shieldHtmlComments(component.fileContent);
+  const commentMaskedContent = commentShield.html;
 
   // Only wrap <script> tags with no type or type="text/javascript"
   component.fileContent = commentShield.restore(

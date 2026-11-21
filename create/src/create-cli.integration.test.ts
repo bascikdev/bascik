@@ -123,7 +123,9 @@ async function create(
 
 const QUIET = ["--no-install", "--no-dev"];
 
-describe("npm create bascik and the agent skills", () => {
+// Each test runs the real CLI in a child process, which takes over 5 seconds on a Windows
+// runner, so the default test timeout is not enough.
+describe("npm create bascik and the agent skills", { timeout: 60_000 }, () => {
   it("-y --no-skills writes AGENTS.md and CLAUDE.md and installs no skills", async () => {
     const { status, output, parent } = await create([
       "my-site",

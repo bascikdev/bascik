@@ -2,15 +2,17 @@
 
 Contributor tooling for measuring Bascik itself. Nothing in this directory ships in the npm package. The public overview lives on the [Testing Internals](https://bascik.dev/internals/testing) page; this file holds the operational detail for running and interpreting captures.
 
-| Command (from the repository root)                  | Entry point             | Purpose                                                                |
-| --------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------- |
-| `yarn pkg:bench`                                    | `*.bench.ts`            | Vitest throughput benchmarks on fixed inputs                           |
-| `yarn workspace @bascik/bascik profile:workload`    | `profile-workload.ts`   | Bounded runtime captures (servers, dev, builds) on a synthetic fixture |
-| `yarn workspace @bascik/bascik profile:compiler`    | `compiler-timeline.ts`  | Dev and build timelines on a copy of a real project                    |
-| `yarn workspace @bascik/bascik profile:compare`     | `compiler-compare.ts`   | Paired baseline versus candidate compiler runs on one fixture          |
-| `yarn workspace @bascik/bascik profile:fuzz`        | `compiler-fuzz.ts`      | Seeded differential checks against a built baseline compiler           |
-| `yarn workspace @bascik/bascik profile:summary`     | `profile-summary.ts`    | Read-only CPU sample and hot-line summaries                            |
-| `node pkg/bench/profile-boundaries.ts <report-dir>` | `profile-boundaries.ts` | Resource-boundary capture with optional allocation sampling            |
+| Command (from the repository root)                  | Entry point              | Purpose                                                                |
+| --------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------- |
+| `yarn pkg:bench`                                    | `*.bench.ts`             | Vitest throughput benchmarks on fixed inputs                           |
+| `yarn workspace @bascik/bascik profile:workload`    | `profile-workload.ts`    | Bounded runtime captures (servers, dev, builds) on a synthetic fixture |
+| `yarn workspace @bascik/bascik profile:compiler`    | `compiler-timeline.ts`   | Dev and build timelines on a copy of a real project                    |
+| `yarn workspace @bascik/bascik profile:compare`     | `compiler-compare.ts`    | Paired baseline versus candidate compiler runs on one fixture          |
+| `yarn workspace @bascik/bascik profile:fuzz`        | `compiler-fuzz.ts`       | Seeded differential checks against a built baseline compiler           |
+| `yarn workspace @bascik/bascik profile:minify`      | `minify-differential.ts` | The built-in JavaScript minifier's output compared with its own input  |
+| `yarn workspace @bascik/bascik profile:matrix`      | `config-matrix.ts`       | One fixture built under many configs, compared in a browser            |
+| `yarn workspace @bascik/bascik profile:summary`     | `profile-summary.ts`     | Read-only CPU sample and hot-line summaries                            |
+| `node pkg/bench/profile-boundaries.ts <report-dir>` | `profile-boundaries.ts`  | Resource-boundary capture with optional allocation sampling            |
 
 Supporting modules: `profile-runner.ts` (bounded, process-group-owned command execution), `profile-fixture.ts` and `profile-tls.ts` (synthetic project and private TLS trust), `profile-subject.ts` and `compiler-timeline-subject.ts` (the processes being measured), `profile-load.ts` (load generator), `profile-observers.ts`, `profile-isolate.ts`, and `profile-diagnostics.ts` (worker/child observation, inspector profiling, and event journals).
 
@@ -64,6 +66,60 @@ yarn workspace @bascik/bascik profile:fuzz \
 ```
 
 Use the actual path from the failure report. This opt-in check complements unit tests and same-path `profile:compare` builds; it does not execute build scripts, watch files, spawn page workers, or prove browser behavior. The normal unit suite verifies runner comparison, warm-call detection, shrinking/replay, and argument validation without requiring a baseline checkout.
+
+## Minifier Source Comparison (`profile:minify`)
+
+`profile:fuzz` compares two compilers, so it cannot see a bug both have. `profile:minify` compares the built-in JavaScript minifier's output with the source it was given, on real files:
+
+```sh
+yarn workspace @bascik/bascik profile:minify "$PWD/node_modules" --sample 3000
+```
+
+Each `.js`, `.mjs`, and `.cjs` file under the given paths (absolute, or relative to `pkg/`) is minified by `src/lib/js-minifier.ts`. The source and the result are each parsed and printed by esbuild in one canonical form (whitespace, comments, optional semicolons, and empty statements removed), and the two texts must be equal. A file counts as `syntax` when the minified text no longer parses, `differs` when it parses to another program, and `threw` when the minifier threw. A source esbuild cannot parse is skipped and counted.
+
+The first failures are shrunk to a small input with the same verdict (whole lines first, then pieces of lines) and printed with their minified text; paste one into `src/lib/js-minifier-semantics.test.ts` as the failing test. The command exits 1 when any file fails and 2 on a usage error.
+
+| Option              | Default                  | Meaning                                                                     |
+| ------------------- | ------------------------ | --------------------------------------------------------------------------- |
+| `--sample <n>`      | every file               | Check about `n` files, chosen by path hash so two runs check the same files |
+| `--max-bytes <n>`   | `300000`                 | Skip larger files                                                           |
+| `--shrink <n>`      | `20`                     | Shrink the first `n` failures; `0` only lists the files                     |
+| `--minifier <path>` | `src/lib/js-minifier.ts` | Module exporting `minifyJs`, for example a saved copy from another revision |
+| `--json`            | off                      | Print one JSON object instead of text                                       |
+
+`node_modules` is a good corpus because its packages are written in many styles: without semicolons, with braces on their own lines, bundled, and already minified. The whole of this repository's `node_modules` (about 35,000 files) takes several minutes with `--shrink 0`; a 3,000-file sample takes about 35 seconds. The check is opt-in and is not part of any test suite; `src/lib/minify-differential.test.ts` tests the comparison and the shrinking with stand-in minifiers.
+
+Limits: equal canonical text proves the same program only as far as esbuild's parser and printer are right, and TypeScript, JSX, and non-JavaScript files are not read. esbuild reads every file the same way, so it does not treat `<!--` as the comment a classic script would. Read the shrunk input before treating a report as a bug.
+
+## Config Matrix (`profile:matrix`)
+
+Most fixtures pin one configuration, so interactions between options are thinly tested. `config-matrix.ts` builds one site under about 70 configurations and compares each with the default build. It is a correctness check, not a timing tool.
+
+```sh
+yarn pkg:build   # the fixture's build script imports @bascik/bascik/html from dist/
+yarn workspace @bascik/bascik profile:matrix
+yarn workspace @bascik/bascik profile:matrix --list
+yarn workspace @bascik/bascik profile:matrix --only workers+base,base --keep
+```
+
+The fixture in `config-matrix-fixture/` is copied to a private temporary directory, which is removed afterwards unless `--keep` is passed. Each variant writes its own config file and runs this workspace's CLI (`src/index.ts --build --config <file>`) into its own output directory, one build after another on the same project path, because instance IDs hash absolute source paths. `--project <dir>` runs the same variants on another project, `--report-dir <dir>` keeps the logs, snapshots, and summary, and `--skip-browser` stops after the byte comparisons. In a `--project` run the two `directories` variants copy the pages and components to `alt/` and remove that folder after the build, so they are reported as not built when the project already has an `alt/` folder.
+
+Each variant states what it must preserve:
+
+| Expectation  | Meaning                                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------- |
+| `bytes`      | Every output file equals the comparison build's (the baseline, or the variant named by `against`)         |
+| `html-bytes` | Every HTML file equals the baseline's; generated files such as the sitemap may differ                     |
+| `render`     | The browser snapshot equals the baseline's                                                                |
+| `builds`     | The option changes rendering by design (`scoping.attributes.id: false`): only a failed build is a finding |
+
+Every `pipeline.workers: true` variant is compared byte for byte with its `workers: false` twin, and the baseline is built twice to check that a build is deterministic.
+
+The browser snapshot (`config-matrix-snapshot.js`, evaluated in Chromium through Playwright) describes every element marked `data-probe="<name>"`: its rendered text, a fixed list of computed styles, its box, its `data-*` attributes, and which probe each ID reference resolves to (`for`, `aria-*`, `href="#..."`, `popovertarget`, `list`, `form`, and `url(#...)` in attributes and CSS). It then clicks every `data-probe="toggle"` and records what changed, which is how a client script's effect is compared. Scoped names never appear in a snapshot, so builds with different `minify.identifiers` settings compare equal when they render the same. Console errors, page errors, and failed requests fail any variant.
+
+To cover a new option, add a variant to `VARIANTS`. To cover a new construct, add it to the fixture with a `data-probe` and, when it needs a new measurement, extend the snapshot. Keep the fixture's stylesheet `<link>` in place: `assets.inlineStyles` variants tolerate the missing file (`allowMissingCss`), because the docs tell authors to remove the link when they inline it.
+
+The command exits 1 when any variant fails and prints each difference as `page.probe.field: this ... | base ...`. It exits 2, before building anything, when `--only` names a variant that does not exist or a flag is missing its value. It runs no dev server and no `bascik --server`; the e2e lanes cover those.
 
 ## CPU Profile Summaries
 
