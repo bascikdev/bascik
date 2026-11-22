@@ -75,15 +75,18 @@ const routes: Record<(typeof TEMPLATE_SLUGS)[number], string> = {
 export function branchPreview(slug: string, url: string) {
   const worker = templateWorker(slug, "preview");
   const parsed = URL.parse(url);
-  // https://<alias>-<worker>.<account subdomain>.workers.dev
-  const host = new RegExp(
-    `^[a-z][a-z0-9-]*-${worker.name}\\.[a-z0-9-]+\\.workers\\.dev$`,
-  );
+  // https://<alias>-<worker>.<account subdomain>.workers.dev, compared as text:
+  // the worker's name never becomes part of a regular expression.
+  const [label = "", account = "", ...zone] = parsed?.hostname.split(".") ?? [];
+  const suffix = `-${worker.name}`;
   if (
     !parsed ||
     parsed.protocol !== "https:" ||
     parsed.origin !== url.replace(/\/$/, "") ||
-    !host.test(parsed.hostname)
+    zone.join(".") !== "workers.dev" ||
+    !/^[a-z0-9-]+$/.test(account) ||
+    !label.endsWith(suffix) ||
+    !/^[a-z][a-z0-9-]*$/.test(label.slice(0, -suffix.length))
   )
     throw new Error(`${url} is not a Preview alias URL of ${worker.name}`);
   return {

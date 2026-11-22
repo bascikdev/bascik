@@ -186,6 +186,9 @@ test("branch Preview rows name the preview Worker's alias URL and a template pag
     "http://pr-295-bascik-template-docs-preview.example.workers.dev",
     "https://pr-295-bascik-template-docs-preview.example.workers.dev/x",
     "https://template-docs.bascik.dev",
+    "https://pr-295-bascik-template-docs-preview.a.b.workers.dev",
+    "https://pr-295-bascik-template-docs-preview.example.workers.dev.example.com",
+    "https://295-bascik-template-docs-preview.example.workers.dev",
   ])
     assert.throws(() => branchPreview("docs", url), /not a Preview alias/, url);
   assert.throws(() => branchPreview("nope", "https://x.workers.dev"));
