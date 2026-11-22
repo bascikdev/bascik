@@ -66,6 +66,7 @@ jobs:
       run-node-floor: ${{ steps.diff.outputs.run-node-floor }}
       run-linear-time: ${{ steps.diff.outputs.run-linear-time }}
       run-any: ${{ steps.diff.outputs.run-any }}
+      preview-templates: ${{ steps.diff.outputs.preview-templates }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -1376,9 +1377,9 @@ jobs:
   # ── Stage 5: Deploy to Cloudflare and Netlify (after selected stage 4 suites pass) ────────
   # Runs only on a branch push in this repository, never on a pull_request event, a tag, or a fork. A push to main
   # deploys both Workers and the Netlify demo to production. A push to any other branch uploads
-  # a Preview of both Workers and the Netlify demo under one alias (pr-<number> when the branch has an open pull
-  # request, else the branch name), lists the three URLs in the run summary, and updates the single Preview comment on
-  # that pull request. Each token reaches only its upload or deploy steps. Runbook: DEPLOYMENT.md.
+  # a Preview of both Workers, the Netlify demo, and each create-bascik template the branch changed under one alias
+  # (pr-<number> when the branch has an open pull request, else the branch name), lists the URLs in the run summary,
+  # and updates the single Preview comment on that pull request. Each token reaches only its upload or deploy steps. Runbook: DEPLOYMENT.md.
 
   deploy-docs:
     name: Deploy Docs (bascik.dev)
@@ -1486,7 +1487,7 @@ jobs:
           pr="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
           name="$BRANCH"
           [ -z "$pr" ] || name="pr-$pr"
-          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter -bascik-netlify-adapter)"
+          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter -bascik-netlify-adapter bascik-template-dashboard-preview)"
           echo "alias=$alias" >> "$GITHUB_OUTPUT"
 
       - name: Upload a Preview version
@@ -1623,7 +1624,7 @@ jobs:
           pr="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
           name="$BRANCH"
           [ -z "$pr" ] || name="pr-$pr"
-          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter -bascik-netlify-adapter)"
+          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter -bascik-netlify-adapter bascik-template-dashboard-preview)"
           echo "alias=$alias" >> "$GITHUB_OUTPUT"
 
       - name: Upload a Preview version
@@ -1758,7 +1759,7 @@ jobs:
           pr="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
           name="$BRANCH"
           [ -z "$pr" ] || name="pr-$pr"
-          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter -bascik-netlify-adapter)"
+          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter -bascik-netlify-adapter bascik-template-dashboard-preview)"
           echo "alias=$alias" >> "$GITHUB_OUTPUT"
 
       # netlify-cli is a devDependency of the adapter workspace, not the root, so the upload runs through its script.
@@ -1795,24 +1796,186 @@ jobs:
         if: github.ref == 'refs/heads/main' && steps.newest.outputs.newest == 'true'
         run: node .github/scripts/smoke-test.mjs https://netlify-adapter.bascik.dev /=200 /catalog=200 /catalog-stream=200
 
-  # Runs after all three uploads, so the summary and the comment always list three URLs from the same commit. A run whose
-  # commit was no longer the newest uploaded nothing and leaves them to the newer run. A branch without an open pull
-  # request in this repo gets the summary only.
+  # A branch Preview of each create-bascik template the branch changed (the `changes` job's `preview-templates`: files
+  # under create/src/templates/<slug>, or every template for the shared scaffold sources), under the same alias as
+  # the docs and both demos. Each uploads a version of the template's preview Worker, bascik-template-<slug>-preview,
+  # so the template's production Worker and custom domain are never touched; shop and reports bind the preview D1
+  # database. The first upload to a preview Worker that does not exist yet, or was deployed before it had Preview
+  # URLs, deploys it once first. Main deploys the templates from template-workers.yml, never from here.
+  deploy-templates:
+    name: Deploy Template ${{ matrix.slug }} (branch preview)
+    runs-on: ubuntu-latest
+    if: >-
+      !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') &&
+      github.ref != 'refs/heads/main' && github.repository == 'bascikdev/bascik' &&
+      needs.e2e-gate.result == 'success' && needs.changes.outputs.preview-templates != '' &&
+      needs.changes.outputs.preview-templates != '[]' &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    permissions:
+      contents: read
+      pull-requests: read
+    needs:
+      [
+        changes,
+        e2e-gate,
+        e2e-pkg-static,
+        e2e-pkg-dev,
+        e2e-pkg-prod-http1,
+        e2e-pkg-prod-http2,
+        e2e-adapter-cloudflare,
+        e2e-adapter-netlify,
+        e2e-docs,
+        e2e-create,
+        e2e-extension,
+      ]
+    strategy:
+      fail-fast: false
+      matrix:
+        slug: ${{ fromJSON(needs.changes.outputs.preview-templates) }}
+    # No job-level concurrency group: see deploy-docs.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use the .nvmrc Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Check Cloudflare credentials
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          [ "$HAS_TOKEN" = "true" ] || { echo "::error::Repository secret CLOUDFLARE_API_TOKEN is not set (see DEPLOYMENT.md)"; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Repository variable CLOUDFLARE_ACCOUNT_ID is not set (see DEPLOYMENT.md)"; exit 1; }
+
+      - name: Build the tools and the template
+        env:
+          SLUG: ${{ matrix.slug }}
+        run: |
+          yarn pkg:build
+          yarn adapter:cf:build
+          yarn workspace create-bascik build
+          node .github/scripts/template-workers.mts build "$SLUG" "$RUNNER_TEMP/template-workers"
+
+      # Only shop and reports have a database; for the other templates this does nothing.
+      - name: Bind the template's pre-seeded preview D1 database
+        env:
+          SLUG: ${{ matrix.slug }}
+          TEMPLATE_SHOP_PREVIEW_D1_ID: ${{ vars.TEMPLATE_SHOP_PREVIEW_D1_ID }}
+          TEMPLATE_REPORTS_PREVIEW_D1_ID: ${{ vars.TEMPLATE_REPORTS_PREVIEW_D1_ID }}
+        run: node .github/scripts/template-workers.mts bind "$SLUG" preview "$RUNNER_TEMP/template-workers"
+
+      - name: Check this is still the newest commit
+        id: newest
+        env:
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+        run: |
+          newest="$(node .github/scripts/newest-commit.mjs "$REF" "$SHA")"
+          echo "newest=$newest" >> "$GITHUB_OUTPUT"
+
+      - name: Compute the Preview alias
+        id: alias
+        env:
+          BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          pr="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
+          name="$BRANCH"
+          [ -z "$pr" ] || name="pr-$pr"
+          alias="$(node .github/scripts/preview-alias.mjs "$name" bascik cloudflare-adapter -bascik-netlify-adapter bascik-template-dashboard-preview)"
+          echo "alias=$alias" >> "$GITHUB_OUTPUT"
+
+      # `versions upload` needs an existing Worker with Preview URLs on. When the first upload fails or reports no
+      # alias URL, `wrangler deploy` creates the preview Worker (or turns its Preview URLs on), and the upload runs again.
+      - name: Upload a Preview version
+        if: steps.newest.outputs.newest == 'true'
+        id: upload
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-template.ndjson
+          SLUG: ${{ matrix.slug }}
+          ALIAS: ${{ steps.alias.outputs.alias }}
+          MESSAGE: "Preview ${{ steps.alias.outputs.alias }} at ${{ github.sha }}"
+        run: |
+          config="$RUNNER_TEMP/template-workers/$SLUG/dist/.bascik/cloudflare/wrangler.preview.json"
+          # Wrangler's log goes to stderr, so the command substitution captures only the URL.
+          upload() {
+            yarn workspace @bascik/adapter-cloudflare wrangler versions upload --config "$config" --preview-alias "$ALIAS" --message "$MESSAGE" >&2 &&
+              node .github/scripts/wrangler-preview-url.mjs "$WRANGLER_OUTPUT_FILE_PATH"
+          }
+          if ! url="$(upload)"; then
+            echo "::notice::Deploying bascik-template-$SLUG-preview once so it accepts Preview uploads"
+            yarn workspace @bascik/adapter-cloudflare wrangler deploy --config "$config" --message "Template preview Worker setup at $GITHUB_SHA"
+            url="$(upload)"
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Template $SLUG Preview: $url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke-test the Preview
+        if: steps.newest.outputs.newest == 'true'
+        env:
+          SLUG: ${{ matrix.slug }}
+          URL: ${{ steps.upload.outputs.url }}
+        run: node .github/scripts/template-workers.mts smoke "$SLUG" "$URL"
+
+      # The comment job reads this row; a matrix job cannot pass one output per template.
+      - name: Record the Preview for the comment
+        if: steps.newest.outputs.newest == 'true'
+        env:
+          SLUG: ${{ matrix.slug }}
+          URL: ${{ steps.upload.outputs.url }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/template-preview"
+          node .github/scripts/template-workers.mts branch-preview "$SLUG" "$URL" "$RUNNER_TEMP/template-preview/$SLUG.json"
+
+      - name: Upload the Preview row
+        if: steps.newest.outputs.newest == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: template-preview-${{ matrix.slug }}
+          path: ${{ runner.temp }}/template-preview/${{ matrix.slug }}.json
+          if-no-files-found: error
+          retention-days: 1
+
+  # Runs after all three uploads, so the summary and the comment always list three URLs from the same commit, followed
+  # by one row per template Preview that uploaded (none when the branch changed no template). A run whose commit was no
+  # longer the newest uploaded nothing and leaves them to the newer run. A branch without an open pull request in this
+  # repo gets the summary only.
   preview-comment:
     name: Publish Preview URLs
     runs-on: ubuntu-latest
+    # !cancelled(): the comment still posts when deploy-templates skipped (no template changed) or one template failed.
     if: >-
-      github.event_name == 'push' && github.ref != 'refs/heads/main' &&
+      !cancelled() && github.event_name == 'push' && github.ref != 'refs/heads/main' &&
       needs.deploy-docs.outputs.preview-url != '' && needs.deploy-demo.outputs.preview-url != '' &&
       needs.deploy-netlify.outputs.preview-url != ''
     permissions:
       contents: read
       pull-requests: write
-    needs: [deploy-docs, deploy-demo, deploy-netlify]
+    needs: [deploy-docs, deploy-demo, deploy-netlify, deploy-templates]
     steps:
       - uses: actions/checkout@v7
         with:
           sparse-checkout: .github/scripts
+
+      - name: Download the template Preview rows
+        if: needs.deploy-templates.result != 'skipped'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: template-preview-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/template-previews
 
       # This job installs nothing: it runs one dependency-free script. setup-node v5 caches the package manager
       # named in package.json by default, which would call Yarn without Corepack, so the cache is turned off.
@@ -1832,4 +1995,5 @@ jobs:
           DOCS_PREVIEW_URL: ${{ needs.deploy-docs.outputs.preview-url }}
           DEMO_PREVIEW_URL: ${{ needs.deploy-demo.outputs.preview-url }}
           NETLIFY_PREVIEW_URL: ${{ needs.deploy-netlify.outputs.preview-url }}
+          TEMPLATE_PREVIEWS_DIR: ${{ runner.temp }}/template-previews
         run: node .github/scripts/preview-comment.mjs

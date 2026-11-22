@@ -16,7 +16,12 @@ type ChangedWorkspaceOutput =
   | "run-node-floor"
   | "run-linear-time"
   | "docs-only"
-  | "run-any";
+  | "run-any"
+  | "preview-templates";
+
+export declare const PREVIEW_TEMPLATES: readonly string[];
+
+export function changedTemplates(paths: readonly string[]): string[];
 
 export function changedWorkspaces(
   paths: readonly string[],

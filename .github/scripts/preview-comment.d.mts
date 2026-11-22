@@ -17,6 +17,9 @@ export declare function commentBody(input: {
   previews: readonly PreviewLink[];
   runUrl?: string;
 }): string;
+export declare function templatePreviews(
+  directory: string | undefined,
+): PreviewLink[];
 export declare function findStickyComment(
   comments: readonly IssueComment[],
 ): IssueComment | undefined;

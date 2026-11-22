@@ -11,9 +11,12 @@
 // Usage (in CI): node .github/scripts/preview-comment.mjs
 // Environment: GITHUB_TOKEN, GITHUB_REPOSITORY (owner/name), BRANCH
 // (github.ref_name), SHA (github.sha: the commit CI built), DOCS_PREVIEW_URL,
-// DEMO_PREVIEW_URL, NETLIFY_PREVIEW_URL, and optionally RUN_URL, GITHUB_STEP_SUMMARY and
-// GITHUB_API_URL.
-import { appendFileSync } from "node:fs";
+// DEMO_PREVIEW_URL, NETLIFY_PREVIEW_URL, and optionally RUN_URL, GITHUB_STEP_SUMMARY,
+// GITHUB_API_URL and TEMPLATE_PREVIEWS_DIR: a folder of one JSON row per
+// template Preview the run uploaded (template-workers.mts branch-preview),
+// listed after the three fixed rows.
+import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 export const MARKER = "<!-- bascik-cloudflare-previews -->";
 
@@ -66,6 +69,42 @@ export function commentBody({ sha, branch, previews, runUrl }) {
   ]
     .join("\n")
     .trimEnd();
+}
+
+const TEMPLATE_WORKER = /^bascik-template-([a-z]+)-preview$/;
+
+/**
+ * The template rows in `directory`, in template order. Only the template
+ * Preview Workers' own rows are accepted.
+ *
+ * @param {string | undefined} directory
+ * @returns {PreviewLink[]}
+ */
+export function templatePreviews(directory) {
+  if (!directory || !existsSync(directory)) return [];
+  const rows = readdirSync(directory)
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => {
+      const row = JSON.parse(readFileSync(join(directory, name), "utf8"));
+      const slug = TEMPLATE_WORKER.exec(row?.worker ?? "")?.[1];
+      if (
+        !slug ||
+        row.label !== `Template: ${slug} (branch preview)` ||
+        !Number.isInteger(row.order) ||
+        !Array.isArray(row.paths) ||
+        !row.paths.every((path) => /^\/[\w./-]*$/.test(path)) ||
+        !new RegExp(
+          `^https://[a-z][a-z0-9-]*-${row.worker}\\.[a-z0-9-]+\\.workers\\.dev$`,
+        ).test(row.url)
+      )
+        throw new Error(
+          `preview-comment: ${name} is not a template Preview row`,
+        );
+      return row;
+    });
+  return rows
+    .sort((a, b) => a.order - b.order)
+    .map(({ label, worker, url, paths }) => ({ label, worker, url, paths }));
 }
 
 /**
@@ -245,6 +284,7 @@ export async function run(
         url: env.NETLIFY_PREVIEW_URL ?? "",
         paths: ["/", "/catalog", "/catalog-stream"],
       },
+      ...templatePreviews(env.TEMPLATE_PREVIEWS_DIR),
     ],
   });
   if (env.GITHUB_STEP_SUMMARY)

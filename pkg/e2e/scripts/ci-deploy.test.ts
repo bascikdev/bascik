@@ -33,7 +33,11 @@ import {
   tipOf,
 } from "../../../.github/scripts/newest-commit.mjs";
 import { mergedPullRequest } from "../../../.github/scripts/merged-pull-request.mjs";
-import { changedWorkspaces } from "../../../.github/scripts/changed-workspaces.mjs";
+import {
+  changedTemplates,
+  changedWorkspaces,
+  PREVIEW_TEMPLATES,
+} from "../../../.github/scripts/changed-workspaces.mjs";
 import {
   BOT_LOGIN,
   MARKER,
@@ -41,6 +45,7 @@ import {
   findOpenPullRequests,
   findStickyComment,
   run,
+  templatePreviews,
   upsertComment,
 } from "../../../.github/scripts/preview-comment.mjs";
 
@@ -900,6 +905,7 @@ function runContext(
     newest = "true",
     docsOnly = false,
     shopOnlyHead = false,
+    previewTemplates = ["docs"] as string[],
     suiteFlags = {} as Record<string, boolean>,
   } = {},
 ): Record<string, Value> {
@@ -944,6 +950,9 @@ function runContext(
     "needs.changes.outputs.run-any": String(
       (suiteFlags.any ?? !docsOnly) || suites.docs,
     ),
+    "needs.changes.outputs.preview-templates": JSON.stringify(
+      docsOnly ? [] : previewTemplates,
+    ),
     "needs.deploy-docs.outputs.preview-url": "",
     "needs.deploy-demo.outputs.preview-url": "",
     "needs.deploy-netlify.outputs.preview-url": "",
@@ -980,6 +989,7 @@ function simulate(
     if (!isTruthy(evaluate(job.if ?? "success()", scope))) {
       if (id === "changes") {
         scope["needs.changes.outputs.docs-only"] = "";
+        scope["needs.changes.outputs.preview-templates"] = "";
         for (const key of Object.keys(scope))
           if (key.startsWith("needs.changes.outputs.run-")) scope[key] = "";
       }
@@ -1598,7 +1608,12 @@ describe("CI stages and the deploy stage", () => {
 
   it("uses one pr-<number> alias for all three previews when the branch has an open pull request", () => {
     const aliasScripts = new Set<string>();
-    for (const id of ["deploy-docs", "deploy-demo", "deploy-netlify"]) {
+    for (const id of [
+      "deploy-docs",
+      "deploy-demo",
+      "deploy-netlify",
+      "deploy-templates",
+    ]) {
       const alias = jobs
         .get(id)!
         .steps.find((step) => step.name === "Compute the Preview alias")!;
@@ -2001,7 +2016,11 @@ describe("CI stages and the deploy stage", () => {
           )
         )
           continue;
-        if (!/yarn wrangler (versions upload|deploy)\b/.test(step.text))
+        if (
+          !/yarn (?:workspace \S+ )?wrangler (versions upload|deploy)\b/.test(
+            step.text,
+          )
+        )
           leaks.push(`${where}: token outside a Wrangler step`);
       }
     }
@@ -2013,7 +2032,7 @@ describe("CI stages and the deploy stage", () => {
         ),
       ),
     );
-    expect(tokenSteps).toHaveLength(4);
+    expect(tokenSteps).toHaveLength(5);
     expect(jobs.get("preview-comment")!.body.join("\n")).toMatch(
       /permissions:\n {6}contents: read\n {6}pull-requests: write/,
     );
@@ -2038,5 +2057,189 @@ describe("CI job permissions", () => {
     }
     if (job && !seen) missing.push(job);
     expect(missing).toEqual([]);
+  });
+});
+
+describe("template branch Previews", () => {
+  const jobs = ciStages(workflow);
+  const row = (slug: string, order: number) => ({
+    order,
+    label: `Template: ${slug} (branch preview)`,
+    worker: `bascik-template-${slug}-preview`,
+    url: `https://pr-295-bascik-template-${slug}-preview.example.workers.dev`,
+    paths: ["/", "/x"],
+  });
+
+  it("previews only the templates whose sources changed", () => {
+    expect(
+      changedTemplates([
+        "create/src/templates/docs/site.ts",
+        "create/src/templates/blog.ts",
+        "create/src/templates/blog.browser.test.ts",
+        "create/src/templates/shop-feedback.integration.test.ts",
+        "create/TEMPLATE-DESIGN.md",
+        "docs/content/components.md",
+      ]),
+    ).toEqual(["blog", "docs"]);
+    // Repo tests, framework and adapter changes upload no template Preview.
+    expect(
+      changedTemplates([
+        "create/src/templates/landing.test.ts",
+        "pkg/src/lib/compiler.ts",
+        "adapters/cloudflare/src/index.ts",
+        "create/package.json",
+      ]),
+    ).toEqual([]);
+    // Shared scaffold sources (scaffold.ts also holds the default template) preview every template.
+    for (const shared of [
+      "create/src/scaffold.ts",
+      "create/src/templates.ts",
+      ".github/scripts/template-workers.mts",
+    ])
+      expect(changedTemplates([shared]), shared).toEqual([
+        ...PREVIEW_TEMPLATES,
+      ]);
+    expect(
+      changedWorkspaces(["create/src/templates/reports/site.ts"])[
+        "preview-templates"
+      ],
+    ).toBe('["reports"]');
+    expect(changedWorkspaces([])["preview-templates"]).toBe(
+      JSON.stringify(PREVIEW_TEMPLATES),
+    );
+  });
+
+  it("uploads changed templates on a branch push, never on main, and still publishes the comment without them", () => {
+    const branch = simulate(
+      jobs,
+      runContext("push", "refs/heads/feature/x", {
+        previewTemplates: ["docs", "shop"],
+      }),
+    );
+    expect(branch.ran.has("deploy-templates")).toBe(true);
+    expect(wranglerSteps(branch.steps.get("deploy-templates"))).toEqual([
+      "Upload a Preview version",
+      "Smoke-test the Preview",
+    ]);
+    expect(branch.steps.get("preview-comment")).toContain(
+      "Download the template Preview rows",
+    );
+
+    const none = simulate(
+      jobs,
+      runContext("push", "refs/heads/feature/x", { previewTemplates: [] }),
+    );
+    expect(none.ran.has("deploy-templates")).toBe(false);
+    expect(none.ran.has("preview-comment")).toBe(true);
+    expect(none.steps.get("preview-comment")).not.toContain(
+      "Download the template Preview rows",
+    );
+
+    // One template failing leaves the other rows and the comment.
+    const failed = simulate(
+      jobs,
+      runContext("push", "refs/heads/feature/x"),
+      new Set(["deploy-templates"]),
+    );
+    expect(failed.ran.has("preview-comment")).toBe(true);
+
+    const main = simulate(jobs, runContext("push", "refs/heads/main"));
+    expect(main.ran.has("deploy-templates")).toBe(false);
+    const stale = simulate(
+      jobs,
+      runContext("push", "refs/heads/feature/x", { newest: "false" }),
+    );
+    expect(wranglerSteps(stale.steps.get("deploy-templates"))).toEqual([]);
+
+    const job = jobs.get("deploy-templates")!;
+    const body = job.body.join("\n");
+    expect(body).toContain(
+      "slug: ${{ fromJSON(needs.changes.outputs.preview-templates) }}",
+    );
+    // The preview Worker, never the production one that owns template-<slug>.bascik.dev.
+    expect(body).toContain("wrangler.preview.json");
+    expect(body).not.toMatch(/wrangler\.jsonc|TEMPLATE_\w+_PRODUCTION_D1_ID/);
+    expect(body).toMatch(
+      /wrangler versions upload --config "\$config" --preview-alias "\$ALIAS"/,
+    );
+    expect(jobs.get("preview-comment")!.needs).toContain("deploy-templates");
+  });
+
+  it("reserves room in the shared alias for every template preview Worker", () => {
+    const alias = jobs
+      .get("deploy-templates")!
+      .steps.find((step) => step.name === "Compute the Preview alias")!;
+    const reserved = /preview-alias\.mjs "\$name" ([^)]*)\)/
+      .exec(alias.text)![1]
+      .split(" ");
+    const longest = Math.max(...reserved.map((name) => name.length));
+    for (const slug of PREVIEW_TEMPLATES)
+      expect(
+        `bascik-template-${slug}-preview`.length,
+        slug,
+      ).toBeLessThanOrEqual(longest);
+    const long = previewAlias(`feature/${"x".repeat(80)}`, reserved);
+    for (const slug of PREVIEW_TEMPLATES)
+      expect(
+        `${long}-bascik-template-${slug}-preview`.length,
+      ).toBeLessThanOrEqual(MAX_DNS_LABEL_LENGTH);
+  });
+
+  it("lists template rows after the three fixed rows, in template order, and refuses a foreign row", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bascik-template-previews-"));
+    try {
+      expect(templatePreviews(undefined)).toEqual([]);
+      expect(templatePreviews(join(dir, "missing"))).toEqual([]);
+      writeFileSync(join(dir, "shop.json"), JSON.stringify(row("shop", 6)));
+      writeFileSync(join(dir, "blog.json"), JSON.stringify(row("blog", 1)));
+      expect(templatePreviews(dir).map((link) => link.worker)).toEqual([
+        "bascik-template-blog-preview",
+        "bascik-template-shop-preview",
+      ]);
+      const { body } = await run(
+        {
+          GITHUB_TOKEN: "t0ken",
+          GITHUB_REPOSITORY: "bascikdev/bascik",
+          BRANCH: "templates-mobile-nav",
+          SHA: "a18dc30c0123456789abcdef0123456789abcdef",
+          DOCS_PREVIEW_URL: "https://pr-295-bascik.example.workers.dev",
+          DEMO_PREVIEW_URL:
+            "https://pr-295-cloudflare-adapter.example.workers.dev",
+          NETLIFY_PREVIEW_URL:
+            "https://pr-295--bascik-netlify-adapter.netlify.app",
+          TEMPLATE_PREVIEWS_DIR: dir,
+        },
+        {
+          fetchImpl: (async () =>
+            new Response("[]", { status: 200 })) as unknown as typeof fetch,
+          log: () => {},
+        },
+      );
+      const rows = body.split("\n").filter((line) => line.startsWith("| "));
+      expect(rows.slice(2).map((line) => line.split(" | ")[0])).toEqual([
+        "| Bascik docs (Cloudflare branch preview)",
+        "| Cloudflare adapter (branch preview)",
+        "| Netlify adapter (branch preview)",
+        "| Template: blog (branch preview)",
+        "| Template: shop (branch preview)",
+      ]);
+      expect(body).toContain(
+        "[/x](https://pr-295-bascik-template-shop-preview.example.workers.dev/x)",
+      );
+
+      for (const bad of [
+        { ...row("docs", 2), worker: "bascik-template-docs" },
+        { ...row("docs", 2), url: "https://pr-1-bascik.example.workers.dev" },
+        { ...row("docs", 2), label: "Template: shop (branch preview)" },
+        { ...row("docs", 2), paths: ["javascript:alert(1)"] },
+      ]) {
+        writeFileSync(join(dir, "docs.json"), JSON.stringify(bad));
+        expect(() => templatePreviews(dir), JSON.stringify(bad)).toThrow(
+          /not a template Preview row/,
+        );
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

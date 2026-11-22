@@ -32,7 +32,9 @@ const wrangler = join(repo, "node_modules/wrangler/bin/wrangler.js");
 const localDbId = "00000000-0000-4000-8000-000000000001";
 
 // Production owns template-<slug>.bascik.dev and deploys from merged PRs on
-// main. Preview Workers keep only their workers.dev URL.
+// main, with no Preview URLs. Preview Workers have their workers.dev URL and
+// Preview URLs: CI stage 5 uploads a version of a changed template's preview
+// Worker under the branch's Preview alias, like the docs Worker.
 export function templateWorker(slug: string, lane: string) {
   if (!TEMPLATE_SLUGS.some((allowed) => allowed === slug))
     throw new Error(`Unknown hosted template: ${slug}`);
@@ -47,7 +49,7 @@ export function templateWorker(slug: string, lane: string) {
       ? []
       : [{ pattern: templateHostname(slug), custom_domain: true }],
     workers_dev: preview,
-    preview_urls: false,
+    preview_urls: preview,
   };
 }
 
@@ -67,6 +69,31 @@ const routes: Record<(typeof TEMPLATE_SLUGS)[number], string> = {
   reports: "/compare",
   dashboard: "/orders",
 };
+
+// One row of the Preview comment: CI stage 5 writes it next to the upload and
+// the preview-comment job reads every row (.github/scripts/preview-comment.mjs).
+export function branchPreview(slug: string, url: string) {
+  const worker = templateWorker(slug, "preview");
+  const parsed = URL.parse(url);
+  // https://<alias>-<worker>.<account subdomain>.workers.dev
+  const host = new RegExp(
+    `^[a-z][a-z0-9-]*-${worker.name}\\.[a-z0-9-]+\\.workers\\.dev$`,
+  );
+  if (
+    !parsed ||
+    parsed.protocol !== "https:" ||
+    parsed.origin !== url.replace(/\/$/, "") ||
+    !host.test(parsed.hostname)
+  )
+    throw new Error(`${url} is not a Preview alias URL of ${worker.name}`);
+  return {
+    order: TEMPLATE_SLUGS.indexOf(slug as (typeof TEMPLATE_SLUGS)[number]),
+    label: `Template: ${slug} (branch preview)`,
+    worker: worker.name,
+    url: parsed.origin,
+    paths: ["/", routes[slug as keyof typeof routes]],
+  };
+}
 
 export function templateDatabase(
   slug: "reports" | "shop",
@@ -446,6 +473,11 @@ if (import.meta.main) {
         TEMPLATE_SLUGS.filter((slug) =>
           templates.some(({ name }: { name: string }) => slug === name),
         ).join("\n"),
+      );
+    } else if (command === "branch-preview" && argument && process.argv[5]) {
+      await writeFile(
+        process.argv[5],
+        `${JSON.stringify(branchPreview(slug, argument))}\n`,
       );
     } else if (command === "preview-url" && argument) {
       const url = previewUrl(
