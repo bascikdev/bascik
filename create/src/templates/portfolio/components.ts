@@ -78,6 +78,7 @@ export const SITE_HEADER_HTML = `<style>
   .signature { min-width: 0; }
   .index-label { display: block; color: var(--text-muted); font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; }
   .logo { display: inline-block; max-width: 100%; overflow-wrap: anywhere; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: clamp(1.8rem, 3vw, 2.8rem); line-height: 1.2; letter-spacing: -0.045em; color: var(--text); }
+  .panel { display: contents; }
   .menu { display: flex; gap: clamp(16px, 3vw, 40px); margin: 0; padding: 0; list-style: none; }
   .menu a { display: grid; gap: 4px; min-height: 44px; color: var(--text); text-decoration: none; font-size: 0.95rem; }
   .number { color: var(--text-muted); font-size: 0.65rem; font-variant-numeric: tabular-nums; }
@@ -91,12 +92,75 @@ export const SITE_HEADER_HTML = `<style>
   .theme[aria-pressed="true"] .sun { display: block; }
   .theme[aria-pressed="true"] .moon { display: none; }
   .toggle { display: none; }
+  .toggle-icon,
+  .toggle-icon::before,
+  .toggle-icon::after {
+    display: block;
+    width: 20px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--text);
+  }
+  .toggle-icon { position: relative; }
+  .toggle-icon::before,
+  .toggle-icon::after { content: ""; position: absolute; left: 0; }
+  .toggle-icon::before { translate: 0 -6px; }
+  .toggle-icon::after { translate: 0 6px; }
+  .toggle[aria-expanded="true"] .toggle-icon { background: transparent; }
+  .toggle[aria-expanded="true"] .toggle-icon::before { translate: 0 0; rotate: 45deg; }
+  .toggle[aria-expanded="true"] .toggle-icon::after { translate: 0 0; rotate: -45deg; }
+  @media (prefers-reduced-motion: no-preference) {
+    .toggle-icon::before,
+    .toggle-icon::after { transition: translate 150ms ease-out, rotate 150ms ease-out; }
+  }
+  .mobile { display: none; }
+  .separator { margin: 16px 0 20px; border: 0; border-top: 1px solid var(--border); }
+  .mobile-theme {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.95rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mobile-theme[hidden] { display: none; }
+  .mobile-theme:hover { color: var(--text); background: var(--elevated); }
+  .mobile-theme svg { flex: 0 0 18px; width: 18px; height: 18px; }
+  .mobile-theme .sun { display: none; }
+  .mobile-theme[data-dark="true"] .sun { display: block; }
+  .mobile-theme[data-dark="true"] .moon { display: none; }
   @media (max-width: 640px) {
     .masthead { grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; }
     .controls { grid-column: 2; grid-row: 1; }
     .menu { grid-column: 1 / -1; flex-wrap: wrap; justify-content: space-between; }
     .masthead[data-enhanced="true"] .toggle { display: grid; }
-    .masthead[data-enhanced="true"] .menu[data-state="closed"] { display: none; }
+    .masthead[data-enhanced="true"] .theme { display: none; }
+    .masthead[data-enhanced="true"] .panel {
+      display: none;
+      position: fixed;
+      /* The script sets the exact top from the bar's bottom edge when the menu opens. */
+      top: 96px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 100;
+      overflow-y: auto;
+      flex-direction: column;
+      padding: 20px 18px 40px;
+      background: var(--bg);
+    }
+    .masthead[data-enhanced="true"]:has(.toggle[aria-expanded="true"]) .panel { display: flex; }
+    .masthead[data-enhanced="true"] .panel .menu { flex-direction: column; flex-wrap: nowrap; }
+    .masthead[data-enhanced="true"] .panel .menu a { min-height: 44px; padding: 8px 12px; }
+    .masthead[data-enhanced="true"] .panel .mobile { display: block; }
   }
 </style>
 <header data-testid="site-header">
@@ -111,18 +175,28 @@ export const SITE_HEADER_HTML = `<style>
         export default () => html\`\${site.name}\`;
       </script></a>
       </div>
-      <ul id="nav-menu" class="menu" data-state="closed" data-testid="site-header-nav-menu">
-        <li><a href="/work" data-testid="site-header-work"><span class="number" aria-hidden="true">01</span>Work</a></li>
-        <li><a href="/about" data-testid="site-header-about"><span class="number" aria-hidden="true">02</span>About</a></li>
-        <li><a href="/contact" data-testid="site-header-contact"><span class="number" aria-hidden="true">03</span>Contact</a></li>
-      </ul>
+      <div id="nav-menu" class="panel" data-testid="site-header-nav-menu">
+        <ul class="menu">
+          <li><a href="/work" data-testid="site-header-work"><span class="number" aria-hidden="true">01</span>Work</a></li>
+          <li><a href="/about" data-testid="site-header-about"><span class="number" aria-hidden="true">02</span>About</a></li>
+          <li><a href="/contact" data-testid="site-header-contact"><span class="number" aria-hidden="true">03</span>Contact</a></li>
+        </ul>
+        <div class="mobile">
+          <hr class="separator" />
+          <button id="mobile-theme" type="button" class="mobile-theme" aria-label="Switch to dark theme" data-testid="site-header-mobile-theme" hidden>
+            <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
+            <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+            <span id="mobile-theme-label">Dark</span>
+          </button>
+        </div>
+      </div>
       <div class="controls">
         <button id="theme-toggle" type="button" class="icon-button theme" aria-label="Dark theme" aria-pressed="false" data-testid="site-header-theme-toggle" hidden>
           <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15a8 8 0 0 1-11-11A8 8 0 1 0 20 15Z" /></svg>
           <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2" /></svg>
         </button>
         <button id="nav-toggle" type="button" class="icon-button toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h18M3 16h18" /></svg>
+          <span class="toggle-icon"></span>
         </button>
       </div>
     </nav>
@@ -130,37 +204,55 @@ export const SITE_HEADER_HTML = `<style>
 </header>
 <script type="text/typescript">
   const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
-  const menu = document.getElementById("nav-menu") as HTMLUListElement;
+  const panel = document.getElementById("nav-menu") as HTMLElement;
+  const header = toggle.closest("header") as HTMLElement;
   const masthead = document.getElementById("masthead") as HTMLElement;
-  const setMenu = (open: boolean): void => {
-    toggle.setAttribute("aria-expanded", String(open));
-    menu.dataset.state = open ? "open" : "closed";
+  const setOpen = (open: boolean): void => {
+    if (open) {
+      header.scrollIntoView();
+      panel.style.top = masthead.getBoundingClientRect().bottom + 'px';
+    } else panel.style.top = '';
+    toggle.setAttribute('aria-expanded', String(open));
+    document.body.style.overflow = open ? 'hidden' : '';
   };
   toggle.hidden = false;
   masthead.dataset.enhanced = "true";
-  toggle.addEventListener("click", () => setMenu(toggle.getAttribute("aria-expanded") !== "true"));
+  toggle.addEventListener("click", () => setOpen(toggle.getAttribute("aria-expanded") !== "true"));
   masthead.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "Escape" && toggle.getAttribute("aria-expanded") === "true") {
-      setMenu(false);
+      setOpen(false);
       toggle.focus();
     }
   });
+  matchMedia("(max-width: 640px)").addEventListener("change", () => setOpen(false));
+
   const theme = document.getElementById("theme-toggle") as HTMLButtonElement;
+  const mobileTheme = document.getElementById("mobile-theme") as HTMLButtonElement;
+  const mobileLabel = document.getElementById("mobile-theme-label") as HTMLSpanElement;
   const root = document.documentElement;
   const preference = matchMedia("(prefers-color-scheme: dark)");
   const isDark = (): boolean => root.dataset.theme ? root.dataset.theme === "dark" : preference.matches;
-  const syncTheme = (): void => { theme.setAttribute("aria-pressed", String(isDark())); };
-  syncTheme();
-  theme.hidden = false;
-  preference.addEventListener("change", syncTheme);
-  theme.addEventListener("click", (): void => {
+  const syncTheme = (): void => {
+    const dark = isDark();
+    theme.setAttribute("aria-pressed", String(dark));
+    mobileTheme.dataset.dark = String(dark);
+    mobileTheme.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+    mobileLabel.textContent = dark ? "Light" : "Dark";
+  };
+  const switchTheme = (): void => {
     const next = isDark() ? "light" : "dark";
     root.classList.add("theme-switching");
     root.dataset.theme = next;
     try { localStorage.setItem("portfolio-theme", next); } catch { /* Toggle still works. */ }
     syncTheme();
     requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
-  });
+  };
+  syncTheme();
+  theme.hidden = false;
+  mobileTheme.hidden = false;
+  preference.addEventListener("change", syncTheme);
+  theme.addEventListener("click", switchTheme);
+  mobileTheme.addEventListener("click", switchTheme);
 </script>
 `;
 

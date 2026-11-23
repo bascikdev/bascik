@@ -122,11 +122,9 @@ const SITE_NAME_SCRIPT = `<script data-bascik-build-once type="text/typescript">
 export const SHOP_SITE_HEADER_HTML = `<style>
 ${SITE_HEADER_CSS}
 @media (max-width: 640px) {
-  .menu { display: flex; position: static; flex-direction: row; padding: 0; border: 0; background: none; }
-  .menu li { width: auto; }
-  .toggle:not([hidden]) + .menu { display: none; position: absolute; top: 60px; left: 0; right: 0; flex-direction: column; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
-  .toggle:not([hidden]) + .menu.is-open { display: flex; }
+  .theme, .theme[hidden] { display: none !important; }
 }
+
 .menu a { text-decoration: none; }
 .menu a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .theme {
@@ -167,12 +165,22 @@ ${SITE_HEADER_CSS}
     <nav aria-label="Main" data-testid="site-header-nav">
       <a href="/" class="logo" data-testid="site-header-logo">${SITE_NAME_SCRIPT}</a>
       <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
-        <span></span><span></span><span></span>
+        <span class="toggle-icon"></span>
       </button>
-      <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
-        <li><a href="/" data-testid="site-header-books">Shop</a></li>
-        <li><a id="cart-link" href="/cart" aria-label="Cart, 0 items" data-testid="site-header-cart">Cart <span id="cart-count" class="count" data-testid="site-header-cart-count">0</span></a></li>
-      </ul>
+      <div id="nav-menu" class="panel" data-testid="site-header-nav-menu">
+        <ul class="menu">
+          <li><a href="/" data-testid="site-header-books">Shop</a></li>
+          <li><a id="cart-link" href="/cart" aria-label="Cart, 0 items" data-testid="site-header-cart">Cart <span id="cart-count" class="count" data-testid="site-header-cart-count">0</span></a></li>
+        </ul>
+        <div class="mobile">
+          <hr class="separator" />
+          <button id="mobile-theme" type="button" class="mobile-theme" aria-label="Switch to dark theme" data-testid="site-header-mobile-theme" hidden>
+            <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
+            <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+            <span id="mobile-theme-label">Dark</span>
+          </button>
+        </div>
+      </div>
       <button id="theme" type="button" class="theme" aria-label="Switch to dark mode" data-testid="site-header-theme" hidden>
         <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4a8.5 8.5 0 1 0 11.5 11.5Z" /></svg>
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg>
@@ -185,33 +193,54 @@ ${SITE_HEADER_CSS}
 `;
 
 export const SHOP_SITE_HEADER_TS = `const themeButton = document.getElementById("theme") as HTMLButtonElement;
+const mobileTheme = document.getElementById("mobile-theme") as HTMLButtonElement;
+const mobileLabel = document.getElementById("mobile-theme-label") as HTMLSpanElement;
 const root = document.documentElement;
 const systemTheme = matchMedia("(prefers-color-scheme: dark)");
 function showTheme(): void {
   const dark = root.dataset.theme ? root.dataset.theme === "dark" : systemTheme.matches;
   themeButton.dataset.dark = String(dark);
   themeButton.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+  mobileTheme.dataset.dark = String(dark);
+  mobileTheme.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+  mobileLabel.textContent = dark ? "Light" : "Dark";
 }
-themeButton.hidden = false;
-showTheme();
-systemTheme.addEventListener("change", showTheme);
-themeButton.addEventListener("click", (): void => {
-  const theme = themeButton.dataset.dark === "true" ? "light" : "dark";
+const switchTheme = (): void => {
   root.classList.add("theme-switching");
-  root.dataset.theme = theme;
-  try { localStorage.setItem("shop-theme", theme); } catch { /* Still works for this page. */ }
+  root.dataset.theme = themeButton.dataset.dark === "true" ? "light" : "dark";
+  try { localStorage.setItem("shop-theme", root.dataset.theme); } catch { /* Still works for this page. */ }
   showTheme();
   requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
-});
+};
+themeButton.hidden = false;
+mobileTheme.hidden = false;
+showTheme();
+systemTheme.addEventListener("change", showTheme);
+themeButton.addEventListener("click", switchTheme);
+mobileTheme.addEventListener("click", switchTheme);
 
 const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
-const menu = document.getElementById("nav-menu") as HTMLUListElement;
-toggle.hidden = false;
+
+const panel = document.getElementById("nav-menu") as HTMLElement;
+const header = toggle.closest("header") as HTMLElement;
+const setOpen = (open: boolean): void => {
+  if (open) {
+    header.scrollIntoView();
+    panel.style.height = "calc(100dvh - " + header.getBoundingClientRect().bottom + "px)";
+  } else panel.style.height = "";
+  toggle.setAttribute("aria-expanded", String(open));
+  document.body.style.overflow = open ? "hidden" : "";
+};
 toggle.addEventListener("click", (): void => {
-  const open = toggle.getAttribute("aria-expanded") === "true";
-  toggle.setAttribute("aria-expanded", String(!open));
-  menu.classList.toggle("is-open");
+  setOpen(toggle.getAttribute("aria-expanded") !== "true");
 });
+header.addEventListener("keydown", (event): void => {
+  if (event.key !== "Escape" || toggle.getAttribute("aria-expanded") !== "true" || toggle.getClientRects().length === 0) return;
+  setOpen(false);
+  toggle.focus();
+});
+matchMedia("(max-width: 640px)").addEventListener("change", (): void => setOpen(false));
+toggle.hidden = false;
 `;
 
 export const SHOP_CART_COUNT_TS = `import { books } from "/js/books.js";

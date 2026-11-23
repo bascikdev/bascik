@@ -621,6 +621,48 @@ ${
     }
   });
 
+  test("phone navigation opens from the menu button and ends with the theme switch", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto("/");
+    const toggle = page.getByTestId("site-header-nav-toggle");
+    const menu = page.getByTestId("site-header-nav-menu");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(menu).toBeHidden();
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(menu).toBeVisible();
+
+    // At phone width the theme switch is the last row of the menu and names the theme it switches to.
+    await expect(page.getByTestId("site-header-theme")).toBeHidden();
+    const themeRow = page.getByTestId("site-header-mobile-theme");
+    const before = await themeRow.innerText();
+    await themeRow.click();
+    await expect(themeRow).not.toHaveText(before);
+
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(toggle).toBeFocused();
+
+    await toggle.click();
+    await page.getByTestId("site-header-compare").click();
+    await expect(page).toHaveURL("/compare");
+  });
+
+  test("phone navigation stays visible without JavaScript", async ({ browser, baseURL }) => {
+    const page = await browser.newPage({ baseURL, javaScriptEnabled: false, viewport: { width: 375, height: 667 } });
+    try {
+      await page.goto("/");
+      await expect(page.getByTestId("site-header-nav-toggle")).toBeHidden();
+      await page.getByTestId("site-header-compare").click();
+      await expect(page).toHaveURL("/compare");
+    } finally {
+      await page.close();
+    }
+  });
+
   test("the skip link is the first stop and leads to the content", async ({
     page,
   }) => {

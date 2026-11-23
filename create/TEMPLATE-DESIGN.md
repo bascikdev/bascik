@@ -14,8 +14,21 @@ Use the repository-only [UI guidance](../.github/skills/bascik-ui/SKILL.md) to s
 - Preserve routes, form behavior, data, keyboard access, test hooks, and useful no-JavaScript fallbacks.
 - Use data that is clearly illustrative. Do not attribute fictional work, products, quotes, or books to real people or companies.
 - Use plain template slug names, including `shop`, `reports`, and `dashboard`.
-- Use an accessible SVG-only light/dark control with an `aria-label`, no visible button text, and saved preference initialization before paint. Preserve the canonical Bascik favicon, not a recolored version.
+- Use an accessible SVG-only light/dark control with an `aria-label`, no visible button text, and saved preference initialization before paint. At phone width the control is the labeled last row of the menu instead (see "Phone-width navigation"). Preserve the canonical Bascik favicon, not a recolored version.
 - Inline `src/pages/css/styles.css` with Bascik's `assets.inlineStyles` and omit its stylesheet link. Navigation has no resting underline; keep prose links identifiable.
+
+## Phone-width navigation
+
+Every template uses the Bascik docs site's phone navigation, unchanged from one template to the next. Do not redesign it per template; a template only supplies its own colors, type, and breakpoint.
+
+- The header bar holds the brand at the left and one menu button at the far top right. A template with search puts an icon-only magnifying glass immediately left of the menu button.
+- The menu button is a 44px target holding `<span class="toggle-icon"></span>`: three bars that become a cross while the menu is open. Animate it with `translate` and `rotate`, only when motion is allowed.
+- State lives in the button's `aria-expanded`, which the CSS reads. Do not add an open class or a `data-state` for the phone menu.
+- The open menu covers the screen below the header bar and scrolls on its own; the page behind it does not scroll. It lists the links one per row, then a rule, then the theme switch as the last row.
+- The theme switch in the menu is a full-width row with a sun or moon icon and the name of the theme it switches to (`Light` or `Dark`). The icon-only theme button in the bar is not displayed at phone width. Both call the same code and stay in sync.
+- Escape closes the menu and returns focus to the menu button. Leaving phone width closes it.
+- Without JavaScript there is no menu button or theme switch, and the links stay visible as ordinary links.
+- A template whose links live in a sidebar component (docs, dashboard) prints the same links into the header's menu at build time and does not display the sidebar at phone width once its script has run.
 
 ## Template directions
 
@@ -92,7 +105,7 @@ These are different design systems, not a checklist to force onto every branch. 
 - Open directly in the first Markdown guide at `/`, not a separate landing page. Keep the useful template-explaining content; the remaining guides use `/docs/<slug>`. Sidebar, search results, and pagination all link to the root for the introductory guide.
 - Search is a native `<dialog>` with a visible close control, an accessible name, a build-time index, and a `Ctrl+K` / `Cmd+K` shortcut. The index searches page titles, descriptions, and headings. Results remain ordinary links.
 - The table of contents links to preserved Markdown heading IDs. The highlight follows the reading position, selects the last section at the bottom, and respects a fragment when the browser cannot scroll its heading any further. Fragment links work without JavaScript.
-- The sidebar marks the current page and remains usable without JavaScript. At small widths, a labeled button progressively enhances it into a collapsible navigation.
+- The sidebar marks the current page and remains usable without JavaScript. At small widths the header's menu lists the same pages and the sidebar is not displayed; the search control is an icon-only magnifying glass beside the menu button.
 - Use native `<dialog>` behavior for focus, Escape, and the top layer. Do not rebuild those browser features with a custom overlay or focus trap.
 
 ## Corporate-template feedback

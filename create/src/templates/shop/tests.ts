@@ -777,6 +777,19 @@ test.describe("Shop", () => {
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(menu).toBeVisible();
+    await expect(page.getByTestId("site-header-cart")).toBeVisible();
+
+    // At phone width the theme switch is the last row of the menu and names the theme it switches to.
+    await expect(page.getByTestId("site-header-theme")).toBeHidden();
+    const themeRow = page.getByTestId("site-header-mobile-theme");
+    const before = await themeRow.innerText();
+    await themeRow.click();
+    await expect(themeRow).not.toHaveText(before);
+
+    await page.keyboard.press("Escape");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(menu).toBeHidden();
+    await expect(toggle).toBeFocused();
   });
 
   test("an unknown URL, or a product that is not in the catalog, is the 404 page", async ({ page }) => {

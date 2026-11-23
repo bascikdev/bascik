@@ -163,8 +163,15 @@ db.close();`,
             timeout: 15000,
           })
           .toBe(8);
+        // At phone width the theme switch is a row in the menu; the bar shows the menu button.
         await expect
-          .poll(() => paint.getByTestId("site-header-theme").isVisible())
+          .poll(() =>
+            paint
+              .getByTestId(
+                width > 640 ? "site-header-theme" : "site-header-nav-toggle",
+              )
+              .isVisible(),
+          )
           .toBe(true);
         await expect
           .poll(() => paint.getByTestId("book-catalog-controls").isVisible())
@@ -388,6 +395,13 @@ db.close();`,
       expect(await page.getByTestId("site-header-nav-menu").isVisible()).toBe(
         true,
       );
+      // The open menu ends with the labeled theme row; the icon button is not shown at phone width.
+      expect(await page.getByTestId("site-header-theme").isVisible()).toBe(
+        false,
+      );
+      expect(
+        (await page.getByTestId("site-header-mobile-theme").innerText()).trim(),
+      ).toBe(colorScheme === "dark" ? "Light" : "Dark");
     }
     const noJS = await browser.newContext({
       javaScriptEnabled: false,

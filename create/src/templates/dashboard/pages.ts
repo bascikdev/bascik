@@ -106,7 +106,8 @@ main {
   width: 100%;
 }
 
-/* At phone width the sidebar becomes a row under the header, collapsed behind its Menu button. */
+/* At phone width the layout is one column. The sidebar is a row under the header only without JavaScript:
+   with it, the header's menu lists the links and the sidebar is not displayed. */
 @media (max-width: 47.99rem) {
   body {
     grid-template-columns: minmax(0, 1fr);

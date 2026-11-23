@@ -72,7 +72,7 @@ const reportsFiles = ({
 const reportsDirectories = (context: TemplateContext): string[] => [
   ...new Set(
     reportsFiles(context)
-      .map(([path]) => path.slice(0, path.lastIndexOf("/")))
+      .map(([path]) => path.slice(0, Math.max(0, path.lastIndexOf("/"))))
       .filter((folder) => folder !== ""),
   ),
 ];

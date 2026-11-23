@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { PREVIEW_TEMPLATES } from "./changed-workspaces.mjs";
 import {
   assertDomainOwner,
+  branchPreview,
   previewUrl,
   templateDatabase,
   templateWorker,
@@ -43,6 +45,8 @@ test("each showcase hostname belongs only to the production Worker", () => {
     assert.deepEqual(preview.routes, []);
     assert.equal(preview.workers_dev, true);
     assert.equal(production.preview_urls, false);
+    // Branch Previews upload versions of the preview Worker under an alias.
+    assert.equal(preview.preview_urls, true);
     names.add(preview.name).add(production.name);
   }
   assert.equal(names.size, 18);
@@ -158,4 +162,34 @@ test("deployment metadata must identify the expected dedicated preview target", 
   assert.throws(() =>
     previewUrl(JSON.stringify({ ...result, worker_name: "other" }), worker),
   );
+});
+
+test("branch Preview rows name the preview Worker's alias URL and a template page", () => {
+  assert.deepEqual(PREVIEW_TEMPLATES, [...TEMPLATE_SLUGS]);
+  assert.deepEqual(
+    branchPreview(
+      "docs",
+      "https://pr-295-bascik-template-docs-preview.example.workers.dev",
+    ),
+    {
+      order: 2,
+      label: "Template: docs (branch preview)",
+      worker: "bascik-template-docs-preview",
+      url: "https://pr-295-bascik-template-docs-preview.example.workers.dev",
+      paths: ["/", "/docs/navigation-and-search"],
+    },
+  );
+  for (const url of [
+    "https://bascik-template-docs-preview.example.workers.dev",
+    "https://pr-295-bascik-template-docs.example.workers.dev",
+    "https://pr-295-bascik-template-blog-preview.example.workers.dev",
+    "http://pr-295-bascik-template-docs-preview.example.workers.dev",
+    "https://pr-295-bascik-template-docs-preview.example.workers.dev/x",
+    "https://template-docs.bascik.dev",
+    "https://pr-295-bascik-template-docs-preview.a.b.workers.dev",
+    "https://pr-295-bascik-template-docs-preview.example.workers.dev.example.com",
+    "https://295-bascik-template-docs-preview.example.workers.dev",
+  ])
+    assert.throws(() => branchPreview("docs", url), /not a Preview alias/, url);
+  assert.throws(() => branchPreview("nope", "https://x.workers.dev"));
 });

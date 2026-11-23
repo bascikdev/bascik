@@ -61,13 +61,19 @@ test.describe('Landing page E2E tests', () => {
             expect(await page.evaluate(() => (window as Window & { initialMotion: string[] }).initialMotion)).toEqual([]);
             expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
             const theme = page.getByTestId('site-header-theme-toggle');
-            await expect(theme).toBeVisible();
-            await expect(theme).toHaveAccessibleName('Toggle dark mode');
             await expect(theme).toHaveAttribute('aria-pressed', String(colorScheme === 'dark'));
             await expect(theme).toHaveText('');
             expect((await theme.textContent())!.trim()).toBe('');
             expect(await theme.locator('svg').count()).toBeGreaterThan(0);
-            await expect(theme).toHaveCSS('width', '44px');
+            if (width > 640) {
+              await expect(theme).toBeVisible();
+              await expect(theme).toHaveAccessibleName('Toggle dark mode');
+              await expect(theme).toHaveCSS('width', '44px');
+            } else {
+              // At phone width the icon gives way to the menu button; the theme switch is a row in the menu.
+              await expect(theme).toBeHidden();
+              await expect(page.getByTestId('site-header-nav-toggle')).toHaveCSS('width', '44px');
+            }
             expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe(colorScheme);
             expect(await page.evaluate(() => getComputedStyle(document.documentElement, '::view-transition-new(root)').animationName)).toBe('none');
           }
@@ -298,6 +304,18 @@ ${extraTests}
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(menu).toBeVisible();
+
+    // At phone width the theme switch is the last row of the menu and names the theme it switches to.
+    await expect(page.getByTestId('site-header-theme-toggle')).toBeHidden();
+    const themeRow = page.getByTestId('site-header-mobile-theme');
+    const before = await themeRow.innerText();
+    await themeRow.click();
+    await expect(themeRow).not.toHaveText(before);
+
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(toggle).toBeFocused();
+    await toggle.click();
 
     // Following a link to a section closes the menu on the way.
     await page.getByTestId('site-header-faq').click();

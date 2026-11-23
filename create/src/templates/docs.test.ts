@@ -319,22 +319,34 @@ describe("docs template markup", () => {
     );
     expect(skipLinkRules).toContain("clip-path: inset(50%)");
     expect(header).toContain(skipLinkRules);
-    // The default header's collapsing menu is left out: this header has one link and no toggle.
-    expect(header).not.toContain(".menu");
-    expect(header).not.toContain(".toggle");
+    // The default header's list of links is left out: this header has one link, and its phone menu lists the docs pages.
+    expect(header).not.toContain(".menu ");
+    expect(header).not.toContain(".menu {");
   });
 
-  it("collapses the sidebar behind a real button that names what it controls", () => {
-    const sidebar = file("src/components/docs-sidebar/docs-sidebar.html");
-    const button = sidebar.match(/<button\b[^>]*>/)![0];
+  it("opens the phone navigation from a real button in the header that names what it controls", () => {
+    const header = file("src/components/site-header/site-header.html");
+    const button = header.match(/<button id="nav-toggle"[^>]*>/)![0];
     expect(button).toContain('type="button"');
-    expect(button).toContain("aria-expanded=");
-    expect(button).toContain('aria-controls="menu"');
-    expect(sidebar).toContain('<div id="menu"');
-    // Without JavaScript the list stays open and the button stays out of the way.
+    expect(button).toContain('aria-expanded="false"');
+    expect(button).toContain('aria-controls="nav-menu"');
+    expect(header).toContain('<div id="nav-menu"');
+    // Without JavaScript the button stays out of the way and the sidebar keeps the list in the page.
     expect(button).toMatch(/\shidden>$/);
-    expect(sidebar).toContain('.menu[data-state="closed"] { display: none; }');
-    expect(sidebar).toContain("@media (max-width: 760px)");
+    expect(header).toContain(
+      '.toggle[aria-expanded="true"] + .panel { display: flex; }',
+    );
+    expect(header).toContain("@media (max-width: 760px)");
+    // Search comes before the menu button, so the bar reads logo, search, menu.
+    expect(header.indexOf("<docs-search />")).toBeLessThan(
+      header.indexOf('id="nav-toggle"'),
+    );
+    const sidebar = file("src/components/docs-sidebar/docs-sidebar.html");
+    expect(sidebar).not.toContain("<button");
+    expect(sidebar).toContain('<div id="menu"');
+    expect(sidebar).toContain(
+      '.sidebar[data-enhanced="true"] { display: none; }',
+    );
   });
 
   it("marks the current page with aria-current and keeps heading ids as written", () => {

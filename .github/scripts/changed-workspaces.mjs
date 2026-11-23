@@ -13,6 +13,55 @@ const ROOT_SUITES = [
   "adapter-netlify",
 ];
 
+// The hosted create-bascik templates (.github/scripts/template-workers.mts
+// TEMPLATE_SLUGS, same order). A branch push uploads a Preview only for the
+// templates its changes touch.
+export const PREVIEW_TEMPLATES = [
+  "default",
+  "blog",
+  "docs",
+  "landing",
+  "portfolio",
+  "corporate",
+  "shop",
+  "reports",
+  "dashboard",
+];
+
+// create/ sources every template is generated from (scaffold.ts also holds the
+// default template), and the script that builds and uploads them.
+const ALL_TEMPLATE_SOURCES = [
+  "create/src/scaffold.ts",
+  "create/src/templates.ts",
+  "create/src/default-icons.ts",
+  ".github/scripts/template-workers.mts",
+];
+
+/**
+ * The templates whose generated site a changed path can alter. Repo tests
+ * (`*.test.ts`) change no site; framework and adapter changes are previewed by
+ * the docs and adapter demo, and Template Workers builds every template for
+ * them, so they upload no template Preview.
+ *
+ * @param {readonly string[]} paths
+ * @returns {string[]} Slugs in PREVIEW_TEMPLATES order.
+ */
+export function changedTemplates(paths) {
+  const changed = new Set();
+  for (const rawPath of paths) {
+    const path = rawPath.replaceAll("\\", "/").replace(/^\.\//, "");
+    if (ALL_TEMPLATE_SOURCES.includes(path)) return [...PREVIEW_TEMPLATES];
+    const match = /^create\/src\/templates\/([a-z]+)(?:\.ts|\/.+)$/.exec(path);
+    if (
+      match &&
+      PREVIEW_TEMPLATES.includes(match[1]) &&
+      !path.endsWith(".test.ts")
+    )
+      changed.add(match[1]);
+  }
+  return PREVIEW_TEMPLATES.filter((slug) => changed.has(slug));
+}
+
 const allSuites = () =>
   Object.fromEntries(ROOT_SUITES.map((suite) => [suite, true]));
 
@@ -100,6 +149,9 @@ export function changedWorkspaces(paths, { all = false } = {}) {
         paths.every((path) => path.startsWith("docs/content/")),
     ),
     "run-any": String(rootAny),
+    "preview-templates": JSON.stringify(
+      all || paths.length === 0 ? PREVIEW_TEMPLATES : changedTemplates(paths),
+    ),
   };
 }
 

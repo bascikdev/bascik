@@ -304,15 +304,23 @@ test.describe('Starter App E2E Tests', () => {
     const toggle = page.getByTestId('site-header-nav-toggle').first();
     const menu = page.getByTestId('site-header-nav-menu').first();
 
-    // Assert what the reader sees, not the class name: the build scopes
-    // .is-open (hashed under minify.identifiers), so the element never
-    // carries the literal class.
+    // Assert what the reader sees, not a class name: the build scopes class
+    // names (hashed under minify.identifiers), so the state lives in aria-expanded.
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(menu).toBeHidden();
+    // At phone width the theme switch is a row in the menu, not an icon in the bar.
+    await expect(page.getByTestId('site-header-theme-toggle')).toBeHidden();
 
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(menu).toBeVisible();
+
+    const themeRow = page.getByTestId('site-header-mobile-theme');
+    await expect(themeRow).toBeVisible();
+    const before = await themeRow.innerText();
+    await themeRow.click();
+    await expect(themeRow).not.toHaveText(before);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', before.trim().toLowerCase());
 
     await page.getByTestId('site-header-about').focus();
     await page.keyboard.press('Escape');
@@ -682,9 +690,12 @@ nav {
 }
 .logo:hover { opacity: 0.8; }
 
+/* The links and, at phone width, the theme row under them. */
+.panel { display: flex; align-items: center; margin-left: auto; }
+
 .menu {
   list-style: none;
-  margin: 0 0 0 auto;
+  margin: 0;
   padding: 0;
   display: flex;
   gap: 4px;
@@ -699,25 +710,43 @@ nav {
 }
 .menu a:hover { color: var(--text); background: var(--elevated); opacity: 1; }
 
+/* The phone-width menu button: three bars that become a cross while the menu is open. */
 .toggle {
   display: none;
-  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 5px;
+  flex: 0 0 44px;
   width: 44px;
   height: 44px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 6px;
   margin-left: auto;
+  padding: 0;
+  border: 0;
   border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
 }
-.toggle span {
+.toggle:hover { background: var(--elevated); }
+.toggle-icon,
+.toggle-icon::before,
+.toggle-icon::after {
   display: block;
+  width: 20px;
   height: 2px;
-  background: var(--text);
   border-radius: 2px;
+  background: var(--text);
+}
+.toggle-icon { position: relative; }
+.toggle-icon::before,
+.toggle-icon::after { content: ""; position: absolute; left: 0; }
+.toggle-icon::before { translate: 0 -6px; }
+.toggle-icon::after { translate: 0 6px; }
+.toggle[aria-expanded="true"] .toggle-icon { background: transparent; }
+.toggle[aria-expanded="true"] .toggle-icon::before { translate: 0 0; rotate: 45deg; }
+.toggle[aria-expanded="true"] .toggle-icon::after { translate: 0 0; rotate: -45deg; }
+@media (prefers-reduced-motion: no-preference) {
+  .toggle-icon::before,
+  .toggle-icon::after { transition: translate 150ms ease-out, rotate 150ms ease-out; }
 }
 
 .theme {
@@ -741,36 +770,75 @@ nav {
 .theme[aria-pressed="true"] .sun { display: block; }
 .theme[aria-pressed="true"] .moon { display: none; }
 
+/* The theme row at the bottom of the phone menu. */
+.mobile { display: none; }
+
 @media (max-width: 640px) {
   .container { padding: 0 16px; }
+  /* Without JavaScript there is no menu button: the links wrap under the logo. */
   nav { min-height: 60px; height: auto; gap: 8px; flex-wrap: wrap; }
-  .toggle:not([hidden]) { display: flex; }
-
   .menu { flex-wrap: wrap; }
 
-  .toggle:not([hidden]) + .menu {
+  .toggle:not([hidden]) { display: flex; }
+  /* The theme switch moves into the menu. */
+  .toggle:not([hidden]) ~ .theme { display: none; }
+
+  /* The open menu covers the screen below the header. */
+  .toggle:not([hidden]) + .panel {
     display: none;
     position: absolute;
-    top: 60px;
+    top: 100%;
     left: 0;
     right: 0;
+    /* The script sets the exact height from the header's bottom edge when the menu opens. */
+    height: calc(100dvh - 60px);
+    overflow-y: auto;
     flex-direction: column;
-    gap: 0;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 8px 16px;
+    align-items: stretch;
+    margin: 0;
+    padding: 20px 16px 40px;
+    background: var(--bg);
   }
-  .toggle:not([hidden]) + .menu.is-open { display: flex; }
-  .toggle:not([hidden]) + .menu a {
+  .toggle[aria-expanded="true"] + .panel { display: flex; }
+  .toggle:not([hidden]) + .panel .menu { flex-direction: column; flex-wrap: nowrap; }
+  .toggle:not([hidden]) + .panel .menu a {
     display: flex;
     align-items: center;
     min-height: 44px;
-    padding: 8px;
+    padding: 8px 12px;
   }
+
+  .toggle:not([hidden]) + .panel .mobile { display: block; }
+  .separator { margin: 16px 0 20px; border: 0; border-top: 1px solid var(--border); }
+  .mobile-theme {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: none;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mobile-theme[hidden] { display: none; }
+  .mobile-theme:hover { color: var(--text); background: var(--elevated); }
+  .mobile-theme svg { flex: 0 0 18px; width: 18px; height: 18px; }
+  .mobile-theme .sun { display: none; }
+  .mobile-theme[data-dark="true"] .sun { display: block; }
+  .mobile-theme[data-dark="true"] .moon { display: none; }
 }
 `;
 
-/** Sticky top nav with logo (brand prop) and mobile hamburger. */
+/**
+ * Sticky top nav with logo (brand prop). At phone width the links collapse behind a menu button at the top
+ * right, and the theme switch moves to the bottom of the open menu, as on the Bascik docs site.
+ */
 export const SITE_HEADER_HTML = `<style>
 ${SITE_HEADER_CSS}</style>
 <header data-testid="site-header">
@@ -779,13 +847,23 @@ ${SITE_HEADER_CSS}</style>
     <nav aria-label="Main" data-testid="site-header-nav">
       <a href="/" class="logo" data-bascik-prop-brand data-testid="site-header-logo">My Site</a>
       <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
-        <span></span><span></span><span></span>
+        <span class="toggle-icon"></span>
       </button>
-      <ul id="nav-menu" class="menu" data-testid="site-header-nav-menu">
-        <li><a href="/" data-testid="site-header-home">Home</a></li>
-        <li><a href="/about" data-testid="site-header-about">About</a></li>
-        <li><a href="/contact" data-testid="site-header-contact">Contact</a></li>
-      </ul>
+      <div id="nav-menu" class="panel" data-testid="site-header-nav-menu">
+        <ul class="menu">
+          <li><a href="/" data-testid="site-header-home">Home</a></li>
+          <li><a href="/about" data-testid="site-header-about">About</a></li>
+          <li><a href="/contact" data-testid="site-header-contact">Contact</a></li>
+        </ul>
+        <div class="mobile">
+          <hr class="separator" />
+          <button id="mobile-theme" type="button" class="mobile-theme" aria-label="Switch to dark theme" data-testid="site-header-mobile-theme" hidden>
+            <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
+            <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+            <span id="mobile-theme-label">Dark</span>
+          </button>
+        </div>
+      </div>
       <button id="theme" type="button" class="theme" aria-label="Toggle dark mode" aria-pressed="false" data-testid="site-header-theme-toggle" hidden>
         <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
@@ -795,37 +873,60 @@ ${SITE_HEADER_CSS}</style>
 </header>
 <script type="text/typescript">
   const toggle = document.getElementById('nav-toggle') as HTMLButtonElement;
-  const menu = document.getElementById('nav-menu') as HTMLUListElement;
+  const panel = document.getElementById('nav-menu') as HTMLElement;
+  const header = toggle.closest('header') as HTMLElement;
   const setOpen = (open: boolean): void => {
+    if (open) {
+      // The menu fills the screen below the header, so bring the header to the top and measure it.
+      header.scrollIntoView();
+      panel.style.height = 'calc(100dvh - ' + header.getBoundingClientRect().bottom + 'px)';
+    } else panel.style.height = '';
     toggle.setAttribute('aria-expanded', String(open));
-    menu.classList.toggle('is-open', open);
+    // The page behind the open menu does not scroll.
+    document.body.style.overflow = open ? 'hidden' : '';
   };
   toggle.addEventListener('click', (): void => {
     setOpen(toggle.getAttribute('aria-expanded') !== 'true');
   });
-  toggle.parentElement?.addEventListener('keydown', (event): void => {
+  header.addEventListener('keydown', (event): void => {
     if (event.key !== 'Escape' || toggle.getAttribute('aria-expanded') !== 'true' || toggle.getClientRects().length === 0) return;
     setOpen(false);
     toggle.focus();
   });
+  // Leaving phone width closes the menu, so the page is never left unable to scroll.
+  matchMedia('(max-width: 640px)').addEventListener('change', (): void => setOpen(false));
   toggle.hidden = false;
+
+  // Two controls switch the theme: the icon button beside the links, and a labeled row in the phone menu.
   const theme = document.getElementById('theme') as HTMLButtonElement;
+  const mobileTheme = document.getElementById('mobile-theme') as HTMLButtonElement;
+  const mobileLabel = document.getElementById('mobile-theme-label') as HTMLSpanElement;
   const root = document.documentElement;
   const system = matchMedia('(prefers-color-scheme: dark)');
   const isDark = (): boolean => root.dataset.theme === 'dark' ||
     (root.dataset.theme !== 'light' && system.matches);
-  const sync = (): void => theme.setAttribute('aria-pressed', String(isDark()));
-  theme.addEventListener('click', (): void => {
+  const sync = (): void => {
+    const dark = isDark();
+    theme.setAttribute('aria-pressed', String(dark));
+    // The row names the theme it switches to.
+    mobileTheme.dataset.dark = String(dark);
+    mobileTheme.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+    mobileLabel.textContent = dark ? 'Light' : 'Dark';
+  };
+  const switchTheme = (): void => {
     root.classList.add('theme-switching');
     root.dataset.theme = isDark() ? 'light' : 'dark';
     try { localStorage.setItem('theme', root.dataset.theme); } catch { /* Use this choice for the current page. */ }
     sync();
     requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('theme-switching')));
-  });
+  };
+  theme.addEventListener('click', switchTheme);
+  mobileTheme.addEventListener('click', switchTheme);
   system.addEventListener('change', sync);
   window.addEventListener('pageshow', sync);
   sync();
   theme.hidden = false;
+  mobileTheme.hidden = false;
 </script>
 `;
 
@@ -1099,6 +1200,14 @@ describe('site-header component', () => {
     expect(html).toContain('href="/about"');
     expect(html).toContain('href="/contact"');
     expect(html).toContain('id="nav-toggle"');
+  });
+
+  it('keeps the phone menu state in aria-expanded and puts a labeled theme row in the menu', async () => {
+    const html = await readFile(path, 'utf8');
+    expect(html).toMatch(/<button id="nav-toggle"[^>]*aria-controls="nav-menu"[^>]*aria-expanded="false"[^>]*hidden>/);
+    expect(html).toContain('.toggle[aria-expanded="true"] + .panel');
+    expect(html).toMatch(/<button id="mobile-theme"[^>]*data-testid="site-header-mobile-theme"[^>]*hidden>/);
+    expect(html).toContain('<span id="mobile-theme-label">');
   });
 });
 `;

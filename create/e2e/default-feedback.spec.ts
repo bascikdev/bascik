@@ -17,7 +17,13 @@ test("theme follows Contact visually and in keyboard order", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByTestId("site-header-nav-toggle").click();
   await expect(contact).toBeVisible();
-  await expect(theme).toBeVisible();
+  // At phone width the theme switch is the last row of the open menu.
+  await expect(theme).toBeHidden();
+  const themeRow = page.getByTestId("site-header-mobile-theme");
+  await expect(themeRow).toBeVisible();
+  expect((await themeRow.boundingBox())!.y).toBeGreaterThan(
+    (await contact.boundingBox())!.y,
+  );
 });
 
 test("canonical favicon bytes reach production unchanged", async ({
@@ -87,8 +93,16 @@ test("compiled pages show icon-only themes, inline CSS, and static initial paint
             requests.some((url) => /\/styles\.css(?:[?#]|$)/.test(url)),
           ).toBe(false);
           const button = page.getByTestId("site-header-theme-toggle");
-          await expect(button).toBeVisible();
-          await expect(button).toHaveAccessibleName("Toggle dark mode");
+          // At phone width the icon gives way to the labeled row in the menu.
+          if (width > 640) {
+            await expect(button).toBeVisible();
+            await expect(button).toHaveAccessibleName("Toggle dark mode");
+          } else {
+            await expect(button).toBeHidden();
+            await expect(
+              page.getByTestId("site-header-nav-toggle"),
+            ).toBeVisible();
+          }
           expect((await button.textContent())?.trim()).toBe("");
           expect(await button.locator("svg").count()).toBe(2);
           expect(

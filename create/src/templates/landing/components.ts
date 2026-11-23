@@ -1115,7 +1115,7 @@ ${SITE_HEADER_CSS}
 @media (max-width: 640px) {
   nav { height: auto; min-height: 60px; flex-wrap: wrap; row-gap: 0; }
 
-  .menu.static {
+  .panel.static {
     display: flex;
     position: static;
     flex-direction: row;
@@ -1126,8 +1126,11 @@ ${SITE_HEADER_CSS}
     border: 0;
     background: none;
   }
-  .menu.static li { width: auto; }
-  .menu.static a { padding: 6px 10px 6px 0; }
+  .panel.static li { width: auto; }
+  .panel.static a { padding: 6px 10px 6px 0; }
+
+  /* The theme switch moves into the menu. */
+  .toggle:not([hidden]) ~ .theme-toggle { display: none; }
 }
 </style>
 <header data-testid="site-header">
@@ -1141,15 +1144,25 @@ ${SITE_HEADER_CSS}
         </script>
       </a>
       <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
-        <span></span><span></span><span></span>
+        <span class="toggle-icon"></span>
       </button>
-      <ul id="nav-menu" class="menu static" data-testid="site-header-nav-menu">
-        <li><a href="/#features" data-testid="site-header-features">Features</a></li>
-        <li><a href="/#how-it-works" data-testid="site-header-how-it-works">How it works</a></li>
-        <li><a href="/#pricing" data-testid="site-header-pricing">Pricing</a></li>
-        <li><a href="/#faq" data-testid="site-header-faq">FAQ</a></li>
-        <li><a href="/#signup" class="cta" data-testid="site-header-signup">Request access</a></li>
-      </ul>
+      <div id="nav-menu" class="panel static" data-testid="site-header-nav-menu">
+        <ul class="menu">
+          <li><a href="/#features" data-testid="site-header-features">Features</a></li>
+          <li><a href="/#how-it-works" data-testid="site-header-how-it-works">How it works</a></li>
+          <li><a href="/#pricing" data-testid="site-header-pricing">Pricing</a></li>
+          <li><a href="/#faq" data-testid="site-header-faq">FAQ</a></li>
+          <li><a href="/#signup" class="cta" data-testid="site-header-signup">Request access</a></li>
+        </ul>
+        <div class="mobile">
+          <hr class="separator" />
+          <button id="mobile-theme" type="button" class="mobile-theme" aria-label="Switch to dark theme" data-testid="site-header-mobile-theme" hidden>
+            <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
+            <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+            <span id="mobile-theme-label">Dark</span>
+          </button>
+        </div>
+      </div>
       <button id="theme-toggle" type="button" class="theme-toggle" aria-label="Toggle dark mode" aria-pressed="false" data-testid="site-header-theme-toggle" hidden>
         <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.9 13a9 9 0 0 1-9.9-9.9A9 9 0 1 0 20.9 13Z" /></svg>
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
@@ -1159,12 +1172,24 @@ ${SITE_HEADER_CSS}
 </header>
 <script type="text/typescript">
   const toggle = document.getElementById('nav-toggle') as HTMLButtonElement;
-  const menu = document.getElementById('nav-menu') as HTMLUListElement;
+  const header = toggle.closest('header') as HTMLElement;
+  const menu = document.getElementById('nav-menu') as HTMLElement;
+  const mobileTheme = document.getElementById('mobile-theme') as HTMLButtonElement;
+  const mobileLabel = document.getElementById('mobile-theme-label') as HTMLSpanElement;
+  const themeToggle = document.getElementById('theme-toggle') as HTMLButtonElement;
+  const root = document.documentElement;
+  const systemTheme = matchMedia('(prefers-color-scheme: dark)');
+  const savedTheme = (): string | null => {
+    try { return localStorage.getItem('theme'); } catch { return null; }
+  };
 
-  // One function applies the state to the page.
   const setOpen = (open: boolean): void => {
+    if (open) {
+      header.scrollIntoView();
+      menu.style.height = 'calc(100dvh - ' + header.getBoundingClientRect().bottom + 'px)';
+    } else menu.style.height = '';
     toggle.setAttribute('aria-expanded', String(open));
-    menu.classList.toggle('is-open', open);
+    document.body.style.overflow = open ? 'hidden' : '';
   };
 
   // The script is running, so the menu can collapse behind the toggle at phone width.
@@ -1179,17 +1204,22 @@ ${SITE_HEADER_CSS}
   menu.addEventListener('click', (event: MouseEvent): void => {
     if (event.target instanceof HTMLAnchorElement) setOpen(false);
   });
+  header.addEventListener('keydown', (event): void => {
+    if (event.key !== 'Escape' || toggle.getAttribute('aria-expanded') !== 'true' || toggle.getClientRects().length === 0) return;
+    setOpen(false);
+    toggle.focus();
+  });
+  // Leaving phone width closes the menu, so the page is never left unable to scroll.
+  matchMedia('(max-width: 640px)').addEventListener('change', (): void => setOpen(false));
 
-  const themeToggle = document.getElementById('theme-toggle') as HTMLButtonElement;
-  const root = document.documentElement;
-  const systemTheme = matchMedia('(prefers-color-scheme: dark)');
-  const savedTheme = (): string | null => {
-    try { return localStorage.getItem('theme'); } catch { return null; }
-  };
   const applyTheme = (theme: string): void => {
     root.classList.add('theme-switching');
     root.dataset.theme = theme;
     themeToggle.setAttribute('aria-pressed', String(theme === 'dark'));
+    // The row in the phone menu names the theme it switches to.
+    mobileTheme.dataset.dark = String(theme === 'dark');
+    mobileTheme.setAttribute('aria-label', theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+    mobileLabel.textContent = theme === 'dark' ? 'Light' : 'Dark';
     // Flush the new colors while transitions are suspended.
     void root.offsetHeight;
     requestAnimationFrame(() => root.classList.remove('theme-switching'));
@@ -1202,11 +1232,15 @@ ${SITE_HEADER_CSS}
   };
   syncTheme();
   themeToggle.hidden = false;
-  themeToggle.addEventListener('click', (): void => {
+  mobileTheme.hidden = false;
+  // Two controls switch the theme: the icon button beside the links, and a labeled row in the phone menu.
+  const switchTheme = (): void => {
     const theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
     try { localStorage.setItem('theme', theme); } catch {}
     applyTheme(theme);
-  });
+  };
+  themeToggle.addEventListener('click', switchTheme);
+  mobileTheme.addEventListener('click', switchTheme);
   systemTheme.addEventListener('change', syncTheme);
   window.addEventListener('storage', syncTheme);
   window.addEventListener('pageshow', syncTheme);
@@ -1241,8 +1275,16 @@ describe('site-header component', () => {
   it('keeps the menu open until its script runs, so the links work without JavaScript', async () => {
     const html = await readFile(path, 'utf8');
     expect(html).toMatch(/<button[^>]*id="nav-toggle"[^>]*\\shidden>/);
-    expect(html).toContain('class="menu static"');
+    expect(html).toContain('class="panel static"');
     expect(html).toContain("menu.classList.remove('static')");
+  });
+
+  it('keeps the phone menu state in aria-expanded and ends the menu with a labeled theme row', async () => {
+    const html = await readFile(path, 'utf8');
+    expect(html).toMatch(/<button id="nav-toggle"[^>]*aria-controls="nav-menu"[^>]*aria-expanded="false"[^>]*hidden>/);
+    expect(html).toContain('.toggle[aria-expanded="true"] + .panel');
+    expect(html).toMatch(/<button id="mobile-theme"[^>]*data-testid="site-header-mobile-theme"[^>]*hidden>/);
+    expect(html.indexOf('data-testid="site-header-signup"')).toBeLessThan(html.indexOf('id="mobile-theme"'));
   });
 });
 `;

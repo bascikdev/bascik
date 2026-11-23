@@ -75,6 +75,48 @@ nav { margin-top: 24px; }
 .theme[aria-pressed="true"] .sun { display: block; }
 .theme[aria-pressed="true"] .moon { display: none; }
 .theme:hover { border-color: var(--accent); }
+
+/* The phone-width menu button */
+.toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.toggle:hover { background: var(--elevated); }
+.toggle-icon,
+.toggle-icon::before,
+.toggle-icon::after {
+  display: block;
+  width: 20px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--text);
+}
+.toggle-icon { position: relative; }
+.toggle-icon::before,
+.toggle-icon::after { content: ""; position: absolute; left: 0; }
+.toggle-icon::before { translate: 0 -6px; }
+.toggle-icon::after { translate: 0 6px; }
+.toggle[aria-expanded="true"] .toggle-icon { background: transparent; }
+.toggle[aria-expanded="true"] .toggle-icon::before { translate: 0 0; rotate: 45deg; }
+.toggle[aria-expanded="true"] .toggle-icon::after { translate: 0 0; rotate: -45deg; }
+@media (prefers-reduced-motion: no-preference) {
+  .toggle-icon::before,
+  .toggle-icon::after { transition: translate 150ms ease-out, rotate 150ms ease-out; }
+}
+
+.mobile { display: none; }
+
 @media (max-width: 900px) {
   header { position: static; padding: 24px 0; border-bottom: 1px solid var(--border); }
   .identity { margin-bottom: 16px; }
@@ -82,11 +124,64 @@ nav { margin-top: 24px; }
   .bio { max-width: 60ch; margin-bottom: 0; }
   nav { margin-top: 12px; }
   .menu { display: flex; flex-wrap: wrap; gap: 24px; }
+
+  .toggle:not([hidden]) { display: flex; }
+  .toggle:not([hidden]) ~ .theme { display: none; }
+
+  header[data-menu] .panel {
+    display: none;
+    position: fixed;
+    /* The script sets the exact top from the bar's bottom edge when the menu opens. */
+    top: 76px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    background: var(--bg);
+    overflow-y: auto;
+    flex-direction: column;
+    align-items: stretch;
+    margin: 0;
+    padding: 20px 18px 40px;
+  }
+  header[data-menu]:has(.toggle[aria-expanded="true"]) .panel { display: flex; }
+  header[data-menu] .panel .menu { flex-direction: column; flex-wrap: nowrap; gap: 4px; }
+  header[data-menu] .panel .menu a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+
+  header[data-menu] .panel .mobile { display: block; }
+  .separator { margin: 16px 0 20px; border: 0; border-top: 1px solid var(--border); }
+  .mobile-theme {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: none;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mobile-theme[hidden] { display: none; }
+  .mobile-theme:hover { color: var(--text); background: var(--elevated); }
+  .mobile-theme svg { flex: 0 0 18px; width: 18px; height: 18px; }
+  .mobile-theme .sun { display: none; }
+  .mobile-theme[data-dark="true"] .sun { display: block; }
+  .mobile-theme[data-dark="true"] .moon { display: none; }
 }
 </style>
 <header data-testid="site-header">
   <a href="#main" class="skip-link" data-testid="site-header-skip-link">Skip to content</a>
-  <div class="identity">
+  <div id="bar" class="identity">
       <a href="/" class="logo" data-testid="site-header-logo">
         <script data-bascik-build-once type="text/typescript">
           import { html } from "@bascik/bascik/html";
@@ -94,6 +189,9 @@ nav { margin-top: 24px; }
           export default () => html\`\${SITE.name}\`;
         </script>
       </a>
+      <button id="nav-toggle" type="button" class="toggle" aria-label="Toggle menu" aria-controls="nav-menu" aria-expanded="false" data-testid="site-header-nav-toggle" hidden>
+        <span class="toggle-icon"></span>
+      </button>
       <button id="theme-toggle" type="button" class="theme" aria-label="Dark mode" aria-pressed="false" data-testid="theme-toggle" hidden>
         <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z" /></svg>
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg>
@@ -106,39 +204,81 @@ nav { margin-top: 24px; }
       export default () => html\`<p class="name">\${AUTHOR.name}</p><p class="bio">\${AUTHOR.context}</p>\`;
     </script>
   </aside>
-    <nav aria-label="Main" data-testid="site-header-nav">
-      <ul class="menu" data-testid="site-header-nav-menu">
-        <li><a href="/" data-testid="site-header-home">Home</a></li>
-        <li><a href="/blog/" data-testid="site-header-blog">Blog</a></li>
-        <li><a href="/about" data-testid="site-header-about">About</a></li>
-      </ul>
-    </nav>
+  <nav aria-label="Main" id="nav-menu" class="panel" data-testid="site-header-nav">
+    <ul class="menu" data-testid="site-header-nav-menu">
+      <li><a href="/" data-testid="site-header-home">Home</a></li>
+      <li><a href="/blog/" data-testid="site-header-blog">Blog</a></li>
+      <li><a href="/about" data-testid="site-header-about">About</a></li>
+    </ul>
+    <div class="mobile">
+      <hr class="separator" />
+      <button id="mobile-theme" type="button" class="mobile-theme" aria-label="Switch to dark theme" data-testid="site-header-mobile-theme" hidden>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" /></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></svg>
+        <span id="mobile-theme-label">Dark</span>
+      </button>
+    </div>
+  </nav>
 </header>
 <script type="text/typescript">
-  const toggle = document.getElementById("theme-toggle") as HTMLButtonElement;
+  const bar = document.getElementById("bar") as HTMLElement;
+  const toggle = document.getElementById("nav-toggle") as HTMLButtonElement;
+  const panel = document.getElementById("nav-menu") as HTMLElement;
+  const header = toggle.closest("header") as HTMLElement;
+  const setOpen = (open: boolean): void => {
+    if (open) {
+      header.scrollIntoView();
+      panel.style.top = bar.getBoundingClientRect().bottom + "px";
+    } else panel.style.top = "";
+    toggle.setAttribute("aria-expanded", String(open));
+    document.body.style.overflow = open ? "hidden" : "";
+  };
+  toggle.addEventListener("click", (): void => {
+    setOpen(toggle.getAttribute("aria-expanded") !== "true");
+  });
+  header.addEventListener("keydown", (event): void => {
+    if (event.key !== "Escape" || toggle.getAttribute("aria-expanded") !== "true" || toggle.getClientRects().length === 0) return;
+    setOpen(false);
+    toggle.focus();
+  });
+  matchMedia("(max-width: 900px)").addEventListener("change", (): void => setOpen(false));
+  toggle.hidden = false;
+  header.dataset.menu = "ready";
+
+  const theme = document.getElementById("theme-toggle") as HTMLButtonElement;
+  const mobileTheme = document.getElementById("mobile-theme") as HTMLButtonElement;
+  const mobileLabel = document.getElementById("mobile-theme-label") as HTMLSpanElement;
   const root = document.documentElement;
   const system = matchMedia("(prefers-color-scheme: dark)");
+  const isDark = (): boolean => root.dataset.theme === "dark" ||
+    (root.dataset.theme !== "light" && system.matches);
   const sync = (): void => {
-    const dark = root.dataset.theme ? root.dataset.theme === "dark" : system.matches;
-    toggle.setAttribute("aria-pressed", String(dark));
+    const dark = isDark();
+    theme.setAttribute("aria-pressed", String(dark));
+    mobileTheme.dataset.dark = String(dark);
+    mobileTheme.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+    mobileLabel.textContent = dark ? "Light" : "Dark";
   };
-  sync();
-  toggle.hidden = false;
+  const switchTheme = (): void => {
+    root.classList.add("theme-switching");
+    root.dataset.theme = isDark() ? "light" : "dark";
+    try { localStorage.setItem("theme", root.dataset.theme); } catch { /* Use this choice for the current page. */ }
+    sync();
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+  };
+  theme.addEventListener("click", switchTheme);
+  mobileTheme.addEventListener("click", switchTheme);
   system.addEventListener("change", sync);
   window.addEventListener("pageshow", sync);
+  sync();
+  theme.hidden = false;
+  mobileTheme.hidden = false;
+
   window.addEventListener("storage", (event): void => {
     if (event.key !== "theme" && event.key !== null) return;
     root.classList.add("theme-switching");
     if (event.newValue === "light" || event.newValue === "dark") root.dataset.theme = event.newValue;
     else delete root.dataset.theme;
-    sync();
-    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
-  });
-  toggle.addEventListener("click", (): void => {
-    root.classList.add("theme-switching");
-    const theme = toggle.getAttribute("aria-pressed") === "true" ? "light" : "dark";
-    root.dataset.theme = theme;
-    try { localStorage.setItem("theme", theme); } catch {}
     sync();
     requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
   });
