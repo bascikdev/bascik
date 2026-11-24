@@ -183,6 +183,43 @@ export interface ExpandOptions {
    * to its own once-per-key log.
    */
   warn?: (message: string) => void;
+  /**
+   * Finish a filled instance in its own text. When set, the loop hands each
+   * instance (template filled with props and slots, attributes inherited)
+   * to this instead of splicing it and searching the page again from its
+   * start, splices what comes back, and searches on after it. The callback
+   * expands the usages inside `html` (through this loop, with `open` as
+   * `openAncestors`), so an instance costs its own length instead of the
+   * page's: a page-sized slot holding a thousand usages is otherwise
+   * copied and searched a thousand times (request-render.ts,
+   * `expandByUsage`). The callback's errors are the expansion's, not the
+   * instance's: they propagate without `onError`.
+   *
+   * The instance is recorded in `usedComponents` before the call, so the
+   * order stays the loop's (an instance before the ones inside it).
+   * `maxOutputBytes` is what is left of the size tripwire for the instance.
+   */
+  expandInstance?: (html: string, context: InstanceExpansionContext) => string;
+  /**
+   * The instances this text sits in, outermost first, when it is one
+   * instance's text handed to `expandInstance`: cycle detection reads the
+   * chain as if the loop had expanded them in this page.
+   */
+  openAncestors?: ReadonlyArray<OpenAncestor>;
+}
+
+/** An instance whose text is being expanded: its component and file. */
+export interface OpenAncestor {
+  name: string;
+  fileName?: string;
+}
+
+/** What `ExpandOptions.expandInstance` is told about the instance. */
+export interface InstanceExpansionContext {
+  /** The instances around the text, outermost first, the instance last. */
+  open: OpenAncestor[];
+  /** The size the instance may grow to before the tripwire trips. */
+  maxOutputBytes: number;
 }
 
 /** Thrown when `limits` trip. The build wraps it in a `PageProcessingError`. */
@@ -438,7 +475,13 @@ export const expandComponents = (
     fileName?: string;
     start: number;
     end: number;
-  }> = [];
+  }> = (opts.openAncestors ?? []).map((open) => ({
+    name: open.name,
+    fileName: open.fileName,
+    // The whole text is inside each of them, whatever is spliced into it.
+    start: 0,
+    end: Number.POSITIVE_INFINITY,
+  }));
   const templateIncludes = new Map<string, boolean>();
   const includesTag = (parent: string, child: string): boolean => {
     const key = `${parent}\0${child}`;
@@ -505,11 +548,13 @@ export const expandComponents = (
   /**
    * Splice `transpiledTag` over the instance found last (at its offsets when
    * known) and keep the mask, the search cursor and the mask checkpoints
-   * current for the next search.
+   * current for the next search. `resolved`: the text has no usage left to
+   * expand (`expandInstance` finished it), so the search goes on after it.
    */
   const spliceInstance = (
     component: BascikComponent,
     transpiledTag: string,
+    resolved = false,
   ): void => {
     const { startIndex: sIdx, endIndex: eIdx } = component as {
       startIndex?: number;
@@ -523,7 +568,7 @@ export const expandComponents = (
       const delta =
         transpiledTag.length - (offsets.endIndex - offsets.startIndex);
       for (const open of openInstances) open.end += delta;
-      if (transpiledTag)
+      if (transpiledTag && !resolved)
         openInstances.push({
           name: component.name,
           fileName: component.fileName,
@@ -595,6 +640,8 @@ export const expandComponents = (
     maskFrom = splicedMask ? splicedMask.checkpoint : null;
     maskFromEnd = splicedMask?.endCheckpoint ?? null;
     if (!splicedMask) maskFacts = {};
+    if (resolved && offsets)
+      searchFrom = offsets.startIndex + transpiledTag.length;
     probeSplice(splicedMask?.masked != null && offsets !== undefined);
   };
   /** Report the loop's state to the test-only invariant oracle, when set. */
@@ -611,7 +658,9 @@ export const expandComponents = (
       closerFacts: maskFacts.last && { ...maskFacts.last },
     });
   };
-  let lastTag = "(unknown)";
+  // Inside an instance's own text, the budget was last spent on it.
+  const enclosing = opts.openAncestors?.at(-1);
+  let lastTag = enclosing ? `<${enclosing.name}>` : "(unknown)";
   while (true) {
     // Request time only (component-scan-budget.ts): the rescans charged
     // below are bounded per script output, before the next search.
@@ -729,6 +778,9 @@ export const expandComponents = (
     const searchedBody = transpiledHtmlBody;
     const propWarn = (message: string): void =>
       warn(`<${usage.name}> (${usage.fileName || "unknown file"}): ${message}`);
+    // The filled instance, when `expandInstance` finishes it after the
+    // `try`: a failure inside it is not this instance's.
+    let unexpanded: string | undefined;
     try {
       // One stable ID shared across all attribute-scoping passes for this instance.
       const props = extractProps(component.content, warn);
@@ -972,10 +1024,22 @@ export const expandComponents = (
       if (opts.finalizeInstance) {
         transpiledTag = opts.finalizeInstance(transpiledTag);
       }
-      if (component.fileName) {
-        transpiledTag = `<!--bascik-source-file:${component.fileName}-->${transpiledTag}<!--bascik-source-file-end:${component.fileName}-->`;
+      const { startIndex, endIndex } = component as {
+        startIndex?: number;
+        endIndex?: number;
+      };
+      if (
+        opts.expandInstance &&
+        typeof startIndex === "number" &&
+        typeof endIndex === "number"
+      ) {
+        unexpanded = transpiledTag;
+      } else {
+        if (component.fileName) {
+          transpiledTag = `<!--bascik-source-file:${component.fileName}-->${transpiledTag}<!--bascik-source-file-end:${component.fileName}-->`;
+        }
+        spliceInstance(component, transpiledTag);
       }
-      spliceInstance(component, transpiledTag);
 
       // The usage slices are slices of the page string, which is a fresh
       // flat copy after each splice: kept, every recorded instance would pin
@@ -987,6 +1051,8 @@ export const expandComponents = (
       usedComponents.push(component);
       substitutions++;
     } catch (error) {
+      // The usage is stripped below, so nothing of it is left to finish.
+      unexpanded = undefined;
       // The limit tripwire throws before the `try`, so nothing here can be a
       // ComponentExpansionLimitError unless a host callback made one.
       opts.onError(component, currentStage, error, transpiledHtmlBody);
@@ -1036,6 +1102,25 @@ export const expandComponents = (
           usedComponents,
         };
       }
+    }
+    if (unexpanded !== undefined && opts.expandInstance) {
+      // Cast: `unexpanded` is set only when the search gave both offsets.
+      const { startIndex, endIndex } = component as unknown as {
+        startIndex: number;
+        endIndex: number;
+      };
+      const finished = opts.expandInstance(unexpanded, {
+        open: [
+          ...(opts.openAncestors ?? []),
+          { name: component.name, fileName: component.fileName },
+        ],
+        // The page may grow to the tripwire; the rest of it is not this
+        // instance's to spend.
+        maxOutputBytes:
+          opts.limits.maxOutputBytes -
+          (transpiledHtmlBody.length - (endIndex - startIndex)),
+      });
+      spliceInstance(component, finished, true);
     }
   }
 };
