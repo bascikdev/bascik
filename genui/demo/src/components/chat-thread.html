@@ -79,7 +79,7 @@ The conversation: the turns so far, then the reply being written. Its two stream
         const conversation = await loadConversation(session);
         if (conversation?.messages.at(-1)?.role !== "user") return;
 
-        const model = await loadModel(app);
+        const model = await loadModel(app, request);
         let reply = "";
         // Keep the model's raw text for the history as it streams by.
         const recorded = (async function* () {

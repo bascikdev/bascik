@@ -7,7 +7,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./anthropic": "./src/anthropic.ts"
+    "./anthropic": "./src/anthropic.ts",
+    "./openai": "./src/openai.ts"
   },
   "scripts": {
     "unit": "vitest run",

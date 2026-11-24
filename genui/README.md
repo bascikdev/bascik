@@ -49,6 +49,24 @@ Open the printed URL. The site serves four apps from one chat shell:
 
 With no API key each app uses an offline stand-in that needs no model: the bookshop follows a script, the docs app returns keyword search results, the analyst answers four fixed questions with real queries, and the review walks a fixed queue of five items. Set `ANTHROPIC_API_KEY` and the same apps talk to Claude, with the system prompt generated from the catalog and the tools called by the model.
 
+### Choosing a model
+
+The sidebar has a model selector. It lists what the server is configured with, and the choice is the visitor's own (a cookie), on every app:
+
+| In the list       | When                                                                                                                                      |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Offline script    | Always. No model: the fixed stand-ins described above                                                                                     |
+| Claude            | `ANTHROPIC_API_KEY` is set. `ANTHROPIC_MODELS` narrows the list                                                                           |
+| Ollama            | It answers on this machine (`OLLAMA_HOST`, default `127.0.0.1:11434`). Every pulled model is listed                                       |
+| LM Studio         | Its local server answers (`LMSTUDIO_HOST`, default `127.0.0.1:1234`)                                                                      |
+| OpenAI-compatible | `OPENAI_BASE_URL` is set, with `OPENAI_API_KEY` if the server needs one. `OPENAI_MODELS` and `OPENAI_LABEL` name the models and the group |
+
+So with Ollama running, start the demo and pick a model; nothing else to configure. Local models go through `src/openai.ts`, which calls `POST /chat/completions` with `fetch` and reads the event stream itself, tool calls included.
+
+Keys and URLs stay on the server. The cookie holds an id from the server's own list, and an id that is not on the list is ignored, so a visitor cannot point the server at another address. On a deployed server set `GENUI_LOCAL_MODELS=0`, so it does not look for Ollama or LM Studio on its own machine. There is no field for a visitor to paste a key into: that would put a secret in a cookie or a file, and it is left out until there is sign-in to tie it to.
+
+A small local model follows the component format less reliably than Claude. Whatever it writes still goes through the renderer, so an unknown tag is shown as text and never becomes an element.
+
 Then turn JavaScript off in the browser and use it again. Everything still works, including streaming.
 
 ```sh
@@ -61,17 +79,18 @@ yarn workspace @bascik/genui stress:adherence  # a real model against the format
 
 ## What is in here
 
-| Path               | What it is                                                                                   |
-| ------------------ | -------------------------------------------------------------------------------------------- |
-| `src/catalog.ts`   | Reads a component folder into a catalog and writes the system prompt that teaches it         |
-| `src/render.ts`    | Turns a model's text stream into complete, safe HTML chunks a stream script can yield        |
-| `src/model.ts`     | The `Model` and `Tool` types, tool input validation, and a scripted model for offline use    |
-| `src/anthropic.ts` | A `Model` backed by the Claude API, with a tool loop                                         |
-| `src/analyze.ts`   | Measures how well a reply followed the format: unknown tags, undeclared props, unclosed tags |
-| `demo/`            | The four apps: one shell, a registry of apps, per-visitor conversations                      |
-| `demo/src/genui/`  | The catalog. Every component in this folder is one a model may write                         |
-| `e2e/`             | Playwright tests of the demo with JavaScript disabled                                        |
-| `stress/`          | The load test and the real-model format test                                                 |
+| Path               | What it is                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
+| `src/catalog.ts`   | Reads a component folder into a catalog and writes the system prompt that teaches it              |
+| `src/render.ts`    | Turns a model's text stream into complete, safe HTML chunks a stream script can yield             |
+| `src/model.ts`     | The `Model` and `Tool` types, tool input validation, and a scripted model for offline use         |
+| `src/anthropic.ts` | A `Model` backed by the Claude API, with a tool loop                                              |
+| `src/openai.ts`    | A `Model` backed by any OpenAI-compatible server (Ollama, LM Studio, a gateway), with a tool loop |
+| `src/analyze.ts`   | Measures how well a reply followed the format: unknown tags, undeclared props, unclosed tags      |
+| `demo/`            | The four apps: one shell, a registry of apps, per-visitor conversations                           |
+| `demo/src/genui/`  | The catalog. Every component in this folder is one a model may write                              |
+| `e2e/`             | Playwright tests of the demo with JavaScript disabled                                             |
+| `stress/`          | The load test and the real-model format test                                                      |
 
 ### The catalog is the component folder
 

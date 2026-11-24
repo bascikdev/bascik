@@ -13,6 +13,7 @@ import {
   type Model,
 } from "@bascik/genui";
 import { APPS, type ChatApp } from "./apps.ts";
+import { listModels, modelFor, pickModel, requestedModel } from "./models.ts";
 
 export interface Conversation {
   id: string;
@@ -157,11 +158,11 @@ export async function systemPrompt(app: ChatApp): Promise<string> {
   ].join("\n");
 }
 
-/** Claude when a key is set, the app's offline stand-in otherwise. */
-export async function loadModel(app: ChatApp): Promise<Model> {
-  if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) {
-    const { anthropicModel } = await import("@bascik/genui/anthropic");
-    return anthropicModel();
-  }
-  return app.offline;
+/** The model the visitor picked, from what this server offers (lib/models.ts). */
+export async function loadModel(
+  app: ChatApp,
+  request: Request,
+): Promise<Model> {
+  const choice = pickModel(await listModels(), requestedModel(request));
+  return modelFor(choice, app);
 }
