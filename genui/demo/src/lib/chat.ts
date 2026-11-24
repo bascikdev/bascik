@@ -23,6 +23,7 @@ import {
 } from "@bascik/genui";
 import { MERMAID_PROMPT, mermaidFence } from "@bascik/genui/mermaid";
 import { APPS, type ChatApp } from "./apps.ts";
+import { listModels, modelFor, pickModel, requestedModel } from "./models.ts";
 
 export interface Conversation {
   id: string;
@@ -164,7 +165,11 @@ const live = new Map<string, LiveTurn>();
 /** The longest one reply may take, tools included. */
 const TURN_LIMIT_MS = 120_000;
 
-function startTurn(session: Session, conversation: Conversation): LiveTurn {
+function startTurn(
+  session: Session,
+  conversation: Conversation,
+  request: Request,
+): LiveTurn {
   const { app } = session;
   const html = createBroadcast<string>();
   const stop = new AbortController();
@@ -172,7 +177,8 @@ function startTurn(session: Session, conversation: Conversation): LiveTurn {
   const carriedOn = messages.at(-1)!.role === "assistant";
   const write = async (): Promise<void> => {
     const turn = runTurn({
-      model: await loadModel(app),
+      // The model the visitor who started this reply has picked.
+      model: await loadModel(app, request),
       system: await systemPrompt(app),
       messages,
       tools: app.tools,
@@ -254,7 +260,7 @@ export function threadState(request: Request): Promise<ThreadState> {
         conversation = (await loadConversation(session)) ?? conversation;
         turn = live.get(conversation.id);
         if (!turn && turnPending(conversation.messages)) {
-          turn = startTurn(session, conversation);
+          turn = startTurn(session, conversation, request);
         }
       }
       return {
@@ -375,11 +381,11 @@ export async function systemPrompt(app: ChatApp): Promise<string> {
   ].join("\n");
 }
 
-/** Claude when a key is set, the app's offline stand-in otherwise. */
-export async function loadModel(app: ChatApp): Promise<Model> {
-  if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) {
-    const { anthropicModel } = await import("@bascik/genui/anthropic");
-    return anthropicModel();
-  }
-  return app.offline;
+/** The model the visitor picked, from what this server offers (lib/models.ts). */
+export async function loadModel(
+  app: ChatApp,
+  request: Request,
+): Promise<Model> {
+  const choice = pickModel(await listModels(), requestedModel(request));
+  return modelFor(choice, app);
 }

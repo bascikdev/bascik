@@ -4,7 +4,7 @@ The conversation list. Its server script reads the stored conversations on every
 <style>
   .sidebar {
     display: grid;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto auto 1fr auto;
     align-content: start;
     gap: 1rem;
     padding: 1rem;
@@ -43,6 +43,36 @@ The conversation list. Its server script reads the stored conversations on every
   .new:hover {
     border-color: var(--accent);
   }
+  .model {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.3rem 0.4rem;
+    padding-top: 0.75rem;
+    border-block-start: 1px solid var(--border);
+  }
+  .model-label {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .model-select,
+  .model-use {
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+  }
+  .model-select {
+    min-inline-size: 0;
+  }
+  .model-use {
+    font-weight: 600;
+    cursor: pointer;
+  }
   .list {
     display: grid;
     align-content: start;
@@ -80,11 +110,15 @@ The conversation list. Its server script reads the stored conversations on every
     import { html } from "@bascik/bascik/html";
     import { APPS } from "@/lib/apps.ts";
     import { listConversations, sessionFor } from "@/lib/chat.ts";
+    import { listModels, pickModel, requestedModel } from "@/lib/models.ts";
 
     export default async (request: Request) => {
       const session = sessionFor(request);
       const { app, conversationId: current } = session;
       const conversations = await listConversations(session);
+      const models = await listModels();
+      const chosen = pickModel(models, requestedModel(request));
+      const groups = [...new Set(models.map((model) => model.group))];
       return html`<nav class="apps" aria-label="Apps">
           ${APPS.map(
             (entry) =>
@@ -118,7 +152,42 @@ The conversation list. Its server script reads the stored conversations on every
                   </button>
                 </form>`,
             )}
-        </nav>`;
+        </nav>
+        <form
+          class="model"
+          method="post"
+          action="/api/model"
+          data-testid="chat-sidebar-model"
+        >
+          <input type="hidden" name="app" value="${app.id}" />
+          <label class="model-label" for="model">Model</label>
+          <select
+            class="model-select"
+            id="model"
+            name="model"
+            data-testid="chat-sidebar-model-select"
+          >
+            ${groups.map(
+              (group) =>
+                html`<optgroup label="${group}">
+                  ${models
+                    .filter((model) => model.group === group)
+                    .map((model) =>
+                      model.id === chosen.id
+                        ? html`<option value="${model.id}" selected>
+                            ${model.name}
+                          </option>`
+                        : html`<option value="${model.id}">
+                            ${model.name}
+                          </option>`,
+                    )}
+                </optgroup>`,
+            )}
+          </select>
+          <button class="model-use" data-testid="chat-sidebar-model-use">
+            Use
+          </button>
+        </form>`;
     };
   </script>
 </aside>

@@ -603,3 +603,52 @@ test.describe("a client tool", () => {
     expect(response.status()).toBe(400);
   });
 });
+
+test("the visitor picks the model, and a local model's reply is rendered", async ({
+  page,
+}) => {
+  const select = page.getByTestId("chat-sidebar-model-select");
+  // With no key set, the offline script answers until the visitor chooses.
+  await expect(select).toHaveValue("offline:script");
+  await expect(select.getByRole("option")).toHaveText([
+    "Offline script",
+    "fake-local:7b",
+  ]);
+
+  await select.selectOption("openai:fake-local:7b");
+  await page.getByTestId("chat-sidebar-model-use").click();
+  await expect(select).toHaveValue("openai:fake-local:7b");
+
+  await send(page, "Recommend a book");
+  const live = page.getByTestId("turn-live");
+  await expect(live).toContainText("From the fake local model:");
+  await expect(live).toContainText("(asked for fake-local:7b)");
+  // The model's tags went through the same catalog as any other model's.
+  await expect(live.getByTestId("book-card-title")).toHaveText(
+    "The Local Model",
+  );
+
+  // The choice is the visitor's, on every app, until they change it.
+  await page.goto("/review");
+  await expect(page.getByTestId("chat-sidebar-model-select")).toHaveValue(
+    "openai:fake-local:7b",
+  );
+  await page
+    .getByTestId("chat-sidebar-model-select")
+    .selectOption("offline:script");
+  await page.getByTestId("chat-sidebar-model-use").click();
+  await expect(page.getByTestId("chat-sidebar-model-select")).toHaveValue(
+    "offline:script",
+  );
+});
+
+test("a model the server does not offer cannot be chosen", async ({
+  request,
+}) => {
+  const response = await request.post("/api/model", {
+    form: { model: "openai:http://evil.example/v1" },
+    maxRedirects: 0,
+  });
+  expect(response.status()).toBe(303);
+  expect(response.headers()["set-cookie"]).toContain("model=offline%3Ascript");
+});

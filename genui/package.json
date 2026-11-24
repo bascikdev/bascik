@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./anthropic": "./src/anthropic.ts",
-    "./mermaid": "./src/mermaid.ts"
+    "./mermaid": "./src/mermaid.ts",
+    "./openai": "./src/openai.ts"
   },
   "scripts": {
     "unit": "vitest run",
