@@ -24,9 +24,30 @@ export interface CatalogEntry {
 export type Catalog = ReadonlyMap<string, CatalogEntry>;
 
 const TAG_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/;
-const DESCRIPTION = /<!--\s*@bascik\b([\s\S]*?)-->/;
+const DESCRIPTION = /^\s*@bascik\b/;
 const PROP_USE =
   /\bdata-bascik-prop-([a-z][a-z0-9-]*)|\bdata-bascik-attr-[a-z][a-z0-9-]*\s*=\s*["']([a-z][a-z0-9-]*)["']/g;
+
+/**
+ * Split a component's source into its comments and the markup around them,
+ * with one forward scan (a regular expression over `<!-- ... -->` is quadratic
+ * on a file with many unclosed `<!--`).
+ */
+function splitComments(source: string): { comments: string[]; markup: string } {
+  const comments: string[] = [];
+  let markup = "";
+  let at = 0;
+  for (;;) {
+    const open = source.indexOf("<!--", at);
+    if (open < 0) break;
+    const close = source.indexOf("-->", open + 4);
+    if (close < 0) break;
+    markup += source.slice(at, open);
+    comments.push(source.slice(open + 4, close));
+    at = close + 3;
+  }
+  return { comments, markup: markup + source.slice(at) };
+}
 
 /** Describe one component from its file name and source text. */
 export function describeComponent(
@@ -35,12 +56,15 @@ export function describeComponent(
 ): CatalogEntry | null {
   const name = basename(fileName, ".html");
   if (!TAG_NAME.test(name)) return null;
-  const description = (DESCRIPTION.exec(source)?.[1] ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
   // Props are read from the markup only: a mention inside the description or
   // any other comment is prose, not a receiver.
-  const markup = source.replace(/<!--[\s\S]*?-->/g, "");
+  const { comments, markup } = splitComments(source);
+  const description = (
+    comments.find((comment) => DESCRIPTION.test(comment)) ?? ""
+  )
+    .replace(DESCRIPTION, "")
+    .replace(/\s+/g, " ")
+    .trim();
   const props: string[] = [];
   for (const match of markup.matchAll(PROP_USE)) {
     const prop = match[1] ?? match[2];

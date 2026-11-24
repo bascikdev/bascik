@@ -40,6 +40,15 @@ describe("describeComponent", () => {
     expect(entry?.slot).toBe(false);
   });
 
+  it("reads a file with many unclosed comments in one pass", () => {
+    const source = `${"<!--".repeat(200_000)}<p data-bascik-prop-title></p>`;
+    const started = performance.now();
+    const entry = describeComponent("book-card.html", source);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(entry?.props).toEqual(["title"]);
+    expect(entry?.description).toBe("");
+  });
+
   it("refuses a file whose name is not a component tag", () => {
     expect(describeComponent("index.html", "<p></p>")).toBeNull();
     expect(describeComponent("Book-Card.html", "<p></p>")).toBeNull();
