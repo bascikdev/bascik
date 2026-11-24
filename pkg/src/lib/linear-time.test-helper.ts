@@ -589,6 +589,9 @@ export interface CostRatio {
  */
 export const COST_MIN_SAMPLE_MS = 30;
 
+/** How often a cost ratio's samples are sized again from the fastest one. */
+const COST_RESIZE_ATTEMPTS = 2;
+
 /** The samples of a cost ratio, each answered with its CPU time. */
 function* costSamplesOf(
   resolutionMs: number,
@@ -616,10 +619,31 @@ function* costSamplesOf(
     referenceMs = yield { reference: true, runs };
   }
   let runMs = Infinity;
-  for (let i = 0; i < SAMPLES; i++) {
-    runMs = Math.min(runMs, yield { reference: false, runs });
-    if (i > 0)
-      referenceMs = Math.min(referenceMs, yield { reference: true, runs });
+  for (let attempt = 0; ; attempt++) {
+    runMs = Infinity;
+    for (let i = 0; i < SAMPLES; i++) {
+      runMs = Math.min(runMs, yield { reference: false, runs });
+      if (i > 0)
+        referenceMs = Math.min(referenceMs, yield { reference: true, runs });
+    }
+    // The sample that set `runs` can be the slow one (a GC pause, code not
+    // yet compiled): it reached the target, and the fastest sample then came
+    // in under half of it (14 ms against a 30 ms target on CI), too short to
+    // read. Size the samples from the fastest one and take them again.
+    if (
+      referenceMs >= targetMs / 2 ||
+      runs >= maxRuns ||
+      attempt >= COST_RESIZE_ATTEMPTS
+    )
+      break;
+    runs = Math.min(
+      maxRuns,
+      Math.max(
+        runs + 1,
+        Math.ceil((runs * targetMs * 1.5) / Math.max(referenceMs, 0.001)),
+      ),
+    );
+    referenceMs = yield { reference: true, runs };
   }
   return {
     runMs: runMs / runs,
