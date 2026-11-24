@@ -115,7 +115,7 @@ describe("renderText", () => {
       catalog,
     );
     expect(html).toBe(
-      "<h3>Picks</h3>• <strong>One</strong> and <code>two</code><div></div><code data-line>let x = 1 &lt; 2;</code>done",
+      "<h3>Picks</h3><div></div>• <strong>One</strong> and <code>two</code><div></div><code data-line>let x = 1 &lt; 2;</code>done",
     );
   });
 
@@ -132,7 +132,7 @@ describe("renderText", () => {
 
   it("keeps at most one blank line between paragraphs", () => {
     expect(renderText("one\n\n\n\ntwo\nthree", catalog)).toBe(
-      "one\n\ntwo\nthree",
+      "one<br><br>two<br>three",
     );
   });
 
@@ -144,7 +144,7 @@ describe("renderText", () => {
 
   it("leaves unclosed bold and code markers as written", () => {
     expect(renderText("2 ** 3 and a ` tick\nnext", catalog)).toBe(
-      "2 ** 3 and a ` tick\nnext",
+      "2 ** 3 and a ` tick<br>next",
     );
   });
 });

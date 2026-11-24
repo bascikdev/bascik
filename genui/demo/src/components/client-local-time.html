@@ -1,0 +1,72 @@
+<!-- @bascik
+A client tool: the reader's local time and time zone. Written by the app for a local_time call that is waiting for its result. A form that posts the result to /api/result. With scripts on, the script fills it in and sends it; without, the reader types the time and presses the button.
+-->
+<style>
+  .ask {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: end;
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .field {
+    display: grid;
+    flex: 1;
+    gap: 0.25rem;
+    min-inline-size: 12rem;
+    font-size: 0.875rem;
+  }
+  .input {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+  }
+  .send {
+    padding: 0.45rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+</style>
+<form
+  id="form"
+  class="ask"
+  method="post"
+  action="/api/result"
+  data-testid="client-local-time"
+>
+  <input type="hidden" name="app" data-bascik-attr-value="app" />
+  <input type="hidden" name="call" data-bascik-attr-value="call" />
+  <label class="field">
+    What time is it for you?
+    <input
+      id="output"
+      class="input"
+      name="output"
+      required
+      placeholder="14:55 Lisbon"
+      data-testid="client-local-time-output"
+    />
+  </label>
+  <button class="send" data-testid="client-local-time-send">Send</button>
+  <script type="text/typescript">
+    // Answer for the reader: the clock and the time zone are the browser's.
+    const form = document.getElementById("form") as HTMLFormElement;
+    const output = document.getElementById("output") as HTMLInputElement;
+    const now = new Date();
+    const clock = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    output.value = `${clock} ${Intl.DateTimeFormat().resolvedOptions().timeZone}`;
+    form.requestSubmit();
+  </script>
+</form>

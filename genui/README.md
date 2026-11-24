@@ -53,7 +53,7 @@ Then turn JavaScript off in the browser and use it again. Everything still works
 
 ```sh
 yarn workspace @bascik/genui unit              # renderer, catalog, tools, fuzz properties
-yarn workspace @bascik/genui e2e               # the four apps in Chromium, JavaScript disabled
+yarn workspace @bascik/genui e2e               # the four apps in Chromium, with JavaScript off and on
 yarn workspace @bascik/genui typecheck
 yarn workspace @bascik/genui stress:load       # load, long history, budgets (start the server first)
 yarn workspace @bascik/genui stress:adherence  # a real model against the format; spends API credits
@@ -61,17 +61,21 @@ yarn workspace @bascik/genui stress:adherence  # a real model against the format
 
 ## What is in here
 
-| Path               | What it is                                                                                   |
-| ------------------ | -------------------------------------------------------------------------------------------- |
-| `src/catalog.ts`   | Reads a component folder into a catalog and writes the system prompt that teaches it         |
-| `src/render.ts`    | Turns a model's text stream into complete, safe HTML chunks a stream script can yield        |
-| `src/model.ts`     | The `Model` and `Tool` types, tool input validation, and a scripted model for offline use    |
-| `src/anthropic.ts` | A `Model` backed by the Claude API, with a tool loop                                         |
-| `src/analyze.ts`   | Measures how well a reply followed the format: unknown tags, undeclared props, unclosed tags |
-| `demo/`            | The four apps: one shell, a registry of apps, per-visitor conversations                      |
-| `demo/src/genui/`  | The catalog. Every component in this folder is one a model may write                         |
-| `e2e/`             | Playwright tests of the demo with JavaScript disabled                                        |
-| `stress/`          | The load test and the real-model format test                                                 |
+| Path                 | What it is                                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| `src/catalog.ts`     | Reads a component folder into a catalog and writes the system prompt that teaches it         |
+| `src/render.ts`      | Turns a model's text stream into complete, safe HTML chunks a stream script can yield        |
+| `src/model.ts`       | Message parts, the `Model` and `Tool` types, tool input validation, and a scripted model     |
+| `src/turn.ts`        | The turn loop: asks the model, runs its tool calls, and pauses for the reader's approval     |
+| `src/render-turn.ts` | Message parts as HTML, for a live turn and for a stored message                              |
+| `src/broadcast.ts`   | One stream with many readers, each from the start: what lets a reply outlive its page        |
+| `src/anthropic.ts`   | A `Model` backed by the Claude API: one round, read from and written to message parts        |
+| `src/mermaid.ts`     | Draws a mermaid code fence as an inline SVG on the server, and checks the SVG is safe        |
+| `src/analyze.ts`     | Measures how well a reply followed the format: unknown tags, undeclared props, unclosed tags |
+| `demo/`              | The four apps: one shell, a registry of apps, per-visitor conversations                      |
+| `demo/src/genui/`    | The catalog. Every component in this folder is one a model may write                         |
+| `e2e/`               | Playwright tests of the demo, each run with JavaScript off and with it on                    |
+| `stress/`            | The load test and the real-model format test                                                 |
 
 ### The catalog is the component folder
 
@@ -90,9 +94,108 @@ Model output is untrusted text. `createRenderer()` passes a tag on only when its
 
 It also solves the streaming mismatch. A model's slices end anywhere, and a stream script must yield whole elements. The renderer streams prose word by word, holds a component back until its closing tag arrives, and gives the same HTML however the stream is sliced (the unit tests check slice sizes from 1 character up).
 
+### A diagram is a fence the server draws
+
+A model already writes Mermaid, and a branching diagram is something a catalog component cannot lay out. So a ` ```mermaid ` fence is drawn instead of shown:
+
+```ts
+import { catalogPrompt, renderStream } from "@bascik/genui";
+import { MERMAID_PROMPT, mermaidFence } from "@bascik/genui/mermaid";
+
+const fences = { mermaid: mermaidFence() };
+yield * renderStream(reply, catalog, { fences });
+// And tell the model: catalogPrompt(catalog, { fences: { mermaid: MERMAID_PROMPT } })
+```
+
+The renderer holds the fence back until it closes, then yields one `<figure class="diagram">` with an inline SVG, drawn in Node by [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid). No script runs in the browser and nothing is fetched. It draws flowcharts, sequence, state, class, and entity diagrams, and XY charts; anything else (a Gantt chart, a typo) is shown as the code it is.
+
+The diagram text is untrusted like the rest of a reply. The library escapes labels, and `safeSvg()` then checks its output against a short list of drawing elements with no event handlers, links, or outside references. The SVG carries no colors of its own: it reads `--bg` and `--fg` (and `--surface`, `--border`, `--muted`, `--accent` when set) from the page, so one render serves light and dark themes.
+
+`fences` takes any language: a function from the fence's text to HTML, or null to show the code.
+
 ### Interaction is forms
 
 A generated component that needs to talk back is a `<form method="post" action="/api/send">`. The API route stores the message and answers `303`, and the chat page streams the next reply. `ask-button` is a one-click suggestion, `choice-form` is a single-choice question, and `input-form` collects several values. None of them needs a client script, and each is an ordinary HTML form any browser, screen reader, or browsing agent already understands.
+
+## A UI layer without a client framework
+
+AI SDK UI gives React apps a standard shape for chat: messages made of typed parts, tool calls with states, a stream protocol, and hooks that keep client state in step. This is the same idea for a server that sends HTML. The parts and states are kept; the protocol and the client state are not needed, because the stream is the page.
+
+### A message is its parts
+
+```ts
+type MessagePart =
+  | { type: "text"; text: string } // the model's output: prose, catalog tags, fences
+  | {
+      type: "tool";
+      id: string;
+      name: string;
+      input: Record<string, unknown>;
+      state:
+        | "approval-requested"
+        | "client-requested"
+        | "approved"
+        | "denied"
+        | "running"
+        | "done"
+        | "failed";
+      output?: string;
+      error?: string;
+    };
+```
+
+Parts are what is stored, what the model is shown again, and what the page renders, so a tool call looks the same while it runs, after a reload, and to the model. `runTurn()` produces them. It is the tool loop, and it lives outside the provider adapter: a `Model` is one round that yields text and tool calls and never runs anything.
+
+```ts
+const turn = runTurn({ model, system, messages, tools, signal });
+try {
+  yield * renderTurn(turn.events, catalog, { tools, view });
+} finally {
+  await save(turn.message); // filled in as it goes, so a half-read reply is kept
+}
+```
+
+### A tool call is drawn by the app, in every state
+
+A tool part is sent as `<div class="part" data-state="…">`. What is inside comes from the app's `view(part)`, written with Bascik's `html` helper, so it can be any component; with no view it is the tool's `note`. When a call's state changes while the reply streams, the part is sent again, and one CSS rule hides the running version once the finished one follows it. A page that only ever grows still shows progress and then a result.
+
+### Approval is a stored state, not client state
+
+A tool marked `approval: true` does not run when the model calls it. The turn stops, the message is stored as `awaiting: "approval"`, and the part is drawn as a form with two buttons. The answer is a `POST /api/approve` (39 lines): it records `approved` or `denied` on the part and redirects to the page, which carries the same turn on, runs the call if it was allowed, and tells the model what happened either way. Close the tab and come back tomorrow and the question is still there. Send another message instead and the call is refused.
+
+### A client tool is a form a script may answer
+
+Some things only the reader's side knows: their local time, a choice, a file. A tool marked `client: true` has no `run`. The turn stops at the call, and the app draws it as a form that posts the result to `/api/result`. With scripts on, the component's script fills the form in and sends it, and the reader sees the answer arrive. With scripts off, the reader types it and presses Send. Either way the server gets one form post, stores it on the part as the tool's output, and carries the turn on. `local_time` is the example: "Is the shop open now?" in the bookshop.
+
+### A reply belongs to the conversation, not the connection
+
+The turn does not run inside the request that asked for it. It runs once, writes its HTML into a `createBroadcast()`, and stores its message when it ends. A page that shows the reply subscribes and gets it from the first chunk, however late it joined. So a reload in the middle of a reply joins it, a second tab shows the same reply, and a reply is finished and stored when nobody is watching. Only Stop, or a two-minute limit, ends one early. This is the resumable stream other stacks need a separate store and protocol for; here the broadcast is about 50 lines, because what is replayed is the page's own HTML.
+
+### JavaScript adds, it does not carry
+
+Every form works as a page load. `chat-enhance` is the optional client runtime, about 180 lines in one component: it sends a form with `fetch`, parses the page the server answers with as it streams, and copies the new thread into the open page. That gives an instant echo of the message, no reload, and a Stop button, with no change to the server and no second protocol: the response is the same HTML a browser with scripts off gets.
+
+An interactive component is an ordinary Bascik component with a `<script>`. Bascik scopes its ids per instance and sends the script inside the rendered markup, so it starts when its component arrives in the stream; the runtime starts it the same way for markup it copies in. `data-table` is the example: a plain table without scripts, sortable and filterable with them.
+
+### Use cases this is tested against
+
+| Use case                                 | Where                                   | What it shows                                                                               |
+| ---------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| A tool call with progress, then a result | `/data`, "Top sellers"                  | `run_sql` as a part: running, then done, in one growing page                                |
+| A tool that needs the reader's OK        | `/`, "Hold a copy of The Quiet Network" | `place_hold` waits, survives a reload, runs once allowed, never runs if refused             |
+| An interactive generated component       | `/data`, the result table               | `data-table` sorts and filters in the browser, and is a table without scripts               |
+| Streaming into the open page             | every app, with scripts on              | no page load, echo, Stop, and the sidebar refreshed from the same response                  |
+| A tool the reader's browser answers      | `/`, "Is the shop open now?"            | `local_time` is answered by a script, or typed by the reader without one                    |
+| A reply that outlives its page           | every app                               | reload mid-reply, open a second tab, or leave: one reply, shown from its start, stored once |
+
+Each has unit tests (`src/turn.test.ts`, `src/render-turn.test.ts`, `src/broadcast.test.ts`, `src/anthropic.test.ts`) and browser tests. The whole browser suite runs twice, with JavaScript off and on, so the two paths cannot drift apart.
+
+### What this did not test
+
+- **A real model.** The Claude adapter is checked against a fake client, not the API. The message shapes it sends for tool results are the ones the previous adapter used.
+- **More than one server.** A live reply is one process's memory. A reader who lands on another server mid-reply starts a second one, and Stop only reaches the server it lands on. A shared store behind `createBroadcast()` would fix both.
+- **A reply nobody reads still costs tokens.** That is the price of finishing it. The limit is two minutes per reply.
+- **File and source parts, and reasoning.** AI SDK UI has them. None is here yet.
 
 ## A second experiment: validating knowledge
 
@@ -141,7 +244,7 @@ The model never records a decision. It can only show a form; the expert's click 
 
 - **Components as a vocabulary of doubt.** Seven shapes covered the cases tried. Adding one is a file in `demo/src/genui/` with a comment that tells the model when to use it.
 - **Building blocks compose.** `source-quote` goes inside three different review forms, `step-item` is shared with `step-list`, and `flow-diagram` sits above any of them to say which stage the question is about.
-- **The diagram is CSS.** A `flow-stage` is a list item with a `data-state` attribute; arrows, the highlight, and the dashed "unclear" border are styles. A branching diagram (a real decision tree, not a line of stages) would need a layout this does not have.
+- **The diagram is CSS.** A `flow-stage` is a list item with a `data-state` attribute; arrows, the highlight, and the dashed "unclear" border are styles. A branching diagram (a real decision tree, not a line of stages) needs a layout this does not have: that is what a `mermaid` fence is for.
 - **A form per turn is slow for bulk work.** Checking forty codes in one table is fine. Confirming forty facts is forty page loads; a batch `fact-check` list, or a review page outside the chat, would suit that better.
 - **Not tested:** a real model choosing the component. The offline reviewer follows a script. The instructions and a `review_queue` tool for a real model are in `demo/src/lib/apps.ts`, unrun.
 - **Missing for real use:** sign-in (a visitor is an anonymous cookie, so the log cannot say who decided), a way to reopen a decision, and somewhere for the log to go other than a file.
@@ -154,7 +257,7 @@ The model never records a decision. It can only show a form; the expert's click 
 
 - The composer is first in the source and placed last with CSS `order`, so it is usable before the reply starts ([Recipe C](https://bascik.dev/scripts/stream#recipe-c-priority-source-order-with-css-positioning-the-early-paint-footer-trick)).
 - A `column-reverse` scroller keeps the newest text in view with no script.
-- The typing caret is CSS: it shows until the stream's last chunk, an empty `.done` marker, arrives.
+- The typing caret is CSS: it shows from the stream's first chunk, an empty `.writing` marker, until its last, an empty `.done` marker.
 - History is the model's stored text rendered through the same catalog, so restyling a component restyles every old conversation.
 - Component CSS is sent once, right before the first instance, in the middle of the stream.
 - Bascik's own rate limiter, body limits, and escaping apply to the chat with no extra code.

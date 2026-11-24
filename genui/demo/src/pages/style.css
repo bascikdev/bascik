@@ -49,6 +49,9 @@ body {
    starts streaming; `order` shows it below the thread. */
 .chat > .dock {
   order: 2;
+  /* Until the thread below it in the source is parsed, the composer is the
+     only child: the margin keeps it at the bottom from the first paint. */
+  margin-block-start: auto;
 }
 
 /* A column-reverse scroller stays pinned to its end as content arrives, so
@@ -69,7 +72,9 @@ body {
   gap: 1.25rem;
   inline-size: 100%;
   max-inline-size: 46rem;
-  margin-inline: auto;
+  /* A conversation shorter than the scroller starts at the top and grows
+     down, so a reply never pushes the turns above it around. */
+  margin: 0 auto auto;
   padding-block: 1.5rem;
 }
 
@@ -84,15 +89,10 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* Model prose is streamed as text, so its line breaks are kept as written. */
+/* The renderer writes every line break as an element, so whitespace in a
+   reply is never content, including what Bascik writes around a component. */
 .turn-assistant {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-/* Components bring their own layout: source whitespace inside them is not content. */
-.turn-assistant > :not(strong, code) {
-  white-space: normal;
 }
 
 .turn-assistant h3,
@@ -125,6 +125,24 @@ body {
   padding-block-end: 0.75rem;
 }
 
+/* A ```mermaid fence, drawn on the server as an inline SVG. Its colors come
+   from the theme: the SVG reads --bg, --fg, --surface, --border, --muted,
+   and --accent from here. */
+.turn-assistant .diagram {
+  --fg: var(--text);
+  margin: 0.75rem 0;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  text-align: center;
+}
+
+.turn-assistant .diagram svg {
+  max-inline-size: 100%;
+  block-size: auto;
+}
+
 .turn-assistant table {
   inline-size: 100%;
   margin: 0.75rem 0;
@@ -143,6 +161,26 @@ body {
 .turn-assistant th {
   color: var(--muted);
   font-weight: 600;
+}
+
+/* A data-table's script turns each column heading into a sort button. The
+   table is the model's content, not the component's markup, so its styles
+   are here and not in the component. */
+.turn-assistant th button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.turn-assistant th[aria-sort="ascending"] button::after {
+  content: " ↑";
+}
+
+.turn-assistant th[aria-sort="descending"] button::after {
+  content: " ↓";
 }
 
 .turn-assistant ul,
@@ -185,7 +223,34 @@ body {
   }
 }
 
-.live:empty {
+/* Shown only while there is a reply: the stream's first chunk is an empty
+   .writing marker. Without one the element holds only source whitespace. */
+.live:not(:has(.writing)) {
+  display: none;
+}
+
+/* A tool call is sent again when its state changes: once the finished
+   version follows, the running one is hidden. No script does this. */
+.part[data-state="running"]:has(~ .part:not([data-state="running"])) {
+  display: none;
+}
+
+/* With the client runtime (chat-enhance) on, a reply can be stopped. */
+[data-genui] [data-testid="chat-composer-stop"] {
+  display: none;
+}
+
+[data-genui="streaming"] [data-testid="chat-composer-stop"] {
+  display: inline-block;
+}
+
+[data-genui="streaming"] [data-testid="chat-composer-send"] {
+  display: none;
+}
+
+/* Marks the end of the stored conversation for the page's
+   <link rel="expect">. Never shown. */
+.thread-ready {
   display: none;
 }
 

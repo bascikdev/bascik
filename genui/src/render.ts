@@ -174,9 +174,23 @@ export const SAFE_ELEMENTS: ReadonlySet<string> = new Set([
   "li",
 ]);
 
+/**
+ * Draws the content of a finished code fence. It is given the model's own
+ * text, which is untrusted, and returns HTML that is sent as is: the function
+ * is responsible for what it returns. Null (or a throw) means the content
+ * could not be drawn, and the fence is shown as code.
+ */
+export type FenceRenderer = (source: string) => string | null;
+
 export interface RendererOptions {
   /** Names from `SAFE_ELEMENTS` to pass through, for example the table elements. */
   elements?: readonly string[];
+  /**
+   * Code fences that are drawn instead of shown, by the language named on the
+   * opening line: `{ mermaid: mermaidFence() }` turns a ```mermaid fence into
+   * a diagram. Such a fence is held back until it closes.
+   */
+  fences?: Readonly<Record<string, FenceRenderer>>;
   /**
    * The most components one top-level element may hold (default 300). Bascik
    * refuses a script output that expands to more than its own budget, which
@@ -200,6 +214,7 @@ export function createRenderer(
     }
     catalog.set(name, { name, description: "", props: [], slot: true });
   }
+  const fences = new Map(Object.entries(options.fences ?? {}));
   const maxComponents = options.maxComponents ?? 300;
   /** Components inside the open top-level element, and how many were left out. */
   let held = 0;
@@ -220,6 +235,9 @@ export function createRenderer(
    */
   let searchedTo = 0;
   let inFence = false;
+  /** Set inside a fence that is drawn: its renderer and the lines so far. */
+  let drawn: { render: FenceRenderer; lines: string[]; size: number } | null =
+    null;
 
   /** True while `partial` (which starts with `<`) could still become a catalog tag. */
   const couldBeTag = (partial: string): boolean => {
@@ -265,9 +283,17 @@ export function createRenderer(
   function drain(final: boolean): string {
     let out = "";
     // Newlines are held until the next thing is known: text keeps them (at
-    // most one blank line), a block element replaces them.
+    // most one blank line), a block element replaces them. A kept newline is
+    // a <br>, so the page never has to treat whitespace as content: the
+    // whitespace Bascik writes around a rendered component stays invisible.
     const text = (html: string): void => {
-      if (newlines && !afterBlock) out += "\n".repeat(Math.min(newlines, 2));
+      if (newlines) {
+        // After a component, an empty <div> starts the new line: a component
+        // may be inline, such as a button, and a block needs no blank line.
+        out += afterBlock
+          ? "<div></div>"
+          : "<br>".repeat(Math.min(newlines, 2));
+      }
       newlines = 0;
       afterBlock = false;
       out += html;
@@ -301,6 +327,22 @@ export function createRenderer(
         pending = held = omitted = 0;
       }
     };
+    const codeLine = (line: string): void =>
+      block(`<code data-line>${escapeHtml(line) || "<br>"}</code>`);
+    /** The drawn fence is over: draw it, or show it as the code it is. */
+    const closeDrawn = (): void => {
+      if (!drawn) return;
+      const { render, lines } = drawn;
+      drawn = null;
+      let html: string | null = null;
+      try {
+        html = render(lines.join("\n"));
+      } catch {
+        // Not something this renderer can draw.
+      }
+      if (html) block(html);
+      else lines.forEach(codeLine);
+    };
     const closeAll = (): void => {
       while (stack.length) {
         const frame = stack.pop()!;
@@ -325,10 +367,20 @@ export function createRenderer(
         const line = lineEnd < 0 ? source : source.slice(0, lineEnd);
         buffer = lineEnd < 0 ? "" : source.slice(lineEnd + 1);
         if (line.trim() === "```") {
+          closeDrawn();
           inFence = false;
           lineStart = true;
+        } else if (drawn) {
+          drawn.lines.push(line);
+          drawn.size += line.length + 1;
+          // Too long to be a drawing: show it as code from here on.
+          if (drawn.size > MAX_PENDING) {
+            const { lines } = drawn;
+            drawn = null;
+            lines.forEach(codeLine);
+          }
         } else {
-          block(`<code data-line>${escapeHtml(line) || "<br>"}</code>`);
+          codeLine(line);
         }
         continue;
       }
@@ -385,10 +437,17 @@ export function createRenderer(
 
       if (lineStart) {
         if (source.startsWith("```")) {
-          // The rest of the opening line names a language; it is not shown.
+          // The rest of the opening line names a language. It is not shown,
+          // and it picks the renderer of a fence that is drawn.
           const firstLine = source.indexOf("\n");
           if (firstLine < 0 && !final && source.length < 200) break;
           if (firstLine >= 0 || final) {
+            const language = source
+              .slice(3, firstLine < 0 ? undefined : firstLine)
+              .trim()
+              .toLowerCase();
+            const render = fences.get(language);
+            drawn = render ? { render, lines: [], size: 0 } : null;
             inFence = true;
             block("");
             buffer = firstLine < 0 ? "" : source.slice(firstLine + 1);
@@ -491,7 +550,10 @@ export function createRenderer(
     }
     // A stream that ends inside an element (a reply cut off at a length
     // limit, for example) closes it where it stands, as a browser would.
-    if (final) closeAll();
+    if (final) {
+      closeDrawn();
+      closeAll();
+    }
     return out;
   }
 

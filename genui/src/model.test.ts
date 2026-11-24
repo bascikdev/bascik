@@ -41,18 +41,30 @@ describe("invalidToolInput", () => {
 });
 
 describe("scriptedModel", () => {
+  it("streams text in slices and tool calls whole, in the order written", async () => {
+    const call = { type: "tool-call" as const, name: "look_up", input: {} };
+    const model = scriptedModel(() => ["abcd", call, "ef"], {
+      chunkSize: 3,
+      delayMs: 0,
+    });
+    const events: unknown[] = [];
+    for await (const event of model({ system: "", messages: [] }))
+      events.push(event);
+    expect(events).toEqual(["abc", "d", call, "ef"]);
+  });
+
   it("streams the reply in slices and stops when the request is aborted", async () => {
     const model = scriptedModel(() => "abcdefghij", {
       chunkSize: 3,
       delayMs: 0,
     });
-    const slices: string[] = [];
+    const slices: unknown[] = [];
     for await (const slice of model({ system: "", messages: [] }))
       slices.push(slice);
     expect(slices).toEqual(["abc", "def", "ghi", "j"]);
 
     const controller = new AbortController();
-    const stopped: string[] = [];
+    const stopped: unknown[] = [];
     for await (const slice of model({
       system: "",
       messages: [],

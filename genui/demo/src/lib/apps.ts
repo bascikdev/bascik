@@ -2,9 +2,10 @@
  * The apps this site serves. Each is the same chat shell with its own
  * instructions, tools, and offline stand-in for the model.
  */
-import type { Model, Tool } from "@bascik/genui";
+import type { Model, Tool, ToolPart } from "@bascik/genui";
 import { scriptedModel } from "@bascik/genui";
-import { dataTools, runSql, SCHEMA } from "./data-tools.ts";
+import { bookTools } from "./book-tools.ts";
+import { dataTools, SCHEMA, type QueryResult } from "./data-tools.ts";
 import { demoModel } from "./demo-model.ts";
 import { docsTools, searchDocs } from "./docs-tools.ts";
 import { reviewModel, reviewTools } from "./review.ts";
@@ -59,6 +60,7 @@ const money = (value: unknown): string =>
 
 function table(columns: string[], rows: unknown[][]): string {
   return [
+    "<data-table>",
     "<table>",
     `<thead><tr>${columns.map((column) => `<th>${column}</th>`).join("")}</tr></thead>`,
     "<tbody>",
@@ -67,6 +69,7 @@ function table(columns: string[], rows: unknown[][]): string {
     ),
     "</tbody>",
     "</table>",
+    "</data-table>",
   ].join("\n");
 }
 
@@ -147,10 +150,30 @@ const CANNED: {
   },
 ];
 
+/**
+ * Two rounds, like a real model: the first asks for the query to be run, and
+ * the second, which finds the result in the conversation, writes the answer.
+ */
 const dataOffline: Model = scriptedModel(
   (request) => {
-    const question = (request.messages.at(-1)?.content ?? "").toLowerCase();
+    const question = (
+      request.messages.findLast((message) => message.role === "user")
+        ?.content ?? ""
+    ).toLowerCase();
     const canned = CANNED.find((entry) => entry.match.test(question));
+    const last = request.messages.at(-1);
+    if (last?.role === "assistant") {
+      const call = last.parts?.findLast(
+        (part): part is ToolPart => part.type === "tool",
+      );
+      if (!canned || call?.state !== "done") {
+        return "The query did not run, so there is nothing to show.";
+      }
+      const result = JSON.parse(call.output ?? "{}") as QueryResult;
+      return [canned.write(result.rows), "", "```sql", canned.sql, "```"].join(
+        "\n",
+      );
+    }
     if (!canned) {
       return [
         "No model is connected, so I can only answer a few fixed questions. The queries and the numbers are real.",
@@ -161,15 +184,7 @@ const dataOffline: Model = scriptedModel(
         `<ask-button say="Compare genres">By genre</ask-button>`,
       ].join("\n");
     }
-    const result = runSql(canned.sql);
-    return [
-      "<tool-note>Querying the database</tool-note>",
-      canned.write(result.rows),
-      "",
-      "```sql",
-      canned.sql,
-      "```",
-    ].join("\n");
+    return [{ type: "tool-call", name: "run_sql", input: { sql: canned.sql } }];
   },
   { chunkSize: 24, delayMs },
 );
@@ -190,8 +205,8 @@ export const APPS: ChatApp[] = [
       { label: "Help me choose", say: "Help me choose a book" },
     ],
     instructions:
-      "You are a reading assistant for a small bookshop. Be brief and concrete.",
-    tools: [],
+      "You are a reading assistant for a small bookshop. Be brief and concrete. When the reader wants a copy kept for them, call place_hold; say first, in one sentence, what you are about to hold.",
+    tools: bookTools,
     elements: [],
     offline: demoModel,
   },
@@ -236,7 +251,7 @@ export const APPS: ChatApp[] = [
     ],
     instructions: [
       "You are a data analyst for a bookshop. Answer questions by querying the database with run_sql, then present the result.",
-      "Lead with the answer in one sentence. Use a bar-chart to compare up to about twelve values, a table for detail, and stat-tile for headline numbers. Format money with a $ and no cents. Never invent a number: every figure comes from a query result.",
+      "Lead with the answer in one sentence. Use a bar-chart to compare up to about twelve values, a table inside a data-table for detail, and stat-tile for headline numbers. Format money with a $ and no cents. Never invent a number: every figure comes from a query result.",
       "After the answer, show the SQL you ran in a fence.",
     ].join("\n"),
     tools: dataTools,

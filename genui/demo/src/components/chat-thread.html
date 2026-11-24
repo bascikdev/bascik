@@ -7,17 +7,20 @@ The conversation: the turns so far, then the reply being written. Its two stream
        a live reply. -->
   <script data-bascik-stream type="text/typescript">
     import { html, raw } from "@bascik/bascik/html";
-    import { renderText } from "@bascik/genui";
-    import { loadCatalog, loadConversation, sessionFor } from "@/lib/chat.ts";
+    import { partsOf, renderMessage } from "@bascik/genui";
+    import { loadCatalog, renderOptions, threadState } from "@/lib/chat.ts";
 
     /** How many messages a page load renders unless the visitor asks for all. */
     const RECENT = 40;
 
     export default async function* (request: Request) {
-      const session = sessionFor(request);
+      // The conversation as stored. While a reply is being written it is the
+      // conversation as it was when that reply started, so the reply is only
+      // ever shown once, by the script below.
+      const { session, messages: stored } = await threadState(request);
       const { app } = session;
-      const conversation = await loadConversation(session);
-      if (!conversation || conversation.messages.length === 0) {
+      const conversation = { messages: stored };
+      if (stored.length === 0) {
         yield html`<section class="welcome" data-testid="chat-welcome">
           <h1>${app.heading}</h1>
           <p>${app.tagline}</p>
@@ -43,72 +46,58 @@ The conversation: the turns so far, then the reply being written. Its two stream
           >Show ${earlier} earlier messages</a
         >`;
       }
+      const options = renderOptions(app);
+      const carriedOn = conversation.messages.at(-1)?.awaiting === "model";
       // One message per yield: each is sent as soon as it is rendered, and
       // each gets its own share of Bascik's per-output component budget.
       for (const message of messages) {
-        yield message.role === "user"
-          ? html`<p class="turn-user" data-testid="turn-user">${message.content}</p>`
-          : html`<div class="turn-assistant" data-testid="turn-assistant">${raw(
-              renderText(message.content, catalog, { elements: app.elements }),
-            )}</div>`;
+        if (message.role === "user") {
+          yield html`<p class="turn-user" data-testid="turn-user">${message.content}</p>`;
+          continue;
+        }
+        // A call the reader just allowed is about to run in the live reply
+        // below, so it is drawn there.
+        const shown =
+          carriedOn && message === messages.at(-1)
+            ? {
+                ...message,
+                parts: partsOf(message).filter(
+                  (part) => part.type !== "tool" || part.state !== "approved",
+                ),
+              }
+            : message;
+        yield html`<div class="turn-assistant" data-testid="turn-assistant">${raw(
+          renderMessage(shown, catalog, options),
+        )}</div>`;
       }
     }
   </script>
 
-  <!-- 2. The reply being written. When the last message is the visitor's,
-       ask the model and yield its reply as it arrives. -->
+  <!-- The stored conversation ends here. Each page's <link rel="expect">
+       names this element, so the browser's first paint already has the whole
+       conversation and nothing moves as the page loads. -->
+  <span
+    id="thread-ready"
+    class="thread-ready"
+    data-bascik-preserve="id"
+    data-testid="chat-thread-ready"
+  ></span>
+
+  <!-- 2. The reply being written, when there is one: the model's text, and
+       each tool call as its state changes. The turn itself runs in
+       src/lib/chat.ts, apart from any request, so this only reads it. -->
   <div class="turn-assistant live" data-testid="turn-live">
     <script data-bascik-stream type="text/typescript">
-      import { renderStream } from "@bascik/genui";
-      import {
-        loadCatalog,
-        loadConversation,
-        loadModel,
-        saveConversation,
-        sessionFor,
-        systemPrompt,
-      } from "@/lib/chat.ts";
+      import { threadState } from "@/lib/chat.ts";
 
-      export default async function* (
-        request: Request,
-        _context: unknown,
-        { signal }: { signal: AbortSignal },
-      ) {
-        const session = sessionFor(request);
-        const { app } = session;
-        const conversation = await loadConversation(session);
-        if (conversation?.messages.at(-1)?.role !== "user") return;
-
-        const model = await loadModel(app);
-        let reply = "";
-        // Keep the model's raw text for the history as it streams by.
-        const recorded = (async function* () {
-          for await (const delta of model({
-            system: await systemPrompt(app),
-            messages: conversation.messages,
-            tools: app.tools,
-            signal,
-          })) {
-            reply += delta;
-            yield delta;
-          }
-        })();
-        try {
-          yield* renderStream(recorded, await loadCatalog(), {
-            elements: app.elements,
-          });
-        } catch (error) {
-          console.error(`[${app.id}] the model failed:`, error);
-          reply += "\n\nSomething went wrong while writing this reply.";
-          yield `<p class="failed" data-testid="turn-failed">Something went wrong while writing this reply.</p>`;
-        } finally {
-          // Runs when the reply ends and when the visitor leaves early.
-          conversation.messages.push({
-            role: "assistant",
-            content: reply || "(no reply)",
-          });
-          await saveConversation(session, conversation);
-        }
+      export default async function* (request: Request) {
+        const { turn } = await threadState(request);
+        if (!turn) return;
+        // The caret shows from here until the .done marker below.
+        yield `<span class="writing" data-testid="turn-writing"></span>`;
+        // The reply from its first chunk, however late this page joined it.
+        // It goes on being written, and is stored, if this reader leaves.
+        yield* turn.html.subscribe();
         yield `<span class="done" data-testid="turn-done"></span>`;
       }
     </script>

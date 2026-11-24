@@ -28,7 +28,15 @@ A link to a documentation page: the page or section title, its full URL as href,
     font-size: 0.875rem;
   }
 </style>
-<a class="link" data-testid="doc-link" data-bascik-attr-href="href">
+<!-- The docs are another site, so the link opens in a new tab and the
+     conversation stays open: the ↗ after the title says so. -->
+<a
+  class="link"
+  target="_blank"
+  rel="noopener noreferrer"
+  data-testid="doc-link"
+  data-bascik-attr-href="href"
+>
   <span
     class="title"
     data-testid="doc-link-title"

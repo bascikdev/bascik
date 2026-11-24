@@ -89,4 +89,14 @@ describe("catalogPrompt", () => {
     expect(prompt).toContain("  One book.");
     expect(catalogPrompt(new Map([[entry.name, entry]]))).toBe(prompt);
   });
+
+  it("tells the model about the fences that are drawn", () => {
+    const prompt = catalogPrompt(new Map(), {
+      fences: { mermaid: "Write Mermaid in it." },
+    });
+    expect(prompt).toContain(
+      "A ```mermaid fence is drawn, not shown as code. Write Mermaid in it.",
+    );
+    expect(catalogPrompt(new Map())).not.toContain("is drawn");
+  });
 });

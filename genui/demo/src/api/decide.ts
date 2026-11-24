@@ -8,6 +8,7 @@
 // The decision is appended to the visitor's log as one line of JSON, and added
 // to the conversation as the reviewer's message, so the model sees it too.
 import {
+  abandonApprovals,
   backToChat,
   loadConversation,
   newConversation,
@@ -31,6 +32,7 @@ export const POST = async (request: Request): Promise<Response> => {
   if (conversation.messages.length === 0) {
     conversation.title = `Review: ${decision.item}`;
   }
+  abandonApprovals(conversation);
   conversation.messages.push({
     role: "user",
     content: decisionMessage(decision),

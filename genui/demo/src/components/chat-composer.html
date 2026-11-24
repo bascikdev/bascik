@@ -60,6 +60,10 @@ The message box. A plain form that posts to /api/send, so sending works with no 
     data-testid="chat-composer-input"
   ></textarea>
   <button class="send" data-testid="chat-composer-send">Send</button>
+  <!-- Shown by chat-enhance while a reply streams; never without a script. -->
+  <button class="send" type="button" hidden data-testid="chat-composer-stop">
+    Stop
+  </button>
   <!-- The only client script in the app, and it is optional: Enter sends,
        Shift+Enter adds a line. Without it the Send button still works. -->
   <script>

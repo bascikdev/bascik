@@ -12,7 +12,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { analyzeReply, renderText, type ReplyReport } from "../src/index.ts";
+import {
+  analyzeReply,
+  renderText,
+  runTurn,
+  type ReplyReport,
+} from "../src/index.ts";
 import { anthropicModel } from "../src/anthropic.ts";
 import { APPS } from "../demo/src/lib/apps.ts";
 import { loadCatalog, systemPrompt } from "../demo/src/lib/chat.ts";
@@ -129,15 +134,20 @@ async function run(job: (typeof jobs)[number], index: number): Promise<Result> {
     renderedBytes: 0,
   };
   try {
-    const ask = flags.offline ? app.offline : model;
-    for await (const delta of ask({
+    const turn = runTurn({
+      model: flags.offline ? app.offline : model,
       system: await systemPrompt(app),
       messages: [{ role: "user", content: prompt }],
       tools: app.tools,
-    })) {
-      if (!firstTextMs && delta.trim())
+    });
+    for await (const event of turn.events) {
+      if (event.type === "tool") {
+        if (event.part.state === "running") result.toolCalls++;
+        continue;
+      }
+      if (!firstTextMs && event.delta.trim())
         firstTextMs = performance.now() - started;
-      text += delta;
+      text += event.delta;
     }
     result.ok = true;
   } catch (error) {
@@ -149,10 +159,7 @@ async function run(job: (typeof jobs)[number], index: number): Promise<Result> {
   result.totalMs = performance.now() - started;
   result.firstTextMs = firstTextMs;
   result.characters = text.length;
-  // The app writes a tool-note per tool call; they are not the model's own output.
-  result.toolCalls = (text.match(/<tool-note>/g) ?? []).length;
-  const own = text.replace(/\n?<tool-note>[^<]*<\/tool-note>\n?/g, "\n");
-  result.report = analyzeReply(own, catalog, { elements: app.elements });
+  result.report = analyzeReply(text, catalog, { elements: app.elements });
   result.renderedBytes = renderText(text, catalog, {
     elements: app.elements,
   }).length;

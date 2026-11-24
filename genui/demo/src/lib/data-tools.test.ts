@@ -41,7 +41,7 @@ describe("runSql", () => {
 
   it("is the tool the model calls", async () => {
     const tool = dataTools.find((candidate) => candidate.name === "run_sql")!;
-    const output = await tool.run({ sql: "SELECT 1 AS one" }, {});
+    const output = await tool.run!({ sql: "SELECT 1 AS one" }, {});
     expect(JSON.parse(output)).toEqual({
       columns: ["one"],
       rows: [[1]],

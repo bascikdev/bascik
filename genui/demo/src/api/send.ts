@@ -2,6 +2,7 @@
 // which streams the reply. Every form posts here, including the forms the
 // model generates.
 import {
+  abandonApprovals,
   backToChat,
   loadConversation,
   newConversation,
@@ -37,6 +38,7 @@ export const POST = async (request: Request): Promise<Response> => {
     if (conversation.messages.length === 0) {
       conversation.title = text.length > 40 ? `${text.slice(0, 40)}…` : text;
     }
+    abandonApprovals(conversation);
     conversation.messages.push({ role: "user", content: text });
     await saveConversation(session, conversation);
   }

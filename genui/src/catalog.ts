@@ -119,7 +119,14 @@ export function signature(entry: CatalogEntry): string {
  */
 export function catalogPrompt(
   catalog: Catalog,
-  options: { elements?: readonly string[] } = {},
+  options: {
+    elements?: readonly string[];
+    /**
+     * Code fences the renderer draws, by language, each with a sentence that
+     * tells the model what the fence may hold and when to use it.
+     */
+    fences?: Readonly<Record<string, string>>;
+  } = {},
 ): string {
   const lines = [
     "You answer in a chat interface that renders your reply as it streams.",
@@ -139,6 +146,12 @@ export function catalogPrompt(
       `You may also write these HTML elements, with no attributes: ${options.elements
         .map((name) => `<${name}>`)
         .join(" ")}.`,
+      "",
+    );
+  }
+  for (const [language, description] of Object.entries(options.fences ?? {})) {
+    lines.push(
+      `A \`\`\`${language} fence is drawn, not shown as code. ${description}`,
       "",
     );
   }

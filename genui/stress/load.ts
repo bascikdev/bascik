@@ -199,5 +199,5 @@ console.log(
 );
 const saved = await read("/", leavers[0]!.cookie);
 console.log(
-  `   the first leaver's conversation on reload: ${saved.body.includes("turn-assistant") ? "has the partial reply saved" : "has no saved reply"}`,
+  `   the first leaver's conversation on reload: ${saved.body.includes("turn-assistant") ? "has the reply, which was finished without them" : "has no saved reply yet"}`,
 );

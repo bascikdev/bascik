@@ -21,7 +21,7 @@ describe("searchDocs", () => {
 
 describe("read_doc", () => {
   it("reads a page by its route", async () => {
-    const markdown = await tool("read_doc").run(
+    const markdown = await tool("read_doc").run!(
       { route: "/scripts/stream#yield-rows-as-they-arrive" },
       {},
     );
@@ -36,7 +36,7 @@ describe("read_doc", () => {
     "/nope",
   ])("refuses %s, which is not a docs route", async (route) => {
     await expect(async () =>
-      tool("read_doc").run({ route }, {}),
+      tool("read_doc").run!({ route }, {}),
     ).rejects.toThrow(/No page/);
   });
 });

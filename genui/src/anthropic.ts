@@ -1,6 +1,12 @@
 /** A `Model` backed by the Claude API, through the official SDK. */
 import Anthropic from "@anthropic-ai/sdk";
-import { invalidToolInput, type Model, type Tool } from "./model.ts";
+import {
+  partsOf,
+  roundsOf,
+  toolResult,
+  type ChatMessage,
+  type Model,
+} from "./model.ts";
 
 export interface AnthropicModelOptions {
   /** Defaults to a client that reads its credentials from the environment. */
@@ -9,52 +15,91 @@ export interface AnthropicModelOptions {
   /** How much the model thinks before it answers. `low` suits chat. */
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   maxTokens?: number;
-  /** How many rounds of tool calls one reply may take. */
-  maxToolRounds?: number;
 }
 
 type Message = Anthropic.Beta.BetaMessage;
 type MessageParam = Anthropic.Beta.BetaMessageParam;
+type ContentParam = Anthropic.Beta.BetaContentBlockParam;
 type ToolUse = Anthropic.Beta.BetaToolUseBlock;
-type ToolResult = Anthropic.Beta.BetaToolResultBlockParam;
 
-async function runTool(
-  tools: Tool[],
-  call: ToolUse,
-  signal: AbortSignal | undefined,
-): Promise<ToolResult> {
-  const failed = (content: string): ToolResult => ({
-    type: "tool_result",
-    tool_use_id: call.id,
-    is_error: true,
-    content,
-  });
-  const tool = tools.find((candidate) => candidate.name === call.name);
-  if (!tool) return failed(`There is no tool named ${call.name}.`);
-  const invalid = invalidToolInput(tool.inputSchema, call.input);
-  if (invalid) return failed(`Invalid input: ${invalid}.`);
-  try {
-    const content = await tool.run(call.input as Record<string, unknown>, {
-      signal,
-    });
-    return { type: "tool_result", tool_use_id: call.id, content };
-  } catch (error) {
-    return failed(error instanceof Error ? error.message : "The tool failed.");
+/**
+ * What the API sent for a round that made tool calls, by the first call's id.
+ * A round is sent back as it was received when it is still here (it may hold
+ * blocks, such as thinking, that the parts do not keep), and rebuilt from the
+ * parts when it is not: after a restart, or on another server.
+ */
+const REMEMBERED = 500;
+const received = new Map<string, Message["content"]>();
+
+function remember(id: string, content: Message["content"]): void {
+  if (received.size >= REMEMBERED) {
+    received.delete(received.keys().next().value!);
   }
+  received.set(id, content);
 }
 
+/** The conversation in the API's shape: each round's calls, then their results. */
+export function toMessageParams(messages: ChatMessage[]): MessageParam[] {
+  const params: MessageParam[] = [];
+  for (const message of messages) {
+    if (message.role === "user" || !message.parts) {
+      if (message.content) {
+        params.push({ role: message.role, content: message.content });
+      }
+      continue;
+    }
+    for (const round of roundsOf(partsOf(message))) {
+      const first = round.calls[0];
+      const content: ContentParam[] = [];
+      if (round.text.trim()) content.push({ type: "text", text: round.text });
+      for (const call of round.calls) {
+        content.push({
+          type: "tool_use",
+          id: call.id,
+          name: call.name,
+          input: call.input,
+        });
+      }
+      if (content.length === 0) continue;
+      params.push({
+        role: "assistant",
+        content: (first && received.get(first.id)) || content,
+      });
+      if (round.calls.length) {
+        params.push({
+          role: "user",
+          content: round.calls.map((call) => {
+            const result = toolResult(call);
+            return {
+              type: "tool_result" as const,
+              tool_use_id: call.id,
+              content: result.text,
+              ...(result.failed ? { is_error: true } : {}),
+            };
+          }),
+        });
+      }
+    }
+  }
+  return params;
+}
+
+/**
+ * One round of Claude: it streams text, then yields the tool calls it made.
+ * `runTurn` runs them and calls this again with the results in `messages`.
+ */
 export function anthropicModel(options: AnthropicModelOptions = {}): Model {
   const {
     client = new Anthropic(),
     model = "claude-opus-5-5",
     effort = "low",
     maxTokens = 64_000,
-    maxToolRounds = 8,
   } = options;
 
   return async function* ({ system, messages, tools = [], signal }) {
-    const conversation: MessageParam[] = [...messages];
-    for (let round = 0; ; round++) {
+    const conversation = toMessageParams(messages);
+    // A paused turn is continued here; it is one round to the caller.
+    for (;;) {
       const stream = client.beta.messages.stream(
         {
           model,
@@ -108,26 +153,16 @@ export function anthropicModel(options: AnthropicModelOptions = {}): Model {
       const calls = message.content.filter(
         (block): block is ToolUse => block.type === "tool_use",
       );
-      if (calls.length === 0) return;
-      if (round >= maxToolRounds) {
-        yield "\n\nStopped: this reply needed too many tool calls.";
-        return;
-      }
-
-      // Tell the reader what is happening, then run the calls together and
-      // answer them all in one message.
+      if (calls.length) remember(calls[0]!.id, message.content);
       for (const call of calls) {
-        const tool = tools.find((candidate) => candidate.name === call.name);
-        const note = tool?.note?.(call.input as Record<string, unknown>);
-        if (note) yield `\n${note}\n`;
+        yield {
+          type: "tool-call",
+          id: call.id,
+          name: call.name,
+          input: call.input,
+        };
       }
-      const results = await Promise.all(
-        calls.map((call) => runTool(tools, call, signal)),
-      );
-      conversation.push({ role: "assistant", content: message.content });
-      conversation.push({ role: "user", content: results });
-      // Text after a tool round starts on its own line.
-      yield "\n";
+      return;
     }
   };
 }
