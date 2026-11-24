@@ -304,7 +304,7 @@ describe("portfolio template", () => {
       const html = file(path);
       // site-meta is head tags with no root element.
       if (name !== "site-meta") expect(html).toContain(`data-testid="${name}"`);
-      for (const [tag] of html.matchAll(/<script\b[^>]*>/g))
+      for (const [tag] of html.matchAll(/<script\b[^>]*>/gi))
         expect(tag, `${path}: ${tag}`).toContain('type="text/typescript"');
       // Style above the markup, a browser script below it.
       if (html.includes("<style>"))
@@ -316,7 +316,7 @@ describe("portfolio template", () => {
 
   it("marks every script in a page as TypeScript too", () => {
     for (const path of pagePaths)
-      for (const [tag] of file(path).matchAll(/<script\b[^>]*>/g))
+      for (const [tag] of file(path).matchAll(/<script\b[^>]*>/gi))
         expect(tag, `${path}: ${tag}`).toContain('type="text/typescript"');
   });
 
