@@ -36,13 +36,33 @@ export function inline(text: string): string {
     );
 }
 
-/** An element is not all here yet: wait for more of the stream. */
+/** A tag is not all here yet: wait for more of the stream. */
 const WAIT = Symbol("wait");
-type Parsed = { html: string; end: number } | typeof WAIT | null;
+
+interface OpenTag {
+  entry: CatalogEntry;
+  /** The opening tag as Bascik will read it. */
+  html: string;
+  selfClosed: boolean;
+  /** Index just past the tag in the source. */
+  end: number;
+}
+
+/** A catalog element whose closing tag has not arrived yet. */
+interface Frame {
+  entry: CatalogEntry;
+  open: string;
+  /** Finished child HTML. */
+  children: string;
+  /** Text seen since the last child. */
+  text: string;
+}
 
 const MAX_DEPTH = 4;
-/** Past this an unfinished element is shown as text, so a stream cannot buffer without bound. */
-const MAX_PENDING = 32_768;
+/** An opening tag longer than this is shown as text. */
+const MAX_TAG = 8_192;
+/** Past this much buffered content, open elements are closed where they stand. */
+const MAX_PENDING = 262_144;
 
 const NAME = /<([a-z][a-z0-9-]*)/y;
 const ATTRIBUTE = /[A-Za-z_][-\w:.]*/y;
@@ -53,7 +73,7 @@ function skipSpace(source: string, at: number): number {
   return at;
 }
 
-function openTag(entry: CatalogEntry, props: Map<string, string>): string {
+function openTagHtml(entry: CatalogEntry, props: Map<string, string>): string {
   let tag = `<${entry.name}`;
   for (const prop of entry.props) {
     const value = props.get(prop);
@@ -64,38 +84,43 @@ function openTag(entry: CatalogEntry, props: Map<string, string>): string {
   return `${tag}>`;
 }
 
-/** Parse the catalog element that starts at `source[at]`, which is `<`. */
-function parseElement(
+/**
+ * Parse the opening tag at the start of `source`, which begins with `<`.
+ * Null means this is not a catalog tag and the `<` is text.
+ */
+function parseOpenTag(
   catalog: Catalog,
   source: string,
-  at: number,
-  depth: number,
-): Parsed {
-  NAME.lastIndex = at;
+): OpenTag | typeof WAIT | null {
+  NAME.lastIndex = 0;
   const named = NAME.exec(source);
   if (!named) return null;
   let position = NAME.lastIndex;
   if (position >= source.length) return WAIT;
   const entry = catalog.get(named[1]!);
-  if (!entry || depth > MAX_DEPTH || !/[\s/>]/.test(source[position]!)) {
-    return null;
-  }
+  if (!entry || !/[\s/>]/.test(source[position]!)) return null;
 
   const props = new Map<string, string>();
-  let selfClosed = false;
   for (;;) {
     position = skipSpace(source, position);
     if (position >= source.length) return WAIT;
     if (source[position] === ">") {
-      position++;
-      break;
+      return {
+        entry,
+        html: openTagHtml(entry, props),
+        selfClosed: false,
+        end: position + 1,
+      };
     }
     if (source[position] === "/") {
       if (position + 1 >= source.length) return WAIT;
       if (source[position + 1] !== ">") return null;
-      position += 2;
-      selfClosed = true;
-      break;
+      return {
+        entry,
+        html: openTagHtml(entry, props),
+        selfClosed: true,
+        end: position + 2,
+      };
     }
     ATTRIBUTE.lastIndex = position;
     const attribute = ATTRIBUTE.exec(source);
@@ -123,42 +148,6 @@ function parseElement(
     }
     props.set(attribute[0].toLowerCase(), value);
   }
-
-  const open = openTag(entry, props);
-  const close = `</${entry.name}>`;
-  if (selfClosed) return { html: open + close, end: position };
-
-  let children = "";
-  let text = "";
-  const flushText = (): void => {
-    if (text.trim()) children += inline(text.trim());
-    text = "";
-  };
-  for (;;) {
-    const next = source.indexOf("<", position);
-    if (next < 0) return WAIT;
-    text += source.slice(position, next);
-    const rest = source.slice(next);
-    if (rest.startsWith(close)) {
-      flushText();
-      // A component with no slot has nowhere to put content, so it is dropped.
-      return {
-        html: open + (entry.slot ? children : "") + close,
-        end: next + close.length,
-      };
-    }
-    if (close.startsWith(rest)) return WAIT;
-    const child = parseElement(catalog, source, next, depth + 1);
-    if (child === WAIT) return WAIT;
-    if (child === null) {
-      text += "<";
-      position = next + 1;
-    } else {
-      flushText();
-      children += child.html;
-      position = child.end;
-    }
-  }
 }
 
 export interface Renderer {
@@ -173,6 +162,18 @@ export function createRenderer(catalog: Catalog): Renderer {
   let lineStart = true;
   let afterBlock = true;
   let newlines = 0;
+  /** Catalog elements that are open, outermost first. */
+  const stack: Frame[] = [];
+  /** Characters held in open elements, to bound memory. */
+  let pending = 0;
+  /** A known tag is incomplete: nothing can change until a `>` arrives. */
+  let awaitingTagEnd = false;
+  /**
+   * The buffer's length the last time a search for a closing fence or marker
+   * failed, so the next search starts there and never rereads the buffer.
+   */
+  let searchedTo = 0;
+  let inFence = false;
 
   /** True while `partial` (which starts with `<`) could still become a catalog tag. */
   const couldBeTag = (partial: string): boolean => {
@@ -181,6 +182,38 @@ export function createRenderer(catalog: Catalog): Renderer {
       if (known.startsWith(name)) return true;
     }
     return false;
+  };
+
+  /**
+   * Read the tag at the start of the buffer. Returns the tag, null when the
+   * `<` is text, or WAIT. The work is bounded by the length of one tag, so a
+   * long element is never read twice.
+   */
+  const readOpenTag = (
+    source: string,
+    final: boolean,
+  ): OpenTag | typeof WAIT | null => {
+    let tag: OpenTag | typeof WAIT | null;
+    if (/^<[a-z0-9-]*$/.test(source)) {
+      tag = !final && couldBeTag(source) ? WAIT : null;
+    } else {
+      tag = parseOpenTag(catalog, source);
+      if (tag === WAIT && !final && source.length < MAX_TAG) {
+        awaitingTagEnd = true;
+      }
+    }
+    if (tag === WAIT && (final || source.length >= MAX_TAG)) return null;
+    if (tag && tag !== WAIT && stack.length >= MAX_DEPTH && !tag.selfClosed) {
+      return null;
+    }
+    return tag;
+  };
+
+  const closeFrame = (frame: Frame): string => {
+    const text = frame.text.trim();
+    const children = frame.children + (text ? inline(text) : "");
+    // A component with no slot has nowhere to put content, so it is dropped.
+    return `${frame.open}${frame.entry.slot ? children : ""}</${frame.entry.name}>`;
   };
 
   function drain(final: boolean): string {
@@ -202,24 +235,104 @@ export function createRenderer(catalog: Catalog): Renderer {
       afterBlock = true;
       out += html;
     };
+    /** A finished element goes to its parent, or out when it has none. */
+    const deliver = (html: string): void => {
+      const parent = stack.at(-1);
+      if (parent) {
+        parent.children += html;
+        pending += html.length;
+      } else {
+        pending = 0;
+        block(html);
+      }
+    };
+    const closeAll = (): void => {
+      while (stack.length) deliver(closeFrame(stack.pop()!));
+    };
 
     for (;;) {
       const source = buffer;
       if (!source) break;
+      const searched = searchedTo;
+      searchedTo = 0;
+
+      // Inside a code fence: every finished line is one element, so code
+      // streams line by line and a long block is never held back.
+      if (inFence) {
+        const lineEnd = source.indexOf("\n", Math.max(0, searched - 1));
+        if (lineEnd < 0 && !final && source.length < MAX_TAG) {
+          searchedTo = source.length;
+          break;
+        }
+        const line = lineEnd < 0 ? source : source.slice(0, lineEnd);
+        buffer = lineEnd < 0 ? "" : source.slice(lineEnd + 1);
+        if (line.trim() === "```") {
+          inFence = false;
+          lineStart = true;
+        } else {
+          block(`<code data-line>${escapeHtml(line) || "<br>"}</code>`);
+        }
+        continue;
+      }
+
+      // Inside a catalog element: collect text and children until it closes.
+      const frame = stack.at(-1);
+      if (frame) {
+        if (pending > MAX_PENDING) {
+          closeAll();
+          continue;
+        }
+        const next = source.indexOf("<");
+        if (next !== 0) {
+          const run = next < 0 ? source : source.slice(0, next);
+          frame.text += run;
+          pending += run.length;
+          buffer = next < 0 ? "" : source.slice(next);
+          continue;
+        }
+        const close = `</${frame.entry.name}>`;
+        if (source.startsWith(close)) {
+          stack.pop();
+          deliver(closeFrame(frame));
+          buffer = source.slice(close.length);
+          continue;
+        }
+        if (!final && close.startsWith(source)) break;
+        const tag = readOpenTag(source, final);
+        if (tag === WAIT) break;
+        if (tag === null) {
+          frame.text += "<";
+          buffer = source.slice(1);
+          continue;
+        }
+        const before = frame.text.trim();
+        if (before) frame.children += inline(before);
+        frame.text = "";
+        if (tag.selfClosed) {
+          deliver(`${tag.html}</${tag.entry.name}>`);
+        } else {
+          stack.push({
+            entry: tag.entry,
+            open: tag.html,
+            children: "",
+            text: "",
+          });
+        }
+        buffer = source.slice(tag.end);
+        continue;
+      }
 
       if (lineStart) {
         if (source.startsWith("```")) {
+          // The rest of the opening line names a language; it is not shown.
           const firstLine = source.indexOf("\n");
-          const close = firstLine < 0 ? -1 : source.indexOf("\n```", firstLine);
-          if (close < 0 && !final) break;
-          const code =
-            firstLine < 0
-              ? ""
-              : source.slice(firstLine + 1, close < 0 ? undefined : close);
-          block(`<pre><code>${escapeHtml(code)}</code></pre>`);
-          buffer = close < 0 ? "" : source.slice(close + 4);
-          lineStart = false;
-          continue;
+          if (firstLine < 0 && !final && source.length < 200) break;
+          if (firstLine >= 0 || final) {
+            inFence = true;
+            block("");
+            buffer = firstLine < 0 ? "" : source.slice(firstLine + 1);
+            continue;
+          }
         }
         if (!final && (source === "`" || source === "``")) break;
         const heading = /^(#{1,4}) /.exec(source);
@@ -270,8 +383,9 @@ export function createRenderer(catalog: Catalog): Renderer {
       if (character === "`" || source.startsWith("**")) {
         const marker = character === "`" ? "`" : "**";
         const tag = character === "`" ? "code" : "strong";
-        const lineEnd = source.indexOf("\n");
-        const close = source.indexOf(marker, marker.length);
+        const from = Math.max(marker.length, searched - marker.length);
+        const lineEnd = source.indexOf("\n", from - 1);
+        const close = source.indexOf(marker, from);
         if (close > marker.length && (lineEnd < 0 || close < lineEnd)) {
           const inner = escapeHtml(source.slice(marker.length, close));
           text(`<${tag}>${inner}</${tag}>`);
@@ -279,7 +393,10 @@ export function createRenderer(catalog: Catalog): Renderer {
           continue;
         }
         // No closing marker on this line: wait while the line is still open.
-        if (lineEnd < 0 && !final && close < 0) break;
+        if (lineEnd < 0 && !final && close < 0 && source.length < MAX_TAG) {
+          searchedTo = source.length;
+          break;
+        }
         text(escapeHtml(marker));
         buffer = source.slice(marker.length);
         continue;
@@ -293,33 +410,41 @@ export function createRenderer(catalog: Catalog): Renderer {
       }
 
       // character === "<"
-      let parsed: Parsed = null;
-      if (/^<[a-z0-9-]*$/.test(source)) {
-        parsed = !final && couldBeTag(source) ? WAIT : null;
-      } else {
-        parsed = parseElement(catalog, source, 0, 1);
-      }
-      if (parsed === WAIT) {
-        if (!final && source.length < MAX_PENDING) break;
-        parsed = null;
-      }
-      if (parsed === null) {
+      const tag = readOpenTag(source, final);
+      if (tag === WAIT) break;
+      if (tag === null) {
         text("&lt;");
         buffer = source.slice(1);
+      } else if (tag.selfClosed) {
+        block(`${tag.html}</${tag.entry.name}>`);
+        buffer = source.slice(tag.end);
       } else {
-        block(parsed.html);
-        buffer = source.slice(parsed.end);
+        stack.push({
+          entry: tag.entry,
+          open: tag.html,
+          children: "",
+          text: "",
+        });
+        buffer = source.slice(tag.end);
       }
     }
+    // A stream that ends inside an element (a reply cut off at a length
+    // limit, for example) closes it where it stands, as a browser would.
+    if (final) closeAll();
     return out;
   }
 
   return {
     push(delta) {
       buffer += delta;
+      if (awaitingTagEnd) {
+        if (!delta.includes(">") && buffer.length < MAX_TAG) return "";
+        awaitingTagEnd = false;
+      }
       return drain(false);
     },
     end() {
+      awaitingTagEnd = false;
       return drain(true);
     },
   };

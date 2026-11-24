@@ -115,7 +115,18 @@ describe("renderText", () => {
       catalog,
     );
     expect(html).toBe(
-      "<h3>Picks</h3>• <strong>One</strong> and <code>two</code><div></div><pre><code>let x = 1 &lt; 2;</code></pre>done",
+      "<h3>Picks</h3>• <strong>One</strong> and <code>two</code><div></div><code data-line>let x = 1 &lt; 2;</code>done",
+    );
+  });
+
+  it("streams a code fence one line at a time", () => {
+    const renderer = createRenderer(catalog);
+    expect(renderer.push("```ts\nconst a")).toBe("");
+    expect(renderer.push(" = 1;\n\n  <book-card>")).toBe(
+      "<code data-line>const a = 1;</code><code data-line><br></code>",
+    );
+    expect(renderer.push("\n```\nafter")).toBe(
+      "<code data-line>  &lt;book-card&gt;</code>after",
     );
   });
 
@@ -186,11 +197,36 @@ describe("createRenderer", () => {
     expect(renderer.push("m>")).toBe("&lt;boom&gt;");
   });
 
-  it("gives up on an element that never closes", () => {
+  it("closes an element where it stands when the stream ends inside it", () => {
+    expect(
+      renderText(`<card-grid>${CARD}<book-card title="B">half`, catalog),
+    ).toBe(
+      `<card-grid>${CARD_HTML}<book-card data-bascik-prop-title="B">half</book-card></card-grid>`,
+    );
+  });
+
+  it("closes an element that buffers too much instead of holding it forever", () => {
     const renderer = createRenderer(catalog);
-    renderer.push(`<card-grid>`);
-    const html = renderer.push("x".repeat(40_000));
-    expect(html.startsWith("&lt;card-grid&gt;")).toBe(true);
+    expect(renderer.push(`<card-grid>`)).toBe("");
+    let html = "";
+    for (let sent = 0; sent < 300_000 && !html; sent += 10_000) {
+      html = renderer.push("x".repeat(10_000));
+    }
+    expect(html.startsWith("<card-grid>xxx")).toBe(true);
+    expect(html).toContain("</card-grid>");
+  });
+
+  it("refuses nesting deeper than four levels", () => {
+    const html = renderText("<card-grid>".repeat(6) + "x", catalog);
+    expect(html.match(/<card-grid>/g)).toHaveLength(4);
+    expect(html).toContain("&lt;card-grid&gt;&lt;card-grid&gt;x");
+  });
+
+  it("shows an opening tag that never ends as text", () => {
+    const renderer = createRenderer(catalog);
+    renderer.push(`<book-card title="`);
+    const html = renderer.push("y".repeat(9000));
+    expect(html.startsWith("&lt;book-card title=&quot;yyy")).toBe(true);
   });
 });
 

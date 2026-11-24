@@ -283,6 +283,7 @@ __metadata:
     "@bascik/bascik": "workspace:*"
     "@playwright/test": "npm:^1.65.0"
     "@types/node": "npm:^24.19.1"
+    fast-check: "npm:^4.10.2"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
