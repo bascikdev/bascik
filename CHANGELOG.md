@@ -9,6 +9,16 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
+## [Unreleased]
+
+### Changed
+
+- `create-bascik` 1.1.2: new projects depend on `@bascik/bascik` `^1.0.2`, so they start with the request-time rendering fix below.
+
+### Fixed
+
+- `@bascik/bascik` 1.0.2: component tags returned by a server or stream script render in time proportional to the output when one component holds many others, such as a grid whose slot holds a few hundred cards. Each card used to copy and search the whole grid again, so 990 cards in one grid took over a second of blocked event loop where the same cards spread over many grids took a tenth of that. Named-slot content that holds many component usages (`data-bascik-slot="..."` wrappers around or inside them) had a second pass of the same kind, which also slowed builds of such pages. Output is unchanged; see [`scripts.renderLimits`](https://bascik.dev/configuration#scriptsrenderlimits) for the limits on one output.
+
 ## [create-bascik 1.1.1] - 2026-11-22
 
 ### Fixed

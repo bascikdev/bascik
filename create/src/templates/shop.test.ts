@@ -23,6 +23,16 @@ import { TEMPLATES, templateNamed } from "../templates.ts";
 import { SHOP_BRAND, siteTs } from "./shop/data.ts";
 import { SHOP_TEMPLATE } from "./shop.ts";
 
+/** Applies `pattern` until nothing changes, so removing one match cannot leave another behind. */
+const stripRepeatedly = (text: string, pattern: RegExp): string => {
+  let previous: string;
+  do {
+    previous = text;
+    text = text.replace(pattern, "");
+  } while (text !== previous);
+  return text;
+};
+
 const filesFor = (adapter?: Adapter, siteName = SHOP_BRAND): TemplateFile[] =>
   SHOP_TEMPLATE.files({ siteName, adapter });
 
@@ -296,7 +306,7 @@ describe("shop template", () => {
     (adapter) => {
       for (const [path, content] of textFiles(adapter)) {
         if (!path.endsWith(".html")) continue;
-        const tags = content.match(/<script\b[^>]*>/g) ?? [];
+        const tags = content.match(/<script\b[^>]*>/gi) ?? [];
         for (const tag of tags) {
           expect(tag, path).toMatch(/type="text\/typescript"|src="[^"]+\.ts"/);
         }
@@ -430,9 +440,13 @@ describe("shop template markup", () => {
   it.each(COMPONENTS.filter((name) => name !== "site-meta"))(
     "<%s> has a semantic root with its data-testid",
     (name) => {
-      const html = file(`src/components/${name}/${name}.html`)
-        .replace(/<!--[\s\S]*?-->/g, "")
-        .replace(/<style>[\s\S]*?<\/style>/g, "");
+      const html = stripRepeatedly(
+        stripRepeatedly(
+          file(`src/components/${name}/${name}.html`),
+          /<!--[\s\S]*?-->/g,
+        ),
+        /<style>[\s\S]*?<\/style>/gi,
+      );
       const root = /<([a-z]+)\b[^>]*>/.exec(html);
       expect(root?.[0]).toContain(`data-testid="${name}"`);
       // A wrapper <div> is the root only where no element names the job (one form field).
