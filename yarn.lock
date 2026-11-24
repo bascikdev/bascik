@@ -166,7 +166,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@bascik/adapter-cloudflare@workspace:adapters/cloudflare"
   dependencies:
-    "@bascik/bascik": "npm:^1.0.1"
+    "@bascik/bascik": "npm:^1.0.2"
     "@playwright/test": "npm:^1.65.0"
     "@types/node": "npm:^24.19.1"
     "@vitest/coverage-v8": "npm:^5.1.0"
@@ -179,7 +179,7 @@ __metadata:
     vitest: "npm:^5.1.0"
     wrangler: "npm:^4.160.0"
   peerDependencies:
-    "@bascik/bascik": ^1.0.1
+    "@bascik/bascik": ^1.0.2
   languageName: unknown
   linkType: soft
 
@@ -187,7 +187,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@bascik/adapter-netlify@workspace:adapters/netlify"
   dependencies:
-    "@bascik/bascik": "npm:^1.0.1"
+    "@bascik/bascik": "npm:^1.0.2"
     "@netlify/functions": "npm:^6.1.1"
     "@playwright/test": "npm:^1.65.0"
     "@types/node": "npm:^24.19.1"
@@ -198,13 +198,13 @@ __metadata:
     vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
   peerDependencies:
-    "@bascik/bascik": ^1.0.1
+    "@bascik/bascik": ^1.0.2
   bin:
     bascik-netlify-install: ./dist/cli.js
   languageName: unknown
   linkType: soft
 
-"@bascik/bascik@npm:^1.0.1, @bascik/bascik@workspace:*, @bascik/bascik@workspace:pkg":
+"@bascik/bascik@npm:^1.0.2, @bascik/bascik@workspace:*, @bascik/bascik@workspace:pkg":
   version: 0.0.0-use.local
   resolution: "@bascik/bascik@workspace:pkg"
   dependencies:
