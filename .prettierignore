@@ -45,3 +45,6 @@ shop/.local/
 shop/catalog/source.json
 shop/printful-openapi.json
 shop/src/pages/assets/shop.js
+
+# Conversations the genui demo stores while it runs
+genui/demo/.data/
