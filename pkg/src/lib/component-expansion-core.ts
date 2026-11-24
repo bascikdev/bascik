@@ -1051,6 +1051,8 @@ export const expandComponents = (
       usedComponents.push(component);
       substitutions++;
     } catch (error) {
+      // The usage is stripped below, so nothing of it is left to finish.
+      unexpanded = undefined;
       // The limit tripwire throws before the `try`, so nothing here can be a
       // ComponentExpansionLimitError unless a host callback made one.
       opts.onError(component, currentStage, error, transpiledHtmlBody);
