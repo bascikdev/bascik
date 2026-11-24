@@ -44,8 +44,7 @@ const openingTags = (html: string): string[] =>
   stripRepeatedly(
     stripRepeatedly(html, /<!--[\s\S]*?-->/g),
     /<(style|script)\b[\s\S]*?<\/\1>/gi,
-  )
-    .match(/<[a-z][^>]*>/g) ?? [];
+  ).match(/<[a-z][^>]*>/g) ?? [];
 
 // ─── The generated modules, loaded and run ────────────────────────────────────
 
