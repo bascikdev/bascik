@@ -231,7 +231,7 @@ describe("landing template", () => {
       for (const [path, text] of files) {
         expect(path).not.toMatch(/\.(?:js|mjs|cjs)$/);
         if (!path.endsWith(".html")) continue;
-        for (const [tag] of text.matchAll(/<script\b[^>]*>/g))
+        for (const [tag] of text.matchAll(/<script\b[^>]*>/gi))
           expect(tag, path).toContain('type="text/typescript"');
       }
     }
@@ -443,7 +443,7 @@ describe("landing template: site name", () => {
       expect((site.site as { name: string }).name).toBe(name);
 
       const printed = String((site.siteName as () => unknown)());
-      expect(printed).not.toMatch(/<script|<Books>|<\/title>/);
+      expect(printed).not.toMatch(/<script|<Books>|<\/title>/i);
       expect(printed).toBe(
         name
           .replace(/&/g, () => "&amp;")
