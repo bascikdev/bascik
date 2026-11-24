@@ -140,7 +140,7 @@ Measured on one machine against the offline models, so the numbers are Bascik an
 
 A reply takes about 700 ms on its own here because the offline model paces its output. One hundred visitors who disconnect mid-reply leave the server healthy, and each partial reply is saved.
 
-**Not fixed, because it is in Bascik:** rendering many components inside one parent grows faster than linearly: 100 cards took 31 ms, 500 took 371 ms, and 990 took 1,171 ms, while 800 instances spread over 200 yields took 127 ms. The renderer's 300-component cap keeps one reply to about 120 ms.
+**Not fixed, because it is in Bascik:** rendering many components inside one parent grows faster than linearly: 100 cards took 31 ms, 500 took 371 ms, and 990 took 1,171 ms, while 800 instances spread over 200 yields took 127 ms. The renderer's 300-component cap keeps one reply to about 120 ms. It was reproduced without this workspace and is fixed in [bascikdev/bascik#299](https://github.com/bascikdev/bascik/pull/299), where 990 cards in one grid render in about 140 ms and 100 to 990 cards grow linearly; once that is merged, the cap is a budget choice and no longer a workaround.
 
 **Not tested here:** how reliably a real model follows the format. No API key was available where this was built. `stress/adherence.ts` asks Claude thirty questions across the three apps, ten of them hostile or awkward, and reports unknown tags, undeclared props, unclosed elements, tool calls, and timings. Its `--offline` flag is a free dry run of the script itself.
 
