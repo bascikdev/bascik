@@ -1,0 +1,73 @@
+<!-- @bascik
+The message box. A plain form that posts to /api/send, so sending works with no JavaScript.
+-->
+<style>
+  .composer {
+    display: flex;
+    gap: 0.5rem;
+    align-items: end;
+    max-inline-size: 46rem;
+    inline-size: 100%;
+    margin-inline: auto;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) + 6px);
+    background: var(--surface);
+  }
+  .composer:focus-within {
+    border-color: var(--accent);
+  }
+  .input {
+    flex: 1;
+    min-block-size: 2.5rem;
+    max-block-size: 12rem;
+    padding: 0.5rem 0.6rem;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    resize: none;
+    field-sizing: content;
+  }
+  .send {
+    padding: 0.55rem 1rem;
+    border: 0;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: var(--on-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+</style>
+<form
+  class="composer"
+  method="post"
+  action="/api/send"
+  data-testid="chat-composer"
+>
+  <textarea
+    id="input"
+    class="input"
+    name="text"
+    rows="1"
+    required
+    autofocus
+    placeholder="Ask about a book…"
+    aria-label="Message"
+    data-testid="chat-composer-input"
+  ></textarea>
+  <button class="send" data-testid="chat-composer-send">Send</button>
+  <!-- The only client script in the app, and it is optional: Enter sends,
+       Shift+Enter adds a line. Without it the Send button still works. -->
+  <script>
+    const input = document.getElementById("input");
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        input.form.requestSubmit();
+      }
+    });
+  </script>
+</form>

@@ -1,0 +1,34 @@
+<!-- @bascik
+One headline number with a short label, such as a rating, a page count, or a year. The content is a few words of context under the number.
+-->
+<style>
+  .tile {
+    display: grid;
+    gap: 0.15rem;
+    margin: 0;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .label {
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  .value {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 650;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .note {
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+</style>
+<dl class="tile" data-testid="stat-tile">
+  <dt class="label" data-testid="stat-tile-label" data-bascik-prop-label></dt>
+  <dd class="value" data-testid="stat-tile-value" data-bascik-prop-value></dd>
+  <dd class="note" style="margin: 0"><span data-bascik-slot></span></dd>
+</dl>

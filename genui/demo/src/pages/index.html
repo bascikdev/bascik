@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bascik Chat</title>
+    <meta
+      name="description"
+      content="A chat interface with generative UI, streamed as HTML by Bascik."
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <chat-sidebar />
+    <main class="chat">
+      <div class="dock">
+        <chat-composer />
+      </div>
+      <div class="scroller">
+        <div class="thread" data-testid="chat-thread">
+          <section class="welcome" data-testid="chat-welcome">
+            <h1>What are you reading next?</h1>
+            <p>Replies stream as HTML. The components in them are real.</p>
+            <div>
+              <ask-button data-bascik-prop-say="Recommend a book"
+                >Recommend a book</ask-button
+              >
+              <ask-button
+                data-bascik-prop-say="Compare the page counts of every book"
+                >Compare the books</ask-button
+              >
+              <ask-button data-bascik-prop-say="Help me choose a book"
+                >Help me choose</ask-button
+              >
+            </div>
+          </section>
+
+          <!-- 1. The conversation so far. Stored replies are the model's own
+               text, rendered through the same catalog as a live reply. -->
+          <script data-bascik-stream type="text/typescript">
+            import { html, raw } from "@bascik/bascik/html";
+            import { renderText } from "@bascik/genui";
+            import {
+              currentId,
+              loadCatalog,
+              loadConversation,
+            } from "@/lib/chat.ts";
+
+            export default async (request: Request) => {
+              const conversation = await loadConversation(currentId(request));
+              if (!conversation) return "";
+              const catalog = await loadCatalog();
+              return conversation.messages.map((message) =>
+                message.role === "user"
+                  ? html`<p class="turn-user" data-testid="turn-user">${message.content}</p>`
+                  : html`<div
+                      class="turn-assistant"
+                      data-testid="turn-assistant"
+                    >${raw(renderText(message.content, catalog))}</div>`,
+              );
+            };
+          </script>
+
+          <!-- 2. The reply being written. When the last message is the
+               visitor's, ask the model and yield its reply as it arrives. -->
+          <div class="turn-assistant live" data-testid="turn-live">
+            <script data-bascik-stream type="text/typescript">
+              import { renderStream } from "@bascik/genui";
+              import {
+                currentId,
+                loadCatalog,
+                loadConversation,
+                loadModel,
+                saveConversation,
+                systemPrompt,
+              } from "@/lib/chat.ts";
+
+              export default async function* (
+                request: Request,
+                _context: unknown,
+                { signal }: { signal: AbortSignal },
+              ) {
+                const conversation = await loadConversation(currentId(request));
+                if (conversation?.messages.at(-1)?.role !== "user") return;
+
+                const model = await loadModel();
+                let reply = "";
+                // Keep the model's raw text for the history as it streams by.
+                const recorded = (async function* () {
+                  for await (const delta of model({
+                    system: await systemPrompt(),
+                    messages: conversation.messages,
+                    signal,
+                  })) {
+                    reply += delta;
+                    yield delta;
+                  }
+                })();
+                try {
+                  yield* renderStream(recorded, await loadCatalog());
+                } finally {
+                  // Runs when the reply ends and when the visitor leaves early.
+                  conversation.messages.push({
+                    role: "assistant",
+                    content: reply || "(no reply)",
+                  });
+                  await saveConversation(conversation);
+                }
+                yield `<span class="done" data-testid="turn-done"></span>`;
+              }
+            </script>
+          </div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

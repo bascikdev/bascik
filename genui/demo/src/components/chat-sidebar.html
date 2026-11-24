@@ -1,0 +1,97 @@
+<!-- @bascik
+The conversation list. Its server script reads the stored conversations on every request.
+-->
+<style>
+  .sidebar {
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    gap: 1rem;
+    padding: 1rem;
+    border-inline-end: 1px solid var(--border);
+    background: var(--surface);
+    overflow-y: auto;
+  }
+  .brand {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 650;
+  }
+  .new {
+    inline-size: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  .new:hover {
+    border-color: var(--accent);
+  }
+  .list {
+    display: grid;
+    align-content: start;
+    gap: 0.15rem;
+  }
+  .list form {
+    display: contents;
+  }
+  .list button {
+    padding: 0.45rem 0.6rem;
+    border: 0;
+    border-radius: calc(var(--radius) - 2px);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: start;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .list button:hover,
+  .list button[aria-current="true"] {
+    background: var(--bg);
+  }
+  @media (max-width: 720px) {
+    .sidebar {
+      display: none;
+    }
+  }
+</style>
+<aside class="sidebar" data-testid="chat-sidebar">
+  <p class="brand">Bascik Chat</p>
+  <form method="post" action="/api/open">
+    <button class="new" data-testid="chat-sidebar-new">+ New chat</button>
+  </form>
+  <nav class="list" aria-label="Conversations">
+    <script data-bascik-server type="text/typescript">
+      import { html } from "@bascik/bascik/html";
+      import { currentId, listConversations } from "@/lib/chat.ts";
+
+      export default async (request: Request) => {
+        const current = currentId(request);
+        const conversations = await listConversations();
+        return conversations
+          .filter((conversation) => conversation.messages.length > 0)
+          .map(
+            (conversation) =>
+              html`<form method="post" action="/api/open">
+                <input type="hidden" name="id" value="${conversation.id}" />
+                <button
+                  data-testid="chat-sidebar-item"
+                  aria-current="${conversation.id === current
+                    ? "true"
+                    : "false"}"
+                >
+                  ${conversation.title}
+                </button>
+              </form>`,
+          );
+      };
+    </script>
+  </nav>
+</aside>

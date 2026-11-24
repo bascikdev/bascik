@@ -1,0 +1,21 @@
+<!-- @bascik
+One answer inside a choice-form. The content is what the reader sees, and value is the message sent when they pick it.
+-->
+<style>
+  .option {
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    cursor: pointer;
+  }
+  .option:has(:checked) {
+    border-color: var(--accent);
+  }
+</style>
+<label class="option" data-testid="choice-option">
+  <input type="radio" name="text" required data-bascik-attr-value="value" />
+  <span><span data-bascik-slot></span></span>
+</label>

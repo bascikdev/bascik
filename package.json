@@ -11,7 +11,8 @@
     "adapters/netlify",
     "adapters/netlify/e2e/fixture",
     "lsp",
-    "skills-tests"
+    "skills-tests",
+    "genui"
   ],
   "engines": {
     "node": ">=24.21.0"

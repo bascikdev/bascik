@@ -1,0 +1,31 @@
+{
+  "name": "@bascik/genui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Experimental: generative UI for Bascik. A model streams component tags, Bascik renders them as scoped HTML with no client runtime.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./anthropic": "./src/anthropic.ts"
+  },
+  "scripts": {
+    "unit": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "demo": "cd demo && bascik",
+    "demo:build": "cd demo && bascik --build",
+    "demo:server": "cd demo && bascik --server",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.9.0",
+    "@bascik/bascik": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^24.19.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}

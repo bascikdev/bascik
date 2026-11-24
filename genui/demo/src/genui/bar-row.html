@@ -1,0 +1,31 @@
+<!-- @bascik
+One bar inside a bar-chart: a label, its numeric value, and max, the largest value in the chart, so the bars share a scale.
+-->
+<style>
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.2rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  .number {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .bar {
+    grid-column: 1 / -1;
+    inline-size: 100%;
+    block-size: 0.6rem;
+  }
+</style>
+<li class="row" data-testid="bar-row">
+  <span data-bascik-prop-label></span>
+  <span class="number" data-bascik-prop-value></span>
+  <meter
+    class="bar"
+    min="0"
+    data-bascik-attr-value="value"
+    data-bascik-attr-max="max"
+    data-bascik-attr-aria-label="label"
+  ></meter>
+</li>

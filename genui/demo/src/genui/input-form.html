@@ -1,0 +1,45 @@
+<!-- @bascik
+A short form the reader fills in, with a title and a submit button label. Put one text-field inside per value you need. The answers are sent back as the reader's next message, one "name: value" line per field. Use it when you need several values at once.
+-->
+<style>
+  .form {
+    margin: 0.75rem 0;
+  }
+  .set {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .title {
+    padding: 0 0.35rem;
+    font-weight: 600;
+  }
+  .send {
+    justify-self: start;
+    padding: 0.45rem 1rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+</style>
+<form class="form" method="post" action="/api/send" data-testid="input-form">
+  <fieldset class="set">
+    <legend class="title" data-bascik-prop-title>Details</legend>
+    <span data-bascik-slot></span>
+    <button
+      class="send"
+      data-testid="input-form-submit"
+      data-bascik-prop-submit
+    >
+      Send
+    </button>
+  </fieldset>
+</form>

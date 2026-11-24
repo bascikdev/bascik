@@ -1,0 +1,22 @@
+<!-- @bascik
+One text input inside an input-form: the label the reader sees, and the name its value is sent under.
+-->
+<style>
+  .field {
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+  }
+  .input {
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+  }
+</style>
+<label class="field" data-testid="text-field">
+  <span data-bascik-prop-label></span>
+  <input class="input" required data-bascik-attr-name="name" />
+</label>
