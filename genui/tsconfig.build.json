@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "noEmit": false,
+    "declaration": true,
+    "sourceMap": true,
+    // dist/ ships without src/, so the maps carry their own sources.
+    "inlineSources": true,
+    // The sources import each other as "./x.ts", which Node runs as is in
+    // this repository. A published package is under node_modules, where Node
+    // does not strip types, so it ships JavaScript that imports "./x.js".
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

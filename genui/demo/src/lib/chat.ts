@@ -301,7 +301,13 @@ let catalog: Promise<Catalog> | undefined;
 
 /** The components a model may write: everything in src/genui. */
 export const loadCatalog = (): Promise<Catalog> =>
-  (catalog ??= readCatalog(join(import.meta.dirname, "..", "genui")));
+  (catalog ??= readCatalog([
+    // The catalog the package brings. A project that ran
+    // `bascik add @bascik/genui` has it at src/components/catalog instead.
+    join(import.meta.dirname, "..", "..", "..", "components", "catalog"),
+    // This demo's own: books, review forms, diagrams.
+    join(import.meta.dirname, "..", "genui"),
+  ]));
 
 /** One renderer for every reply, so a diagram is drawn once and remembered. */
 const mermaid = mermaidFence();

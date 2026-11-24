@@ -2,7 +2,21 @@
   "name": "@bascik/genui",
   "version": "0.0.0",
   "private": true,
-  "description": "Experimental: generative UI for Bascik. A model streams component tags, Bascik renders them as scoped HTML with no client runtime.",
+  "description": "Experimental: generative UI for Bascik. A model streams component tags, Bascik renders them as scoped HTML, and the browser needs no JavaScript.",
+  "keywords": [
+    "bascik",
+    "generative ui",
+    "ai",
+    "chat",
+    "streaming",
+    "html components"
+  ],
+  "homepage": "https://bascik.dev/genui",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bascikdev/bascik.git",
+    "directory": "genui"
+  },
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -11,7 +25,38 @@
     "./mermaid": "./src/mermaid.ts",
     "./openai": "./src/openai.ts"
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./anthropic": {
+        "types": "./dist/anthropic.d.ts",
+        "default": "./dist/anthropic.js"
+      },
+      "./mermaid": {
+        "types": "./dist/mermaid.d.ts",
+        "default": "./dist/mermaid.js"
+      },
+      "./openai": {
+        "types": "./dist/openai.d.ts",
+        "default": "./dist/openai.js"
+      }
+    }
+  },
+  "files": [
+    "dist/",
+    "components/",
+    "LICENSE",
+    "README.md"
+  ],
+  "bascik": {
+    "components": "./components"
+  },
   "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "prepack": "yarn build && cp ../LICENSE LICENSE",
     "unit": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "demo": "cd demo && bascik",
@@ -21,14 +66,25 @@
     "stress:load": "node stress/load.ts",
     "stress:adherence": "node stress/adherence.ts"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@anthropic-ai/sdk": "^1.9.0",
-    "@bascik/bascik": "workspace:*",
+    "@bascik/bascik": "^1.0.2",
     "beautiful-mermaid": "^1.1.3"
   },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "beautiful-mermaid": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.9.0",
+    "@bascik/bascik": "workspace:*",
     "@playwright/test": "^1.65.0",
     "@types/node": "^24.19.1",
+    "beautiful-mermaid": "^1.1.3",
     "fast-check": "^4.10.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",

@@ -79,10 +79,25 @@ export function describeComponent(
 }
 
 /**
- * Read every component in a folder (`<name>.html` or `<name>/<name>.html`).
- * Point it at a folder that holds only the components a model may write.
+ * Read every component in a folder (`<name>.html` or `<name>/<name>.html`),
+ * or in several folders: for example the catalog a package brought, and the
+ * project's own. Point it at folders that hold only the components a model
+ * may write. A later folder's component replaces an earlier one of the same
+ * name.
  */
-export async function readCatalog(directory: string): Promise<Catalog> {
+export async function readCatalog(
+  directories: string | readonly string[],
+): Promise<Catalog> {
+  const catalog = new Map<string, CatalogEntry>();
+  for (const directory of [directories].flat()) {
+    for (const [name, entry] of await readFolder(directory)) {
+      catalog.set(name, entry);
+    }
+  }
+  return catalog;
+}
+
+async function readFolder(directory: string): Promise<Catalog> {
   const catalog = new Map<string, CatalogEntry>();
   const entries = await readdir(directory, { withFileTypes: true });
   entries.sort((a, b) => a.name.localeCompare(b.name));

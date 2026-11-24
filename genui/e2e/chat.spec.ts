@@ -652,3 +652,153 @@ test("a model the server does not offer cannot be chosen", async ({
   expect(response.status()).toBe(303);
   expect(response.headers()["set-cookie"]).toContain("model=offline%3Ascript");
 });
+
+test.describe("voice", () => {
+  /**
+   * Stand-ins for the browser's speech engines, which a headless browser
+   * does not have: a synthesizer that "speaks" by sending a word boundary
+   * every few milliseconds, and a recognizer that hears one sentence. They
+   * record what the page asked them to say, and every word it put in bold.
+   */
+  const fakeSpeech = `
+    window.__spoken = [];
+    window.__bold = [];
+    window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
+    let saying = 0;
+    Object.defineProperty(window, "speechSynthesis", { configurable: true, value: {
+      speak(utterance) {
+        const mine = ++saying;
+        window.__spoken.push(utterance.text);
+        utterance.onstart?.();
+        const words = [...utterance.text.matchAll(/\\S+/g)];
+        words.forEach((word, index) => setTimeout(() => {
+          if (mine === saying) utterance.onboundary?.({ name: "word", charIndex: word.index });
+        }, 8 * (index + 1)));
+        setTimeout(() => { if (mine === saying) utterance.onend?.(); }, 8 * (words.length + 1));
+      },
+      cancel() { saying++; },
+    }});
+    let heard = 0;
+    window.SpeechRecognition = window.webkitSpeechRecognition = class {
+      start() {
+        window.__listening = (window.__listening ?? 0) + 1;
+        if (heard++ > 0) return; // after the first sentence, it only listens
+        setTimeout(() => {
+          this.onresult?.({ results: [Object.assign([{ transcript: "Recommend a book" }], { isFinal: true })] });
+        }, 20);
+      }
+      abort() { this.onend?.(); }
+    };
+    document.addEventListener("DOMContentLoaded", () => {
+      const caption = document.querySelector('[data-testid="chat-voice-caption"]');
+      new MutationObserver(() => {
+        const bold = caption.querySelector("strong");
+        if (bold) window.__bold.push(bold.textContent);
+      }).observe(caption, { childList: true, subtree: true });
+    });
+  `;
+  const PROSE = [
+    "Three picks from the catalog, each rendered by a book-card component on the server:",
+    "Refactoring the Monolith.",
+    "Practical Type Systems.",
+    "Shipping Small Changes.",
+    "Every card has its own button, and each button is a form that posts your next message.",
+  ];
+
+  test("is not shown without scripts", async ({ page }) => {
+    test.skip(withScripts(), "this is the page with scripts off");
+    await expect(page.getByTestId("chat-voice")).toBeHidden();
+    await send(page, "Recommend a book");
+    await expect(page.getByTestId("chat-voice")).toBeHidden();
+  });
+
+  test("reads a reply aloud as it streams, with the current word in bold", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "voice is a script");
+    await page.addInitScript(fakeSpeech);
+    await page.reload();
+    const aloud = page.getByTestId("chat-voice-aloud");
+    await aloud.click();
+    await expect(aloud).toHaveAttribute("aria-pressed", "true");
+    await send(page, "Recommend a book");
+
+    // The prose and what each card says of itself: not the buttons, not the
+    // blurbs, and each sentence once.
+    await expect.poll(() => page.evaluate("window.__spoken")).toEqual(PROSE);
+    // Every word was in bold in turn, in order.
+    await expect
+      .poll(() => page.evaluate("window.__bold.join(' ')"))
+      .toBe(PROSE.join(" "));
+    // A few words at a time, and nothing once it has all been said.
+    const caption = page.getByTestId("chat-voice-caption");
+    await expect(caption).toBeEmpty();
+    await expect(caption).toBeHidden();
+
+    // The choice is the reader's, and is kept.
+    await page.reload();
+    await expect(page.getByTestId("chat-voice-aloud")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // A stored reply is not read out again.
+    expect(await page.evaluate("window.__spoken")).toEqual([]);
+  });
+
+  test("captions a reply at a reading pace with the sound off", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "voice is a script");
+    await page.addInitScript(
+      `${fakeSpeech}; Object.defineProperty(window, "speechSynthesis", { value: undefined });`,
+    );
+    await page.reload();
+    // No speech engine: there is nothing to read aloud with.
+    await expect(page.getByTestId("chat-voice-aloud")).toBeHidden();
+    await page.getByTestId("chat-voice-speed").selectOption("2");
+    await page.getByTestId("chat-voice-captions").click();
+    await send(page, "Recommend a book");
+    const caption = page.getByTestId("chat-voice-caption");
+    await expect(caption).toBeVisible();
+    await expect(caption.locator("strong")).toHaveCount(1);
+    // At most a few words are shown at once.
+    expect(
+      (await caption.innerText()).trim().split(/\s+/).length,
+    ).toBeLessThanOrEqual(6);
+    await expect
+      .poll(() => page.evaluate("window.__bold.slice(0, 5).join(' ')"), {
+        timeout: 10_000,
+      })
+      .toBe("Three picks from the catalog,");
+    // Turning captions off stops them at once.
+    await page.getByTestId("chat-voice-captions").click();
+    await expect(caption).toBeEmpty();
+  });
+
+  test("holds a conversation: listens, sends, speaks, and listens again", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "voice is a script");
+    await page.addInitScript(fakeSpeech);
+    await page.reload();
+    await page.getByTestId("chat-voice-talk").click();
+    // What was heard is sent like a typed message.
+    await expect(page.getByTestId("turn-user")).toHaveText("Recommend a book");
+    await settled(page);
+    await expect.poll(() => page.evaluate("window.__spoken")).toEqual(PROSE);
+    // When the reply has been said, it is the reader's turn again.
+    await expect(page.getByTestId("chat-voice")).toHaveAttribute(
+      "data-state",
+      "listening",
+    );
+    expect(await page.evaluate("window.__listening")).toBe(2);
+    await expect(page.getByTestId("chat-voice-caption")).toHaveText(
+      "Listening…",
+    );
+    await page.getByTestId("chat-voice-talk").click();
+    await expect(page.getByTestId("chat-voice")).not.toHaveAttribute(
+      "data-state",
+      "listening",
+    );
+  });
+});

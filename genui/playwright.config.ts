@@ -29,7 +29,7 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
-      command: `cd demo && bascik --build && bascik --server --port ${PORT}`,
+      command: `yarn build && cd demo && bascik --build && bascik --server --port ${PORT}`,
       url: `http://127.0.0.1:${PORT}/`,
       reuseExistingServer: false,
       env: {

@@ -26,9 +26,11 @@ export const SECTIONS_WITH_PAGE = new Set([
   "example-components",
   "how-to",
   "tools",
+  "genui",
 ]);
 
 const SECTION_LABELS: Record<string, string> = {
+  genui: "Generative UI",
   deployment: "Deployment",
   "example-components": "Example Components",
   internals: "Internals",

@@ -47,7 +47,9 @@ One book: title, author, a rating out of 5 such as 4.6, and a one-sentence blurb
     border-color: var(--accent);
   }
 </style>
-<article class="card" data-testid="book-card">
+<!-- data-say: what the voice reads for this card. A card is a picture, so
+     without it the card would be skipped. -->
+<article class="card" data-testid="book-card" data-bascik-attr-data-say="title">
   <h3 class="title" data-testid="book-card-title" data-bascik-prop-title>
     Untitled
   </h3>

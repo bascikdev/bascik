@@ -160,6 +160,18 @@ export const NAV: NavSection[] = [
     ],
   },
   {
+    section: "Generative UI",
+    pages: [
+      { href: "/genui", label: "Overview" },
+      { href: "/genui/quick-start", label: "Quick Start" },
+      { href: "/genui/catalog", label: "Catalog" },
+      { href: "/genui/tools", label: "Tools & Approval" },
+      { href: "/genui/client-runtime", label: "Client Runtime" },
+      { href: "/genui/voice", label: "Voice & Captions" },
+      { href: "/genui/design-principles", label: "Design Principles" },
+    ],
+  },
+  {
     section: "Example Components",
     pages: [
       { href: "/example-components", label: "Overview" },

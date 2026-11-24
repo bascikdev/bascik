@@ -585,15 +585,18 @@ export function renderText(
 
 /**
  * Render a model's stream as it arrives. Every value this yields is complete
- * HTML, so a `data-bascik-stream` script can `yield*` it as is.
+ * HTML, so a `data-bascik-stream` script can `yield*` it as is. It takes what
+ * a `Model` yields and renders the text; a model that calls tools needs
+ * `runTurn` and `renderTurn` instead, and its calls are skipped here.
  */
 export async function* renderStream(
-  deltas: AsyncIterable<string>,
+  deltas: AsyncIterable<string | object>,
   catalog: Catalog,
   options?: RendererOptions,
 ): AsyncGenerator<string, void, undefined> {
   const renderer = createRenderer(catalog, options);
   for await (const delta of deltas) {
+    if (typeof delta !== "string") continue;
     const html = renderer.push(delta);
     if (html) yield html;
   }

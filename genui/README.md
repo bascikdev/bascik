@@ -2,7 +2,7 @@
 
 Generative UI for Bascik: a model streams prose and component tags, and Bascik renders the tags as scoped HTML while the reply is still arriving. The browser needs no JavaScript for any of it.
 
-This is a prototype to test an idea, not a published package. It is private, has no stable API, and is not in the changelog.
+This is a prototype to test an idea, not a published package. It is private, has no stable API, and is not in the changelog. Its documentation is the [Generative UI](https://bascik.dev/genui) section of the docs (`docs/content/genui/`); this README is the lab notebook: what was tried and what it showed.
 
 ## The idea
 
@@ -91,8 +91,9 @@ yarn workspace @bascik/genui stress:adherence  # a real model against the format
 | `src/openai.ts`      | A `Model` backed by any OpenAI-compatible server (Ollama, LM Studio, a gateway): one round, like the Claude one |
 | `src/mermaid.ts`     | Draws a mermaid code fence as an inline SVG on the server, and checks the SVG is safe                           |
 | `src/analyze.ts`     | Measures how well a reply followed the format: unknown tags, undeclared props, unclosed tags                    |
+| `components/`        | What `bascik add @bascik/genui` copies into a project: a starter catalog and the chat's pieces                  |
 | `demo/`              | The four apps: one shell, a registry of apps, per-visitor conversations                                         |
-| `demo/src/genui/`    | The catalog. Every component in this folder is one a model may write                                            |
+| `demo/src/genui/`    | The demo's own catalog components, beside the package's `components/catalog/`                                   |
 | `e2e/`               | Playwright tests of the demo, each run with JavaScript off and with it on                                       |
 | `stress/`            | The load test and the real-model format test                                                                    |
 
@@ -135,6 +136,31 @@ The diagram text is untrusted like the rest of a reply. The library escapes labe
 ### Interaction is forms
 
 A generated component that needs to talk back is a `<form method="post" action="/api/send">`. The API route stores the message and answers `303`, and the chat page streams the next reply. `ask-button` is a one-click suggestion, `choice-form` is a single-choice question, and `input-form` collects several values. None of them needs a client script, and each is an ordinary HTML form any browser, screen reader, or browsing agent already understands.
+
+## How it would ship
+
+The package is shaped the way Bascik shares anything, and has two halves:
+
+- **Functions you import**, from `dist/`. In this repository the exports point at `src/*.ts`, which Node runs as it is. Node does not strip types under `node_modules`, so `publishConfig.exports` points the published package at JavaScript built by `yarn build`. Claude's SDK and `beautiful-mermaid` are optional peers: the core has no dependencies.
+- **Components you copy**, from `components/`. The `bascik.components` field offers them to [`bascik add`](https://bascik.dev/how-to/sharing-components), which copies `components/catalog/` (what a model may write) and `components/chat/` (the composer, the client runtime, voice, the approval form) into the reader's `src/components/`. They are the reader's files after that. That matters here: a catalog component's `@bascik` comment is part of the prompt, so it has to be editable.
+
+`yarn workspace @bascik/genui pack` builds the tarball. It was installed into an empty project, `bascik add @bascik/genui` copied its 19 components, and the docs' Quick Start page ran from it. `src/package.test.ts` checks the manifest and that every shipped component stands alone (a description, a test id, no `@/` import). It stays `private` until someone decides to publish it; releasing is not part of the experiment.
+
+## Voice
+
+`components/chat/chat-voice.html` is a third optional script, beside the client runtime. It reads the reply's prose from the page as it streams and does three things with it:
+
+- **Captions.** A line above the composer shows the reply a few words at a time, with the current word in bold. With the sound off it keeps a reading pace, so it is a reading aid on its own.
+- **Read aloud.** The browser's `speechSynthesis` speaks each sentence as soon as it is complete, and its word boundary events move the caption. A voice that sends none falls back to the reading pace.
+- **Talk.** `SpeechRecognition` hears the next message, the composer's own form sends it, the reply is spoken, and it listens again.
+
+It needed nothing from the server: the reply is already text in the page. A component is skipped unless an element in it has `data-say`, which `book-card` binds to its title, so three cards are spoken as three titles and not as ratings and button labels.
+
+What it showed, and did not:
+
+- **The page is a good source for speech.** Because the reply is finished HTML, "what to say" is a walk over the reply's child nodes, and it stays in step with what the reader sees.
+- **Browser voices are the floor.** They are free and instant, and they sound like a browser. The docs' Voice page sketches where a speech model would plug in: audio as a second stream for the same turn, with word timestamps driving the same captions. None of that is built.
+- **Tested with stand-ins.** A headless browser has no speech engines, so the browser tests replace them with fakes that send word boundaries and one heard sentence. No real voice or microphone was part of a test.
 
 ## A UI layer without a client framework
 

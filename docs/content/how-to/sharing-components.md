@@ -84,3 +84,13 @@ directory: {
 ```
 
 Do not do both: a submodule inside `src/components/` that is also listed as its own root is rejected at startup as a nested root.
+
+## Components a model writes
+
+[Generative UI](/genui) uses the same model for a different reader. A catalog, the components a model is allowed to write, is a folder of components, and `@bascik/genui` ships a starter catalog and its chat components as a component package:
+
+```sh
+bascik add @bascik/genui
+```
+
+The files land in `src/components/catalog/` and `src/components/chat/`, and the catalog is read from that folder at request time. Copying matters more here than usual: a catalog component's `@bascik` description is part of the prompt a model reads, so editing your copy is how you change what the model does with it. See [Share a catalog](/genui/catalog#share-a-catalog).
