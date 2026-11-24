@@ -1,0 +1,100 @@
+<!-- @bascik
+A table of codes that replace other codes, for the reader to check row by row: a short id as item, a title, and one code-row inside per replacement. Every row starts as accepted; the reader flags the wrong ones and sends the whole table once. Use it when a new code set replaces an old one.
+-->
+<style>
+  .map {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow-x: auto;
+  }
+  .title {
+    margin: 0;
+    font-weight: 600;
+  }
+  .rows {
+    inline-size: 100%;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+  }
+  .head {
+    padding: 0.3rem 0.5rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-align: start;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .action {
+    padding: 0.45rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .note {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .text {
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+</style>
+<form class="map" method="post" action="/api/decide" data-testid="code-map">
+  <input type="hidden" name="app" value="review" />
+  <input type="hidden" name="kind" value="codes" />
+  <input type="hidden" name="verdict" value="reviewed" />
+  <input type="hidden" name="item" data-bascik-attr-value="item" />
+  <p class="title" data-testid="code-map-title" data-bascik-prop-title></p>
+  <table class="rows">
+    <thead>
+      <tr>
+        <th class="head" scope="col">Old code</th>
+        <th class="head" scope="col">New code</th>
+        <th class="head" scope="col">Covers</th>
+        <th class="head" scope="col">Your check</th>
+      </tr>
+    </thead>
+    <tbody>
+      <span data-bascik-slot></span>
+    </tbody>
+  </table>
+  <label class="note">
+    Note (optional): say what the wrong rows should be
+    <textarea
+      class="text"
+      name="note"
+      rows="2"
+      data-testid="code-map-note"
+    ></textarea>
+  </label>
+  <div class="actions">
+    <button class="action primary" data-testid="code-map-submit">
+      Send my check
+    </button>
+  </div>
+</form>

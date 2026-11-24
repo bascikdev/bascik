@@ -1,0 +1,104 @@
+<!-- @bascik
+One fact for the reader to validate: a short id as item, the fact in one plain sentence as claim, and a source-quote as content. The reader answers Correct, Wrong, or Not sure, with an optional note, and the answer is recorded. Ask one fact at a time, and only facts you took from a source.
+-->
+<style>
+  .check {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .ask {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .claim {
+    margin: 0;
+    font-size: 1.0625rem;
+    font-weight: 600;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .action {
+    padding: 0.45rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .note {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .text {
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+</style>
+<form class="check" method="post" action="/api/decide" data-testid="fact-check">
+  <input type="hidden" name="app" value="review" />
+  <input type="hidden" name="kind" value="fact" />
+  <input type="hidden" name="item" data-bascik-attr-value="item" />
+  <p class="ask">Is this right?</p>
+  <p class="claim" data-testid="fact-check-claim" data-bascik-prop-claim></p>
+  <span data-bascik-slot></span>
+  <label class="note">
+    Note (optional)
+    <textarea
+      class="text"
+      name="note"
+      rows="2"
+      data-testid="fact-check-note"
+    ></textarea>
+  </label>
+  <div class="actions">
+    <button
+      class="action primary"
+      name="verdict"
+      value="confirmed"
+      data-testid="fact-check-confirm"
+    >
+      Correct
+    </button>
+    <button
+      class="action"
+      name="verdict"
+      value="wrong"
+      data-testid="fact-check-wrong"
+    >
+      Wrong
+    </button>
+    <button
+      class="action"
+      name="verdict"
+      value="unsure"
+      data-testid="fact-check-unsure"
+    >
+      Not sure
+    </button>
+  </div>
+</form>

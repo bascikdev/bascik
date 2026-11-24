@@ -1,0 +1,50 @@
+<!-- @bascik
+One stage inside a flow-diagram: a short label, a state, and one sentence on what happens there as content. State is one of done (already validated), current (the stage you are asking about now), unclear (the sources disagree or say nothing), or todo.
+-->
+<style>
+  .stage {
+    position: relative;
+    flex: 1 1 7rem;
+    display: grid;
+    align-content: start;
+    gap: 0.2rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    font-size: 0.875rem;
+  }
+  .stage:not(:last-child)::after {
+    content: "\2192";
+    position: absolute;
+    inset-inline-end: -1.2rem;
+    inset-block-start: 0.55rem;
+    color: var(--muted);
+  }
+  .stage[data-state="current"] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  .stage[data-state="unclear"] {
+    border-style: dashed;
+  }
+  .stage[data-state="done"] .label::before {
+    content: "\2713  ";
+    color: var(--accent);
+  }
+  .stage[data-state="unclear"] .label::before {
+    content: "?  ";
+    color: var(--accent);
+  }
+  .label {
+    font-weight: 600;
+  }
+  .detail {
+    color: var(--muted);
+  }
+</style>
+<li class="stage" data-testid="flow-stage" data-bascik-attr-data-state="state">
+  <span class="label" data-testid="flow-stage-label" data-bascik-prop-label>
+  </span>
+  <span class="detail"><span data-bascik-slot></span></span>
+</li>

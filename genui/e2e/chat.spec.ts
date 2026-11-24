@@ -174,3 +174,71 @@ test("the shell is sent before the reply and the reply arrives in pieces", async
   expect(first).not.toContain(`data-testid="book-card"`);
   expect(chunks.join("")).toContain(`data-testid="turn-done"`);
 });
+
+test("a review is validated item by item and every answer is recorded", async ({
+  page,
+}) => {
+  await page.goto("/review");
+  await page.getByTestId("chat-sidebar-new").click();
+  await send(page, "Start the review");
+
+  // A fact, shown with its source and its place in the process.
+  const live = page.getByTestId("turn-live");
+  await expect(live.getByTestId("flow-stage")).toHaveCount(5);
+  await expect(
+    live.getByTestId("flow-stage").filter({ hasText: "Check receipt" }),
+  ).toHaveAttribute("data-state", "current");
+  await expect(live.getByTestId("source-quote-source")).toHaveText(
+    "Returns policy, section 2",
+  );
+  await live.getByTestId("fact-check-note").fill("The emailed receipt counts.");
+  await live.getByTestId("fact-check-confirm").click();
+  await expect(page.getByTestId("turn-done")).toBeAttached();
+  await expect(page.getByTestId("turn-user").last()).toContainText(
+    "Decision on returns-window (fact): confirmed",
+  );
+
+  // An open rule: pick a branch.
+  await expect(live.getByTestId("fork-branch")).toHaveCount(3);
+  await live
+    .getByTestId("fork-branch")
+    .filter({ hasText: "cannot be found" })
+    .getByRole("radio")
+    .check();
+  await live.getByTestId("decision-fork-submit").click();
+  await expect(page.getByTestId("turn-done")).toBeAttached();
+
+  // Replacement codes: every row starts as right, flag one.
+  await expect(live.getByTestId("code-row")).toHaveCount(4);
+  await live
+    .getByTestId("code-row")
+    .filter({ hasText: "CKB-003" })
+    .getByTestId("code-row-wrong")
+    .check();
+  await live.getByTestId("code-map-submit").click();
+  await expect(page.getByTestId("turn-done")).toBeAttached();
+  await expect(live).toContainText("I will hold CKB-003");
+
+  // A gap: the answer is required, "I do not know" is not.
+  await live.getByTestId("gap-question-unknown").click();
+  await expect(page.getByTestId("turn-done")).toBeAttached();
+  await expect(live).toContainText("Recorded as unknown");
+
+  // A plan, then the record of everything decided.
+  await live.getByTestId("plan-review-approve").click();
+  await expect(page.getByTestId("turn-done")).toBeAttached();
+  const rows = live.getByRole("row");
+  await expect(rows).toHaveCount(6);
+  await expect(rows.nth(1)).toContainText("The emailed receipt counts.");
+  await expect(rows.nth(2)).toContainText("store-credit");
+  await expect(rows.nth(3)).toContainText("wrong: CKB-003");
+  await expect(rows.nth(4)).toContainText("unknown");
+  await expect(rows.nth(5)).toContainText("approved");
+});
+
+test("a post that is not a review decision is refused", async ({ request }) => {
+  const response = await request.post("/api/decide", {
+    form: { kind: "fact", item: "<script>", verdict: "confirmed" },
+  });
+  expect(response.status()).toBe(400);
+});

@@ -1,0 +1,96 @@
+<!-- @bascik
+A plan for the reader to approve before you act on it: a short id as item, a title, and one step-item inside per step, in order. The reader approves it or asks for changes with a note, and the answer is recorded. Use it for "this is what we plan to do, is it right?".
+-->
+<style>
+  .plan {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .title {
+    margin: 0;
+    font-weight: 600;
+  }
+  .steps {
+    display: grid;
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: step;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .action {
+    padding: 0.45rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .note {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .text {
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+</style>
+<form class="plan" method="post" action="/api/decide" data-testid="plan-review">
+  <input type="hidden" name="app" value="review" />
+  <input type="hidden" name="kind" value="plan" />
+  <input type="hidden" name="item" data-bascik-attr-value="item" />
+  <p class="title" data-testid="plan-review-title" data-bascik-prop-title></p>
+  <ol class="steps">
+    <span data-bascik-slot></span>
+  </ol>
+  <label class="note">
+    Note (optional)
+    <textarea
+      class="text"
+      name="note"
+      rows="2"
+      data-testid="plan-review-note"
+    ></textarea>
+  </label>
+  <div class="actions">
+    <button
+      class="action primary"
+      name="verdict"
+      value="approved"
+      data-testid="plan-review-approve"
+    >
+      Approve plan
+    </button>
+    <button
+      class="action"
+      name="verdict"
+      value="changes"
+      data-testid="plan-review-changes"
+    >
+      Needs changes
+    </button>
+  </div>
+</form>

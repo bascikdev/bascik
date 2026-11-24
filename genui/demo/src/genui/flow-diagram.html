@@ -1,0 +1,26 @@
+<!-- @bascik
+A simple diagram of a process as boxes joined by arrows, with a title. Put one flow-stage inside per stage, in order. Use it to show where a question sits in a process before you ask it, or to walk the reader through a process one stage at a time.
+-->
+<style>
+  .flow {
+    margin: 0.75rem 0;
+  }
+  .title {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+  }
+  .stages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+</style>
+<figure class="flow" data-testid="flow-diagram">
+  <figcaption class="title" data-bascik-prop-title></figcaption>
+  <ol class="stages">
+    <span data-bascik-slot></span>
+  </ol>
+</figure>

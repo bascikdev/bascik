@@ -1,0 +1,34 @@
+<!-- @bascik
+One option inside a decision-fork: a short id for the option as value, the condition as when (it is shown after the word "If"), and what the business would then do as content.
+-->
+<style>
+  .branch {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.15rem 0.6rem;
+    align-items: baseline;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    cursor: pointer;
+  }
+  .branch:has(:checked) {
+    border-color: var(--accent);
+  }
+  .when {
+    font-weight: 600;
+  }
+  .then {
+    grid-column: 2;
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+</style>
+<label class="branch" data-testid="fork-branch">
+  <input type="radio" name="verdict" required data-bascik-attr-value="value" />
+  <span class="when"
+    >If <span data-testid="fork-branch-when" data-bascik-prop-when></span
+  ></span>
+  <span class="then">then <span data-bascik-slot></span></span>
+</label>

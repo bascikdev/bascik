@@ -38,21 +38,22 @@ yarn pkg:build
 yarn workspace @bascik/genui demo
 ```
 
-Open the printed URL. The site serves three apps from one chat shell:
+Open the printed URL. The site serves four apps from one chat shell:
 
-| App           | Page    | What it does                                                                                         |
-| ------------- | ------- | ---------------------------------------------------------------------------------------------------- |
-| Bookshop      | `/`     | Recommends books with cards, a chart, a single-choice question, and a generated form                 |
-| Ask the docs  | `/docs` | Searches and reads `docs/content/` with two tools, and cites each page it used                       |
-| Sales analyst | `/data` | Writes SQL against a seeded SQLite database, then shows the result as stat tiles, charts, and tables |
+| App              | Page      | What it does                                                                                         |
+| ---------------- | --------- | ---------------------------------------------------------------------------------------------------- |
+| Bookshop         | `/`       | Recommends books with cards, a chart, a single-choice question, and a generated form                 |
+| Ask the docs     | `/docs`   | Searches and reads `docs/content/` with two tools, and cites each page it used                       |
+| Sales analyst    | `/data`   | Writes SQL against a seeded SQLite database, then shows the result as stat tiles, charts, and tables |
+| Knowledge review | `/review` | Asks an expert to validate what the assistant read, one item at a time, and records every answer     |
 
-With no API key each app uses an offline stand-in that needs no model: the bookshop follows a script, the docs app returns keyword search results, and the analyst answers four fixed questions with real queries. Set `ANTHROPIC_API_KEY` and the same apps talk to Claude, with the system prompt generated from the catalog and the tools called by the model.
+With no API key each app uses an offline stand-in that needs no model: the bookshop follows a script, the docs app returns keyword search results, the analyst answers four fixed questions with real queries, and the review walks a fixed queue of five items. Set `ANTHROPIC_API_KEY` and the same apps talk to Claude, with the system prompt generated from the catalog and the tools called by the model.
 
 Then turn JavaScript off in the browser and use it again. Everything still works, including streaming.
 
 ```sh
 yarn workspace @bascik/genui unit              # renderer, catalog, tools, fuzz properties
-yarn workspace @bascik/genui e2e               # the three apps in Chromium, JavaScript disabled
+yarn workspace @bascik/genui e2e               # the four apps in Chromium, JavaScript disabled
 yarn workspace @bascik/genui typecheck
 yarn workspace @bascik/genui stress:load       # load, long history, budgets (start the server first)
 yarn workspace @bascik/genui stress:adherence  # a real model against the format; spends API credits
@@ -67,7 +68,7 @@ yarn workspace @bascik/genui stress:adherence  # a real model against the format
 | `src/model.ts`     | The `Model` and `Tool` types, tool input validation, and a scripted model for offline use    |
 | `src/anthropic.ts` | A `Model` backed by the Claude API, with a tool loop                                         |
 | `src/analyze.ts`   | Measures how well a reply followed the format: unknown tags, undeclared props, unclosed tags |
-| `demo/`            | The three apps: one shell, a registry of apps, per-visitor conversations                     |
+| `demo/`            | The four apps: one shell, a registry of apps, per-visitor conversations                      |
 | `demo/src/genui/`  | The catalog. Every component in this folder is one a model may write                         |
 | `e2e/`             | Playwright tests of the demo with JavaScript disabled                                        |
 | `stress/`          | The load test and the real-model format test                                                 |
@@ -92,6 +93,58 @@ It also solves the streaming mismatch. A model's slices end anywhere, and a stre
 ### Interaction is forms
 
 A generated component that needs to talk back is a `<form method="post" action="/api/send">`. The API route stores the message and answers `303`, and the chat page streams the next reply. `ask-button` is a one-click suggestion, `choice-form` is a single-choice question, and `input-form` collects several values. None of them needs a client script, and each is an ordinary HTML form any browser, screen reader, or browsing agent already understands.
+
+## A second experiment: validating knowledge
+
+The first three apps answer questions. The fourth turns the direction around: a knowledge assistant has read some documents and needs a subject expert to check what it took from them before it answers anyone. That is a different interface for every kind of doubt, which is the case for generating it.
+
+`/review` shows one item per turn, with the component that fits it:
+
+| The assistant needs to ask                           | Component                      | What the expert does                                     |
+| ---------------------------------------------------- | ------------------------------ | -------------------------------------------------------- |
+| "I read this fact. Is it right?"                     | `fact-check`                   | Correct, Wrong, or Not sure, with a note                 |
+| "The sources leave this case open. Which rule?"      | `decision-fork`, `fork-branch` | Picks an if/then branch, or says none fits               |
+| "These codes replace those codes. Did I match them?" | `code-map`, `code-row`         | Every row starts as right; flags the wrong ones          |
+| "The documentation stops here. What happens?"        | `gap-question`                 | Writes the answer, or says they do not know              |
+| "This is what I plan to do. Approve it?"             | `plan-review` with `step-item` | Approves, or asks for changes with a note                |
+| "Here is where this sits in the process."            | `flow-diagram`, `flow-stage`   | Reads a diagram: done, current, unclear, and todo stages |
+| "These are the words I relied on."                   | `source-quote`                 | Reads the quoted passage and where it came from          |
+
+The sample knowledge is a bookshop's returns desk (`demo/src/lib/review.ts`, `QUEUE`): a returns window, a damaged book with no receipt, the 2027 shelf codes, a refund limit the policy never states, and a plan for answering staff. Replace the queue with what your own pipeline extracts.
+
+### Nothing between the form and the server
+
+Each review component is an HTML form. What it sends is its named fields, visible in the component file and in the browser's network panel:
+
+```text
+POST /api/decide
+app=review&kind=fact&item=returns-window&verdict=confirmed&note=The+emailed+receipt+counts.
+```
+
+`demo/src/api/decide.ts` is 41 lines. It checks the fields (`decisionFrom`), appends the decision to a log as one line of JSON, adds it to the conversation as the expert's message, and answers `303` back to the page, which streams the assistant's next step. There is no client state, no message protocol, and no generated code to trust: a button's `name` and `value` are the API.
+
+```json
+{
+  "conversation": "7a5d…",
+  "item": "shelf-codes-2027",
+  "kind": "codes",
+  "verdict": "reviewed",
+  "note": "CKB-003 goes to CKB-030.",
+  "rows": { "FIC-014": "right", "CKB-003": "wrong" },
+  "at": "2026-11-24T22:12:47.058Z"
+}
+```
+
+The model never records a decision. It can only show a form; the expert's click is what writes the log. The decision reaches the model as a message that starts with `Decision on <item> (<kind>): <verdict>`, so a conversation is also a readable record of the review, and reloading it shows every form as it was asked.
+
+### What this experiment showed
+
+- **Components as a vocabulary of doubt.** Seven shapes covered the cases tried. Adding one is a file in `demo/src/genui/` with a comment that tells the model when to use it.
+- **Building blocks compose.** `source-quote` goes inside three different review forms, `step-item` is shared with `step-list`, and `flow-diagram` sits above any of them to say which stage the question is about.
+- **The diagram is CSS.** A `flow-stage` is a list item with a `data-state` attribute; arrows, the highlight, and the dashed "unclear" border are styles. A branching diagram (a real decision tree, not a line of stages) would need a layout this does not have.
+- **A form per turn is slow for bulk work.** Checking forty codes in one table is fine. Confirming forty facts is forty page loads; a batch `fact-check` list, or a review page outside the chat, would suit that better.
+- **Not tested:** a real model choosing the component. The offline reviewer follows a script. The instructions and a `review_queue` tool for a real model are in `demo/src/lib/apps.ts`, unrun.
+- **Missing for real use:** sign-in (a visitor is an anonymous cookie, so the log cannot say who decided), a way to reopen a decision, and somewhere for the log to go other than a file.
 
 ## What the experiment showed
 
