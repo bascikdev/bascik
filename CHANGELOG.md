@@ -25,6 +25,7 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
+- `create-bascik` 1.1.2: new projects depend on `@bascik/bascik` `^1.0.2`, so they start with the request-time rendering fix below.
 - `create-bascik`: the dashboard template uses a restrained data-product palette, clearer typographic hierarchy and content spacing, with reduced-motion-aware pressed buttons. Initial page content paints without entrance animations.
 - `create-bascik`: dashboard scaffolds inline their global stylesheet through `assets.inlineStyles`, retain the canonical Bascik favicon, and use an accessible icon-only light/dark toggle. Navigation remains non-underlined at rest, settings use the plain `dashboard` name, and seeded customers and inventory use explicit demo labels rather than invented claims about real people.
 - `create-bascik`: dashboard cards and navigation now use a neutral, softly layered light/dark palette with responsive surfaces and a more legible accent.
@@ -49,6 +50,7 @@ it is not `@bascik/bascik`.
 
 ### Fixed
 
+- `@bascik/bascik` 1.0.2: component tags returned by a server or stream script render in time proportional to the output when one component holds many others, such as a grid whose slot holds a few hundred cards. Each card used to copy and search the whole grid again, so 990 cards in one grid took over a second of blocked event loop where the same cards spread over many grids took a tenth of that. Named-slot content that holds many component usages (`data-bascik-slot="..."` wrappers around or inside them) had a second pass of the same kind, which also slowed builds of such pages. Output is unchanged; see [`scripts.renderLimits`](https://bascik.dev/configuration#scriptsrenderlimits) for the limits on one output.
 - `create-bascik` 1.1.1: every template now has the same phone-width navigation as the Bascik docs site. A menu button at the top right of the header opens a menu that covers the screen below it, and the light/dark switch is the last row of that menu, labeled `Light` or `Dark`, instead of an icon in the bar. The docs template shows search as a magnifying-glass icon beside the menu button and lists its pages in the menu; the dashboard lists its sidebar links there. Their separate Menu buttons are gone. Escape closes the menu, and without JavaScript the links stay visible as ordinary links.
 - `create-bascik` 1.1.1: the reports template no longer writes two empty folders, `REPORTS.m` and `bascik.config.t`, into a new project. Delete them from a project scaffolded with 1.1.0.
 - HTML minification preserves the browser's handling of an initial newline in `<pre>` and `<listing>` when malformed table markup would otherwise move a script in front of it. See [HTML minification](https://bascik.dev/internals/minification#html-minification-html-minifierts).
