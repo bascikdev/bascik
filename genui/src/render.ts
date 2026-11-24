@@ -58,7 +58,7 @@ interface Frame {
   text: string;
 }
 
-const MAX_DEPTH = 4;
+const MAX_DEPTH = 6;
 /** An opening tag longer than this is shown as text. */
 const MAX_TAG = 8_192;
 /** Past this much buffered content, open elements are closed where they stand. */
@@ -157,7 +157,53 @@ export interface Renderer {
   end(): string;
 }
 
-export function createRenderer(catalog: Catalog): Renderer {
+/**
+ * Plain HTML elements a renderer may be told to pass through, for structure a
+ * model already writes well and a component cannot express without one
+ * instance per cell. They are passed on bare: every attribute is dropped.
+ */
+export const SAFE_ELEMENTS: ReadonlySet<string> = new Set([
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
+  "ul",
+  "ol",
+  "li",
+]);
+
+export interface RendererOptions {
+  /** Names from `SAFE_ELEMENTS` to pass through, for example the table elements. */
+  elements?: readonly string[];
+  /**
+   * The most components one top-level element may hold (default 300). Bascik
+   * refuses a script output that expands to more than its own budget, which
+   * would lose the whole reply, so the renderer stops adding components here
+   * and says how many it left out.
+   */
+  maxComponents?: number;
+}
+
+export function createRenderer(
+  components: Catalog,
+  options: RendererOptions = {},
+): Renderer {
+  // Passed-through elements are looked up like components with no props.
+  const catalog = new Map(components);
+  for (const name of options.elements ?? []) {
+    if (!SAFE_ELEMENTS.has(name)) {
+      throw new Error(
+        `"${name}" is not an element a renderer can pass through.`,
+      );
+    }
+    catalog.set(name, { name, description: "", props: [], slot: true });
+  }
+  const maxComponents = options.maxComponents ?? 300;
+  /** Components inside the open top-level element, and how many were left out. */
+  let held = 0;
+  let omitted = 0;
   let buffer = "";
   let lineStart = true;
   let afterBlock = true;
@@ -236,18 +282,30 @@ export function createRenderer(catalog: Catalog): Renderer {
       out += html;
     };
     /** A finished element goes to its parent, or out when it has none. */
-    const deliver = (html: string): void => {
+    const deliver = (html: string, component: boolean): void => {
       const parent = stack.at(-1);
       if (parent) {
+        if (component && ++held > maxComponents) {
+          omitted++;
+          return;
+        }
         parent.children += html;
         pending += html.length;
       } else {
-        pending = 0;
         block(html);
+        if (omitted) {
+          text(
+            `${omitted} more ${omitted === 1 ? "item was" : "items were"} left out to keep this reply a reasonable size.`,
+          );
+        }
+        pending = held = omitted = 0;
       }
     };
     const closeAll = (): void => {
-      while (stack.length) deliver(closeFrame(stack.pop()!));
+      while (stack.length) {
+        const frame = stack.pop()!;
+        deliver(closeFrame(frame), components.has(frame.entry.name));
+      }
     };
 
     for (;;) {
@@ -293,7 +351,7 @@ export function createRenderer(catalog: Catalog): Renderer {
         const close = `</${frame.entry.name}>`;
         if (source.startsWith(close)) {
           stack.pop();
-          deliver(closeFrame(frame));
+          deliver(closeFrame(frame), components.has(frame.entry.name));
           buffer = source.slice(close.length);
           continue;
         }
@@ -309,7 +367,10 @@ export function createRenderer(catalog: Catalog): Renderer {
         if (before) frame.children += inline(before);
         frame.text = "";
         if (tag.selfClosed) {
-          deliver(`${tag.html}</${tag.entry.name}>`);
+          deliver(
+            `${tag.html}</${tag.entry.name}>`,
+            components.has(tag.entry.name),
+          );
         } else {
           stack.push({
             entry: tag.entry,
@@ -451,8 +512,12 @@ export function createRenderer(catalog: Catalog): Renderer {
 }
 
 /** Render a finished message, such as one read back from conversation history. */
-export function renderText(text: string, catalog: Catalog): string {
-  const renderer = createRenderer(catalog);
+export function renderText(
+  text: string,
+  catalog: Catalog,
+  options?: RendererOptions,
+): string {
+  const renderer = createRenderer(catalog, options);
   return renderer.push(text) + renderer.end();
 }
 
@@ -463,8 +528,9 @@ export function renderText(text: string, catalog: Catalog): string {
 export async function* renderStream(
   deltas: AsyncIterable<string>,
   catalog: Catalog,
+  options?: RendererOptions,
 ): AsyncGenerator<string, void, undefined> {
-  const renderer = createRenderer(catalog);
+  const renderer = createRenderer(catalog, options);
   for await (const delta of deltas) {
     const html = renderer.push(delta);
     if (html) yield html;

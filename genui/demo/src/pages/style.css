@@ -65,6 +65,7 @@ body {
 
 .thread {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.25rem;
   inline-size: 100%;
   max-inline-size: 46rem;
@@ -113,8 +114,7 @@ body {
   padding: 0 1rem;
   border-radius: 0;
   background: var(--surface);
-  white-space: pre;
-  overflow-x: auto;
+  white-space: pre-wrap;
 }
 
 .turn-assistant :not(code[data-line]) + code[data-line] {
@@ -123,6 +123,42 @@ body {
 
 .turn-assistant code[data-line]:not(:has(+ code[data-line])) {
   padding-block-end: 0.75rem;
+}
+
+.turn-assistant table {
+  inline-size: 100%;
+  margin: 0.75rem 0;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.turn-assistant th,
+.turn-assistant td {
+  padding: 0.45rem 0.6rem;
+  border-block-end: 1px solid var(--border);
+  text-align: start;
+}
+
+.turn-assistant th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.turn-assistant ul,
+.turn-assistant ol {
+  margin: 0.5rem 0;
+  padding-inline-start: 1.25rem;
+}
+
+.earlier {
+  justify-self: center;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.turn-assistant .failed {
+  color: var(--accent);
 }
 
 /* The reply being written has a caret until the stream's last chunk, an

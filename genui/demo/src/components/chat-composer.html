@@ -47,6 +47,7 @@ The message box. A plain form that posts to /api/send, so sending works with no 
   action="/api/send"
   data-testid="chat-composer"
 >
+  <input type="hidden" name="app" data-bascik-attr-value="app" />
   <textarea
     id="input"
     class="input"
@@ -54,7 +55,7 @@ The message box. A plain form that posts to /api/send, so sending works with no 
     rows="1"
     required
     autofocus
-    placeholder="Ask about a book…"
+    placeholder="Ask a question…"
     aria-label="Message"
     data-testid="chat-composer-input"
   ></textarea>

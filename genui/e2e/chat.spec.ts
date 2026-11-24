@@ -90,6 +90,63 @@ test("markup in a message is shown as text and never becomes an element", async 
   await expect(thread.locator("script, img, admin-panel")).toHaveCount(0);
 });
 
+test("the docs app answers from the real docs and stays on its own page", async ({
+  page,
+}) => {
+  await page.goto("/docs");
+  await page.getByTestId("chat-sidebar-new").click();
+  await send(page, "How do I stream rows from a slow source?");
+  await expect(page).toHaveURL(/\/docs$/);
+  const links = page.getByTestId("turn-live").getByTestId("doc-link");
+  await expect(links.first()).toHaveAttribute(
+    "href",
+    /^https:\/\/bascik\.dev\/scripts\/stream/,
+  );
+  expect(await links.count()).toBeGreaterThan(2);
+});
+
+test("the data app runs SQL and renders a chart and a table", async ({
+  page,
+}) => {
+  await page.goto("/data");
+  await page.getByTestId("chat-sidebar-new").click();
+  await send(page, "What are the top selling books?");
+  const reply = page.getByTestId("turn-live");
+  await expect(reply.getByTestId("tool-note")).toHaveText(
+    "Querying the database",
+  );
+  await expect(reply.getByTestId("bar-row")).toHaveCount(8);
+  await expect(reply.locator("tbody tr")).toHaveCount(8);
+  await expect(reply.locator("code[data-line]")).toContainText("SELECT");
+
+  // A button the model generated has no app field: it is routed by the page
+  // it was pressed on.
+  await send(page, "hello");
+  await page
+    .getByTestId("ask-button-submit")
+    .filter({ hasText: "By genre" })
+    .click();
+  await expect(page.getByTestId("turn-done")).toBeAttached();
+  await expect(page).toHaveURL(/\/data$/);
+  await expect(
+    page.getByTestId("turn-live").getByTestId("stat-tile"),
+  ).toHaveCount(5);
+});
+
+test("a visitor sees only their own conversations", async ({
+  page,
+  browser,
+}) => {
+  await send(page, "Recommend a book");
+  await expect(page.getByTestId("chat-sidebar-item")).toHaveCount(1);
+  const other = await browser.newContext({ javaScriptEnabled: false });
+  const otherPage = await other.newPage();
+  await otherPage.goto("/");
+  await expect(otherPage.getByTestId("chat-welcome")).toBeVisible();
+  await expect(otherPage.getByTestId("chat-sidebar-item")).toHaveCount(0);
+  await other.close();
+});
+
 test("the shell is sent before the reply and the reply arrives in pieces", async ({
   page,
   baseURL,

@@ -1,0 +1,20 @@
+<!-- @bascik
+A boxed note for a warning, a limit, or a caveat the reader must not miss: a short title, and the note as content. Use it sparingly.
+-->
+<style>
+  .note {
+    margin: 0.75rem 0;
+    padding: 0.7rem 0.9rem;
+    border-inline-start: 3px solid var(--accent);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    background: var(--surface);
+  }
+  .title {
+    display: block;
+    font-weight: 600;
+  }
+</style>
+<aside class="note" data-testid="note-box">
+  <strong class="title" data-bascik-prop-title></strong>
+  <span data-bascik-slot></span>
+</aside>

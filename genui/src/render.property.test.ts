@@ -24,17 +24,63 @@ const catalog: Catalog = new Map(
 
 /** Fragments chosen to hit every branch: tags, quotes, markers, fences, hostile markup. */
 const fragment = fc.oneof(
-  { weight: 6, arbitrary: fc.constantFrom(
-    "<", ">", "/>", "</", "=", '"', "'", " ", "\n", "\n\n", "**", "*", "`", "```", "# ", "## ", "- ",
-    "<book-card", "</book-card>", "<card-grid>", "</card-grid>", "<bar-row", "<book-", "<card",
-    ' title="', " title='", " link=", " value=12", ' onclick="alert(1)"', " data-bascik-prop-title=x",
-    "<script>", "</script>", "<script data-bascik-server>", "<img src=x onerror=alert(1)>", "<!--", "-->",
-    "<style>", "<admin-panel>", "javascript:alert(1)", "&", "&lt;", "&#60;", "$&", "$1", "\u0000", " ",
-  ) },
+  {
+    weight: 6,
+    arbitrary: fc.constantFrom(
+      "<",
+      ">",
+      "/>",
+      "</",
+      "=",
+      '"',
+      "'",
+      " ",
+      "\n",
+      "\n\n",
+      "**",
+      "*",
+      "`",
+      "```",
+      "# ",
+      "## ",
+      "- ",
+      "<book-card",
+      "</book-card>",
+      "<card-grid>",
+      "</card-grid>",
+      "<bar-row",
+      "<book-",
+      "<card",
+      ' title="',
+      " title='",
+      " link=",
+      " value=12",
+      ' onclick="alert(1)"',
+      " data-bascik-prop-title=x",
+      "<script>",
+      "</script>",
+      "<script data-bascik-server>",
+      "<img src=x onerror=alert(1)>",
+      "<!--",
+      "-->",
+      "<style>",
+      "<admin-panel>",
+      "javascript:alert(1)",
+      "&",
+      "&lt;",
+      "&#60;",
+      "$&",
+      "$1",
+      "\u0000",
+      " ",
+    ),
+  },
   { weight: 3, arbitrary: fc.string({ maxLength: 8 }) },
   { weight: 1, arbitrary: fc.string({ unit: "grapheme", maxLength: 4 }) },
 );
-const modelText = fc.array(fragment, { maxLength: 60 }).map((parts) => parts.join(""));
+const modelText = fc
+  .array(fragment, { maxLength: 60 })
+  .map((parts) => parts.join(""));
 
 /** Cut `text` at the given points and feed the pieces one by one. */
 function sliced(text: string, cuts: number[]): string[] {
@@ -53,18 +99,36 @@ function sliced(text: string, cuts: number[]): string[] {
 }
 
 const ALLOWED_TAGS = new Set([
-  "book-card", "card-grid", "bar-row", "strong", "code", "h3", "h4", "div", "br",
+  "book-card",
+  "card-grid",
+  "bar-row",
+  "strong",
+  "code",
+  "h3",
+  "h4",
+  "div",
+  "br",
 ]);
 const ALLOWED_ATTRIBUTE = /^(data-bascik-prop-(title|link|value)|data-line)$/;
 
 /** Every tag in `html`, as the browser's tokenizer would find them. */
-function tags(html: string): { name: string; closing: boolean; attributes: string[] }[] {
+function tags(
+  html: string,
+): { name: string; closing: boolean; attributes: string[] }[] {
   const found = [];
-  for (const match of html.matchAll(/<(\/?)([A-Za-z!?][^\s/>]*)((?:[^>"']|"[^"]*"|'[^']*')*)>?/g)) {
-    const attributes = [...match[3]!.matchAll(/([^\s=/"']+)\s*(?:=\s*(?:"[^"]*"|'[^']*'|[^\s>]*))?/g)].map(
-      (attribute) => attribute[1]!,
-    );
-    found.push({ name: match[2]!.toLowerCase(), closing: match[1] === "/", attributes });
+  for (const match of html.matchAll(
+    /<(\/?)([A-Za-z!?][^\s/>]*)((?:[^>"']|"[^"]*"|'[^']*')*)>?/g,
+  )) {
+    const attributes = [
+      ...match[3]!.matchAll(
+        /([^\s=/"']+)\s*(?:=\s*(?:"[^"]*"|'[^']*'|[^\s>]*))?/g,
+      ),
+    ].map((attribute) => attribute[1]!);
+    found.push({
+      name: match[2]!.toLowerCase(),
+      closing: match[1] === "/",
+      attributes,
+    });
   }
   return found;
 }
@@ -72,9 +136,13 @@ function tags(html: string): { name: string; closing: boolean; attributes: strin
 describe("renderer properties", () => {
   it("renders the same HTML however the stream is sliced", () => {
     fc.assert(
-      fc.property(modelText, fc.array(fc.nat(), { maxLength: 40 }), (text, cuts) => {
-        expect(sliced(text, cuts).join("")).toBe(renderText(text, catalog));
-      }),
+      fc.property(
+        modelText,
+        fc.array(fc.nat(), { maxLength: 40 }),
+        (text, cuts) => {
+          expect(sliced(text, cuts).join("")).toBe(renderText(text, catalog));
+        },
+      ),
       { numRuns: 3000 },
     );
   });
@@ -83,7 +151,10 @@ describe("renderer properties", () => {
     fc.assert(
       fc.property(modelText, (text) => {
         for (const tag of tags(renderText(text, catalog))) {
-          expect(ALLOWED_TAGS.has(tag.name), `<${tag.name}> from ${JSON.stringify(text)}`).toBe(true);
+          expect(
+            ALLOWED_TAGS.has(tag.name),
+            `<${tag.name}> from ${JSON.stringify(text)}`,
+          ).toBe(true);
           for (const attribute of tag.attributes) {
             expect(attribute, JSON.stringify(text)).toMatch(ALLOWED_ATTRIBUTE);
           }
@@ -95,26 +166,33 @@ describe("renderer properties", () => {
 
   it("returns whole elements from every push", () => {
     fc.assert(
-      fc.property(modelText, fc.array(fc.nat(), { maxLength: 40 }), (text, cuts) => {
-        for (const chunk of sliced(text, cuts)) {
-          const stack: string[] = [];
-          for (const tag of tags(chunk)) {
-            if (tag.name === "br") continue;
-            if (tag.closing) expect(stack.pop()).toBe(tag.name);
-            else stack.push(tag.name);
+      fc.property(
+        modelText,
+        fc.array(fc.nat(), { maxLength: 40 }),
+        (text, cuts) => {
+          for (const chunk of sliced(text, cuts)) {
+            const stack: string[] = [];
+            for (const tag of tags(chunk)) {
+              if (tag.name === "br") continue;
+              if (tag.closing) expect(stack.pop()).toBe(tag.name);
+              else stack.push(tag.name);
+            }
+            expect(stack, chunk).toEqual([]);
           }
-          expect(stack, chunk).toEqual([]);
-        }
-      }),
+        },
+      ),
       { numRuns: 3000 },
     );
   });
 
   it("never loses a character of plain prose", () => {
     fc.assert(
-      fc.property(fc.string({ unit: fc.constantFrom("a", "b", " ", "é", "7", ".", ",") }), (text) => {
-        expect(renderText(text, catalog)).toBe(text);
-      }),
+      fc.property(
+        fc.string({ unit: fc.constantFrom("a", "b", " ", "é", "7", ".", ",") }),
+        (text) => {
+          expect(renderText(text, catalog)).toBe(text);
+        },
+      ),
     );
   });
 });

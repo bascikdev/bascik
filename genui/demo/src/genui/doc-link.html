@@ -1,0 +1,38 @@
+<!-- @bascik
+A link to a documentation page: the page or section title, its full URL as href, and one sentence on what the reader finds there as content. Use it to cite every page an answer came from.
+-->
+<style>
+  .link {
+    display: grid;
+    gap: 0.15rem;
+    margin: 0.5rem 0;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: inherit;
+    text-decoration: none;
+  }
+  .link:hover {
+    border-color: var(--accent);
+  }
+  .title {
+    font-weight: 600;
+  }
+  .title::after {
+    content: " ↗";
+    color: var(--accent);
+  }
+  .summary {
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+</style>
+<a class="link" data-testid="doc-link" data-bascik-attr-href="href">
+  <span
+    class="title"
+    data-testid="doc-link-title"
+    data-bascik-prop-title
+  ></span>
+  <span class="summary"><span data-bascik-slot></span></span>
+</a>

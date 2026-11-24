@@ -7,4 +7,7 @@ export default defineConfig({
   generate: { sitemap: false, robots: false },
   // A reply streams for as long as the model writes.
   scripts: { timeout: 120_000 },
+  // The load test in ../stress sends everything from one address, so it runs
+  // with the per-client rate limit off. Leave it on everywhere else.
+  http: { rateLimit: process.env.GENUI_STRESS !== "1" },
 });

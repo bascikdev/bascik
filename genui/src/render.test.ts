@@ -216,9 +216,29 @@ describe("createRenderer", () => {
     expect(html).toContain("</card-grid>");
   });
 
-  it("refuses nesting deeper than four levels", () => {
-    const html = renderText("<card-grid>".repeat(6) + "x", catalog);
-    expect(html.match(/<card-grid>/g)).toHaveLength(4);
+  it("leaves out components past the limit and says so", () => {
+    const html = renderText(
+      `<card-grid>${CARD.repeat(5)}</card-grid>after`,
+      catalog,
+      { maxComponents: 3 },
+    );
+    expect(html.match(/<book-card/g)).toHaveLength(3);
+    expect(html).toContain(
+      "</card-grid>2 more items were left out to keep this reply a reasonable size.",
+    );
+    // The count starts over for the next element.
+    expect(
+      renderText(
+        `<card-grid>${CARD.repeat(4)}</card-grid><card-grid>${CARD}</card-grid>`,
+        catalog,
+        { maxComponents: 3 },
+      ).match(/<book-card/g),
+    ).toHaveLength(4);
+  });
+
+  it("refuses nesting deeper than six levels", () => {
+    const html = renderText("<card-grid>".repeat(8) + "x", catalog);
+    expect(html.match(/<card-grid>/g)).toHaveLength(6);
     expect(html).toContain("&lt;card-grid&gt;&lt;card-grid&gt;x");
   });
 
@@ -227,6 +247,32 @@ describe("createRenderer", () => {
     renderer.push(`<book-card title="`);
     const html = renderer.push("y".repeat(9000));
     expect(html.startsWith("&lt;book-card title=&quot;yyy")).toBe(true);
+  });
+});
+
+describe("passed-through elements", () => {
+  const options = { elements: ["table", "thead", "tbody", "tr", "th", "td"] };
+
+  it("passes a table through bare, with its attributes dropped", () => {
+    const html = renderText(
+      `<table class="x" onclick="alert(1)"><tr><th scope=col>Title</th></tr><tr><td style="color:red">A **bold** < b</td></tr></table>`,
+      catalog,
+      options,
+    );
+    expect(html).toBe(
+      "<table><tr><th>Title</th></tr><tr><td>A <strong>bold</strong> &lt; b</td></tr></table>",
+    );
+  });
+
+  it("shows the same tags as text when they are not asked for", () => {
+    expect(renderText("<table><tr><td>x</td></tr></table>", catalog)).toBe(
+      "&lt;table&gt;&lt;tr&gt;&lt;td&gt;x&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;",
+    );
+  });
+
+  it("refuses an element outside the safe list", () => {
+    expect(() => createRenderer(catalog, { elements: ["script"] })).toThrow();
+    expect(() => createRenderer(catalog, { elements: ["a"] })).toThrow();
   });
 });
 

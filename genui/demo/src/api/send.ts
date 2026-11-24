@@ -1,12 +1,12 @@
-// POST /api/send: add the visitor's message, then go back to the chat page,
-// which streams the reply. Every form in the app posts here, including the
-// forms the model generates.
+// POST /api/send: add the visitor's message, then go back to the app's page,
+// which streams the reply. Every form posts here, including the forms the
+// model generates.
 import {
   backToChat,
-  currentId,
   loadConversation,
   newConversation,
   saveConversation,
+  sessionFor,
 } from "../lib/chat.ts";
 
 const MAX_LENGTH = 4000;
@@ -17,7 +17,7 @@ function messageFrom(form: FormData): string {
   if (typeof text === "string") return text.trim();
   const lines: string[] = [];
   for (const [name, value] of form) {
-    if (typeof value === "string" && value.trim()) {
+    if (name !== "app" && typeof value === "string" && value.trim()) {
       lines.push(`${name}: ${value.trim()}`);
     }
   }
@@ -25,15 +25,20 @@ function messageFrom(form: FormData): string {
 }
 
 export const POST = async (request: Request): Promise<Response> => {
-  const text = messageFrom(await request.formData()).slice(0, MAX_LENGTH);
-  const conversation =
-    (await loadConversation(currentId(request))) ?? newConversation();
+  const form = await request.formData();
+  const named = form.get("app");
+  const session = sessionFor(
+    request,
+    typeof named === "string" ? named : undefined,
+  );
+  const text = messageFrom(form).slice(0, MAX_LENGTH);
+  const conversation = (await loadConversation(session)) ?? newConversation();
   if (text) {
     if (conversation.messages.length === 0) {
       conversation.title = text.length > 40 ? `${text.slice(0, 40)}…` : text;
     }
     conversation.messages.push({ role: "user", content: text });
-    await saveConversation(conversation);
+    await saveConversation(session, conversation);
   }
-  return backToChat(request, conversation.id);
+  return backToChat(session, conversation.id);
 };

@@ -12,7 +12,7 @@ import {
   type ChatMessage,
   type Model,
 } from "@bascik/genui";
-import { demoModel } from "./demo-model.ts";
+import { APPS, type ChatApp } from "./apps.ts";
 
 export interface Conversation {
   id: string;
@@ -21,29 +21,85 @@ export interface Conversation {
   messages: ChatMessage[];
 }
 
+/* ---- Who is asking, and about what ---- */
+
+const byPath = (pathname: string): ChatApp | undefined => {
+  const path = pathname.replace(/\/$/, "") || "/";
+  return APPS.find((app) => app.path === path);
+};
+
+/**
+ * A page request names its app by its own path. A form post names it in an
+ * `app` field, or, for a form the model generated, by the page it was sent
+ * from.
+ */
+function appFor(request: Request, named?: string): ChatApp {
+  const fromField = APPS.find((app) => app.id === named);
+  if (fromField) return fromField;
+  const own = byPath(new URL(request.url).pathname);
+  if (own) return own;
+  const referer = request.headers.get("referer");
+  if (referer && URL.canParse(referer)) {
+    const from = byPath(new URL(referer).pathname);
+    if (from) return from;
+  }
+  return APPS[0]!;
+}
+
+const ID = /^[0-9a-f-]{36}$/;
+const cookie = (request: Request, name: string): string | undefined =>
+  new RegExp(`(?:^|;\\s*)${name}=([0-9a-f-]{36})(?:;|$)`).exec(
+    request.headers.get("cookie") ?? "",
+  )?.[1];
+
+/**
+ * One request's place in the app: which app, which visitor, and which of that
+ * visitor's conversations is open. A visitor is an anonymous cookie, so
+ * people never see each other's conversations. Swap it for your sign-in.
+ */
+export interface Session {
+  app: ChatApp;
+  visitor: string;
+  conversationId: string | undefined;
+}
+
+export function sessionFor(request: Request, named?: string): Session {
+  const app = appFor(request, named);
+  return {
+    app,
+    visitor: cookie(request, "visitor") ?? randomUUID(),
+    conversationId: cookie(request, `chat_${app.id}`),
+  };
+}
+
 /* ---- Store: one JSON file per conversation. Swap for a database. ---- */
 
-const DATA_DIR = join(process.cwd(), ".data", "conversations");
-const ID = /^[0-9a-f-]{36}$/;
+const DATA_DIR = join(process.cwd(), ".data");
+const folderFor = (session: Session): string =>
+  join(DATA_DIR, session.app.id, session.visitor);
 
 export async function loadConversation(
-  id: string | undefined,
+  session: Session,
+  id: string | undefined = session.conversationId,
 ): Promise<Conversation | null> {
   if (!id || !ID.test(id)) return null;
   try {
-    return JSON.parse(await readFile(join(DATA_DIR, `${id}.json`), "utf8"));
+    return JSON.parse(
+      await readFile(join(folderFor(session), `${id}.json`), "utf8"),
+    );
   } catch {
     return null;
   }
 }
 
 export async function saveConversation(
+  session: Session,
   conversation: Conversation,
 ): Promise<void> {
   conversation.updatedAt = Date.now();
-  await mkdir(DATA_DIR, { recursive: true });
+  await mkdir(folderFor(session), { recursive: true });
   await writeFile(
-    join(DATA_DIR, `${conversation.id}.json`),
+    join(folderFor(session), `${conversation.id}.json`),
     JSON.stringify(conversation),
   );
 }
@@ -55,62 +111,57 @@ export const newConversation = (): Conversation => ({
   messages: [],
 });
 
-export async function listConversations(): Promise<Conversation[]> {
+/** The visitor's own conversations in this app, newest first. */
+export async function listConversations(
+  session: Session,
+): Promise<Conversation[]> {
   let files: string[];
   try {
-    files = await readdir(DATA_DIR);
+    files = await readdir(folderFor(session));
   } catch {
     return [];
   }
   const all = await Promise.all(
-    files.map((file) => loadConversation(file.replace(/\.json$/, ""))),
+    files.map((file) => loadConversation(session, file.replace(/\.json$/, ""))),
   );
   return all
     .filter((entry): entry is Conversation => entry !== null)
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-/* ---- The current conversation is named by a cookie. ---- */
-
-const COOKIE = "chat";
-
-export function currentId(request: Request): string | undefined {
-  const cookies = request.headers.get("cookie") ?? "";
-  return new RegExp(`(?:^|;\\s*)${COOKIE}=([0-9a-f-]{36})`).exec(cookies)?.[1];
-}
-
-/** A 303 back to the chat page, so a form POST ends in a GET (and reload is safe). */
-export function backToChat(request: Request, id: string): Response {
-  return new Response(null, {
-    status: 303,
-    headers: {
-      location: new URL("/", request.url).pathname,
-      "set-cookie": `${COOKIE}=${id}; Path=/; HttpOnly; SameSite=Lax`,
-    },
-  });
+/** A 303 back to the app's page, so a form POST ends in a GET (and reload is safe). */
+export function backToChat(session: Session, id: string): Response {
+  const headers = new Headers({ location: session.app.path });
+  const attributes = "Path=/; HttpOnly; SameSite=Lax";
+  headers.append("set-cookie", `chat_${session.app.id}=${id}; ${attributes}`);
+  headers.append(
+    "set-cookie",
+    `visitor=${session.visitor}; Max-Age=31536000; ${attributes}`,
+  );
+  return new Response(null, { status: 303, headers });
 }
 
 /* ---- Catalog and model ---- */
 
 let catalog: Promise<Catalog> | undefined;
 
-/** The components the model may write: everything in src/genui. */
+/** The components a model may write: everything in src/genui. */
 export const loadCatalog = (): Promise<Catalog> =>
-  (catalog ??= readCatalog(join(process.cwd(), "src", "genui")));
+  (catalog ??= readCatalog(join(import.meta.dirname, "..", "genui")));
 
-export async function systemPrompt(): Promise<string> {
+export async function systemPrompt(app: ChatApp): Promise<string> {
   return [
-    "You are a reading assistant for a small bookshop. Be brief and concrete.",
+    app.instructions,
     "",
-    catalogPrompt(await loadCatalog()),
+    catalogPrompt(await loadCatalog(), { elements: app.elements }),
   ].join("\n");
 }
 
-/** Claude when a key is set, the offline scripted model otherwise. */
-export async function loadModel(): Promise<Model> {
+/** Claude when a key is set, the app's offline stand-in otherwise. */
+export async function loadModel(app: ChatApp): Promise<Model> {
   if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) {
     const { anthropicModel } = await import("@bascik/genui/anthropic");
     return anthropicModel();
   }
-  return demoModel;
+  return app.offline;
 }

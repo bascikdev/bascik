@@ -1,0 +1,16 @@
+<!-- @bascik
+A status line that says what the assistant is looking up. Written by the app while a tool runs; do not write it yourself.
+-->
+<style>
+  .note {
+    margin: 0.15rem 0;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  .note::before {
+    content: "⌕ ";
+  }
+</style>
+<p class="note" role="status" data-testid="tool-note">
+  <span data-bascik-slot></span>
+</p>

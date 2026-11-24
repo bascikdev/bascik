@@ -11,5 +11,11 @@
     "erasableSyntaxOnly": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*", "demo/src/lib/**/*", "demo/src/api/**/*"]
+  "include": [
+    "src/**/*",
+    "demo/src/lib/**/*",
+    "demo/src/api/**/*",
+    "stress/**/*",
+    "e2e/**/*"
+  ]
 }

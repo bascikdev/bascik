@@ -117,7 +117,10 @@ export function signature(entry: CatalogEntry): string {
  * The part of a system prompt that teaches a model the output format and the
  * catalog. Deterministic for a given catalog, so it caches as a prompt prefix.
  */
-export function catalogPrompt(catalog: Catalog): string {
+export function catalogPrompt(
+  catalog: Catalog,
+  options: { elements?: readonly string[] } = {},
+): string {
   const lines = [
     "You answer in a chat interface that renders your reply as it streams.",
     "",
@@ -130,6 +133,14 @@ export function catalogPrompt(catalog: Catalog): string {
     lines.push(signature(entry));
     if (entry.description) lines.push(`  ${entry.description}`);
     lines.push("");
+  }
+  if (options.elements?.length) {
+    lines.push(
+      `You may also write these HTML elements, with no attributes: ${options.elements
+        .map((name) => `<${name}>`)
+        .join(" ")}.`,
+      "",
+    );
   }
   lines.push(
     "Use only the attributes shown. Prefer a component over a long list or table of the same information, and keep the prose around it short.",

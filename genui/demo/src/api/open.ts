@@ -1,11 +1,22 @@
-// POST /api/open: switch to another conversation, or start a new one when the
-// form names none.
-import { backToChat, loadConversation, newConversation } from "../lib/chat.ts";
+// POST /api/open: switch to another conversation of the app, or start a new
+// one when the form names none.
+import {
+  backToChat,
+  loadConversation,
+  newConversation,
+  sessionFor,
+} from "../lib/chat.ts";
 
 export const POST = async (request: Request): Promise<Response> => {
-  const id = (await request.formData()).get("id");
+  const form = await request.formData();
+  const named = form.get("app");
+  const session = sessionFor(
+    request,
+    typeof named === "string" ? named : undefined,
+  );
+  const id = form.get("id");
   const conversation =
-    (await loadConversation(typeof id === "string" ? id : undefined)) ??
+    (await loadConversation(session, typeof id === "string" ? id : "")) ??
     newConversation();
-  return backToChat(request, conversation.id);
+  return backToChat(session, conversation.id);
 };

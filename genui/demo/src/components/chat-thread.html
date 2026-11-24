@@ -1,0 +1,116 @@
+<!-- @bascik
+The conversation: the turns so far, then the reply being written. Its two stream scripts read the app from the request, so one component serves every app.
+-->
+<div class="thread" data-testid="chat-thread">
+  <!-- 1. The conversation so far, or the welcome when there is none. Stored
+       replies are the model's own text, rendered through the same catalog as
+       a live reply. -->
+  <script data-bascik-stream type="text/typescript">
+    import { html, raw } from "@bascik/bascik/html";
+    import { renderText } from "@bascik/genui";
+    import { loadCatalog, loadConversation, sessionFor } from "@/lib/chat.ts";
+
+    /** How many messages a page load renders unless the visitor asks for all. */
+    const RECENT = 40;
+
+    export default async function* (request: Request) {
+      const session = sessionFor(request);
+      const { app } = session;
+      const conversation = await loadConversation(session);
+      if (!conversation || conversation.messages.length === 0) {
+        yield html`<section class="welcome" data-testid="chat-welcome">
+          <h1>${app.heading}</h1>
+          <p>${app.tagline}</p>
+          <div>
+            ${app.suggestions.map(
+              (suggestion) =>
+                html`<ask-button data-bascik-prop-say="${suggestion.say}"
+                  >${suggestion.label}</ask-button
+                >`,
+            )}
+          </div>
+        </section>`;
+        return;
+      }
+      const catalog = await loadCatalog();
+      const all = new URL(request.url).searchParams.has("all");
+      const messages = all
+        ? conversation.messages
+        : conversation.messages.slice(-RECENT);
+      const earlier = conversation.messages.length - messages.length;
+      if (earlier > 0) {
+        yield html`<a class="earlier" href="?all" data-testid="chat-earlier"
+          >Show ${earlier} earlier messages</a
+        >`;
+      }
+      // One message per yield: each is sent as soon as it is rendered, and
+      // each gets its own share of Bascik's per-output component budget.
+      for (const message of messages) {
+        yield message.role === "user"
+          ? html`<p class="turn-user" data-testid="turn-user">${message.content}</p>`
+          : html`<div class="turn-assistant" data-testid="turn-assistant">${raw(
+              renderText(message.content, catalog, { elements: app.elements }),
+            )}</div>`;
+      }
+    }
+  </script>
+
+  <!-- 2. The reply being written. When the last message is the visitor's,
+       ask the model and yield its reply as it arrives. -->
+  <div class="turn-assistant live" data-testid="turn-live">
+    <script data-bascik-stream type="text/typescript">
+      import { renderStream } from "@bascik/genui";
+      import {
+        loadCatalog,
+        loadConversation,
+        loadModel,
+        saveConversation,
+        sessionFor,
+        systemPrompt,
+      } from "@/lib/chat.ts";
+
+      export default async function* (
+        request: Request,
+        _context: unknown,
+        { signal }: { signal: AbortSignal },
+      ) {
+        const session = sessionFor(request);
+        const { app } = session;
+        const conversation = await loadConversation(session);
+        if (conversation?.messages.at(-1)?.role !== "user") return;
+
+        const model = await loadModel(app);
+        let reply = "";
+        // Keep the model's raw text for the history as it streams by.
+        const recorded = (async function* () {
+          for await (const delta of model({
+            system: await systemPrompt(app),
+            messages: conversation.messages,
+            tools: app.tools,
+            signal,
+          })) {
+            reply += delta;
+            yield delta;
+          }
+        })();
+        try {
+          yield* renderStream(recorded, await loadCatalog(), {
+            elements: app.elements,
+          });
+        } catch (error) {
+          console.error(`[${app.id}] the model failed:`, error);
+          reply += "\n\nSomething went wrong while writing this reply.";
+          yield `<p class="failed" data-testid="turn-failed">Something went wrong while writing this reply.</p>`;
+        } finally {
+          // Runs when the reply ends and when the visitor leaves early.
+          conversation.messages.push({
+            role: "assistant",
+            content: reply || "(no reply)",
+          });
+          await saveConversation(session, conversation);
+        }
+        yield `<span class="done" data-testid="turn-done"></span>`;
+      }
+    </script>
+  </div>
+</div>
