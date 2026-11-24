@@ -533,6 +533,70 @@ describe("scaling (identifiers off)", () => {
   );
 });
 
+describe("one usage holding many usages (identifiers off)", () => {
+  beforeEach(() => {
+    config.minify.identifiers = false;
+  });
+
+  // A list component around its items: one `<server-card>` whose default
+  // slot holds every `<plain-card>`. The loop spliced each item into the
+  // whole list and searched it again from there, so every item copied the
+  // list: 100 book cards in one grid rendered in 31 ms and 990 in 1171 ms,
+  // where 800 spread over 200 grids took 127 ms. Each instance is now
+  // expanded in its own text (`expandByUsage`), so the list costs its
+  // length. Each item's named-slot wrapper found a second pass of the same
+  // kind: the slot parser looked for the usages around each wrapper with an
+  // attribute scan from the start of the slot per usage (4000 items took
+  // 10 s with the first fix alone, 0.4 s with both). The default instance
+  // limit is raised here so the growth is read over enough items.
+  const item = (n: number): string =>
+    `<plain-card data-bascik-prop-t="Book ${n}"><div data-bascik-slot="x"><em>by</em> Author ${n}</div></plain-card>`;
+  const ITEM_LENGTH = item(1000).length;
+  const ITEMS = 8000;
+
+  it.each([
+    [
+      "in the default slot",
+      (items: string) =>
+        `<server-card data-bascik-prop-name="Shelf">${items}</server-card>`,
+      1,
+    ],
+    [
+      "in a named slot of a usage inside another",
+      (items: string) =>
+        `<server-card><server-card><div data-bascik-slot="foot">${items}</div></server-card></server-card>`,
+      2,
+    ],
+  ])(
+    "8000 usages %s render in linear time",
+    async (_name, around, wrappers) => {
+      const manifest = await build();
+      const host = makeHost(manifest, {
+        limits: { maxInstances: ITEMS + wrappers },
+      });
+      const output = (size: number) =>
+        around(
+          Array.from({ length: Math.ceil(size / ITEM_LENGTH) }, (_, n) =>
+            item(1000 + n),
+          ).join(""),
+        );
+      const render = (html: string) =>
+        wrapRunner(
+          runnerFrom({ a: html }),
+          serverPlan("a"),
+          host,
+        )("a", signalOf());
+      const SIZE = ITEMS * ITEM_LENGTH;
+      const out = await render(output(SIZE));
+      expect(count(out, `class="bascik__plain-card__plain"`)).toBe(ITEMS);
+      expect(out).not.toContain("<plain-card");
+      expect(out).toContain("Author 8999</section>");
+      await expectLinearTimeAsync(output, SIZE, render, { ceilingMs: 5000 });
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
+
 describe("hostile echoed output stays linear (identifiers off)", () => {
   // Script output can echo visitor text (`?q=`), and every request renders
   // it, so a pass that is quadratic in the output is a per-request denial of

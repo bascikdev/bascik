@@ -52,10 +52,10 @@
     "smol-toml": "^1.9.1"
   },
   "peerDependencies": {
-    "@bascik/bascik": "^1.0.1"
+    "@bascik/bascik": "^1.0.2"
   },
   "devDependencies": {
-    "@bascik/bascik": "^1.0.1",
+    "@bascik/bascik": "^1.0.2",
     "@playwright/test": "^1.65.0",
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.1.0",

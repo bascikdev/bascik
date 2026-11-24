@@ -1,5 +1,9 @@
 import { maskRawTextContent } from "./component-masking.ts";
-import { readStartTag } from "./component-attribute-scan.ts";
+import {
+  createAttributeValueScanner,
+  readStartTag,
+  type AttributeValueScanner,
+} from "./component-attribute-scan.ts";
 import { createMatchingCloseFinder, getTag } from "./component-tags.ts";
 import {
   createMarkerWalk,
@@ -235,7 +239,16 @@ const createNestedComponentCheck = (
   // scan from the start yields does not depend on the index asked about.
   let usages = new Map<
     string,
-    { spans: ChildSpan[]; live: number; searchFrom: number; done: boolean }
+    {
+      spans: ChildSpan[];
+      live: number;
+      searchFrom: number;
+      done: boolean;
+      // One attribute scan per name, resumed by each search: a scan from
+      // the start for every usage read the text once per usage, quadratic
+      // in a slot that holds a thousand of them.
+      scanner: AttributeValueScanner;
+    }
   >();
   let lastIndex = -1;
   return (index: number): boolean => {
@@ -254,7 +267,13 @@ const createNestedComponentCheck = (
       if (!present.has(componentName.toLowerCase())) continue;
       let state = usages.get(componentName);
       if (state === undefined) {
-        state = { spans: [], live: 0, searchFrom: 0, done: false };
+        state = {
+          spans: [],
+          live: 0,
+          searchFrom: 0,
+          done: false,
+          scanner: createAttributeValueScanner(masked),
+        };
         usages.set(componentName, state);
       }
       while (!state.done && state.searchFrom < index) {
@@ -264,6 +283,7 @@ const createNestedComponentCheck = (
           undefined,
           masked,
           state.searchFrom,
+          state.scanner,
         );
         const startIndex = child.startIndex;
         if (typeof startIndex !== "number") {
@@ -471,8 +491,10 @@ export const removeUnclaimedSlotWrappers = (
   for (const name of componentNames) {
     if (!lowerMasked.includes(`<${name.toLowerCase()}`)) continue;
     let from = 0;
+    // Resumed by each search (see `createNestedComponentCheck`).
+    const scanner = createAttributeValueScanner(masked);
     for (;;) {
-      const usage = getTag(template, name, undefined, masked, from);
+      const usage = getTag(template, name, undefined, masked, from, scanner);
       const { startIndex, endIndex, contentStart, closeIndex } = usage;
       if (typeof startIndex !== "number") break;
       if (
