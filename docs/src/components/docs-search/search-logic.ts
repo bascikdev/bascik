@@ -19,17 +19,19 @@ export interface SearchEntry {
 }
 
 /**
- * The index file as the build writes it (see compactSearchIndex in src/lib/search-index.ts). `pages` holds each
- * page's `[title, navLabel, section, path, sitelinks?]` once; each entry is `[page, heading, anchor, text]`.
+ * The outline file as the build writes it (see compactSearchIndex in src/lib/search-index.ts). `pages` holds
+ * each page's `[title, navLabel, section, path, sitelinks?]` once; each entry is `[page, heading, anchor]`.
+ * An index written before the text had its own file has the text as a fourth value.
  */
 export interface CompactSearchIndex {
   pages: Array<[string, string, string, string, string[]?]>;
-  entries: Array<[number, string | null, string | null, string]>;
+  entries: Array<[number, string | null, string | null, string?]>;
 }
 
 /**
- * Turns the index file back into one SearchEntry per page and section. A plain array is the old format
- * (still written to the unversioned path) and is already expanded.
+ * Turns the outline file back into one SearchEntry per page and section, with no text yet: `applySearchText`
+ * adds it when the text file arrives. A plain array is the public format (still written to the unversioned
+ * path), which has its text and is already expanded.
  */
 export function expandSearchIndex(
   data: CompactSearchIndex | SearchEntry[],
@@ -43,11 +45,27 @@ export function expandSearchIndex(
       section: page[2],
       path: row[2] === null ? page[3] : page[3] + "#" + row[2],
       heading: row[1],
-      text: row[3],
+      text: row[3] || "",
     };
     if (page[4]) entry.sitelinks = page[4];
     return entry;
   });
+}
+
+/**
+ * Puts the text file's strings on the entries, in order. False, with nothing changed, when the file does not
+ * belong to this outline: not an array of strings, or not one per entry.
+ */
+export function applySearchText(
+  entries: SearchEntry[],
+  texts: unknown,
+): boolean {
+  if (!Array.isArray(texts) || texts.length !== entries.length) return false;
+  for (var i = 0; i < texts.length; i++) {
+    if (typeof texts[i] !== "string") return false;
+  }
+  for (var j = 0; j < texts.length; j++) entries[j].text = texts[j];
+  return true;
 }
 
 var GENERIC_SITE_WORDS: Record<string, boolean> = {
