@@ -30,6 +30,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./app": "./src/app.ts",
     "./anthropic": "./src/anthropic.ts",
     "./azure-voice-live": "./src/azure-voice-live.ts",
     "./gemini-live": "./src/gemini-live.ts",
@@ -45,6 +46,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./app": {
+        "types": "./dist/app.d.ts",
+        "default": "./dist/app.js"
       },
       "./anthropic": {
         "types": "./dist/anthropic.d.ts",

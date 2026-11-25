@@ -13,19 +13,14 @@
     <div data-testid="voice-view">
       <script data-bascik-server type="text/typescript">
         import { raw } from "@bascik/bascik/html";
-        import { loadConversation, sessionFor, voiceState } from "@/lib/chat.ts";
+        import { appFor, chatFor } from "@/lib/chat.ts";
 
         export default async (request: Request) => {
           const url = new URL(request.url);
-          const session = sessionFor(
-            request,
-            url.searchParams.get("app") ?? undefined,
-          );
-          const conversation = await loadConversation(session);
-          const call = url.searchParams.get("call") ?? "";
+          const chat = chatFor(appFor(request, url.searchParams.get("app")));
           // Already rendered through the catalog, or drawn by the app's own view.
           return raw(
-            (conversation && voiceState(conversation.id).views.get(call)) ?? "",
+            await chat.voiceView(request, url.searchParams.get("call") ?? ""),
           );
         };
       </script>

@@ -12,14 +12,8 @@
 // the answer is { "say": "...", "hidden": true }: the reviewer's message, for
 // the call to say to the speech model. It is a record in a fixed shape and
 // not something the reviewer wrote, so the call does not show it as theirs.
-import {
-  abandonApprovals,
-  backToChat,
-  loadConversation,
-  newConversation,
-  saveConversation,
-  sessionFor,
-} from "../lib/chat.ts";
+import { newConversation } from "@bascik/genui/app";
+import { appFor, chatFor } from "../lib/chat.ts";
 import {
   decisionFrom,
   decisionMessage,
@@ -32,25 +26,25 @@ export const POST = async (request: Request): Promise<Response> => {
   if (!decision) {
     return new Response("Not a review decision.", { status: 400 });
   }
-  const session = sessionFor(request, "review");
-  const conversation = (await loadConversation(session)) ?? newConversation();
-  if (conversation.messages.length === 0) {
-    conversation.title = `Review: ${decision.item}`;
-  }
+  const chat = chatFor(appFor(request, "review"));
+  const session = chat.session(request);
   if (form.get("voice") === "1") {
-    await saveConversation(session, conversation);
-    await recordDecision(session.visitor, conversation.id, decision);
+    const conversation = (await chat.load(session)) ?? newConversation();
+    if (conversation.messages.length === 0) {
+      conversation.title = `Review: ${decision.item}`;
+    }
+    await chat.save(session, conversation);
+    await recordDecision(session.reader, conversation.id, decision);
     return Response.json(
       { say: decisionMessage(decision), hidden: true },
       { headers: { "cache-control": "no-store" } },
     );
   }
-  abandonApprovals(conversation);
-  conversation.messages.push({
-    role: "user",
-    content: decisionMessage(decision),
-  });
-  await saveConversation(session, conversation);
-  await recordDecision(session.visitor, conversation.id, decision);
-  return backToChat(session, conversation.id);
+  const conversation = await chat.addMessage(
+    session,
+    decisionMessage(decision),
+    { title: `Review: ${decision.item}` },
+  );
+  await recordDecision(session.reader, conversation.id, decision);
+  return chat.redirect(session, conversation.id);
 };
