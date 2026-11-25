@@ -8,6 +8,9 @@ import { createServer } from "node:http";
 import { acceptWebSocket, refuseUpgrade } from "../src/ws.ts";
 
 const PORT = Number(process.argv[2] ?? 4481);
+/** How long the reader "speaks", and how long the model then thinks, in milliseconds. */
+const SPEAKING_MS = 1500;
+const THINKING_MS = 1200;
 const SECOND = Buffer.alloc(48_000).toString("base64"); // one second at 24 kHz
 
 const BOOKS = [
@@ -211,11 +214,20 @@ server.on("upgrade", (request, socket) => {
       if (Buffer.from(message.audio, "base64").length < 1000) return;
       heardAudio = true;
       send({ type: "input_audio_buffer.speech_started" });
-      send({
-        type: "conversation.item.input_audio_transcription.completed",
-        transcript: "Recommend a book",
-      });
-      answer("Recommend a book");
+      for (const delta of ["Recommend ", "a book"]) {
+        send({
+          type: "conversation.item.input_audio_transcription.delta",
+          delta,
+        });
+      }
+      setTimeout(() => {
+        send({ type: "input_audio_buffer.speech_stopped" });
+        send({
+          type: "conversation.item.input_audio_transcription.completed",
+          transcript: "Recommend a book",
+        });
+        setTimeout(() => answer("Recommend a book"), THINKING_MS);
+      }, SPEAKING_MS);
     } else if (message.type === "conversation.item.create") {
       if (message.item?.type === "function_call_output") {
         toolResults.push(message.item.output ?? "");

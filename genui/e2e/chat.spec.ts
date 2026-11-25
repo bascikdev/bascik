@@ -457,6 +457,40 @@ test("with the client runtime a message is answered without a page load", async 
   await expect(page.getByTestId("turn-live")).toHaveCount(1);
 });
 
+test("with the client runtime a message shows that a reply is on its way", async ({
+  page,
+}) => {
+  test.skip(!withScripts(), "the client runtime is a script");
+  const composer = page.getByTestId("chat-composer");
+  const action = await composer.evaluate(
+    (form) => (form as unknown as { action: string }).action,
+  );
+  // Hold the request: nothing has come back, and the page has to say so.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(
+    (url) => url.href === action,
+    async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      await held;
+      return route.fallback();
+    },
+  );
+  await page.getByTestId("chat-composer-input").fill("Recommend a book");
+  await page.getByTestId("chat-composer-send").click();
+  await expect(composer).toHaveAttribute("data-pending", "");
+  const pending = page.getByTestId("turn-pending");
+  await expect(pending).toBeVisible();
+  await expect(pending).toHaveAttribute("aria-busy", "true");
+  // The message is already shown, before the server has answered.
+  await expect(page.locator(".turn-user")).toHaveText("Recommend a book");
+
+  release();
+  await settled(page);
+  await expect(composer).not.toHaveAttribute("data-pending");
+  await expect(page.getByTestId("turn-pending")).toHaveCount(0);
+});
+
 test("with the client runtime a reply can be stopped, and what arrived is kept", async ({
   page,
 }) => {
@@ -1044,6 +1078,218 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
       await expect(reply).toContainText("Blocked. Error:");
       await expect(reply).toContainText("The reader declined this action");
       await expect(reply).not.toContainText("Hold number");
+      await page.getByTestId("voice-call-toggle").click();
+    });
+
+    /** A microphone whose tone the test can switch off, to be quiet on cue. */
+    const gatedMicrophone = `
+    navigator.mediaDevices.getUserMedia = async () => {
+      const context = new AudioContext();
+      const tone = context.createOscillator();
+      const gain = context.createGain();
+      const out = context.createMediaStreamDestination();
+      tone.connect(gain);
+      gain.connect(out);
+      tone.start();
+      window.__micGain = gain;
+      return out.stream;
+    };
+  `;
+    const noMicrophone =
+      "navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('no', 'NotAllowedError'); };";
+
+    /** A request that waits until the test lets it go. */
+    const gate = (): { opened: Promise<void>; open: () => void } => {
+      let open!: () => void;
+      const opened = new Promise<void>((resolve) => (open = resolve));
+      return { opened, open };
+    };
+
+    test("shows the microphone level, the words as they come, and each wait", async ({
+      page,
+    }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(gatedMicrophone);
+      await page.reload();
+      const status = page.getByTestId("voice-call-status");
+      const meter = page.getByTestId("voice-call-meter");
+      await expect(meter).toBeHidden();
+      await page.getByTestId("voice-call-toggle").click();
+
+      // The reader speaks: the status says so, and the words arrive as they are said.
+      await expect(status).toHaveText("Hearing you…");
+      await expect(page.getByTestId("turn-user")).toContainText("Recommend");
+      // The level is the microphone's own, and the meter is decoration.
+      await expect(meter).toBeVisible();
+      await expect(meter).toHaveAttribute("aria-hidden", "true");
+      await expect(meter).toHaveAttribute("data-speaking", "");
+      await expect
+        .poll(async () => Number(await meter.getAttribute("data-level")))
+        .toBeGreaterThan(0.5);
+      await expect(meter).toHaveAttribute("data-level", /^\d\.\d\d$/);
+
+      // The reader stops: the model has not answered yet.
+      await page.evaluate("window.__micGain.gain.value = 0");
+      await expect(status).toHaveText("Thinking…");
+      await expect(meter).not.toHaveAttribute("data-speaking");
+      await expect
+        .poll(async () => Number(await meter.getAttribute("data-level")))
+        .toBeLessThan(0.1);
+      // The words that were said stand as they were completed, not twice.
+      await expect(page.getByTestId("turn-user")).toHaveText(
+        "Recommend a book",
+      );
+
+      // The model's first sound ends the wait.
+      await expect(page.getByTestId("turn-voice")).toContainText(
+        "Here are two books",
+      );
+      await expect(status).not.toHaveText("Thinking…");
+      await page.getByTestId("voice-call-toggle").click();
+      await expect(meter).toBeHidden();
+    });
+
+    test("shows no level when there is no microphone", async ({ page }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(noMicrophone);
+      await page.reload();
+      await page.getByTestId("voice-call-toggle").click();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "No microphone: type to talk.",
+      );
+      await expect(page.getByTestId("voice-call-meter")).toBeHidden();
+      await page.getByTestId("voice-call-toggle").click();
+    });
+
+    test("shows that a call is connecting until it is on", async ({ page }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(noMicrophone);
+      await page.reload();
+      const session = gate();
+      await page.route("**/api/voice-session*", async (route) => {
+        await session.opened;
+        await route.fallback();
+      });
+      const toggle = page.getByTestId("voice-call-toggle");
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-busy", "true");
+      await expect(page.getByTestId("voice-call-connecting")).toBeVisible();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "Connecting…",
+      );
+      session.open();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "No microphone: type to talk.",
+      );
+      await expect(toggle).not.toHaveAttribute("aria-busy");
+      await toggle.click();
+    });
+
+    test("shows work in progress, and a view on its way", async ({ page }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(noMicrophone);
+      await page.reload();
+      const tool = gate();
+      const view = gate();
+      await page.route("**/api/voice-tool*", async (route) => {
+        await tool.opened;
+        await route.fallback();
+      });
+      await page.route("**/voice-view*", async (route) => {
+        await view.opened;
+        await route.fallback();
+      });
+      await page.getByTestId("voice-call-toggle").click();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "No microphone: type to talk.",
+      );
+      await page.getByTestId("chat-composer-input").fill("Recommend a book");
+      await page.getByTestId("chat-composer-send").click();
+
+      // The message is sent and nothing has come back.
+      const status = page.getByTestId("voice-call-status");
+      await expect(status).toHaveText("Working…");
+      const reply = page.getByTestId("turn-voice");
+      await expect(reply.getByTestId("voice-call-loading")).toHaveCount(0);
+
+      // The tool has run; its view is on the way, and a block holds its place.
+      tool.open();
+      const loading = reply.getByTestId("voice-call-loading");
+      await expect(loading).toBeVisible();
+      await expect(loading).toHaveAttribute("aria-busy", "true");
+      await expect(status).toHaveText("Working…");
+      await expect(reply.getByTestId("book-card")).toHaveCount(0);
+
+      view.open();
+      await expect(reply.getByTestId("book-card")).toHaveCount(2);
+      await expect(reply.getByTestId("voice-call-loading")).toHaveCount(0);
+      await expect(status).not.toHaveText("Working…");
+      await page.getByTestId("voice-call-toggle").click();
+    });
+
+    test("takes the placeholder away when a view does not come", async ({
+      page,
+    }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(noMicrophone);
+      await page.reload();
+      const view = gate();
+      await page.route("**/voice-view*", async (route) => {
+        await view.opened;
+        await route.fulfill({ status: 500, body: "no" });
+      });
+      await page.getByTestId("voice-call-toggle").click();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "No microphone: type to talk.",
+      );
+      await page.getByTestId("chat-composer-input").fill("Recommend a book");
+      await page.getByTestId("chat-composer-send").click();
+      const reply = page.getByTestId("turn-voice");
+      await expect(reply.getByTestId("voice-call-loading")).toBeVisible();
+      view.open();
+      await expect(reply.getByTestId("voice-call-loading")).toHaveCount(0);
+      await expect(reply.getByTestId("book-card")).toHaveCount(0);
+      await page.getByTestId("voice-call-toggle").click();
+    });
+
+    test("marks a form busy and locks it while its answer is sent", async ({
+      page,
+    }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(noMicrophone);
+      await page.reload();
+      await page.getByTestId("voice-call-toggle").click();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "No microphone: type to talk.",
+      );
+      await page.getByTestId("chat-composer-input").fill("Recommend a book");
+      await page.getByTestId("chat-composer-send").click();
+      const form = page.getByTestId("turn-voice").getByTestId("ask-button");
+      await expect(form).toHaveCount(1);
+
+      const sent = gate();
+      const action = await form.evaluate(
+        (element) => (element as unknown as { action: string }).action,
+      );
+      await page.route(
+        (url) => url.href === action,
+        async (route) => {
+          if (route.request().method() !== "POST") return route.fallback();
+          await sent.opened;
+          return route.fallback();
+        },
+      );
+      const submit = form.getByTestId("ask-button-submit");
+      await submit.click();
+      await expect(form).toHaveAttribute("aria-busy", "true");
+      await expect(submit).toBeDisabled();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "Working…",
+      );
+
+      sent.open();
+      await expect(form).toHaveAttribute("data-sent", "");
+      await expect(form).not.toHaveAttribute("aria-busy");
       await page.getByTestId("voice-call-toggle").click();
     });
   });

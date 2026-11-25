@@ -168,6 +168,15 @@ A form is sent once: it stays on screen as it was answered, and cannot be presse
 
 `fill_form` cannot answer an approval. A question about allowing an action is never among the forms it can reach, so a model cannot allow its own tool call: the reader presses that themselves.
 
+### What the reader sees while a call works
+
+A call shows what it is doing, so the reader is never left wondering whether it hears them or is stuck.
+
+- **A level meter.** Once the microphone is on, a few small bars in the status line move with the real microphone signal. They turn the accent color while the level counts as speech. The meter is decoration (`aria-hidden`); it carries `data-level` (0 to 1, two decimals) and `data-speaking` for tests and your own styling. It keeps its room from the moment a call starts, so it moves nothing, and with `prefers-reduced-motion: reduce` the bars still follow the level but without easing. If the reader declines the microphone, there is no meter.
+- **Words as they are said.** The reader's bubble grows while they speak. Gemini streams its transcription; with Azure the bubble grows from the transcription deltas, and the completed text replaces them.
+- **One status at a time.** The status line reads `Waiting for your answer on screen.`, then `Working…`, then `Thinking…`, then `Hearing you…`, then `Listening.`, in that order of precedence. Azure says when the reader starts and stops speaking; for Gemini the meter's level decides, and it does not count the model's own voice coming back through the speakers.
+- **Loading.** From the press until the call is on, the button shows a spinner and `aria-busy="true"`. While a view loads, a placeholder block (`data-testid="voice-call-loading"`, `aria-busy="true"`) holds its place and is removed if the view does not come. A form being sent is marked `aria-busy="true"` and its controls are disabled until the answer comes back.
+
 ### Captions in a call
 
 With an Azure voice, Azure Voice Live sends the time of each word, and the caption follows it exactly. An OpenAI voice on Azure sends none.
