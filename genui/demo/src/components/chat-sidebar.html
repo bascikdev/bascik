@@ -135,13 +135,15 @@ The conversation list. Its server script reads the stored conversations on every
   <script data-bascik-server type="text/typescript">
     import { html } from "@bascik/bascik/html";
     import { APPS } from "@/lib/apps.ts";
-    import { listConversations, sessionFor } from "@/lib/chat.ts";
+    import { appFor, chatFor } from "@/lib/chat.ts";
     import { listModels, pickModel, requestedModel } from "@/lib/models.ts";
 
     export default async (request: Request) => {
-      const session = sessionFor(request);
-      const { app, conversationId: current } = session;
-      const conversations = await listConversations(session);
+      const app = appFor(request);
+      const chat = chatFor(app);
+      const session = chat.session(request);
+      const current = session.conversationId;
+      const conversations = await chat.list(session);
       const models = await listModels();
       const chosen = pickModel(models, requestedModel(request));
       const groups = [...new Set(models.map((model) => model.group))];

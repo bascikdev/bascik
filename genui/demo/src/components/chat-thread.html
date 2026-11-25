@@ -8,7 +8,7 @@ The conversation: the turns so far, then the reply being written. Its two stream
   <script data-bascik-stream type="text/typescript">
     import { html, raw } from "@bascik/bascik/html";
     import { partsOf, renderMessage } from "@bascik/genui";
-    import { loadCatalog, renderOptions, threadState } from "@/lib/chat.ts";
+    import { appFor, chatFor } from "@/lib/chat.ts";
 
     /** How many messages a page load renders unless the visitor asks for all. */
     const RECENT = 40;
@@ -17,8 +17,9 @@ The conversation: the turns so far, then the reply being written. Its two stream
       // The conversation as stored. While a reply is being written it is the
       // conversation as it was when that reply started, so the reply is only
       // ever shown once, by the script below.
-      const { session, messages: stored } = await threadState(request);
-      const { app } = session;
+      const app = appFor(request);
+      const chat = chatFor(app);
+      const { messages: stored } = await chat.thread(request);
       const conversation = { messages: stored };
       if (stored.length === 0) {
         yield html`<section class="welcome" data-testid="chat-welcome">
@@ -35,7 +36,7 @@ The conversation: the turns so far, then the reply being written. Its two stream
         </section>`;
         return;
       }
-      const catalog = await loadCatalog();
+      const catalog = await chat.catalog();
       const all = new URL(request.url).searchParams.has("all");
       const messages = all
         ? conversation.messages
@@ -46,7 +47,7 @@ The conversation: the turns so far, then the reply being written. Its two stream
           >Show ${earlier} earlier messages</a
         >`;
       }
-      const options = renderOptions(app);
+      const options = chat.renderOptions;
       const carriedOn = conversation.messages.at(-1)?.awaiting === "model";
       // One message per yield: each is sent as soon as it is rendered, and
       // each gets its own share of Bascik's per-output component budget.
@@ -85,13 +86,14 @@ The conversation: the turns so far, then the reply being written. Its two stream
 
   <!-- 2. The reply being written, when there is one: the model's text, and
        each tool call as its state changes. The turn itself runs in
-       src/lib/chat.ts, apart from any request, so this only reads it. -->
+       the chat (createChat in @bascik/genui/app), apart from any request, so
+       this only reads it. -->
   <div class="turn-assistant live" data-testid="turn-live">
     <script data-bascik-stream type="text/typescript">
-      import { threadState } from "@/lib/chat.ts";
+      import { appFor, chatFor } from "@/lib/chat.ts";
 
       export default async function* (request: Request) {
-        const { turn } = await threadState(request);
+        const { turn } = await chatFor(appFor(request)).thread(request);
         if (!turn) return;
         // The caret shows from here until the .done marker below.
         yield `<span class="writing" data-testid="turn-writing"></span>`;
