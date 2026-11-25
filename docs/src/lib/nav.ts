@@ -176,6 +176,7 @@ export const NAV: NavSection[] = [
       { href: "/ai/conversation-search", label: "Conversation Search" },
       { href: "/ai/attachments", label: "Attachments" },
       { href: "/ai/scaling", label: "Running on Several Servers" },
+      { href: "/ai/troubleshooting", label: "Troubleshooting" },
       { href: "/ai/design-principles", label: "Design Principles" },
     ],
   },
