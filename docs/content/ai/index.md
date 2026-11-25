@@ -1,6 +1,14 @@
 # Overview
 
-Generative UI lets a model answer with your components, not only with text. With `@bascik/ai`, the model writes prose and component tags, a stream script yields them, and Bascik renders each tag as scoped HTML while the reply is still arriving. The browser needs no JavaScript for any of it.
+Bascik AI is the AI interface for Bascik. It consists of three parts: Chat, Generative UI, and Voice.
+
+## Three parts
+
+**Chat** is the full interface, including the message box, thread, tool approval, memory, conversation search, attachments, and the server kit behind it. See [Quick Start](/ai/quick-start), [Server Kit (Chat)](/ai/server-kit), [Tools & Approval (Chat)](/ai/tools), [Memory (Chat)](/ai/memory), [Client Runtime (Chat)](/ai/client-runtime), [Conversation Search (Chat)](/ai/conversation-search), [Attachments (Chat)](/ai/attachments), and [Running on Several Servers (Chat)](/ai/scaling).
+
+**Generative UI** allows the model to show components from your catalog, rendered on the server as real HTML. See [Catalog (Generative UI)](/ai/catalog).
+
+**Voice** enables spoken conversations with captions. See [Voice & Captions (Voice)](/ai/voice).
 
 > **Experimental.** `@bascik/ai` is a prototype in the Bascik repository. It is not on npm yet and its API can change. These pages describe what the prototype does today.
 
@@ -43,6 +51,11 @@ The reader gets the prose as it is written, then each component as finished mark
 | Voice          | Optional scripts that read replies aloud with word-by-word captions, or hold a spoken conversation with a speech-to-speech model | [Voice & Captions](/ai/voice)                             |
 | Search         | Finds words in a reader's past conversations with a plain form, and lets the model look there too                                | [Conversation Search](/ai/conversation-search)            |
 | Components     | A starter catalog and the chat's own pieces, copied into your project with `bascik add`                                          | [Quick Start](/ai/quick-start)                            |
+| Providers      | Configures the AI providers used by the system                                                                                   | [Providers](/ai/providers)                                |
+| Server Kit     | Provides the server-side infrastructure for Chat                                                                                 | [Server Kit (Chat)](/ai/server-kit)                       |
+| Memory         | Manages persistent memory for Chat                                                                                               | [Memory (Chat)](/ai/memory)                               |
+| Attachments    | Handles file attachments for Chat                                                                                                | [Attachments (Chat)](/ai/attachments)                     |
+| Scaling        | Supports running on several servers for Chat                                                                                     | [Running on Several Servers (Chat)](/ai/scaling)          |
 
 [Design Principles](/ai/design-principles) explains the choices behind these, and where they fit Bascik's own.
 

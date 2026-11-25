@@ -1,6 +1,6 @@
 # @bascik/ai
 
-Generative UI for [Bascik](https://bascik.dev). A model streams prose and component tags, and Bascik renders the tags as scoped HTML while the reply is still arriving. Only components from your catalog become elements, so the browser needs no JavaScript to show a reply and a model cannot write markup you did not offer.
+Bascik AI is the AI interface for Bascik. It consists of three parts: Chat, Generative UI, and Voice.
 
 > **Experimental.** This package is 0.x and its API may change between releases. Pin the version you use, and read the [changelog](https://bascik.dev/releases) before upgrading.
 
@@ -68,6 +68,10 @@ const model = anthropicModel();
 | Import                        | What it is                                                                                    |
 | :---------------------------- | :-------------------------------------------------------------------------------------------- |
 | `@bascik/ai`                  | The catalog, the streaming renderer, the model and tool types, and `scriptedModel`.           |
+| `@bascik/ai/app`              | The chat server kit (handlers, sessions, conversation store).                                 |
+| `@bascik/ai/memory`           | Long-term memory stores and tools.                                                            |
+| `@bascik/ai/files`            | Attachment storage and checks.                                                                |
+| `@bascik/ai/shared`           | State shared across several servers.                                                          |
 | `@bascik/ai/anthropic`        | A model backed by Claude, through `@anthropic-ai/sdk` (an optional peer dependency).          |
 | `@bascik/ai/openai`           | A model for any server that speaks OpenAI chat completions, such as Ollama or LM Studio.      |
 | `@bascik/ai/openai-responses` | A model for the OpenAI Responses API, spoken by OpenAI and Azure OpenAI.                      |
@@ -79,10 +83,16 @@ const model = anthropicModel();
 ## Learn more
 
 - [Quick Start](https://bascik.dev/ai/quick-start): install, stream a reply, and make it a chat.
+- [Server Kit](https://bascik.dev/ai/server-kit): the server-side infrastructure for Chat.
 - [Catalog](https://bascik.dev/ai/catalog): the components a model may write, and how to add your own.
 - [Tools](https://bascik.dev/ai/tools): let a model call your functions, with approval where you want it.
+- [Memory](https://bascik.dev/ai/memory): persistent memory for Chat.
+- [Providers](https://bascik.dev/ai/providers): configures the AI providers used by the system.
 - [Client runtime](https://bascik.dev/ai/client-runtime): the optional script that streams answers into the open page.
 - [Voice](https://bascik.dev/ai/voice): talk to a speech-to-speech model.
+- [Conversation Search](https://bascik.dev/ai/conversation-search): finds words in a reader's past conversations.
+- [Attachments](https://bascik.dev/ai/attachments): handles file attachments for Chat.
+- [Scaling](https://bascik.dev/ai/scaling): supports running on several servers for Chat.
 - [Design principles](https://bascik.dev/ai/design-principles): why replies are HTML and interaction is forms.
 
 ## License
