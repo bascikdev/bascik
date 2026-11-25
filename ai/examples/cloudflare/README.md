@@ -56,10 +56,12 @@ The other scripts:
 yarn ai:cf:build      # write the catalog, then bascik --build --target cloudflare
 yarn ai:cf:typecheck  # tsc over the Worker, the objects, the scripts and the tests
 yarn ai:cf:unit       # build, then Vitest: plain Node tests and the objects in local workerd
-yarn ai:cf:e2e        # Playwright against wrangler dev on port 9880, with a fresh data folder
+yarn ai:cf:e2e        # Playwright against wrangler dev on port 9879 (stop `ai:cf:dev` first), with a fresh data folder
 ```
 
-`yarn ai:cf:unit` runs the `@bascik/ai` contract suites (conversation, memory and file stores, and `Shared`) against the Durable Objects with `@cloudflare/vitest-plugin`. One `Shared` case is left out, and the test file says why.
+`yarn ai:cf:unit` runs the `@bascik/ai` contract suites (conversation, memory and file stores, and `Shared`) against the Durable Objects with `@cloudflare/vitest-plugin`. One `Shared` case is left out, and the test file says why. It also runs the wrapper Worker's guards against a stand-in for the generated Worker, and checks the built bundle and the configs.
+
+CI runs `ai:cf:build`, `ai:cf:unit` and `ai:cf:e2e` in the stage 4 job `ai-cf` whenever `ai/`, `adapters/cloudflare/` or a shared build file changes. The job only uses local workerd; it deploys nothing.
 
 ## Deploying (owner only)
 

@@ -236,7 +236,17 @@ export function liveShared(
       try {
         for (;;) {
           if (signal?.aborted) return;
-          const { done, value } = await reader.read();
+          let read: ReadableStreamReadResult<Uint8Array>;
+          try {
+            read = await reader.read();
+          } catch (error) {
+            // workerd rejects a pending read when the abort cancels the
+            // stream (the streams standard resolves it as done): an abort
+            // ends the iteration either way.
+            if (signal?.aborted) return;
+            throw error;
+          }
+          const { done, value } = read;
           if (signal?.aborted) return;
           if (done) return;
           buffered += decoder.decode(value, { stream: true });

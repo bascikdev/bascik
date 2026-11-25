@@ -58,6 +58,7 @@ jobs:
       run-docs: ${{ steps.diff.outputs.run-docs }}
       run-skills: ${{ steps.diff.outputs.run-skills }}
       run-ai: ${{ steps.diff.outputs.run-ai }}
+      run-ai-cloudflare: ${{ steps.diff.outputs.run-ai-cloudflare }}
       run-extension: ${{ steps.diff.outputs.run-extension }}
       run-adapter-cloudflare: ${{ steps.diff.outputs.run-adapter-cloudflare }}
       run-adapter-netlify: ${{ steps.diff.outputs.run-adapter-netlify }}
@@ -1426,6 +1427,65 @@ jobs:
       - name: Run generative UI browser tests
         run: yarn ai:e2e
 
+  ai-cf:
+    name: Generative UI on Workers (example, local workerd)
+    runs-on: ubuntu-latest
+    if: >-
+      !cancelled() &&
+      needs.test-gate.result == 'success' &&
+      needs.changes.outputs.run-ai-cloudflare == 'true'
+    permissions:
+      contents: read
+    needs:
+      [
+        changes,
+        test-gate,
+        integration-pkg,
+        integration-docs,
+        integration-skills,
+        integration-ai,
+        node-floor,
+        linear-time,
+      ]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use the .nvmrc Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # The example builds with the bascik binary and the Cloudflare adapter, both run from their dist/.
+      - name: Build package and adapter
+        run: yarn pkg:build && yarn adapter:cf:build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      # bascik --build --target cloudflare; the unit tests check the bundle it writes.
+      - name: Build the example Worker
+        run: yarn ai:cf:build
+
+      # The Durable Objects and their clients inside local workerd (@cloudflare/vitest-plugin), the wrapper's guards,
+      # the key parser, and the configs against the generated one.
+      - name: Run the example's unit tests
+        run: yarn ai:cf:unit
+        env:
+          WRANGLER_SEND_METRICS: "false"
+
+      # Playwright against wrangler dev --local on port 9879 with a fresh persist folder. Nothing is deployed.
+      - name: Run the example's browser tests
+        run: yarn ai:cf:e2e
+        env:
+          WRANGLER_SEND_METRICS: "false"
+
   e2e-extension:
     name: VS Code Extension E2E (real editor)
     runs-on: ubuntu-latest
@@ -1501,6 +1561,7 @@ jobs:
       (needs.changes.outputs.run-docs != 'true' || needs.e2e-docs.result == 'success') &&
       (needs.changes.outputs.run-extension != 'true' || needs.e2e-extension.result == 'success') &&
       (needs.changes.outputs.run-ai != 'true' || needs.e2e-ai.result == 'success') &&
+      (needs.changes.outputs.run-ai-cloudflare != 'true' || needs.ai-cf.result == 'success') &&
       (needs.changes.outputs.run-adapter-cloudflare != 'true' || needs.e2e-adapter-cloudflare.result == 'success') &&
       (needs.changes.outputs.run-adapter-netlify != 'true' || needs.e2e-adapter-netlify.result == 'success')
     needs:
@@ -1516,6 +1577,7 @@ jobs:
         e2e-create,
         e2e-extension,
         e2e-ai,
+        ai-cf,
       ]
     steps:
       - run: echo "All selected end-to-end suites passed."
@@ -1554,6 +1616,7 @@ jobs:
         e2e-create,
         e2e-extension,
         e2e-ai,
+        ai-cf,
       ]
     # No job-level concurrency group, on purpose. The workflow's group already cancels an older run of a branch, so a
     # branch has one run in stage 5 at a time. On main a shared job group would hold one pending deploy and let an older
@@ -1698,6 +1761,7 @@ jobs:
         e2e-create,
         e2e-extension,
         e2e-ai,
+        ai-cf,
       ]
     # No job-level concurrency group: see deploy-docs.
     outputs:
@@ -1841,6 +1905,7 @@ jobs:
         e2e-create,
         e2e-extension,
         e2e-ai,
+        ai-cf,
       ]
     outputs:
       preview-url: ${{ steps.upload.outputs.url }}
@@ -1977,6 +2042,7 @@ jobs:
         e2e-create,
         e2e-extension,
         e2e-ai,
+        ai-cf,
       ]
     strategy:
       fail-fast: false

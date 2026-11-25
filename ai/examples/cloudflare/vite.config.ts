@@ -1,4 +1,5 @@
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -15,6 +16,15 @@ export default defineConfig({
             wrangler: { configPath: "./tests/wrangler.test.jsonc" },
           }),
         ],
+        // worker.ts imports the generated Worker as `bascik-worker`; the
+        // wrapper's tests put a stand-in there.
+        resolve: {
+          alias: {
+            "bascik-worker": fileURLToPath(
+              new URL("./tests/fake-bascik-worker.ts", import.meta.url).href,
+            ),
+          },
+        },
         test: {
           name: "workers",
           include: ["tests/**/*.workers.test.ts"],

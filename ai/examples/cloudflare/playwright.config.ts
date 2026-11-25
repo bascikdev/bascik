@@ -3,10 +3,26 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defineConfig } from "@playwright/test";
 
-const PORT = 9880;
-/** A fresh folder for the Durable Objects' data on every run. */
-const PERSIST_DIR = join(tmpdir(), `bascik-ai-cf-e2e-${process.pid}`);
-rmSync(PERSIST_DIR, { recursive: true, force: true });
+// The port plan and README name for local workerd; `yarn ai:cf:dev` uses it
+// too, so stop a dev server before running these specs.
+const PORT = 9879;
+/**
+ * A fresh folder for the Durable Objects' data on every run. Playwright
+ * loads this file again in each worker process, which inherits the
+ * variable, so only the first load picks (and empties) the folder; the
+ * specs read it to check what was stored.
+ */
+if (!process.env.BASCIK_AI_CF_E2E_PERSIST) {
+  process.env.BASCIK_AI_CF_E2E_PERSIST = join(
+    tmpdir(),
+    `bascik-ai-cf-e2e-${process.pid}`,
+  );
+  rmSync(process.env.BASCIK_AI_CF_E2E_PERSIST, {
+    recursive: true,
+    force: true,
+  });
+}
+const PERSIST_DIR = process.env.BASCIK_AI_CF_E2E_PERSIST;
 
 export default defineConfig({
   testDir: "./e2e",

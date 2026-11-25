@@ -9,6 +9,8 @@ const ROOT_SUITES = [
   "docs",
   "skills",
   "ai",
+  // ai/examples/cloudflare: @bascik/ai on Workers, built with the Cloudflare adapter.
+  "ai-cloudflare",
   "extension",
   "adapter-cloudflare",
   "adapter-netlify",
@@ -94,8 +96,11 @@ export function changedWorkspaces(paths, { all = false } = {}) {
         path.startsWith(".github/skills/")
       )
         suites.skills = true;
-      else if (path.startsWith("ai/")) suites.ai = true;
-      else if (path.startsWith("extensions/vscode-bascik/"))
+      else if (path.startsWith("ai/")) {
+        suites.ai = true;
+        // The Workers example runs the library's contract suites and routes.
+        suites["ai-cloudflare"] = true;
+      } else if (path.startsWith("extensions/vscode-bascik/"))
         suites.extension = true;
       else if (
         path.startsWith("adapters/e2e/") ||
@@ -104,6 +109,7 @@ export function changedWorkspaces(paths, { all = false } = {}) {
         suites["adapter-cloudflare"] = true;
         if (path.startsWith("adapters/e2e/")) suites["adapter-netlify"] = true;
         if (path.startsWith("adapters/cloudflare/")) {
+          suites["ai-cloudflare"] = true;
           shop.integration = true;
           shop.e2e = true;
         }

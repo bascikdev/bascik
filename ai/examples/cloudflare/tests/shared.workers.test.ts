@@ -6,6 +6,7 @@
  */
 import {
   env,
+  evictDurableObject,
   runDurableObjectAlarm,
   runInDurableObject,
 } from "cloudflare:test";
@@ -16,6 +17,7 @@ import { sharedContract } from "../../../src/shared.contract.ts";
 import { liveShared } from "../src/lib/cf-stores.ts";
 import type { Env } from "../src/lib/env.ts";
 import { liveObjectName } from "../src/lib/shared-keys.ts";
+import { HEARTBEAT_MS } from "../do/conversation-live.ts";
 
 const bindings = env as unknown as Env;
 const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
@@ -168,6 +170,105 @@ describe("ConversationLive on Workers", () => {
       { type: "data", data: "b" },
       { type: "end" },
     ]);
+  });
+
+  const objectFor = (key: string) =>
+    bindings.LIVE.get(bindings.LIVE.idFromName(liveObjectName(key, true)));
+
+  it("replays a reply from its first event to a reader who joins late", async () => {
+    const live = shared();
+    const key = keys.reply(conversation, "late");
+    for (const text of ["a", "b", "c"]) {
+      await live.publish(key, { type: "data", data: text });
+    }
+    await sleep(200);
+    const reading = drain(live, key);
+    await live.publish(key, { type: "end" });
+    expect(await reading).toEqual([
+      { type: "data", data: "a" },
+      { type: "data", data: "b" },
+      { type: "data", data: "c" },
+      { type: "end" },
+    ]);
+  });
+
+  it("ends the stream at the end event, for a reader then and a reader after", async () => {
+    const live = shared();
+    const key = keys.reply(conversation, "ends");
+    const during = drain(live, key);
+    await live.publish(key, { type: "data", data: "x" });
+    await live.publish(key, { type: "end" });
+    // Resolving at all is the check: the stream closed after `end`.
+    expect(await during).toEqual([
+      { type: "data", data: "x" },
+      { type: "end" },
+    ]);
+    expect(await drain(live, key)).toEqual([
+      { type: "data", data: "x" },
+      { type: "end" },
+    ]);
+  });
+
+  it("ends iteration soon after an abort, without waiting for an event or a heartbeat", async () => {
+    const live = shared();
+    const key = keys.reply(conversation, "aborted");
+    await live.publish(key, { type: "data", data: "first" });
+    const controller = new AbortController();
+    const started = Date.now();
+    const seen: ChannelDelivery[] = [];
+    const reading = (async () => {
+      for await (const event of live.subscribe(key, {
+        signal: controller.signal,
+      })) {
+        seen.push(event);
+      }
+    })();
+    await sleep(300);
+    controller.abort();
+    await reading;
+    expect(Date.now() - started).toBeLessThan(HEARTBEAT_MS);
+    expect(seen).toEqual([{ type: "data", data: "first" }]);
+  });
+
+  it("after a real restart keeps its leases and says gap for a reply it lost", async () => {
+    const live = shared();
+    const key = keys.reply(conversation, "restarted");
+    const lease = await live.claim(keys.lease(conversation + "-r"), 15_000);
+    expect(lease).not.toBeNull();
+    await live.publish(key, { type: "data", data: "before" });
+    await sleep(300);
+    // Tear the instance down: storage stays, memory goes.
+    await evictDurableObject(objectFor(key));
+    expect(
+      await live.claim(keys.lease(conversation + "-r"), 15_000),
+    ).toBeNull();
+    const reading = drain(live, key);
+    await live.publish(key, { type: "data", data: "after" });
+    await live.publish(key, { type: "end" });
+    expect(await reading).toEqual([
+      { type: "gap" },
+      { type: "data", data: "after" },
+      { type: "end" },
+    ]);
+    expect(await lease!.renew()).toBe(true);
+    await lease!.release();
+  });
+
+  it("the alarm drops an expired lease and keeps what is still live", async () => {
+    const live = liveShared(bindings.LIVE, { route: () => "partly-expired" });
+    await live.claim("short", 100);
+    await live.set("long", "kept", 60_000);
+    await sleep(300);
+    const object = bindings.LIVE.get(
+      bindings.LIVE.idFromName("partly-expired"),
+    );
+    expect(await runDurableObjectAlarm(object)).toBe(true);
+    await runInDurableObject(object, async (_, state) => {
+      expect([...(await state.storage.list()).keys()]).toEqual(["value:long"]);
+      expect(await state.storage.getAlarm()).not.toBeNull();
+    });
+    expect(await live.get("long")).toBe("kept");
+    expect(await live.claim("short", 1000)).not.toBeNull();
   });
 
   it("throws in development for a key of a shape it does not know", async () => {

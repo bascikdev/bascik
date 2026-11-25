@@ -28,6 +28,24 @@ describe("Budget", () => {
     expect(await stub.count("sends")).toBe(0);
   });
 
+  it("counts a new reader once, however many first writes arrive at once", async () => {
+    const day = bindings.BUDGET.get(
+      bindings.BUDGET.idFromName(`day:${utcDay()}`),
+    );
+    const before = await day.count("readers");
+    const stores = readerStores(bindings.READER, { prefix: "eager:" });
+    const reader = "88888888-8888-4888-8888-888888888888";
+    await Promise.all(
+      Array.from({ length: 10 }, (_, n) =>
+        stores.memories.add(reader, { id: `m${n}`, text: "x", created: n }),
+      ),
+    );
+    expect(await day.count("readers")).toBe(before + 1);
+    // A later write by the same reader is not a first write.
+    await stores.memories.add(reader, { id: "later", text: "y", created: 99 });
+    expect(await day.count("readers")).toBe(before + 1);
+  });
+
   it("refuses a new reader's first write once the day's cap is reached", async () => {
     // tests/wrangler.test.jsonc sets GENUI_DAILY_READERS to 400.
     const day = bindings.BUDGET.get(

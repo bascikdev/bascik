@@ -56,6 +56,12 @@ type Row = Record<string, SqlStorageValue>;
 export class ReaderData extends DurableObject<Env> {
   /** Whether the tables exist in this instance. The alarm's deleteAll drops them. */
   private ready = false;
+  /**
+   * The day's charge for this reader, once one is under way. The charge
+   * awaits another object, which lets this one take other calls meanwhile,
+   * so two first writes at once share one charge instead of counting twice.
+   */
+  private admitting: Promise<void> | null = null;
 
   /** Run a statement, making the tables first in a new or emptied object. */
   private cursor(
@@ -86,18 +92,49 @@ export class ReaderData extends DurableObject<Env> {
   }
 
   /**
+   * Whether the tables were made, asked without making them: making them
+   * is a write, and a visitor who only looks must leave nothing stored.
+   */
+  private hasTables(): boolean {
+    if (!this.ready) {
+      this.ready =
+        this.ctx.storage.sql
+          .exec(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'conversations'",
+          )
+          .toArray().length > 0;
+    }
+    return this.ready;
+  }
+
+  /** A read: no rows from an object that has never been written. */
+  private found(query: string, ...bindings: SqlStorageValue[]): Row[] {
+    return this.hasTables() ? this.sql(query, ...bindings) : [];
+  }
+
+  /** A delete: nothing to remove from an object that has never been written. */
+  private removed(query: string, ...bindings: SqlStorageValue[]): number {
+    return this.hasTables() ? this.cursor(query, ...bindings).rowsWritten : 0;
+  }
+
+  /**
    * Before a write: a reader with no data yet is counted against the day's
    * cap, and refused when it is reached. After it, `kept` moves the alarm.
    */
   private async admit(): Promise<void> {
     if ((await this.ctx.storage.getAlarm()) !== null) return;
-    const budget = this.env.BUDGET.get(
-      this.env.BUDGET.idFromName(`day:${utcDay()}`),
-    );
-    const limit = numberVar(this.env.GENUI_DAILY_READERS, DAILY_READERS);
-    if (!(await budget.charge("readers", limit, 2 * RETENTION_MS))) {
-      throw new Error(DEMO_FULL);
-    }
+    this.admitting ??= (async () => {
+      const budget = this.env.BUDGET.get(
+        this.env.BUDGET.idFromName(`day:${utcDay()}`),
+      );
+      const limit = numberVar(this.env.GENUI_DAILY_READERS, DAILY_READERS);
+      if (!(await budget.charge("readers", limit, 2 * RETENTION_MS))) {
+        // Refused: the next write asks again.
+        this.admitting = null;
+        throw new Error(DEMO_FULL);
+      }
+    })();
+    await this.admitting;
   }
 
   private async kept(): Promise<void> {
@@ -108,13 +145,18 @@ export class ReaderData extends DurableObject<Env> {
   async alarm(): Promise<void> {
     await this.ctx.storage.deleteAll();
     this.ready = false;
+    // Forgotten: a write after this is a new reader's first again.
+    this.admitting = null;
   }
 
   /* ---- Conversations ---- */
 
   async load(id: string): Promise<Conversation | null> {
     if (!isSafeKey(id)) return null;
-    const row = this.sql("SELECT body FROM conversations WHERE id = ?", id)[0];
+    const row = this.found(
+      "SELECT body FROM conversations WHERE id = ?",
+      id,
+    )[0];
     return row ? (JSON.parse(String(row.body)) as Conversation) : null;
   }
 
@@ -151,13 +193,13 @@ export class ReaderData extends DurableObject<Env> {
 
   /** Every conversation, newest first, with its messages: search reads them. */
   async list(): Promise<Conversation[]> {
-    return this.sql(
+    return this.found(
       "SELECT body FROM conversations ORDER BY updated_at DESC",
     ).map((row) => JSON.parse(String(row.body)) as Conversation);
   }
 
   async summaries(): Promise<ConversationSummary[]> {
-    return this.sql(
+    return this.found(
       "SELECT id, title, updated_at FROM conversations ORDER BY updated_at DESC",
     ).map((row) => ({
       id: String(row.id),
@@ -168,17 +210,14 @@ export class ReaderData extends DurableObject<Env> {
 
   async delete(id: string): Promise<void> {
     if (!isSafeKey(id)) return;
-    const removed = this.cursor(
-      "DELETE FROM conversations WHERE id = ?",
-      id,
-    ).rowsWritten;
+    const removed = this.removed("DELETE FROM conversations WHERE id = ?", id);
     if (removed > 0) await this.kept();
   }
 
   /* ---- Memories ---- */
 
   private memories(): Memory[] {
-    return this.sql(
+    return this.found(
       "SELECT id, text, created, updated, conversation_id FROM memories ORDER BY created DESC",
     ).map((row) => {
       const memory: Memory = {
@@ -233,10 +272,7 @@ export class ReaderData extends DurableObject<Env> {
 
   async removeMemory(id: string): Promise<boolean> {
     if (!isSafeKey(id)) return false;
-    const removed = this.cursor(
-      "DELETE FROM memories WHERE id = ?",
-      id,
-    ).rowsWritten;
+    const removed = this.removed("DELETE FROM memories WHERE id = ?", id);
     if (removed === 0) return false;
     await this.kept();
     return true;
@@ -296,7 +332,7 @@ export class ReaderData extends DurableObject<Env> {
 
   async getFile(id: string): Promise<StoredFile | null> {
     if (!isSafeKey(id)) return null;
-    const meta = this.sql(
+    const meta = this.found(
       "SELECT name, media_type, size FROM files WHERE id = ?",
       id,
     )[0];
@@ -322,6 +358,7 @@ export class ReaderData extends DurableObject<Env> {
 
   async removeFile(id: string): Promise<void> {
     if (!isSafeKey(id)) return;
+    if (!this.hasTables()) return;
     let removed = 0;
     this.ctx.storage.transactionSync(() => {
       this.sql("DELETE FROM file_chunks WHERE id = ?", id);

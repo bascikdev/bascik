@@ -4,6 +4,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { parse } from "jsonc-parser";
 import { describe, expect, it } from "vitest";
 
@@ -59,6 +60,27 @@ describe("configs", () => {
     expect(wrapper.assets.run_worker_first).toEqual(
       generated.assets.run_worker_first,
     );
+    // The bindings and settings the generated Worker was built for.
+    for (const key of [
+      "name",
+      "compatibility_date",
+      "compatibility_flags",
+      "vars",
+    ]) {
+      expect(wrapper[key], key).toEqual(generated[key]);
+    }
+    // Every binding the generated config declares, the wrapper declares the same.
+    for (const key of [
+      "kv_namespaces",
+      "r2_buckets",
+      "d1_databases",
+      "durable_objects",
+      "services",
+    ]) {
+      if (generated[key] !== undefined) {
+        expect(wrapper[key], key).toEqual(generated[key]);
+      }
+    }
     expect(wrapper.assets.binding).toBe(generated.assets.binding);
     expect(wrapper.assets.not_found_handling).toBe(
       generated.assets.not_found_handling,
@@ -86,8 +108,11 @@ describe("the built Worker", () => {
 
   it("fits the free plan's 3 MB (gzip) script limit by a wide margin", () => {
     const info = read(join(generatedDir, "build-info.json"));
-    const bytes = readFileSync(join(generatedDir, "worker.js")).byteLength;
-    expect(bytes).toBeLessThan(3 * 1024 * 1024);
-    expect(info).toBeTypeOf("object");
+    const bundle = readFileSync(join(generatedDir, "worker.js"));
+    // build-info.json reports the bundle it wrote.
+    expect(info.bundleBytes).toBe(bundle.byteLength);
+    // The budget: 1.5 MB before compression, 1 MB after.
+    expect(info.bundleBytes).toBeLessThan(1.5 * 1024 * 1024);
+    expect(gzipSync(bundle).byteLength).toBeLessThan(1024 * 1024);
   });
 });

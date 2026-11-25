@@ -5,11 +5,17 @@
  * the reader's ReaderData object. Each test is a new browser context, so a
  * new reader.
  */
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, test, type Page } from "@playwright/test";
 
 /** Wait for the client runtime to finish the reply in the open page. */
 async function settled(page: Page): Promise<void> {
-  await expect(page.locator("html")).toHaveAttribute("data-genui", "idle");
+  // The runtime marks the document itself, which has no test id to locate.
+  await expect
+    .poll(() => page.evaluate("document.documentElement.dataset.genui"))
+    .toBe("idle");
   await expect(page.getByTestId("turn-done")).toBeAttached();
 }
 
@@ -173,6 +179,95 @@ test("a second tab follows the live reply, and its Stop ends it", async ({
   await expect(
     second.getByTestId("turn-assistant").getByTestId("book-card"),
   ).toHaveCount(0);
+});
+
+test("a tab closed mid-reply finds the whole reply when it opens again", async ({
+  page,
+  context,
+}) => {
+  await start(page, "Recommend a book");
+  await expect(page.getByTestId("turn-live")).toContainText(
+    "Three picks from the catalog",
+  );
+  // The writer's request has lost its reader; the turn goes on without it.
+  await page.close();
+  const again = await context.newPage();
+  await again.goto("/", { waitUntil: "commit" });
+  await settled(again);
+  await again.reload();
+  await expect(again.getByTestId("turn-assistant")).toHaveCount(1);
+  await expect(
+    again.getByTestId("turn-assistant").getByTestId("book-card"),
+  ).toHaveCount(3);
+  await expect(again.getByTestId("turn-writing")).toHaveCount(0);
+});
+
+const objectsRoot = () =>
+  join(process.env.BASCIK_AI_CF_E2E_PERSIST!, "v3", "do");
+
+/** Every Durable Object database wrangler dev keeps for this run, by path. */
+function objectFiles(): string[] {
+  if (!existsSync(objectsRoot())) return [];
+  return readdirSync(objectsRoot(), { recursive: true, encoding: "utf8" })
+    .filter(
+      (path) => path.endsWith(".sqlite") && !path.endsWith("metadata.sqlite"),
+    )
+    .sort();
+}
+
+/**
+ * What an object's database holds beyond what local workerd writes for any
+ * object it starts (its name, and the empty tables of its key-value API):
+ * the chat's tables, stored keys, or an alarm.
+ */
+function storedIn(path: string): string[] {
+  const db = new DatabaseSync(join(objectsRoot(), path), { readOnly: true });
+  try {
+    const held: string[] = [];
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all() as { name: string }[];
+    for (const { name } of tables) {
+      if (name === "__miniflare_do_name") continue;
+      const { rows } = db
+        .prepare(`SELECT COUNT(*) AS rows FROM "${name}"`)
+        .get() as { rows: number };
+      if (!name.startsWith("_cf_") || rows > 0) held.push(`${name}=${rows}`);
+    }
+    return held;
+  } finally {
+    db.close();
+  }
+}
+
+test("a visitor with no cookie can read every page without anything being stored", async () => {
+  const before = new Set(objectFiles());
+  // The check can see stored data: the specs before this one stored some.
+  if (before.size > 0) {
+    expect([...before].some((path) => storedIn(path).length > 0)).toBe(true);
+  }
+  for (const path of [
+    "/",
+    "/memory",
+    "/api/file?app=books&id=nothing-here",
+    "/?c=99999999-9999-4999-8999-999999999999",
+  ]) {
+    // Node's fetch keeps no cookies: each request is a first visit.
+    const response = await fetch(
+      new URL(path, test.info().project.use.baseURL!).href,
+      { redirect: "manual" },
+    );
+    await response.arrayBuffer();
+    expect(response.status, path).toBeLessThan(500);
+  }
+  // Local workerd makes a file for every object a request reaches; none of
+  // the new ones may hold anything.
+  const reached = objectFiles().filter((path) => !before.has(path));
+  expect(
+    reached
+      .map((path) => [path, storedIn(path)])
+      .filter(([, held]) => held.length),
+  ).toEqual([]);
 });
 
 test("the wrapper refuses a method /api/ does not take, and a body with no length", async ({

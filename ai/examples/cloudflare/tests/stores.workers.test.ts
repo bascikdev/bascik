@@ -76,13 +76,32 @@ describe("ReaderData", () => {
     expect((await stores.files.get(READER, "f4"))?.bytes[0]).toBe(4);
   });
 
-  it("a read writes nothing: no alarm, no data", async () => {
+  it("a read or a delete writes nothing: no alarm, no tables, no data", async () => {
     const stores = readerStores(bindings.READER, { prefix: "reads:" });
     expect(await stores.conversations.list(READER)).toEqual([]);
+    expect(await stores.conversations.summaries!(READER)).toEqual([]);
+    expect(await stores.conversations.load(READER, "c1")).toBeNull();
     expect(await stores.memories.list(READER)).toEqual([]);
+    expect(await stores.memories.search(READER, "tea", 5)).toEqual([]);
+    expect(await stores.files.get(READER, "f1")).toBeNull();
+    await stores.conversations.delete!(READER, "c1");
+    expect(await stores.memories.remove(READER, "m1")).toBe(false);
+    await stores.files.remove(READER, "f1");
     await runInDurableObject(objectOf("reads:"), async (_, state) => {
       expect(await state.storage.getAlarm()).toBeNull();
+      // Making the tables would be a write: a visitor who only looks keeps nothing.
+      const tables = state.storage.sql
+        .exec<{
+          name: string;
+        }>("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .toArray()
+        .map((row) => row.name)
+        .filter((name) => !name.startsWith("_cf_"));
+      expect(tables).toEqual([]);
     });
+    // The first write still makes them.
+    await stores.memories.add(READER, { id: "m1", text: "tea", created: 1 });
+    expect(await stores.memories.remove(READER, "m1")).toBe(true);
   });
 
   it("forgets everything 24 hours after the last write, and works again after", async () => {

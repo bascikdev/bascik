@@ -917,6 +917,7 @@ function runContext(
       "docs",
       "skills",
       "ai",
+      "ai-cloudflare",
       "extension",
       "adapter-cloudflare",
       "adapter-netlify",
@@ -1376,6 +1377,85 @@ describe("CI stages and the deploy stage", () => {
       expect(jobs.get(id)!.needs, id).toContain("e2e-extension");
   });
 
+  it("tests the @bascik/ai Workers example in stage 4, in local workerd only, before anything deploys", () => {
+    const job = jobs.get("ai-cf");
+    expect(job, "ai-cf job").toBeDefined();
+    expect(job!.stage).toBe(4);
+    expect(job!.needs).toEqual(jobs.get("e2e-ai")!.needs);
+    expect(job!.if).toContain("needs.test-gate.result == 'success'");
+    expect(job!.if).toContain(
+      "needs.changes.outputs.run-ai-cloudflare == 'true'",
+    );
+    const runs = job!.body.filter((line) => /^ {8}run: /.test(line));
+    expect(runs.map((line) => line.trim())).toEqual([
+      "run: corepack enable",
+      "run: yarn install --immutable",
+      "run: yarn pkg:build && yarn adapter:cf:build",
+      "run: npx playwright install chromium",
+      "run: yarn ai:cf:build",
+      "run: yarn ai:cf:unit",
+      "run: yarn ai:cf:e2e",
+    ]);
+    // wrangler dev only: never an upload, a preview or a deploy.
+    expect(job!.body.join("\n")).not.toMatch(
+      /wrangler (?:deploy|versions|preview)|CLOUDFLARE_API_TOKEN/,
+    );
+    for (const id of [
+      "e2e-gate",
+      "deploy-docs",
+      "deploy-demo",
+      "deploy-netlify",
+      "deploy-templates",
+    ])
+      expect(jobs.get(id)!.needs, id).toContain("ai-cf");
+    expect(jobs.get("e2e-gate")!.if).toContain(
+      "(needs.changes.outputs.run-ai-cloudflare != 'true' || needs.ai-cf.result == 'success')",
+    );
+    // A failing example blocks every Preview; a run that does not select it still previews.
+    const failed = simulate(
+      jobs,
+      runContext("push", "refs/heads/feature/x"),
+      new Set(["ai-cf"]),
+    );
+    for (const id of ["e2e-gate", "deploy-docs", "deploy-demo"])
+      expect(failed.ran.has(id), id).toBe(false);
+    const unselected = simulate(
+      jobs,
+      runContext("push", "refs/heads/feature/x", {
+        suiteFlags: { "ai-cloudflare": false },
+      }),
+    );
+    expect(unselected.ran.has("ai-cf")).toBe(false);
+    expect(unselected.ran.has("deploy-docs")).toBe(true);
+  });
+
+  it("selects the Workers example for @bascik/ai, Cloudflare adapter and shared changes, and not for others", () => {
+    for (const path of [
+      "ai/src/app.ts",
+      "ai/examples/cloudflare/do/reader-data.ts",
+      "adapters/cloudflare/src/index.ts",
+      "pkg/src/lib/compiler.ts",
+      "yarn.lock",
+    ])
+      expect(changedWorkspaces([path])["run-ai-cloudflare"], path).toBe("true");
+    for (const path of [
+      "adapters/netlify/src/index.ts",
+      "create/src/scaffold.ts",
+      "docs/src/pages/index.html",
+      "docs/content/ai/scaling.md",
+    ])
+      expect(changedWorkspaces([path])["run-ai-cloudflare"], path).toBe(
+        "false",
+      );
+    expect(
+      changedWorkspaces(["ai/examples/cloudflare/worker.ts"]),
+    ).toMatchObject({
+      "run-ai": "true",
+      "run-adapter-cloudflare": "false",
+      "run-pkg": "false",
+    });
+  });
+
   it.each([
     ["integration-pkg", "node24"],
     ["node-floor", "node24.21"],
@@ -1420,9 +1500,10 @@ describe("CI stages and the deploy stage", () => {
       JSON.parse(readFileSync(join(repoDir, "package.json"), "utf8"))
         .scripts as Record<string, string>,
     ).filter((name) =>
-      /^(?:pkg|create|docs|ext|adapter:cf|lsp|skills):e2e$/.test(name),
+      /^(?:pkg|create|docs|ext|adapter:cf|lsp|skills|ai|ai:cf):e2e$/.test(name),
     );
     expect(scripts).toContain("ext:e2e");
+    expect(scripts).toContain("ai:cf:e2e");
     const runs = [...jobs.values()].flatMap((job) => job.body);
     const missing = scripts.filter(
       (script) =>

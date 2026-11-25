@@ -5,6 +5,7 @@ type Workspace =
   | "docs"
   | "skills"
   | "ai"
+  | "ai-cloudflare"
   | "extension"
   | "adapter-cloudflare"
   | "adapter-netlify";
