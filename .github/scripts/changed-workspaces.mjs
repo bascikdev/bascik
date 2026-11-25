@@ -8,7 +8,7 @@ const ROOT_SUITES = [
   "lsp",
   "docs",
   "skills",
-  "genui",
+  "ai",
   "extension",
   "adapter-cloudflare",
   "adapter-netlify",
@@ -94,7 +94,7 @@ export function changedWorkspaces(paths, { all = false } = {}) {
         path.startsWith(".github/skills/")
       )
         suites.skills = true;
-      else if (path.startsWith("genui/")) suites.genui = true;
+      else if (path.startsWith("ai/")) suites.ai = true;
       else if (path.startsWith("extensions/vscode-bascik/"))
         suites.extension = true;
       else if (
@@ -141,7 +141,7 @@ export function changedWorkspaces(paths, { all = false } = {}) {
         suites.create ||
         suites.lsp ||
         suites.skills ||
-        suites.genui ||
+        suites.ai ||
         suites.extension ||
         suites["adapter-cloudflare"] ||
         suites["adapter-netlify"],

@@ -46,8 +46,8 @@ shop/catalog/source.json
 shop/printful-openapi.json
 shop/src/pages/assets/shop.js
 
-# Conversations the genui demo stores while it runs
-genui/demo/.data/
+# Conversations the ai demo stores while it runs
+ai/demo/.data/
 
 # Temporary checkouts made by coding agents
 .claude/worktrees/

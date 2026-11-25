@@ -129,7 +129,7 @@ describe.skipIf(process.platform === "win32")("publish-npm.sh", () => {
         version: "0.2.0-rc.1",
         publishConfig: { access: "public", types: "./dist/index.d.ts" },
       },
-      { tag: "genui-v0.2.0-rc.1", prefix: "genui-v" },
+      { tag: "ai-v0.2.0-rc.1", prefix: "ai-v" },
     );
     expect(result.status).toBe(0);
     expect(result.calls[1]).toMatch(

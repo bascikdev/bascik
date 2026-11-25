@@ -68,4 +68,4 @@ A package of components a model may write is published the same way. Two things 
 - **Put the catalog in its own subfolder** of the components directory, such as `components/support/`. `bascik add` keeps subfolders, so the consumer can pass `src/components/support` to `readCatalog` without picking up their other components.
 - **Write each `@bascik` description for a model.** Say what the component is for and when to use it, in a sentence or two. The description ships to the consumer as part of their prompt.
 
-See [Catalog](/genui/catalog) for what a catalog component is.
+See [Catalog](/ai/catalog) for what a catalog component is.

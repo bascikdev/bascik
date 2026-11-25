@@ -6,14 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 `@bascik/adapter-cloudflare`, `@bascik/adapter-netlify`, `@bascik/language-server`,
-`@bascik/genui`, the VS Code extension, and the public agent skills. A bullet names its package when
+`@bascik/ai`, the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
 ## [Unreleased]
 
 ### Added
 
-- `@bascik/genui` 0.1.0 (experimental): generative UI for Bascik. A model streams prose and component tags, and Bascik renders the tags from your own catalog as scoped HTML while the reply is still arriving, so a reply needs no client JavaScript. It has adapters for Claude, OpenAI-compatible servers, and the OpenAI Responses API, tools with approval, voice sessions, and Mermaid diagrams, and `npx bascik add @bascik/genui` copies its catalog and chat components into your project. The API may change between 0.x releases. See [Generative UI](https://bascik.dev/genui).
+- `@bascik/ai` 0.1.0 (experimental): generative UI for Bascik. A model streams prose and component tags, and Bascik renders the tags from your own catalog as scoped HTML while the reply is still arriving, so a reply needs no client JavaScript. It has adapters for Claude, OpenAI-compatible servers, and the OpenAI Responses API, tools with approval, voice sessions, and Mermaid diagrams, and `npx bascik add @bascik/ai` copies its catalog and chat components into your project. The API may change between 0.x releases. See [Generative UI](https://bascik.dev/ai).
 
 ### Changed
 

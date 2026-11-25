@@ -141,7 +141,7 @@ This repository has six independently versioned npm packages (plus the VS Code e
 | `create-bascik` (`create/`)                           | `create-v<semver>`             |
 | `@bascik/adapter-cloudflare` (`adapters/cloudflare/`) | `adapter-cloudflare-v<semver>` |
 | `@bascik/adapter-netlify` (`adapters/netlify/`)       | `adapter-netlify-v<semver>`    |
-| `@bascik/genui` (`genui/`)                            | `genui-v<semver>`              |
+| `@bascik/ai` (`ai/`)                                  | `ai-v<semver>`                 |
 | `@bascik/language-server` (`lsp/`)                    | `lsp-v<semver>`                |
 
 [RELEASING.md](https://github.com/bascikdev/bascik/blob/main/RELEASING.md) has the release checklist, the publish order across packages, the one-time setup, and the release candidate walkthrough. `CHANGELOG.md` at the repository root records every user-visible change under `[Unreleased]`; a release moves that section under the new version and pushes the tag.

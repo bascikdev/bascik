@@ -274,7 +274,7 @@ describe("release.yml publishes only commits on main", () => {
       "release-create",
       "release-adapter-cloudflare",
       "release-adapter-netlify",
-      "release-genui",
+      "release-ai",
       "release-language-server",
       "release-extension",
     ]);

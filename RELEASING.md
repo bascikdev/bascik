@@ -15,9 +15,9 @@ Every release goes through one pull request and then `yarn release`:
    package's tags (`[create-bascik 1.1.1]: .../compare/create-v1.1.0...create-v1.1.1`).
    Remove the `## [Unreleased]` heading when nothing is left under it.
 2. **Versions and ranges.** Bump `version` in each package that changed: `pkg/`,
-   `create/`, `adapters/cloudflare/`, `adapters/netlify/`, `lsp/`, `genui/`,
+   `create/`, `adapters/cloudflare/`, `adapters/netlify/`, `lsp/`, `ai/`,
    `extensions/vscode-bascik/`. Then the ranges that must include the new versions:
-   `pkg/package.json` peer `@bascik/language-server`, both adapters' and `genui/`'s peer and dev
+   `pkg/package.json` peer `@bascik/language-server`, both adapters' and `ai/`'s peer and dev
    `@bascik/bascik`, `BASCIK_VERSION` and the dependency ranges in
    `create/src/scaffold.ts`, and `examples/starter-site/package.json`.
    `pkg/e2e/scripts/release-manifests.test.ts` fails when a range excludes a version.
@@ -47,7 +47,7 @@ Then, with the `.nvmrc` Node, Git, and an authenticated GitHub CLI:
 ```sh
 yarn release                       # Publish all seven artifacts
 yarn release pkg lsp               # Publish only selected packages
-yarn release create cloudflare netlify genui
+yarn release create cloudflare netlify ai
 yarn release extension             # Marketplace stable
 yarn release extension --extension-pre
 yarn release --latest               # Print npm dist-tag commands; does not release
@@ -55,17 +55,17 @@ yarn release pkg create --latest    # Print commands for selected npm packages
 yarn release --dry-run             # Print tag-push commands without publishing
 ```
 
-1.0.0 bumps six artifacts, so the plain `yarn release` is its command, and `@bascik/genui`
+1.0.0 bumps six artifacts, so the plain `yarn release` is its command, and `@bascik/ai`
 (experimental, versioned from 0.1.0) joins it only once its version is on `main`. The
 script refuses a tag that already exists, so a later release that leaves a package's
-version alone must name the packages it does ship (for the first genui release alone:
-`yarn release genui`).
+version alone must name the packages it does ship (for the first ai release alone:
+`yarn release ai`).
 
 Versions come from fetched `origin/main`, not your working tree. One pinned
 commit ships in stages:
 
 1. Language server + Bascik.
-2. Scaffold + Cloudflare and Netlify adapters + generative UI (`@bascik/genui`).
+2. Scaffold + Cloudflare and Netlify adapters + generative UI (`@bascik/ai`).
 3. VS Code extension.
 
 The script waits for successful Actions runs and npm availability between stages.
@@ -144,12 +144,12 @@ gh api repos/bascikdev/bascik/rulesets/24332486 \
   | gh api -X PUT repos/bascikdev/bascik/rulesets/24332486 --input -
 ```
 
-**Protect the generative UI tag.** The same ruleset needs `genui-v*` as well. Run it
+**Protect the generative UI tag.** The same ruleset needs `ai-v*` as well. Run it
 once (after the Netlify command above, if that one is still pending):
 
 ```sh
 gh api repos/bascikdev/bascik/rulesets/24332486 \
-  | jq '.conditions.ref_name.include += ["refs/tags/genui-v*"]
+  | jq '.conditions.ref_name.include += ["refs/tags/ai-v*"]
         | {name, target, enforcement, conditions, rules, bypass_actors}' \
   | gh api -X PUT repos/bascikdev/bascik/rulesets/24332486 --input -
 ```
@@ -172,27 +172,27 @@ gh api repos/bascikdev/bascik/rulesets/20648919 \
 Read `DEPLOYMENT.md` ("One test run per commit") before adding any other required check:
 a skipped job of the same name passes.
 
-## First release of `@bascik/genui` (by hand, once)
+## First release of `@bascik/ai` (by hand, once)
 
-The release workflow can publish `@bascik/genui`, but the package does not exist on npm yet,
+The release workflow can publish `@bascik/ai`, but the package does not exist on npm yet,
 and trusted publishing is configured per existing package. A maintainer with publish rights
 does these steps once; none can be done from a checkout:
 
-- [ ] **First publish.** From `genui/` on the merged commit, with the `.nvmrc` Node and an
-      npm login that can publish under `@bascik`: `yarn pack --out /tmp/bascik-genui.tgz`
+- [ ] **First publish.** From `ai/` on the merged commit, with the `.nvmrc` Node and an
+      npm login that can publish under `@bascik`: `yarn pack --out /tmp/bascik-ai.tgz`
       (npm ignores `publishConfig.exports`, so never run a bare `npm publish` here), then
-      `npm publish /tmp/bascik-genui.tgz --access public`. This is a manual publish of
+      `npm publish /tmp/bascik-ai.tgz --access public`. This is a manual publish of
       0.1.0 without provenance. The release script skips a version that is already on npm,
-      so the `genui-v0.1.0` tag, if pushed afterwards, still succeeds.
-- [ ] **Trusted publisher.** On npmjs.com, open `@bascik/genui` > Settings > Trusted
+      so the `ai-v0.1.0` tag, if pushed afterwards, still succeeds.
+- [ ] **Trusted publisher.** On npmjs.com, open `@bascik/ai` > Settings > Trusted
       publisher and add GitHub Actions: organization `bascikdev`, repository `bascik`,
       workflow filename `release.yml`, no environment. Later releases (0.1.1 and on)
       publish from CI with provenance.
-- [ ] **Tag rule.** Add `genui-v*` to the "Tag Rules" ruleset (command under "Repository
+- [ ] **Tag rule.** Add `ai-v*` to the "Tag Rules" ruleset (command under "Repository
       settings").
-- [ ] **Verify.** `npm view @bascik/genui dist-tags` shows `latest`, and an empty project
-      with `@bascik/bascik` installed runs `npm install @bascik/genui` then
-      `npx bascik add @bascik/genui`.
+- [ ] **Verify.** `npm view @bascik/ai dist-tags` shows `latest`, and an empty project
+      with `@bascik/bascik` installed runs `npm install @bascik/ai` then
+      `npx bascik add @bascik/ai`.
 
 ## Failed releases
 

@@ -30,7 +30,7 @@ const PUBLISHED = [
   "adapters/cloudflare",
   "adapters/netlify",
   "lsp",
-  "genui",
+  "ai",
 ];
 const DEPENDENCY_FIELDS = [
   "dependencies",
@@ -157,13 +157,13 @@ describe("published package manifests", () => {
     expect(satisfies(pkg.version, dev!), `${pkg.version} vs ${dev}`).toBe(true);
   });
 
-  // genui's own dev dependency keeps Yarn linking the workspace, and its peer
+  // ai's own dev dependency keeps Yarn linking the workspace, and its peer
   // range is what a user's install is checked against.
-  it("genui's peer and dev ranges on @bascik/bascik include pkg's version", () => {
-    const genui = manifest("genui");
+  it("ai's peer and dev ranges on @bascik/bascik include pkg's version", () => {
+    const ai = manifest("ai");
     const pkg = manifest("pkg");
-    const peer = genui.peerDependencies?.["@bascik/bascik"];
-    expect(genui.devDependencies?.["@bascik/bascik"]).toBe(peer);
+    const peer = ai.peerDependencies?.["@bascik/bascik"];
+    expect(ai.devDependencies?.["@bascik/bascik"]).toBe(peer);
     expect(satisfies(pkg.version, peer!), `${pkg.version} vs ${peer}`).toBe(
       true,
     );
@@ -215,11 +215,11 @@ describe("release.yml instructions", () => {
     expect(install).toBeLessThan(job.indexOf("run: yarn test:ci"));
   });
 
-  it("documents the genui tag", () => {
+  it("documents the ai tag", () => {
     expect(workflow).toMatch(
-      /^#.*git tag genui-v1\.0\.0 origin\/main && git push origin genui-v1\.0\.0$/m,
+      /^#.*git tag ai-v1\.0\.0 origin\/main && git push origin ai-v1\.0\.0$/m,
     );
-    expect(workflow).toContain('- "genui-v*.*.*"');
+    expect(workflow).toContain('- "ai-v*.*.*"');
   });
 
   it("tags origin/main and pushes each documented tag by name to origin", () => {

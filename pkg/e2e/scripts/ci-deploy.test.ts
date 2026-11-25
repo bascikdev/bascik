@@ -916,7 +916,7 @@ function runContext(
       "lsp",
       "docs",
       "skills",
-      "genui",
+      "ai",
       "extension",
       "adapter-cloudflare",
       "adapter-netlify",
