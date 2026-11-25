@@ -361,7 +361,7 @@ export function azureVoiceLiveVoice(
         response.statusCode = 404;
         response.end();
       });
-      server.on("upgrade", (request, socket) => {
+      server.on("upgrade", (request, socket, head) => {
         socket.on("error", () => {});
         const id = new URL(request.url ?? "/", "http://relay").searchParams.get(
           "ticket",
@@ -380,7 +380,8 @@ export function azureVoiceLiveVoice(
             refuseUpgrade(socket, 401);
             return;
           }
-          const browser = acceptWebSocket(request, socket);
+          // Frames sent with the handshake are in `head`, not socket data.
+          const browser = acceptWebSocket(request, socket, head);
           if (browser) void connect(browser, ticket);
         })();
       });
