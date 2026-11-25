@@ -178,7 +178,8 @@ export interface FileLimits {
    * The most bytes of files one model request may carry, counted from the
    * newest file back; older files are named to the model instead. The
    * newest message's files are always sent, so this cannot be below
-   * `maxTotalBytes`. Default 20 MB, or `maxTotalBytes` when that is larger.
+   * `maxTotalBytes`. `Infinity` means no cap. Default 20 MB, or
+   * `maxTotalBytes` when that is larger.
    */
   maxAttachedBytes?: number;
   /**
@@ -203,25 +204,36 @@ export interface ResolvedFileLimits {
 }
 
 /**
- * The limits with their defaults filled in. A `maxAttachedBytes` that is not
- * a positive whole number, or that is below `maxTotalBytes` (so a message
- * the app accepted could not be sent to the model), is a mistake in the
- * app's options and throws when the app starts.
+ * The limits with their defaults filled in. A `maxAttachedBytes` the app
+ * sets must be a positive whole number of bytes, or `Infinity` for no cap,
+ * and not below `maxTotalBytes` (so a message the app accepted could always
+ * be sent to the model); a mistake throws when the app starts. Left unset,
+ * it is 20 MB or `maxTotalBytes` when that is larger, whatever
+ * `maxTotalBytes` is, so lifting the per-message cap never throws.
  */
 export function resolveLimits(limits: FileLimits = {}): ResolvedFileLimits {
   const maxTotalBytes = limits.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES;
-  const maxAttachedBytes =
-    limits.maxAttachedBytes ??
-    Math.max(DEFAULT_MAX_ATTACHED_BYTES, maxTotalBytes);
-  if (!Number.isSafeInteger(maxAttachedBytes) || maxAttachedBytes <= 0) {
-    throw new RangeError(
-      `fileLimits.maxAttachedBytes must be a positive whole number of bytes, not ${maxAttachedBytes}.`,
-    );
-  }
-  if (maxAttachedBytes < maxTotalBytes) {
-    throw new RangeError(
-      `fileLimits.maxAttachedBytes (${maxAttachedBytes}) cannot be below fileLimits.maxTotalBytes (${maxTotalBytes}): the newest message's files are always sent.`,
-    );
+  const set = limits.maxAttachedBytes;
+  let maxAttachedBytes: number;
+  if (set === undefined) {
+    // `>` rather than Math.max, so a total that is not a number keeps the
+    // default instead of making the cap NaN.
+    maxAttachedBytes =
+      maxTotalBytes > DEFAULT_MAX_ATTACHED_BYTES
+        ? maxTotalBytes
+        : DEFAULT_MAX_ATTACHED_BYTES;
+  } else {
+    if (!(set === Infinity || (Number.isInteger(set) && set > 0))) {
+      throw new RangeError(
+        `fileLimits.maxAttachedBytes must be a positive whole number of bytes, or Infinity for no cap, not ${set}.`,
+      );
+    }
+    if (set < maxTotalBytes) {
+      throw new RangeError(
+        `fileLimits.maxAttachedBytes (${set}) cannot be below fileLimits.maxTotalBytes (${maxTotalBytes}): the newest message's files are always sent.`,
+      );
+    }
+    maxAttachedBytes = set;
   }
   return {
     maxFileBytes: limits.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,

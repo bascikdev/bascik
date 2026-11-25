@@ -412,11 +412,36 @@ describe("checkUploads", () => {
     expect(() =>
       resolveLimits({ maxTotalBytes: 30 * MB, maxAttachedBytes: 20 * MB }),
     ).toThrow(/maxAttachedBytes/);
-    for (const bad of [0, -1, Number.NaN, Infinity, 1.5]) {
+    for (const bad of [0, -1, Number.NaN, -Infinity, 1.5]) {
       expect(() => resolveLimits({ maxAttachedBytes: bad })).toThrow(
         /maxAttachedBytes/,
       );
     }
+  });
+
+  it("keeps accepting an unbounded or very large maxTotalBytes", () => {
+    // An app that lifts the per-message cap without naming the per-request
+    // one gets a per-request cap that still fits a message, never an error
+    // blaming an option it did not set.
+    for (const total of [Infinity, 2 ** 60, Number.MAX_SAFE_INTEGER + 2]) {
+      expect(resolveLimits({ maxTotalBytes: total }).maxAttachedBytes).toBe(
+        total,
+      );
+    }
+    // No cap at all, or one past the safe integers, is the app's choice.
+    expect(resolveLimits({ maxAttachedBytes: Infinity }).maxAttachedBytes).toBe(
+      Infinity,
+    );
+    expect(resolveLimits({ maxAttachedBytes: 2 ** 60 }).maxAttachedBytes).toBe(
+      2 ** 60,
+    );
+    expect(
+      resolveLimits({ maxTotalBytes: Infinity, maxAttachedBytes: Infinity })
+        .maxAttachedBytes,
+    ).toBe(Infinity);
+    expect(() =>
+      resolveLimits({ maxTotalBytes: Infinity, maxAttachedBytes: 2 ** 60 }),
+    ).toThrow(/cannot be below/);
   });
 
   it("only accepts types the library knows how to check", () => {

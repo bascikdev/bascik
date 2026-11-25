@@ -139,9 +139,6 @@ function boundaryFor(text: string): string {
   return token;
 }
 
-const MARKER = /\b(begin|end)[^\p{L}\p{N}]*(file)/giu;
-const HAS_MARKER = /\b(?:begin|end)[^\p{L}\p{N}]*file/iu;
-
 /** Letters from other scripts drawn like the Latin letters of the markers. */
 const LOOK_ALIKES: Record<string, string> = {
   е: "e", // Cyrillic small ie
@@ -160,36 +157,122 @@ const LOOK_ALIKES: Record<string, string> = {
 const LOOK_ALIKE = new RegExp(`[${Object.keys(LOOK_ALIKES).join("")}]`, "gu");
 
 /**
- * A line as a reader sees it: compatibility forms (fullwidth, bold and
- * script math letters, ligatures) as their plain letters, accents and
- * zero-width or invisible characters gone, and the common look-alike
- * letters from other scripts as Latin ones.
+ * One character as a reader sees it: a compatibility form (fullwidth, bold
+ * and script math letters, ligatures) as its plain letters, an accent or a
+ * zero-width or invisible character as nothing, and a common look-alike
+ * letter from another script as the Latin one. Folding one character at a
+ * time keeps every line break where it was, so a folded text has the same
+ * lines as the original.
  */
-const fold = (line: string): string =>
-  line
+const foldChar = (char: string): string =>
+  char
     .normalize("NFKD")
     .replace(/[\p{M}\p{Cf}ᅟᅠㅤﾠ]/gu, "")
     .replace(LOOK_ALIKE, (letter) => LOOK_ALIKES[letter]!);
 
 /**
- * Any line in the file that looks like a marker, in any case, spacing,
- * punctuation, width or script, is changed so it reads as data
- * (`end-of-file`). The random boundary is what makes the real markers
- * unforgeable; this keeps a near miss from looking like one. A line that
- * only looks like a marker once folded is shown folded, so the change is
- * visible in it too.
+ * A marker word where each letter is the Latin one, in either case, or any
+ * letter outside ASCII: no fixed table can list every script's look-alikes
+ * (small capitals, Lisu, Cherokee, palochka), so any of them may stand in.
  */
-const neutralize = (text: string): string =>
-  text
-    .split("\n")
-    .map((line) => {
-      const plain = line.replace(MARKER, "$1-of-$2");
-      const folded = fold(plain);
-      return HAS_MARKER.test(folded)
-        ? folded.replace(MARKER, "$1-of-$2")
-        : plain;
-    })
-    .join("\n");
+const markerWord = (word: string): string =>
+  [...word].map((letter) => `(?:${letter}|[^\\P{L}\\x00-\\x7F])`).join("");
+
+/** A marker's shape. The gap between its words may span line breaks. */
+const MARKER = new RegExp(
+  `(?<![A-Za-z0-9_])(${markerWord("begin")}|${markerWord("end")})([^\\p{L}\\p{N}]*)(${markerWord("file")})`,
+  "giu",
+);
+const LATIN_WORD = /^(?:begin|end)$/i;
+const LATIN_FILE = /^file$/i;
+const ASCII_LETTER = /[a-z]/i;
+const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
+const MARK = /[\p{P}\p{S}]/gu;
+
+/**
+ * Whether a match of `MARKER` at `offset` in `text` reads as a marker. The
+ * Latin words always do. Once another script stands in, the match must end
+ * its word and either keep a Latin letter in each word (`end fiӏe`), or be
+ * drawn wholly in other letters at the start of a line set off the way the
+ * real markers are, after two or more dashes or other marks
+ * (`----- ꓰꓠꓓ ꓝꓲꓡꓰ`). So ordinary Cyrillic or Greek prose, where any
+ * three-letter word and four-letter word fit the shape, is left alone.
+ */
+function readsAsMarker(
+  match: string,
+  word: string,
+  file: string,
+  offset: number,
+  text: string,
+): boolean {
+  if (LATIN_WORD.test(word) && LATIN_FILE.test(file)) return true;
+  const next = String.fromCodePoint(
+    text.codePointAt(offset + match.length) ?? 32,
+  );
+  if (LETTER_OR_DIGIT.test(next)) return false;
+  if (ASCII_LETTER.test(word) && ASCII_LETTER.test(file)) return true;
+  // A marker line is set off by a short run of marks, so only the last 64
+  // characters are read: a long line costs no more than a short one.
+  const from = Math.max(0, offset - 64);
+  const window = text.slice(from, offset);
+  const lineStart = window.lastIndexOf("\n");
+  if (lineStart < 0 && from > 0 && text[from - 1] !== "\n") return false;
+  const lead = window.slice(lineStart + 1);
+  return !LETTER_OR_DIGIT.test(lead) && (lead.match(MARK)?.length ?? 0) >= 2;
+}
+
+const rewrite = (text: string): string =>
+  text.replace(
+    MARKER,
+    (match: string, word: string, _gap: string, file: string, at: number) =>
+      readsAsMarker(match, word, file, at, text) ? `${word}-of-${file}` : match,
+  );
+
+/**
+ * Anything in the file that looks like a marker, in any case, spacing,
+ * punctuation, width or script, even split across lines, is changed so it
+ * reads as data (`end-of-file`). The random boundary is what makes the real
+ * markers unforgeable; this keeps a near miss from looking like one. The
+ * check reads the file folded (see `foldChar`). The lines a marker touches
+ * are shown folded, so the change is visible in them too; every other line
+ * is shown as it was.
+ */
+function neutralize(text: string): string {
+  const folded = Array.from(text, foldChar).join("");
+  const lines = text.split("\n");
+  const foldedLines = folded.split("\n");
+  // Matches come in order, so the line count only moves forward: one pass.
+  let counted = 0;
+  let lineCount = 0;
+  const lineAt = (offset: number): number => {
+    for (; counted < offset; counted++) {
+      if (folded.charCodeAt(counted) === 10) lineCount++;
+    }
+    return lineCount;
+  };
+  const touched = new Set<number>();
+  for (const found of folded.matchAll(MARKER)) {
+    const [match, word, , file] = found;
+    if (!readsAsMarker(match, word!, file!, found.index, folded)) continue;
+    const first = lineAt(found.index);
+    const last = lineAt(found.index + match.length);
+    for (let line = first; line <= last; line++) {
+      touched.add(line);
+    }
+  }
+  const shown: string[] = [];
+  for (let line = 0; line < lines.length; line++) {
+    let last = line;
+    if (touched.has(line)) {
+      while (touched.has(last + 1)) last++;
+      shown.push(rewrite(foldedLines.slice(line, last + 1).join("\n")));
+    } else {
+      shown.push(rewrite(lines[line]!));
+    }
+    line = last;
+  }
+  return shown.join("\n");
+}
 
 /** A name as the model reads it: one line, and no quote to end it early. */
 const plainName = (name: string): string =>
