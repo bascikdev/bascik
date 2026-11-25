@@ -126,6 +126,44 @@ describe("renderMessage", () => {
     );
   });
 
+  it("holds a whole stored message to one component budget", () => {
+    const many = `<tool-note>x</tool-note>\n`.repeat(400);
+    const message: ChatMessage = {
+      role: "assistant",
+      content: "",
+      parts: [
+        { type: "text", text: many },
+        part("done", { output: "x" }),
+        { type: "text", text: many },
+        { type: "text", text: many },
+      ],
+    };
+    const html = renderMessage(message, catalog, { tools });
+    // 300 by default, the tool's note among them; far under Bascik's 1000.
+    expect(html.match(/<tool-note/g)).toHaveLength(300);
+    expect(html).toContain("left out to keep this reply a reasonable size.");
+  });
+
+  it("holds a live turn to one component budget across its text parts", async () => {
+    const many = `<tool-note>x</tool-note>\n`.repeat(200);
+    let html = "";
+    for await (const chunk of renderTurn(
+      play([
+        { type: "text", delta: many },
+        { type: "tool", part: part("running") },
+        { type: "text", delta: many },
+      ]),
+      catalog,
+      { tools, maxComponents: 250 },
+    )) {
+      html += chunk;
+    }
+    // 250 from the text, plus the tool part's note, which is sent again each
+    // time its state changes and so is not counted.
+    expect(html.match(/<tool-note/g)).toHaveLength(251);
+    expect(html).toContain("150 more items were left out");
+  });
+
   it("renders a message stored before parts existed", () => {
     expect(
       renderMessage({ role: "assistant", content: "**Hi**" }, catalog),

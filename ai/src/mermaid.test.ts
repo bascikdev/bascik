@@ -89,6 +89,17 @@ describe("mermaidFence", () => {
     ).not.toBeNull();
   });
 
+  it.each(["fill", "stroke"])(
+    "shows a style whose %s hides an external url() behind a CSS escape as code",
+    (property) => {
+      const source = `flowchart LR\n  A --> B\n  style A ${property}:\\75 rl(https://evil.example/g)`;
+      expect(fences.mermaid(source)).toBeNull();
+      expect(
+        fences.mermaid(`flowchart LR\n  A --> B\n  style A ${property}:#f00`),
+      ).toMatch(/^<figure class="diagram"/);
+    },
+  );
+
   it("remembers a diagram it has drawn", () => {
     const render = mermaidFence({ cache: 1 });
     const first = render(FLOW);
@@ -124,6 +135,30 @@ describe("safeSvg", () => {
     ],
     ["markup in a stylesheet", `<svg><style><g></g></style></svg>`],
     ["an unclosed stylesheet", `<svg><style>svg { }</svg>`],
+    [
+      "an image reference written with a CSS escape",
+      `<svg><rect fill="\\75 rl(https://example.com/x.svg#a)" /></svg>`,
+    ],
+    [
+      "an image reference with an escaped character",
+      `<svg><rect stroke="u\\rl(https://example.com/x)" /></svg>`,
+    ],
+    [
+      "an image reference written with a character reference",
+      `<svg><rect fill="&#117;rl(https://example.com/x)" /></svg>`,
+    ],
+    [
+      "an image reference written with a named character reference",
+      `<svg><rect fill="url&lpar;https://example.com/x)" /></svg>`,
+    ],
+    [
+      "an escaped url() in a stylesheet",
+      `<svg><style>rect { fill: \\55RL(https://example.com/x); }</style></svg>`,
+    ],
+    [
+      "an escaped stylesheet import",
+      `<svg><style>@\\69mport "https://example.com/x.css";</style></svg>`,
+    ],
     ["a tag it cannot read", `<svg><rect x=1 /></svg>`],
     ["a stray angle bracket", `<svg><text>a < b</text></svg>`],
   ])("rejects %s", (_, svg) => {

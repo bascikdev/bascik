@@ -38,9 +38,63 @@ const ELEMENTS: ReadonlySet<string> = new Set([
 const TAG = /<(\/?)([A-Za-z][\w:-]*)((?:\s+[\w:-]+="[^"]*")*)\s*(\/?)>/y;
 const ATTRIBUTE = /\s+([\w:-]+)="([^"]*)"/g;
 
-/** True when a `url()` in the value points anywhere but inside the document. */
-const leavesDocument = (value: string): boolean =>
-  /url\(\s*(?!#)/i.test(value) || /@import|javascript:/i.test(value);
+const BASIC_REFERENCES: Readonly<Record<string, string>> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+};
+
+const codePoint = (value: number): string =>
+  value > 0 && value <= 0x10ffff && (value < 0xd800 || value > 0xdfff)
+    ? String.fromCodePoint(value)
+    : "�";
+
+/**
+ * The text a browser's CSS parser reads: character references decoded first
+ * (an SVG attribute and stylesheet inside HTML both get them), then CSS
+ * escapes and comments. Null when it holds a named character reference other
+ * than the five basic ones, which this cannot decode and need not accept.
+ */
+function asCss(value: string): string | null {
+  let unknown = false;
+  const decoded = value.replace(
+    /&(?:#[xX]([0-9a-fA-F]+)|#([0-9]+)|([A-Za-z][A-Za-z0-9]*));?/g,
+    (_, hex?: string, decimal?: string, name?: string) => {
+      if (hex !== undefined) return codePoint(parseInt(hex, 16));
+      if (decimal !== undefined) return codePoint(parseInt(decimal, 10));
+      const known = BASIC_REFERENCES[name!];
+      if (known === undefined) unknown = true;
+      return known ?? "";
+    },
+  );
+  if (unknown) return null;
+  return decoded
+    .replace(
+      /\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\n\r\f])?|(\r\n|[\n\r\f])|([^]))/g,
+      (_, hex?: string, newline?: string, character?: string) =>
+        hex !== undefined
+          ? codePoint(parseInt(hex, 16))
+          : newline !== undefined
+            ? ""
+            : character!,
+    )
+    .replace(/\/\*[^]*?(?:\*\/|$)/g, () => "");
+}
+
+/**
+ * True when a `url()` in the value points anywhere but inside the document,
+ * tested on the text after escapes are decoded, as the browser reads it.
+ */
+const leavesDocument = (value: string): boolean => {
+  const css = asCss(value);
+  return (
+    css === null ||
+    /url\(\s*(?!#)/i.test(css) ||
+    /@import|javascript:/i.test(css)
+  );
+};
 
 /**
  * The SVG when it holds only drawing elements, no event handlers, and no
