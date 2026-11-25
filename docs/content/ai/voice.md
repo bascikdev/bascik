@@ -192,3 +192,27 @@ Gemini Live sends what the model says as text, in phrases, with no time for each
 - **Client tools are left out.** A tool the reader's browser answers (`client: true`) is not offered in a call.
 - **A call costs money while it is open.** Audio in and out is billed by the provider for as long as the call lasts.
 - **Echo.** The microphone hears the speakers. The browser's echo cancellation is on, and headphones are better.
+
+### How much a call stores
+
+A call's tool calls and views are kept in the shared store until the turn ends, and each turn is then stored in the conversation. Both are bounded, so a model, a provider, or a browser that sends too much cannot grow them without end:
+
+| Limit                  | Value                            | What happens past it                                                                                                                                                                                            |
+| :--------------------- | :------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Parts in one turn      | 64 (`MAX_VOICE_PARTS`)           | The next `show` or tool call fails, and the model is told the turn holds too much.                                                                                                                              |
+| Characters in one turn | 512,000 (`MAX_VOICE_TURN_CHARS`) | The same. A tool's output that would take the turn past it is stored as "(too long to keep)"; the model still gets the whole output.                                                                            |
+| Views kept             | 64 (`MAX_VOICE_VIEWS`)           | The oldest view is deleted. The thread on screen keeps it; a reload shows it from the stored message.                                                                                                           |
+| Speech in one turn     | 8,000 characters for each side   | The rest is cut.                                                                                                                                                                                                |
+| One conversation       | 2 MB (`maxConversationBytes`)    | A voice turn or a typed message that would take it past this is refused with 413, "This conversation is full", and a tool call in a conversation already full is told so. The reader starts a new conversation. |
+
+Typed messages and voice turns count against the same `maxConversationBytes`. Set it in `createChat` options.
+
+### Call ids
+
+A tool call is recorded under the provider's id. An id of 1 to 64 letters, digits, `_`, or `-` is kept as it is; any other is mapped to one made from its SHA-256 hash (`voiceCallId`), so two calls with one raw id are always the same call. A second call with an id already used in the turn, `show` included, is refused with "already called", and its view never replaces the first one. The browser refuses a tool call with no id instead of posting it.
+
+A call still running or approved when its turn is stored is stored as failed, "ended with the call". What it returns later is told to the model but recorded in no turn, even a later turn with a call of the same id.
+
+### No voice provider
+
+`voiceTool` and `voiceTurn` answer 404 when `createChat` has no `voice` option, as `voiceSession` does, and `voiceView` answers nothing.

@@ -61,6 +61,7 @@ import {
 import {
   finishVoiceTool,
   newVoiceTurn,
+  voiceCallId,
   noteVoiceView,
   settleVoiceTool,
   startVoiceTool,
@@ -324,6 +325,12 @@ export interface ChatOptions {
    * when `files` is set, else 256 KB.
    */
   maxBodyBytes?: number;
+  /**
+   * The most bytes one conversation holds, as stored JSON. Once a typed
+   * message or a voice turn would take it past this, it is refused with 413
+   * ("This conversation is full."), and the reader starts a new one. Default 2 MB.
+   */
+  maxConversationBytes?: number;
   /** The page the form handlers send the reader back to. Default `/`. */
   page?: string;
   /** The longest one reply may take, tools included. Default two minutes. */
@@ -448,6 +455,26 @@ const MAX_SPEECH = 8000;
 /** A voice tool call's input, as sent. */
 const MAX_TOOL_INPUT = 64_000;
 const NO_STORE = { "cache-control": "no-store" };
+
+/** `ChatOptions.maxConversationBytes` when it is not given: 2 MB. */
+const DEFAULT_MAX_CONVERSATION_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Thrown by `addMessage` when the conversation has no room for the message
+ * (see `ChatOptions.maxConversationBytes`). The handlers answer it with 413.
+ */
+export class ConversationFullError extends Error {
+  constructor() {
+    super("This conversation is full. Start a new conversation to go on.");
+    this.name = "ConversationFullError";
+  }
+}
+
+const conversationFull = (): Response =>
+  new Response(new ConversationFullError().message, {
+    status: 413,
+    headers: NO_STORE,
+  });
 /**
  * A path on this site: one slash first, never `//host` or `/\host`, and no
  * control characters (a URL parser drops a tab, so `/\t/host` is `//host`).
@@ -676,6 +703,19 @@ export function createChat(options: ChatOptions): Chat {
 
   const load: Chat["load"] = async (session, conversationId) =>
     store.load(session.reader, conversationId ?? session.conversationId ?? "");
+  const maxConversationBytes =
+    options.maxConversationBytes ?? DEFAULT_MAX_CONVERSATION_BYTES;
+  /** Whether `conversation` has room for `adding`, as stored JSON. */
+  const roomIn = (
+    conversation: Conversation,
+    adding: readonly ChatMessage[],
+  ): boolean =>
+    new TextEncoder().encode(
+      JSON.stringify({
+        ...conversation,
+        messages: [...conversation.messages, ...adding],
+      }),
+    ).length <= maxConversationBytes;
   const save: Chat["save"] = async (session, conversation) => {
     conversation.updatedAt = Date.now();
     await store.save(session.reader, conversation);
@@ -722,19 +762,19 @@ export function createChat(options: ChatOptions): Chat {
       conversation.title =
         titled?.title ?? titleOf(text || attached[0]?.name || "Files");
     }
+    const message: ChatMessage = attached.length
+      ? {
+          role: "user",
+          content: text,
+          parts: [
+            ...(text ? [{ type: "text" as const, text }] : []),
+            ...attached,
+          ],
+        }
+      : { role: "user", content: text };
+    if (!roomIn(conversation, [message])) throw new ConversationFullError();
     abandonToolCalls(conversation.messages);
-    conversation.messages.push(
-      attached.length
-        ? {
-            role: "user",
-            content: text,
-            parts: [
-              ...(text ? [{ type: "text" as const, text }] : []),
-              ...attached,
-            ],
-          }
-        : { role: "user", content: text },
-    );
+    conversation.messages.push(message);
     await save(session, conversation);
     return conversation;
   };
@@ -1226,10 +1266,18 @@ export function createChat(options: ChatOptions): Chat {
   /* Voice: the turn being recorded for each conversation. It is in the
      shared store, so a call's tool calls may land on different servers. */
 
+  /** Whether a voice provider is configured: without one, the voice handlers answer 404. */
+  const hasVoice = options.voice != null;
+  const noVoice = (): Response =>
+    new Response("This server has no voice provider.", {
+      status: 404,
+      headers: NO_STORE,
+    });
   const voiceKey = (conversationId: string): string =>
     `${ns}voice:${conversationId}`;
+  /** `call` is a `voiceCallId`, so it is short and safe in a key. */
   const viewKey = (conversationId: string, call: string): string =>
-    `${ns}view:${conversationId}:${call.slice(0, 200)}`;
+    `${ns}view:${conversationId}:${call}`;
   const readVoice = async (conversationId: string): Promise<VoiceTurn> => {
     const raw = await shared.get(voiceKey(conversationId));
     return raw === undefined ? newVoiceTurn() : (JSON.parse(raw) as VoiceTurn);
@@ -1295,10 +1343,14 @@ export function createChat(options: ChatOptions): Chat {
       const conversation = (await load(session)) ?? newConversation();
       return redirect(session, conversation.id);
     }
-    return redirect(
-      session,
-      (await addMessage(session, text, { files: attached })).id,
-    );
+    let added: Conversation;
+    try {
+      added = await addMessage(session, text, { files: attached });
+    } catch (error) {
+      if (error instanceof ConversationFullError) return conversationFull();
+      throw error;
+    }
+    return redirect(session, added.id);
   };
 
   const file: Chat["file"] = async (request) => {
@@ -1465,6 +1517,18 @@ export function createChat(options: ChatOptions): Chat {
     ) {
       return badRequest("Not a tool call.");
     }
+    if (!hasVoice) return noVoice();
+    if (!roomIn(conversation, [])) {
+      // Nothing more of this call could be stored: the model is told now.
+      return Response.json(
+        {
+          state: "failed",
+          output: `Error: ${new ConversationFullError().message}`,
+          view: false,
+        },
+        { headers: NO_STORE },
+      );
+    }
     let input: unknown;
     try {
       input = JSON.parse(raw || "{}");
@@ -1476,9 +1540,10 @@ export function createChat(options: ChatOptions): Chat {
     const catalogNow = await catalog();
     // Keep what a call shows, and no more than MAX_VOICE_VIEWS of them for
     // the conversation. Called under the turn's lock.
+    // The id the call is recorded under, and its view kept under.
+    const call = voiceCallId(callId);
     const keepView = async (turn: VoiceTurn, html: string): Promise<void> => {
       if (!html) return;
-      const call = callId.slice(0, 200);
       await shared.set(viewKey(conversation.id, call), html, VOICE_MS);
       for (const old of noteVoiceView(turn, call)) {
         await shared.delete(viewKey(conversation.id, old));
@@ -1490,7 +1555,7 @@ export function createChat(options: ChatOptions): Chat {
     const started = await updateVoice(conversation.id, async (latest) => {
       const start = startVoiceTool(
         latest,
-        { id: callId, name, input, ...(decision ? { decision } : {}) },
+        { id: call, name, input, ...(decision ? { decision } : {}) },
         tools,
         catalogNow,
         renderOptions,
@@ -1500,6 +1565,7 @@ export function createChat(options: ChatOptions): Chat {
       return start;
     });
     let result = started.result!;
+    let shown = !started.run && result.html !== "";
     if (started.run) {
       // Run with no lock held, then record what came of it.
       result = await finishVoiceTool(
@@ -1508,13 +1574,18 @@ export function createChat(options: ChatOptions): Chat {
         catalogNow,
         renderOptions,
       );
-      await updateVoice(conversation.id, async (latest) => {
-        settleVoiceTool(latest, started.run!);
+      shown = await updateVoice(conversation.id, async (latest) => {
+        // Only into the turn that claimed it: a turn stored meanwhile
+        // recorded the call as ended, and the next one is not its own, even
+        // when it holds a call with the same id.
+        if ((latest.round ?? 0) !== started.round) return false;
+        settleVoiceTool(latest, started.run!, started.round);
         await keepView(latest, result.html);
+        return result.html !== "";
       });
     }
     return Response.json(
-      { state: result.state, output: result.output, view: result.html !== "" },
+      { state: result.state, output: result.output, view: shown },
       { headers: NO_STORE },
     );
   };
@@ -1529,23 +1600,29 @@ export function createChat(options: ChatOptions): Chat {
     if (!conversation || reader === undefined || model === undefined) {
       return badRequest("Not a voice turn.");
     }
+    if (!hasVoice) return noVoice();
+    // The turn is taken either way: one with no room is dropped, not kept
+    // to be refused again.
     const messages = await updateVoice(conversation.id, (turn) =>
       voiceMessages(turn, {
         reader: reader.slice(0, MAX_SPEECH),
         model: model.slice(0, MAX_SPEECH),
       }),
     );
-    if (messages.length) {
-      abandonToolCalls(conversation.messages);
-      if (conversation.messages.length === 0) {
-        conversation.title = titleOf(
-          messages[0]!.content || "Voice conversation",
-        );
+    if (!messages.length) return new Response(null, { status: 204 });
+    // Read afresh, one change at a time, so a message sent meanwhile is kept.
+    const stored = await serialized(session, conversation.id, async () => {
+      const latest = (await load(session, conversation.id)) ?? conversation;
+      if (!roomIn(latest, messages)) return false;
+      abandonToolCalls(latest.messages);
+      if (latest.messages.length === 0) {
+        latest.title = titleOf(messages[0]!.content || "Voice conversation");
       }
-      conversation.messages.push(...messages);
-      await save(session, conversation);
-    }
-    return new Response(null, { status: 204 });
+      latest.messages.push(...messages);
+      await save(session, latest);
+      return true;
+    });
+    return stored ? new Response(null, { status: 204 }) : conversationFull();
   };
 
   return {
@@ -1564,10 +1641,15 @@ export function createChat(options: ChatOptions): Chat {
     memories,
     search,
     async voiceView(request, call) {
+      // With no voice provider there are no voice views: nothing is looked up.
+      if (!hasVoice) return "";
       const conversation = await load(sessions.identify(request));
       if (!conversation) return "";
       try {
-        return (await shared.get(viewKey(conversation.id, call))) ?? "";
+        // Under the id the call was recorded under, as voiceTool keeps it.
+        return (
+          (await shared.get(viewKey(conversation.id, voiceCallId(call)))) ?? ""
+        );
       } catch (error) {
         onError(error, "the shared store did not answer");
         return "";
