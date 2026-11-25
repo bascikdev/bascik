@@ -1209,7 +1209,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         };
         requestAnimationFrame(captions);
       } catch {
-        // A press that cancelled this attempt has already said what there is to say.
+        // A press that canceled this attempt has already said what there is to say.
         if (attempt.signal.aborted) return;
         if (call) hangUp("The call could not start.");
         else cancelStart("The call could not start.");
