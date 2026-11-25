@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   scaffold,
   FAVICON_SVG,
@@ -19,6 +19,10 @@ import {
   FAVICON_32_PNG_B64,
 } from "../scaffold.ts";
 import { SHOP_TEMPLATE } from "./shop.ts";
+
+// Every browser test here opens a page on a production server. The default 5s
+// is too short on a loaded Windows runner; tests that need longer say so.
+vi.setConfig({ testTimeout: 30_000 });
 
 const root = resolve(fileURLToPath(import.meta.url), "../../../..");
 const baseURL = "http://127.0.0.1:43931";

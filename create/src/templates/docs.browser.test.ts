@@ -5,10 +5,14 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { chromium, type Browser } from "@playwright/test";
 import { scaffold } from "../scaffold.js";
 import { DOCS_TEMPLATE } from "./docs.js";
+
+// Every browser test here opens a page on a production server. The default 5s
+// is too short on a loaded Windows runner; tests that need longer say so.
+vi.setConfig({ testTimeout: 30_000 });
 
 const exec = promisify(execFile);
 const repo = resolve(fileURLToPath(import.meta.url), "../../../..");

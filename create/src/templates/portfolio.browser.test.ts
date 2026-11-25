@@ -16,6 +16,10 @@ import {
 } from "../scaffold.ts";
 import { PORTFOLIO_TEMPLATE } from "./portfolio.ts";
 
+// Every browser test here opens a page on a production server. The default 5s
+// is too short on a loaded Windows runner; tests that need longer say so.
+vi.setConfig({ testTimeout: 30_000 });
+
 const root = resolve(fileURLToPath(import.meta.url), "../../../..");
 const url = "http://localhost:19441";
 let directory: string;
