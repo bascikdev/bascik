@@ -341,7 +341,12 @@ function voiceProviders(): Promise<VoiceProvider[]> {
           // With no key and no token given, a developer's own Azure sign-in.
           ...(env.AZURE_VOICE_LIVE_API_KEY || env.AZURE_VOICE_LIVE_TOKEN
             ? {}
-            : { token: azureCliToken }),
+            : {
+                token: async () =>
+                  (await import("./azure-cli.ts")).azureCliToken(
+                    "https://ai.azure.com/.default",
+                  ),
+              }),
           relay: { port: Number(env.AZURE_VOICE_LIVE_RELAY_PORT ?? 0) },
           // A test points this at a stand-in for the provider.
           wsBase: env.AZURE_VOICE_LIVE_WS,
@@ -361,38 +366,6 @@ function voiceProviders(): Promise<VoiceProvider[]> {
     }
     return providers;
   })());
-}
-
-/**
- * A Microsoft Entra token from the Azure CLI (`az login`), kept until five
- * minutes before it runs out. For a developer's machine: a deployed server
- * uses a managed identity or a key.
- */
-let cliToken: { value: string; until: number } | null = null;
-async function azureCliToken(): Promise<string> {
-  if (cliToken && cliToken.until > Date.now()) return cliToken.value;
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  const { stdout } = await promisify(execFile)(
-    "az",
-    [
-      "account",
-      "get-access-token",
-      "--scope",
-      "https://ai.azure.com/.default",
-      "--query",
-      "{value: accessToken, expires: expires_on}",
-      "-o",
-      "json",
-    ],
-    { timeout: 20_000 },
-  );
-  const { value, expires } = JSON.parse(stdout) as {
-    value: string;
-    expires: number;
-  };
-  cliToken = { value, until: expires * 1000 - 300_000 };
-  return value;
 }
 
 /** What a spoken conversation is told: the app's instructions, then how to speak and show. */

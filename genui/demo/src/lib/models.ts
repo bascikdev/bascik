@@ -7,6 +7,14 @@
  *   Claude              when ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN) is set
  *   Ollama              when it answers at OLLAMA_HOST (default 127.0.0.1:11434)
  *   LM Studio           when it answers at LMSTUDIO_HOST (default 127.0.0.1:1234)
+ *   oMLX                when it answers at OMLX_HOST (default 127.0.0.1:8000), with
+ *                       OMLX_API_KEY if it asks for a key
+ *   Azure               when AZURE_OPENAI_MODELS names the deployments to offer, on
+ *                       AZURE_OPENAI_ENDPOINT or the resource of AZURE_VOICE_LIVE_ENDPOINT,
+ *                       with AZURE_OPENAI_API_KEY or, without one, the Azure CLI sign-in.
+ *                       AZURE_OPENAI_REASONING_EFFORT, when set, is sent with each request.
+ *                       The model has to take tools on the chat completions API: gpt-5.4
+ *                       does, and gpt-6.1-sol does not (it wants the Responses API)
  *   OpenAI-compatible   when OPENAI_BASE_URL is set (with OPENAI_API_KEY if it needs one)
  *
  * Set GENUI_LOCAL_MODELS=0 on a deployed server so it does not look for
@@ -28,9 +36,12 @@ interface Endpoint {
   provider: string;
   group: string;
   baseUrl: string;
-  apiKey?: string;
+  /** A key, or where to get a short-lived one when it is needed. */
+  apiKey?: string | (() => Promise<string>);
   /** Names to offer without asking the server. */
   models?: string[];
+  /** Extra fields this server's requests need. */
+  body?: Record<string, unknown>;
 }
 
 type Environment = Record<string, string | undefined>;
@@ -54,6 +65,27 @@ const apiRoot = (host: string): string => {
   return `${url.replace(/\/+$/, "").replace(/\/v1$/, "")}/v1`;
 };
 
+/**
+ * The OpenAI-compatible root of an Azure resource: the one named, or the one
+ * a voice call already uses (`<name>.services.ai.azure.com` is the same
+ * resource as `<name>.openai.azure.com`).
+ */
+function azureRoot(env: Environment): string | undefined {
+  const named = env.AZURE_OPENAI_ENDPOINT?.replace(/\/+$/, "");
+  if (named) return /\/openai\/v1$/.test(named) ? named : `${named}/openai/v1`;
+  const resource = /^https:\/\/([a-z0-9-]+)\.services\.ai\.azure\.com/.exec(
+    env.AZURE_VOICE_LIVE_ENDPOINT ?? "",
+  )?.[1];
+  return resource
+    ? `https://${resource}.openai.azure.com/openai/v1`
+    : undefined;
+}
+
+const keyOf = async (
+  apiKey: Endpoint["apiKey"],
+): Promise<string | undefined> =>
+  typeof apiKey === "function" ? apiKey() : apiKey;
+
 /** The OpenAI-compatible servers this environment names. */
 export function endpointsFrom(env: Environment): Endpoint[] {
   const endpoints: Endpoint[] = [];
@@ -69,7 +101,35 @@ export function endpointsFrom(env: Environment): Endpoint[] {
         group: "LM Studio (this machine)",
         baseUrl: apiRoot(env.LMSTUDIO_HOST || "127.0.0.1:1234"),
       },
+      {
+        provider: "omlx",
+        group: "oMLX (this machine)",
+        baseUrl: apiRoot(env.OMLX_HOST || "127.0.0.1:8000"),
+        apiKey: env.OMLX_API_KEY,
+      },
     );
+  }
+  // Azure lists every model it has, not the ones deployed here, so the
+  // deployments to offer are named.
+  const azure = azureRoot(env);
+  const deployments = list(env.AZURE_OPENAI_MODELS);
+  if (azure && deployments.length > 0) {
+    endpoints.push({
+      provider: "azure",
+      group: "Azure",
+      baseUrl: azure,
+      apiKey:
+        env.AZURE_OPENAI_API_KEY ||
+        (async () =>
+          (await import("./azure-cli.ts")).azureCliToken(
+            "https://cognitiveservices.azure.com/.default",
+          )),
+      models: deployments,
+      // A model that needs a reasoning level named gets it from here.
+      ...(env.AZURE_OPENAI_REASONING_EFFORT
+        ? { body: { reasoning_effort: env.AZURE_OPENAI_REASONING_EFFORT } }
+        : {}),
+    });
   }
   if (env.OPENAI_BASE_URL) {
     endpoints.push({
@@ -117,7 +177,7 @@ export async function availableModels(
           ? endpoint.models
           : await listOpenAiCompatibleModels({
               baseUrl: endpoint.baseUrl,
-              apiKey: endpoint.apiKey,
+              apiKey: await keyOf(endpoint.apiKey),
               fetch: send,
             }),
     })),
@@ -198,7 +258,9 @@ export async function modelFor(
   const { openAiCompatibleModel } = await import("@bascik/genui/openai");
   return openAiCompatibleModel({
     baseUrl: endpoint.baseUrl,
-    apiKey: endpoint.apiKey,
+    // Asked for now: a short-lived key is fresh for this reply.
+    apiKey: await keyOf(endpoint.apiKey).catch(() => undefined),
     model: choice.name,
+    body: endpoint.body,
   });
 }

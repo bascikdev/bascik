@@ -198,6 +198,8 @@ What it did not test:
 
 The demo needs no key and no token on a developer's machine: with only `AZURE_VOICE_LIVE_ENDPOINT` set, it asks the Azure CLI (`az login`) for a Microsoft Entra token and renews it before it runs out. The first try by hand used a token exported into the shell, which stopped working after an hour with nothing on the page to say why.
 
+Typed chat can use Azure too, which showed one more limit. With `AZURE_OPENAI_MODELS` naming a deployment, the demo offers it in the model selector through the OpenAI-compatible adapter. `gpt-5.4` answered with a tool call and a `card-grid`. `gpt-6.1-sol` refused: on the chat completions API it takes function tools only with reasoning off, and it does not allow reasoning to be off, so it needs the Responses API, which no adapter here speaks. Azure's `/models` lists every model it has and not the ones deployed, so deployments are named, not discovered. The demo also looks for an oMLX server on port 8000, with `OMLX_API_KEY` when it wants a key.
+
 Not tested with Azure: a real microphone, interruption, the service's echo cancellation and noise suppression (they are turned on, and nothing was said into them), a session that reaches its time limit on the real service, and a key in place of the token.
 
 ## A UI layer without a client framework

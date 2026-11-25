@@ -126,6 +126,22 @@ describe("openAiCompatibleModel", () => {
     expect(requests[0]!.authorization).toBe("Bearer sk-test");
   });
 
+  it("sends extra request fields a server needs, without letting them replace its own", async () => {
+    const baseUrl = await serve(() => ({ events: [text("ok"), stop()] }));
+    await collect(
+      openAiCompatibleModel({
+        baseUrl,
+        model: "m",
+        body: { reasoning_effort: "low", model: "another", stream: false },
+      })(ask),
+    );
+    expect(requests[0]!.body).toMatchObject({
+      reasoning_effort: "low",
+      model: "m",
+      stream: true,
+    });
+  });
+
   const lookup: Tool = {
     name: "find_book",
     description: "Find a book by title.",

@@ -76,6 +76,80 @@ describe("availableModels", () => {
   });
 });
 
+describe("oMLX and Azure", () => {
+  it("lists what oMLX has on this machine, sending its key when one is set", async () => {
+    const seen: (string | null)[] = [];
+    const send: typeof fetch = async (input, init) => {
+      if (!String(input).startsWith("http://127.0.0.1:8000/v1")) {
+        throw new TypeError("fetch failed");
+      }
+      seen.push(new Headers(init?.headers).get("authorization"));
+      return Response.json({ data: [{ id: "mlx-community/gemma-3" }] });
+    };
+    const choices = await availableModels({ OMLX_API_KEY: "local-key" }, send);
+    expect(choices.map((choice) => choice.id)).toEqual([
+      "offline:script",
+      "omlx:mlx-community/gemma-3",
+    ]);
+    expect(seen).toEqual(["Bearer local-key"]);
+  });
+
+  it("offers the Azure deployments that are named, on the voice resource when no other is given", async () => {
+    const env = {
+      GENUI_LOCAL_MODELS: "0",
+      AZURE_VOICE_LIVE_ENDPOINT: "https://my-resource.services.ai.azure.com/",
+      AZURE_OPENAI_MODELS: "gpt-chat, gpt-small",
+      AZURE_OPENAI_API_KEY: "azure-key",
+    };
+    const choices = await availableModels(env, servers({}));
+    expect(choices.slice(1)).toEqual([
+      {
+        id: "azure:gpt-chat",
+        provider: "azure",
+        group: "Azure",
+        name: "gpt-chat",
+      },
+      {
+        id: "azure:gpt-small",
+        provider: "azure",
+        group: "Azure",
+        name: "gpt-small",
+      },
+    ]);
+    expect(endpointsFrom(env)[0]).toMatchObject({
+      baseUrl: "https://my-resource.openai.azure.com/openai/v1",
+      apiKey: "azure-key",
+    });
+    // A named endpoint wins, with or without the API path on it.
+    for (const named of [
+      "https://other.openai.azure.com",
+      "https://other.openai.azure.com/openai/v1/",
+    ]) {
+      expect(
+        endpointsFrom({ ...env, AZURE_OPENAI_ENDPOINT: named })[0]!.baseUrl,
+      ).toBe("https://other.openai.azure.com/openai/v1");
+    }
+  });
+
+  it("offers no Azure model until a deployment is named: Azure lists every model, deployed or not", () => {
+    expect(
+      endpointsFrom({
+        GENUI_LOCAL_MODELS: "0",
+        AZURE_VOICE_LIVE_ENDPOINT: "https://my-resource.services.ai.azure.com",
+      }),
+    ).toEqual([]);
+  });
+
+  it("signs in with the Azure CLI when there is no key, asked for only when a reply needs it", () => {
+    const [azure] = endpointsFrom({
+      GENUI_LOCAL_MODELS: "0",
+      AZURE_OPENAI_ENDPOINT: "https://other.openai.azure.com",
+      AZURE_OPENAI_MODELS: "gpt-chat",
+    });
+    expect(typeof azure!.apiKey).toBe("function");
+  });
+});
+
 describe("endpointsFrom", () => {
   it.each([
     ["127.0.0.1:11434", "http://127.0.0.1:11434/v1"],

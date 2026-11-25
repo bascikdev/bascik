@@ -21,6 +21,11 @@ export interface OpenAiCompatibleOptions {
   apiKey?: string;
   /** Replace `fetch`, for a test or a proxy. */
   fetch?: typeof fetch;
+  /**
+   * Extra fields for the request body, for a server that needs one, such
+   * as `{ reasoning_effort: "low" }`.
+   */
+  body?: Record<string, unknown>;
 }
 
 interface ToolCall {
@@ -124,6 +129,7 @@ export function openAiCompatibleModel(options: OpenAiCompatibleOptions): Model {
         ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
       },
       body: JSON.stringify({
+        ...options.body,
         model,
         stream: true,
         messages: toWireMessages(system, messages),
