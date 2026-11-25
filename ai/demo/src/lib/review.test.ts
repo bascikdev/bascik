@@ -54,6 +54,27 @@ describe("decisionFrom", () => {
     expect(decision?.rows).toEqual({ "FIC-014": "right", "CKB-003": "wrong" });
   });
 
+  it("keeps a fact deck's per-fact answers, and the deck's own fields win", () => {
+    const data = form({
+      app: "review",
+      kind: "facts",
+      item: "quick-facts",
+      verdict: "reviewed",
+    });
+    data.append("gift-receipt", "right");
+    data.append("sale-items", "wrong");
+    // A card the model named after a field of the form: its answer is not a row.
+    data.append("kind", "wrong");
+    data.append("ebook refunds", "right");
+    const decision = decisionFrom(data, NOW);
+    expect(decision?.kind).toBe("facts");
+    expect(decision?.verdict).toBe("reviewed");
+    expect(decision?.rows).toEqual({
+      "gift-receipt": "right",
+      "sale-items": "wrong",
+    });
+  });
+
   it.each([
     ["no item", { kind: "fact", verdict: "confirmed" }],
     ["an unknown kind", { kind: "vote", item: "a", verdict: "confirmed" }],
@@ -156,7 +177,7 @@ describe("the offline reviewer", () => {
       decide("returns-window", "fact", "confirmed"),
       user("Show my decisions so far"),
     ]);
-    expect(reply).toMatch(/^1 of 5 items are decided\./);
+    expect(reply).toMatch(/^1 of 6 items are decided\./);
     expect(reply).toContain("Continue the review");
   });
 });

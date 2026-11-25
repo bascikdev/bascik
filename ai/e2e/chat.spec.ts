@@ -64,6 +64,31 @@ test("a generated button sends the next message", async ({ page }) => {
   ).toHaveCount(3);
 });
 
+test("a swipe deck makes a shortlist of the shop's books", async ({ page }) => {
+  await send(page, "Swipe through the books for a shortlist");
+  const deck = page.getByTestId("turn-live").getByTestId("swipe-deck");
+  await expect(deck.getByTestId("swipe-card")).toHaveCount(4);
+  if (withScripts()) {
+    await deck.getByTestId("swipe-deck-yes").click();
+    await deck.getByTestId("swipe-deck-no").click();
+    await deck.getByTestId("swipe-deck-no").click();
+    await deck.getByTestId("swipe-deck-yes").click();
+  } else {
+    const cards = deck.getByTestId("swipe-card");
+    for (const [index, kept] of [true, false, false, true].entries()) {
+      await cards
+        .nth(index)
+        .getByTestId(kept ? "swipe-card-yes-input" : "swipe-card-no-input")
+        .check();
+    }
+    await deck.getByTestId("swipe-deck-done").click();
+  }
+  await settled(page);
+  const live = page.getByTestId("turn-live");
+  await expect(live).toContainText("Your shortlist has 2 of 4 books");
+  await expect(live.getByTestId("book-card")).toHaveCount(2);
+});
+
 test("search finds a past conversation, marks the words, and opens it", async ({
   page,
 }) => {
@@ -322,6 +347,34 @@ test("a review is validated item by item and every answer is recorded", async ({
   await settled(page);
   await expect(live).toContainText("I will hold CKB-003");
 
+  // Short facts in a swipe deck: right is correct, left is wrong. Without
+  // scripts it is a list of Right/Wrong choices and one button.
+  const deck = live.getByTestId("fact-swipe");
+  await expect(deck.getByTestId("fact-card")).toHaveCount(3);
+  if (withScripts()) {
+    await expect(deck.getByTestId("fact-swipe-progress")).toContainText(
+      "0 of 3 answered",
+    );
+    await deck.getByTestId("fact-swipe-correct").click();
+    await deck.getByTestId("fact-swipe-wrong").click();
+    await deck.getByTestId("fact-swipe-undo").click();
+    await deck.getByTestId("fact-swipe-wrong").click();
+    // The last answer sends the deck.
+    await deck.press("ArrowRight");
+  } else {
+    await expect(deck.getByTestId("fact-swipe-done")).toBeVisible();
+    const cards = deck.getByTestId("fact-card");
+    await cards.nth(0).getByTestId("fact-card-right-input").check();
+    await cards.nth(1).getByTestId("fact-card-wrong-input").check();
+    await cards.nth(2).getByTestId("fact-card-right-input").check();
+    await deck.getByTestId("fact-swipe-done").click();
+  }
+  await settled(page);
+  await expect(page.getByTestId("turn-user").last()).toContainText(
+    "Decision on quick-facts (facts): reviewed",
+  );
+  await expect(live).toContainText("I will not quote sale-items");
+
   // A gap: the answer is required, "I do not know" is not.
   await live.getByTestId("gap-question-unknown").click();
   await settled(page);
@@ -331,12 +384,13 @@ test("a review is validated item by item and every answer is recorded", async ({
   await live.getByTestId("plan-review-approve").click();
   await settled(page);
   const rows = live.getByRole("row");
-  await expect(rows).toHaveCount(6);
+  await expect(rows).toHaveCount(7);
   await expect(rows.nth(1)).toContainText("The emailed receipt counts.");
   await expect(rows.nth(2)).toContainText("store-credit");
   await expect(rows.nth(3)).toContainText("wrong: CKB-003");
-  await expect(rows.nth(4)).toContainText("unknown");
-  await expect(rows.nth(5)).toContainText("approved");
+  await expect(rows.nth(4)).toContainText("wrong: sale-items");
+  await expect(rows.nth(5)).toContainText("unknown");
+  await expect(rows.nth(6)).toContainText("approved");
 });
 
 test("a post that is not a review decision is refused", async ({ request }) => {

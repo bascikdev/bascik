@@ -14,7 +14,7 @@ import { scriptedModel, type Model, type Tool } from "@bascik/ai";
 
 /* ---- Decisions: what a review form posts, and where it is kept ---- */
 
-export type ReviewKind = "fact" | "rule" | "codes" | "gap" | "plan";
+export type ReviewKind = "fact" | "facts" | "rule" | "codes" | "gap" | "plan";
 
 export interface Decision {
   item: string;
@@ -22,12 +22,21 @@ export interface Decision {
   /** confirmed, wrong, unsure, approved, changes, answered, unknown, reviewed, or a branch id. */
   verdict: string;
   note: string;
-  /** Per-row answers of a code table: old code to "right" or "wrong". */
+  /** Per-row answers of a code table (old code) or a fact deck (fact id): "right" or "wrong". */
   rows: Record<string, string>;
   at: string;
 }
 
-const KINDS: readonly ReviewKind[] = ["fact", "rule", "codes", "gap", "plan"];
+const KINDS: readonly ReviewKind[] = [
+  "fact",
+  "facts",
+  "rule",
+  "codes",
+  "gap",
+  "plan",
+];
+/** The kinds whose form sends one right-or-wrong field per row. */
+const ROW_KINDS: readonly ReviewKind[] = ["codes", "facts"];
 const TOKEN = /^[\w.-]{1,64}$/;
 const MAX_NOTE = 2000;
 const MAX_ROWS = 200;
@@ -51,7 +60,7 @@ export function decisionFrom(
     return null;
   }
   const rows: Record<string, string> = {};
-  if (kind === "codes") {
+  if (ROW_KINDS.includes(kind)) {
     for (const [name, value] of form) {
       if (OWN_FIELDS.has(name) || typeof value !== "string") continue;
       if (!TOKEN.test(name) || (value !== "right" && value !== "wrong")) {
@@ -230,6 +239,25 @@ export const QUEUE: QueueItem[] = [
     ].join("\n"),
   },
   {
+    id: "quick-facts",
+    kind: "facts",
+    ask: [
+      "Three short facts from the same policy. Swipe right if a fact is correct, left if it is wrong:",
+      "",
+      `<fact-swipe item="quick-facts" question="Are these right?">`,
+      `<fact-card fact="gift-receipt" claim="A gift receipt counts as proof of purchase.">`,
+      `<source-quote source="Returns policy, section 2">A gift receipt is accepted as proof of purchase.</source-quote>`,
+      `</fact-card>`,
+      `<fact-card fact="sale-items" claim="Books bought in a sale cannot be returned.">`,
+      `<source-quote source="Returns policy, section 3">Sale items are refunded at the price paid.</source-quote>`,
+      `</fact-card>`,
+      `<fact-card fact="ebook-refunds" claim="E-books are refunded only if they were never downloaded.">`,
+      `<source-quote source="Returns policy, section 6">Digital editions can be refunded before the first download.</source-quote>`,
+      `</fact-card>`,
+      `</fact-swipe>`,
+    ].join("\n"),
+  },
+  {
     id: "refund-approval-limit",
     kind: "gap",
     ask: [
@@ -277,6 +305,14 @@ const escapeText = (value: string): string =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
 function acknowledge(decision: Decision): string {
+  if (decision.kind === "facts") {
+    const wrong = Object.entries(decision.rows)
+      .filter(([, answer]) => answer === "wrong")
+      .map(([fact]) => fact);
+    return wrong.length === 0
+      ? "All of them confirmed. I can quote each one."
+      : `Recorded. I will not quote ${wrong.join(", ")}, and the source goes to an editor; the others I can use.`;
+  }
   if (decision.kind === "codes") {
     const wrong = Object.entries(decision.rows)
       .filter(([, answer]) => answer === "wrong")
@@ -303,12 +339,11 @@ function summary(decisions: Decision[]): string {
       const flagged = Object.entries(decision.rows)
         .filter(([, answer]) => answer === "wrong")
         .map(([code]) => code);
-      const answer =
-        decision.kind === "codes"
-          ? flagged.length === 0
-            ? "all rows right"
-            : `wrong: ${flagged.join(", ")}`
-          : decision.verdict;
+      const answer = ROW_KINDS.includes(decision.kind)
+        ? flagged.length === 0
+          ? "all rows right"
+          : `wrong: ${flagged.join(", ")}`
+        : decision.verdict;
       return `<tr><td>${decision.item}</td><td>${decision.kind}</td><td>${answer}</td><td>${escapeText(decision.note)}</td></tr>`;
     }),
     "</tbody>",

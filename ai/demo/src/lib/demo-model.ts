@@ -97,9 +97,60 @@ function acknowledge(files: FilePart[], text: string): string {
   ].join("\n");
 }
 
+/**
+ * What a swipe deck of the shop's books sent: one "Title: yes" or "Title: no"
+ * line per card. Null for any other message.
+ */
+function swiped(text: string): { kept: Book[]; skipped: Book[] } | null {
+  const lines = text.split("\n").filter((line) => line.trim());
+  const kept: Book[] = [];
+  const skipped: Book[] = [];
+  for (const line of lines) {
+    const match = /^(.+): (yes|no)$/.exec(line.trim());
+    const book = match && BOOKS.find((entry) => entry.title === match[1]);
+    if (!book) return null;
+    (match[2] === "yes" ? kept : skipped).push(book);
+  }
+  return lines.length > 0 ? { kept, skipped } : null;
+}
+
 function reply(text: string): string | ModelEvent[] {
   const asked = text.toLowerCase();
   const book = findBook(text);
+
+  const deck = swiped(text);
+  if (deck) {
+    if (deck.kept.length === 0) {
+      return [
+        "None of them, then. Tell me what you are in the mood for and I will look again.",
+        "",
+        `<ask-button say="Help me choose a book">Help me choose</ask-button>`,
+      ].join("\n");
+    }
+    const best = [...deck.kept].sort(
+      (a, b) => Number(b.rating) - Number(a.rating),
+    )[0]!;
+    return [
+      `Your shortlist has ${deck.kept.length} of ${BOOKS.length} books. The best rated of them is **${best.title}**.`,
+      "",
+      grid(deck.kept),
+      "",
+      `<ask-button say="Tell me more about ${best.title}">Tell me about ${best.title}</ask-button>`,
+    ].join("\n");
+  }
+
+  if (/\b(swipe|shortlist)\b/.test(asked)) {
+    return [
+      "Swipe right on a book you would read, left on one you would not.",
+      "",
+      `<swipe-deck question="Would you read it?" yes="Keep" no="Skip">`,
+      ...BOOKS.map(
+        (entry) =>
+          `<swipe-card title="${entry.title}">${entry.author}. ${entry.blurb}</swipe-card>`,
+      ),
+      `</swipe-deck>`,
+    ].join("\n");
+  }
 
   if (/\bwhat do you (know|remember)\b|\babout me\b/.test(asked)) {
     return [

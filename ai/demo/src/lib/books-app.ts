@@ -38,6 +38,10 @@ export function booksApp(options: { delayMs: number }): ChatApp {
         say: "Compare the page counts of every book",
       },
       { label: "Help me choose", say: "Help me choose a book" },
+      {
+        label: "Swipe a shortlist",
+        say: "Swipe through the books for a shortlist",
+      },
     ],
     instructions:
       "You are a reading assistant for a small bookshop. Be brief and concrete. Call list_books before recommending, and recommend only books the shop stocks. When the reader wants a copy kept for them, call place_hold; say first, in one sentence, what you are about to hold.",

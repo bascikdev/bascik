@@ -50,6 +50,36 @@ describe("booksApp", () => {
     expect(text).toContain("Shipping Small Changes");
   });
 
+  const replyTo = async (content: string): Promise<string> => {
+    const events: ModelEvent[] = [];
+    for await (const event of booksApp({ delayMs: 0 }).offline({
+      system: "",
+      messages: [{ role: "user", content }],
+    })) {
+      events.push(event);
+    }
+    return events.filter((event) => typeof event === "string").join("");
+  };
+
+  it("offers a swipe deck of every book, and shortlists the ones kept", async () => {
+    const deck = await replyTo("Swipe through the books for a shortlist");
+    expect(deck).toContain("<swipe-deck");
+    expect(deck.match(/<swipe-card /g)).toHaveLength(4);
+
+    const kept = await replyTo(
+      "Refactoring the Monolith: yes\nPractical Type Systems: no\nShipping Small Changes: yes",
+    );
+    expect(kept).toContain("2 of 4 books");
+    expect(kept.match(/<book-card /g)).toHaveLength(2);
+    expect(kept).not.toContain("Practical Type Systems");
+
+    expect(await replyTo("Refactoring the Monolith: no")).toContain(
+      "None of them",
+    );
+    // A line that is not a book of the shop is an ordinary message.
+    expect(await replyTo("Some other book: yes")).not.toContain("shortlist");
+  });
+
   it("imports no node: module and reads no environment, so a Worker can load it", () => {
     const files = importedFiles("books-app.ts");
     expect([...files.keys()].sort()).toEqual([
