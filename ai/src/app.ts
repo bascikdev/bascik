@@ -184,9 +184,11 @@ export function cookieSessions(
     maxAgeSeconds = VISITOR_MAX_AGE,
   } = options;
   if (secret === "") throw new Error("cookieSessions: the secret is empty.");
-  if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0) {
+  // 0 would tell the browser to drop the visitor cookie at once: every
+  // request would be a new reader, and no conversation could be found again.
+  if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds < 1) {
     throw new Error(
-      "cookieSessions: maxAgeSeconds is a whole number of seconds, 0 or more.",
+      "cookieSessions: maxAgeSeconds is a whole number of seconds, 1 or more.",
     );
   }
   if (hostPrefix && !secure) {
@@ -760,6 +762,14 @@ export function createChat(options: ChatOptions): Chat {
     maxRounds,
     followLocally = true,
   } = options;
+  // NaN (an unset environment variable through Number()) would lift the cap,
+  // and 0 would stop every reply before the model is asked.
+  if (
+    maxRounds !== undefined &&
+    (!Number.isSafeInteger(maxRounds) || maxRounds < 1)
+  ) {
+    throw new Error("createChat: maxRounds is a whole number, 1 or more.");
+  }
   const store = limitConversations(options.store, options.maxConversations);
   const sessions =
     options.sessions ??
@@ -1099,8 +1109,15 @@ export function createChat(options: ChatOptions): Chat {
    * `followLocally: false`: no request reads another's entry there.
    */
   const live = new Map<string, LiveTurn>();
-  /** The turn of each entry in `live` that this server writes (not follows). */
-  const writtenHere = new WeakMap<LiveTurn, string>();
+  /**
+   * Each entry in `live` that this server writes (not follows): its turn,
+   * and when it last pushed something, so a busy reply is not looked up in
+   * the shared store on every page read.
+   */
+  const writtenHere = new WeakMap<
+    LiveTurn,
+    { turn: string; activeAt: () => number }
+  >();
 
   function startTurn(
     session: Session,
@@ -1127,7 +1144,9 @@ export function createChat(options: ChatOptions): Chat {
           onError(error, "other servers cannot follow this reply");
         });
     };
+    let activeAt = Date.now();
     const emit = (chunk: string): void => {
+      activeAt = Date.now();
       html.push(chunk);
       say({ type: "data", data: chunk });
     };
@@ -1276,7 +1295,7 @@ export function createChat(options: ChatOptions): Chat {
     };
     if (followLocally) {
       live.set(conversation.id, entry);
-      writtenHere.set(entry, held.turn);
+      writtenHere.set(entry, { turn: held.turn, activeAt: () => activeAt });
     }
     // The host keeps this request's work going until the reply is stored,
     // after the reader has gone. Called as a method: Cloudflare's
@@ -1386,26 +1405,41 @@ export function createChat(options: ChatOptions): Chat {
    * this server was writing whose writer is gone: its record ran out without
    * the entry ending (on a host that cancels a request, its timers and
    * promises can stop mid-reply). Such an entry is ended for whoever reads
-   * it and dropped, so it does not hang later readers.
+   * it and dropped, so it does not hang later readers, and its writer is
+   * told to stop in case it is still running after all.
+   *
+   * Only an entry that has gone quiet is looked up, and, as a follower does,
+   * it is given up on only when its record is missing on two looks some
+   * time apart: one look may catch a store that is briefly behind.
    */
   async function localEntry(
     conversationId: string,
   ): Promise<LiveTurn | undefined> {
     const here = live.get(conversationId);
-    const turn = here && writtenHere.get(here);
-    if (!here || turn === undefined || here.html.ended) return here;
-    try {
-      if (await writerThere(conversationId, turn)) return here;
-    } catch {
-      // Not knowing is not a reason to give up on it.
-      return here;
+    const writer = here && writtenHere.get(here);
+    if (!here || writer === undefined || here.html.ended) return here;
+    const gone = async (): Promise<boolean> => {
+      if (Date.now() - writer.activeAt() < FOLLOW_IDLE_MS) return false;
+      try {
+        return !(await writerThere(conversationId, writer.turn));
+      } catch {
+        // Not knowing is not a reason to give up on it.
+        return false;
+      }
+    };
+    if (!(await gone())) return here;
+    await sleep(WATCH_MS);
+    if (live.get(conversationId) !== here || here.html.ended) {
+      return live.get(conversationId);
     }
+    if (!(await gone())) return here;
     // A writer that finished takes its entry out before its record, so one
     // still here with no record of its turn never finished.
     if (live.get(conversationId) === here && !here.html.ended) {
       live.delete(conversationId);
       here.html.push(failedNotice(WRITER_GONE));
       here.html.end();
+      here.stop.abort();
       return undefined;
     }
     return live.get(conversationId);

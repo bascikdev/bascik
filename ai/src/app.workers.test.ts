@@ -254,7 +254,9 @@ describe("a writer that died (C3)", () => {
     vi.spyOn(globalThis, "setInterval").mockImplementation(
       (() => 1) as unknown as typeof setInterval,
     );
+    let asks = 0;
     const hung: Model = async function* () {
+      asks++;
       await new Promise(() => {});
       yield "never";
     };
@@ -266,9 +268,66 @@ describe("a writer that died (C3)", () => {
     expect((await chat.thread(page())).turn).toBe(dead);
     vi.setSystemTime(Date.now() + 16_000);
     const later = await chat.thread(page());
+    // The later page starts the reply again instead of waiting on it.
+    expect(later.turn).toBeDefined();
     expect(later.turn).not.toBe(dead);
+    expect(later.turn!.html.ended).toBe(false);
+    expect(asks).toBe(2);
     expect(dead.html.ended).toBe(true);
+    // In case the writer was still running after all, it is told to stop.
+    expect(dead.stop.signal.aborted).toBe(true);
     expect(await readAll(dead)).toContain('data-testid="turn-failed"');
+  });
+
+  it("does not look up a reply that is still busy", async () => {
+    const shared = inProcessShared();
+    const get = vi.spyOn(shared, "get");
+    const gated = gatedModel();
+    const chat = setup({ shared, model: () => gated.model });
+    await seed(chat, asked);
+    const writer = await chat.thread(page());
+    get.mockClear();
+    expect((await chat.thread(page())).turn).toBe(writer.turn);
+    expect(
+      get.mock.calls.some(
+        ([key]) => key === sharedKeys("t").turn(CONVERSATION),
+      ),
+    ).toBe(false);
+    gated.open();
+    await writer.turn!.over;
+  });
+
+  it("is not given up on when its record is missing on one look only", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const shared = inProcessShared();
+    const realGet = shared.get.bind(shared);
+    const gated = gatedModel();
+    const chat = setup({ shared, model: () => gated.model });
+    await seed(chat, asked);
+    const writer = await chat.thread(page());
+    // Quiet long enough to be looked up.
+    vi.setSystemTime(Date.now() + 3000);
+    // A store that is briefly behind misses the record once.
+    let missed = false;
+    vi.spyOn(shared, "get").mockImplementation(async (key) => {
+      if (!missed && key === sharedKeys("t").turn(CONVERSATION)) {
+        missed = true;
+        return undefined;
+      }
+      return realGet(key);
+    });
+    const reader = await chat.thread(page());
+    expect(missed).toBe(true);
+    expect(reader.turn).toBe(writer.turn);
+    expect(writer.turn!.html.ended).toBe(false);
+    expect(writer.turn!.stop.signal.aborted).toBe(false);
+    gated.open();
+    const seen = await readAll(reader.turn!);
+    expect(seen).toContain("Hello there");
+    expect(seen).not.toContain('data-testid="turn-failed"');
+    await writer.turn!.over;
+    expect((await lastMessage(chat))?.content).toBe("Hello there");
+    expect(gated.calls()).toBe(1);
   });
 });
 
@@ -304,6 +363,13 @@ describe("maxRounds (C4)", () => {
     expect((await lastMessage(chat))?.content).toContain(
       "this reply needed too many tool calls",
     );
+  });
+
+  it("refuses a cap that is not a whole number, 1 or more", () => {
+    for (const maxRounds of [Number.NaN, 0, -1, 1.5, Infinity]) {
+      expect(() => setup({ maxRounds })).toThrow(/maxRounds/);
+    }
+    expect(() => setup({ maxRounds: 1 })).not.toThrow();
   });
 
   it("defaults to 8", async () => {
@@ -391,7 +457,12 @@ describe("cookieSessions maxAgeSeconds (C6)", () => {
     expect(chatCookie).not.toMatch(/Max-Age/);
   });
 
-  it("refuses a Max-Age that is not a whole number of seconds", () => {
+  it("refuses a Max-Age that is not a whole number of seconds, 1 or more", () => {
+    // 0 would delete the visitor cookie at once, and with it every conversation.
+    expect(() => cookieSessions("t", { maxAgeSeconds: 0 })).toThrow(
+      /maxAgeSeconds/,
+    );
+    expect(() => cookieSessions("t", { maxAgeSeconds: 1 })).not.toThrow();
     expect(() => cookieSessions("t", { maxAgeSeconds: -1 })).toThrow(
       /maxAgeSeconds/,
     );
