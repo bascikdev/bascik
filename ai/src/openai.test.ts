@@ -169,6 +169,49 @@ describe("openAiCompatibleModel", () => {
     stop("tool_calls"),
   ];
 
+  it("takes a tool call with a huge index without walking a sparse array", async () => {
+    const stream = [
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 4294967294,
+                  id: "far",
+                  function: { name: "find_book", arguments: '{"title":"B"}' },
+                },
+                {
+                  index: 2,
+                  id: "near",
+                  function: { name: "find_book", arguments: '{"title":"A"}' },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      stop("tool_calls"),
+    ];
+    const fake: typeof fetch = async () =>
+      new Response(
+        `${stream.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`,
+      );
+    const model = openAiCompatibleModel({
+      baseUrl: "http://x/v1",
+      model: "m",
+      fetch: fake,
+    });
+    const started = performance.now();
+    const events: ModelEvent[] = [];
+    for await (const event of model({ ...ask, tools: [lookup] })) {
+      events.push(event);
+    }
+    expect(performance.now() - started).toBeLessThan(1000);
+    // Still in index order, as the server numbered them.
+    expect(events).toMatchObject([{ id: "near" }, { id: "far" }]);
+  });
+
   it("yields a tool call that arrived in pieces, and continues with its result", async () => {
     const baseUrl = await serve((body) =>
       body.messages.at(-1)!.role === "tool"

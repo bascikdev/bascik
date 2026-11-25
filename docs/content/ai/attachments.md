@@ -65,7 +65,9 @@ The conversation keeps only this description. The bytes stay in the file store, 
 | `@bascik/ai/openai`           | `image_url` with a data URL      | a note naming the file             | inlined as text     |
 | `@bascik/ai/openai-responses` | `input_image` with a data URL    | a note naming the file             | inlined as text     |
 
-A text file is inlined as text, up to 20,000 characters, between begin and end markers and labeled as the reader's file content, with a line saying it is data and not instructions. A file a model cannot take, or one that is no longer in the store, is never dropped silently: the model gets a short note with the file's name and type.
+A text file is inlined as text, up to 20,000 characters, between begin and end markers and labeled as the reader's file content, with a line saying it is data and not instructions. Each marker carries a random boundary made for that file, so text inside the file cannot close the block, and any line in the file that looks like a marker, in any case or spacing, is changed to read `end-of-file`. A file a model cannot take, or one that is no longer in the store, is never dropped silently: the model gets a short note with the file's name and type.
+
+A model request carries only recent files: those of the last 3 user messages that have files, up to 20 MB in all, counted from the newest file back. Each older file is named in a short note saying it was attached earlier and is not sent again, so the model can ask the reader to attach it again. Without this, every reply in a long conversation would read and send every file ever attached. A turn reads each file from the store once, however many tool rounds it takes. `readAttachments` applies this window, so your own model function gets it too.
 
 Your own model function receives the same `ModelRequest`. `userPieces(message, attachments, accepts)` and `readAttachments(messages, readFile)` from `@bascik/ai` make the same decisions the adapters make, so you can build the wire format of any other API from them.
 
@@ -105,12 +107,13 @@ The library enforces these. A route or a component does not have to.
 | Files per message | 4                                                    | `fileLimits.maxFiles`         |
 | Bytes per message | 10 MB                                                | `fileLimits.maxTotalBytes`    |
 | Types accepted    | PNG, JPEG, WebP, GIF, PDF, plain text, Markdown, CSV | `fileLimits.types` (a subset) |
+| Files per request | those of the last 3 messages with files, 20 MB       | none (older files are named)  |
 
 A request whose declared size is far past the total is turned away before it is read.
 
 **The type is decided by the bytes.** A PNG, JPEG, GIF, WebP or PDF is recognized by its leading bytes. A text type must be valid UTF-8 with no control characters besides tab, line feed and carriage return, so a file with a NUL byte is refused. The type the browser sent and the file extension never make a file acceptable: they only choose between plain text, Markdown and CSV, and they refuse a file that says one thing and is another (a page that claims to be a PNG). A PNG renamed `.txt` is stored as the PNG it is.
 
-**SVG and HTML are never accepted.** A file is refused when it claims to be HTML, SVG or XML by its type or its name, or when its text starts like one. `fileLimits.types` can only narrow the default list, because these are the types the library knows how to check.
+**SVG and HTML are never accepted.** A file is refused when it claims to be HTML, SVG or XML by its type or its name, or when its text starts like one. The name is checked without invisible characters and trailing dots or spaces, both as sent and as it will be stored, so `report.html` followed by a zero-width space is refused too. `fileLimits.types` can only narrow the default list, because these are the types the library knows how to check.
 
 **Files are served only to their reader.** `file` looks the id up under the session's reader, so another reader, or no reader, gets a 404. Every response carries `X-Content-Type-Options: nosniff`, `Cache-Control: private`, and `Content-Security-Policy: default-src 'none'; sandbox`. Images are sent inline with their checked type. Everything else is sent with `Content-Disposition: attachment` and a filename that is safe in a header, in both the plain and the encoded form.
 

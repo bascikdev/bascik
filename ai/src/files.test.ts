@@ -210,6 +210,30 @@ describe("sniffFile: the bytes decide", () => {
     expect(sniffFile(text(content), type, name)).toEqual({ refused: "markup" });
   });
 
+  it.each([
+    "report.html​",
+    "pic.svg﻿",
+    "x.html‮",
+    "report.html.",
+    "report.html .. ",
+    "report.htm⁠l",
+    "page.xhtml\u0007",
+    `${"a".repeat(115)}.htmlmore`,
+  ])(
+    "refuses a markup name hidden behind characters the stored name drops: %j",
+    async (name) => {
+      const content = "Notes\n<html><body><script>alert(1)</script>";
+      expect(sniffFile(text(content), "text/plain", name)).toEqual({
+        refused: "markup",
+      });
+      const checked = await checkUploads(
+        [new File([content], name, { type: "text/plain" })],
+        resolveLimits(),
+      );
+      expect(checked.ok).toBe(false);
+    },
+  );
+
   it("refuses a text file with a NUL byte, and other binary bytes", () => {
     expect(
       sniffFile(bytes(0x68, 0x69, 0x00, 0x21), "text/plain", "a.txt"),

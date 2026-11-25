@@ -284,6 +284,31 @@ The message box. A plain form that posts to /api/send, so sending works with no 
       BY_EXTENSION[file.name.split(".").pop()!.toLowerCase()] ||
       "";
 
+    /**
+     * The server's name check (`claimsMarkup` in files.ts): the extension is
+     * read without invisible characters or trailing dots and spaces, both as
+     * sent and as `cleanName` will store it.
+     */
+    const bare = (name: string): string =>
+      name.replace(/[\p{Cc}\p{Cf}]/gu, "").replace(/[\s.]+$/u, "");
+    const stored = (name: string): string =>
+      [
+        ...(name.split(/[\\/]/).pop() ?? "")
+          .replace(
+            // eslint-disable-next-line no-control-regex
+            /[\u0000-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]/g,
+            " ",
+          )
+          .replace(/\s+/g, " ")
+          .trim(),
+      ]
+        .slice(0, 120)
+        .join("")
+        .trim();
+    const markupName = (name: string): boolean =>
+      /\.(html?|xhtml|svg|svgz|xml)$/i.test(bare(name)) ||
+      /\.(html?|xhtml|svg|svgz|xml)$/i.test(bare(stored(name)));
+
     let chosen: File[] = [];
     const previews = new Map<File, string>();
 
@@ -296,7 +321,7 @@ The message box. A plain form that posts to /api/send, so sending works with no 
       const type = claimed(file);
       if (
         /^(text\/html|application\/xhtml\+xml|image\/svg\+xml|text\/xml|application\/xml)$/.test(type) ||
-        /\.(html?|xhtml|svg|svgz|xml)$/i.test(file.name)
+        markupName(file.name)
       ) {
         return `"${name}" cannot be attached: HTML and SVG files are not allowed.`;
       }
