@@ -405,8 +405,29 @@ export interface Chat {
   session(request: Request): Session;
   /** A conversation of the session's reader (the open one by default), or null. */
   load(session: Session, id?: string): Promise<Conversation | null>;
-  /** Store a conversation, stamping `updatedAt`. */
+  /**
+   * Store a conversation, stamping `updatedAt`, in turn with every other
+   * write to it. When it came from `load` and was stored again since (a
+   * spoken turn, an approval, a reply), what you changed is applied over that:
+   * messages you added follow the ones stored since, and a field you changed
+   * replaces it. Both writes changing the same earlier message is refused
+   * with an error, and nothing is stored. A conversation that did not come
+   * from `load` replaces what is stored. Prefer `change`.
+   */
   save(session: Session, conversation: Conversation): Promise<void>;
+  /**
+   * Read the reader's conversation (the open one by default, a new one when
+   * there is none), let `edit` change it, and store it, in turn with every
+   * other write to it, so no write made at the same time is lost. Returns
+   * what was stored. `edit` must not itself save, change or add a message to
+   * the same conversation: that waits for this one to finish, which never
+   * comes.
+   */
+  change(
+    session: Session,
+    edit: (conversation: Conversation) => void | Promise<void>,
+    id?: string,
+  ): Promise<Conversation>;
   /** The session's reader's conversations, newest first. */
   list(session: Session): Promise<Conversation[]>;
   /**
@@ -467,6 +488,55 @@ const MULTIPART_ROOM = 256 * 1024;
 /** A conversation's title: the first words of what began it. */
 const titleOf = (text: string): string =>
   text.length > 40 ? `${text.slice(0, 40)}…` : text;
+
+const same = (a: unknown, b: unknown): boolean =>
+  JSON.stringify(a) === JSON.stringify(b);
+/** Whether `list` begins with every item of `head`, unchanged. */
+const startsWith = (list: unknown[], head: unknown[]): boolean =>
+  list.length >= head.length && head.every((item, i) => same(item, list[i]));
+
+/**
+ * Change `ours` (`base` as it was loaded, then changed by a caller) into
+ * `latest` (what other writes stored since `base`) with the caller's changes
+ * applied over it. Messages one side added after `base` follow the other
+ * side's; a field the caller changed replaces the stored one. Both sides
+ * changing an earlier message cannot be put together, and throws.
+ */
+function applyChanges(
+  ours: Conversation,
+  base: Conversation,
+  latest: Conversation,
+): void {
+  let messages = ours.messages;
+  if (same(ours.messages, base.messages)) messages = latest.messages;
+  else if (!same(latest.messages, base.messages)) {
+    if (startsWith(ours.messages, base.messages)) {
+      messages = [
+        ...latest.messages,
+        ...ours.messages.slice(base.messages.length),
+      ];
+    } else if (startsWith(latest.messages, base.messages)) {
+      messages = [
+        ...ours.messages,
+        ...latest.messages.slice(base.messages.length),
+      ];
+    } else {
+      throw new Error(
+        `Conversation ${ours.id} was changed by another write since it was loaded, in the same messages: load it again, or use chat.change.`,
+      );
+    }
+  }
+  const fields = ours as unknown as Record<string, unknown>;
+  const was = base as unknown as Record<string, unknown>;
+  const now = latest as unknown as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
+    if (key === "id" || key === "messages" || key === "updatedAt") continue;
+    if (!same(fields[key], was[key])) continue;
+    if (key in now) fields[key] = now[key];
+    else delete fields[key];
+  }
+  ours.messages = messages;
+}
 
 const field = (form: FormData, name: string): string | undefined => {
   const value = form.get(name);
@@ -723,6 +793,41 @@ export function createChat(options: ChatOptions): Chat {
           change(await load(session, open)),
         );
   }
+  /*
+   * The public load and save, for handlers of your own. What `load` handed
+   * out is remembered as it was, so a `save` of it later can tell what the
+   * caller changed from what other writes stored in between, and keep both.
+   */
+  const loadedAs = new WeakMap<Conversation, string>();
+  const loadForCaller: Chat["load"] = async (session, conversationId) => {
+    const found = await load(session, conversationId);
+    if (found) loadedAs.set(found, JSON.stringify(found));
+    return found;
+  };
+  const saveForCaller: Chat["save"] = (session, conversation) =>
+    serialized(session, conversation.id, async () => {
+      const base = loadedAs.get(conversation);
+      if (base !== undefined) {
+        const latest = await load(session, conversation.id);
+        if (latest && JSON.stringify(latest) !== base) {
+          applyChanges(conversation, JSON.parse(base) as Conversation, latest);
+        }
+      }
+      await save(session, conversation);
+      loadedAs.set(conversation, JSON.stringify(conversation));
+    });
+  const change: Chat["change"] = (session, edit, conversationId) => {
+    const wanted = conversationId ?? session.conversationId;
+    const run = async (): Promise<Conversation> => {
+      const conversation =
+        (wanted === undefined ? null : await load(session, wanted)) ??
+        newConversation();
+      await edit(conversation);
+      await save(session, conversation);
+      return conversation;
+    };
+    return wanted === undefined ? run() : serialized(session, wanted, run);
+  };
   const addMessage: Chat["addMessage"] = async (session, text, titled) =>
     session.conversationId === undefined
       ? appendMessage(session, text, titled)
@@ -1599,8 +1704,9 @@ export function createChat(options: ChatOptions): Chat {
     store,
     files: fileStore,
     session: (request) => sessions.identify(request),
-    load,
-    save,
+    load: loadForCaller,
+    save: saveForCaller,
+    change,
     list: (session) => store.list(session.reader),
     addMessage,
     redirect,

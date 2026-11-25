@@ -459,6 +459,99 @@ describe("conversation writes", () => {
     expect(contents).toContain("One");
     expect(contents).toContain("Two");
   });
+
+  // A handler of your own that loads the conversation, changes it and saves
+  // it (as the demo's review decisions do during a call), raced against every
+  // handler that changes it: neither change may be lost.
+  const titled = async (chat: Chat) => {
+    const conversation = (await chat.load(session))!;
+    conversation.title = "Mine";
+    await chat.save(session, conversation);
+  };
+  for (const [handler, tool, act] of handlers) {
+    it(`keeps what ${handler} stored when your own handler loads and saves at the same time`, async () => {
+      const kept = async (chat: Chat) => {
+        const latest = await stored(chat, CONVERSATION);
+        expect(latest.title).toBe("Mine");
+        if (handler === "voiceTurn") {
+          expect(latest.messages.map((message) => message.content)).toContain(
+            "Spoken",
+          );
+        } else {
+          const part = latest.messages[1]!.parts![0] as ToolPart;
+          expect(part.state).not.toMatch(/requested$/);
+        }
+      };
+      // The handler first: your load reads before it stores.
+      const chat = await waiting(tool);
+      const [response] = await Promise.all([
+        act(chat),
+        new Promise((resolve) => setTimeout(resolve, 2)).then(() =>
+          titled(chat),
+        ),
+      ]);
+      expect(response.status).toBeLessThan(400);
+      await kept(chat);
+
+      // Your load first, the handler done before you save.
+      const again = await waiting(tool);
+      const mine = (await again.load(session))!;
+      expect((await act(again)).status).toBeLessThan(400);
+      mine.title = "Mine";
+      await again.save(session, mine);
+      await kept(again);
+      // What you saved is what is stored now.
+      expect(mine).toEqual(await stored(again, CONVERSATION));
+    });
+  }
+
+  it("keeps messages you add to a loaded conversation, after the ones stored since", async () => {
+    const chat = await waiting("place_hold");
+    const mine = (await chat.load(session))!;
+    await chat.addMessage(session, "theirs");
+    mine.messages.push({ role: "user", content: "mine" });
+    await chat.save(session, mine);
+    expect(await contentsOf(chat)).toEqual(["Hold Dune", "", "theirs", "mine"]);
+  });
+
+  it("refuses to save over a message another write changed too", async () => {
+    const chat = await waiting("place_hold");
+    const mine = (await chat.load(session))!;
+    const theirs = (await chat.load(session))!;
+    theirs.messages[0]!.content = "Hold Emma";
+    await chat.save(session, theirs);
+    mine.messages[0]!.content = "Hold Persuasion";
+    await expect(chat.save(session, mine)).rejects.toThrow(/changed/);
+    expect((await contentsOf(chat))[0]).toBe("Hold Emma");
+  });
+
+  it("change reads the latest conversation and stores the change in turn", async () => {
+    const chat = await waiting("place_hold");
+    const [, changed] = await Promise.all([
+      chat.voiceTurn(posted({ reader: "Spoken", model: "Said" }, CONVERSATION)),
+      new Promise((resolve) => setTimeout(resolve, 2)).then(() =>
+        chat.change(session, (conversation) => {
+          conversation.title = "Mine";
+        }),
+      ),
+    ]);
+    const latest = await stored(chat, CONVERSATION);
+    expect(latest.title).toBe("Mine");
+    expect(latest.messages.map((message) => message.content)).toContain(
+      "Spoken",
+    );
+    expect(changed).toEqual(latest);
+
+    // With no conversation open, a new one is made and stored.
+    const made = await chat.change(
+      { reader: READER, conversationId: undefined },
+      (conversation) => {
+        conversation.title = "New";
+      },
+    );
+    expect(made.id).not.toBe(CONVERSATION);
+    expect((await stored(chat, made.id)).title).toBe("New");
+  });
 });
 
 describe("form bodies have a limit", () => {

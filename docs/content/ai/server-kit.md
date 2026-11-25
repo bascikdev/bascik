@@ -160,6 +160,20 @@ export function dbStore(): ConversationStore {
 
 > **Note:** `fileStore` is a good store for one server. With several servers, use a database.
 
+### Changing a conversation in your own handler
+
+The chat's handlers change a conversation one at a time: each reads it afresh and stores it before the next one reads it. A handler of your own joins that line with `chat.change`. It reads the open conversation (a new one when none is open), lets your function change it, and stores it.
+
+```ts
+await chat.change(session, (conversation) => {
+  if (conversation.messages.length === 0) conversation.title = "Review";
+});
+```
+
+`chat.load` and `chat.save` still work. When the conversation you save came from `chat.load` and another write stored it in between, such as a spoken turn during a call, `save` keeps both. Messages you added follow the ones stored since, and a field you changed replaces the stored one. When both writes changed the same earlier message, `save` throws and stores nothing. Load it again, or use `chat.change`.
+
+> **Caution:** Inside the function you pass to `chat.change`, do not call `chat.save`, `chat.change`, or `chat.addMessage` for the same conversation. Each waits for the change in progress, which never finishes. Writes straight to `chat.store` skip the line, and writes from another server are not in it either: with several servers, the store has to settle them.
+
 ## Who the reader is
 
 A request needs a reader and the conversation that is open. `ChatSessions` gives both, and lets a response remember them.
