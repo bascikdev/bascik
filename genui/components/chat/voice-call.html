@@ -235,6 +235,8 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       );
       if (!response.ok) return;
       const page = new DOMParser().parseFromString(await response.text(), "text/html");
+      // A data attribute is not renamed per instance, so it can be selected as written.
+      // bascik-ignore js-attribute-selector
       const view = page.querySelector('[data-testid="voice-view"]');
       if (!view) return;
       const holder = document.createElement("div");

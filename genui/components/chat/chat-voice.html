@@ -173,6 +173,8 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
             text += node.textContent;
             continue;
           }
+          // A data attribute is not renamed per instance, so it can be selected as written.
+          // bascik-ignore js-attribute-selector
           const said = [node, ...node.querySelectorAll("[data-say]")]
             .map((element) => element.getAttribute("data-say")?.trim())
             .filter(Boolean);
@@ -196,6 +198,8 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
         if (playing) hush();
         return;
       }
+      // A data attribute is not renamed per instance, so it can be selected as written.
+      // bascik-ignore js-attribute-selector
       const live = document.querySelector('[data-testid="turn-live"]');
       if (live !== reply) {
         // A new reply: whatever was being said belongs to the last one.
