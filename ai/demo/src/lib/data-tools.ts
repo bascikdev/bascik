@@ -10,6 +10,12 @@
  * next query starts a fresh one. A worker thread would not do: terminating
  * one cannot interrupt SQLite's native loop, so the thread would keep a CPU
  * core busy forever. The server's own process never runs model-written SQL.
+ *
+ * A fast query can still return a huge result (200 rows of a 4 MB zeroblob),
+ * and copying and serializing that on the server would block its event loop
+ * for a minute. So the child caps the reply before it sends it: values SQLite
+ * may build, rows, bytes of JSON, and the length of each text value, with
+ * blobs replaced by a short placeholder.
  */
 import { fork, type ChildProcess } from "node:child_process";
 import { constants, DatabaseSync } from "node:sqlite";
@@ -113,11 +119,24 @@ function createDatabase(): DatabaseSync {
 }
 
 const MAX_ROWS = 200;
+/** The longest text value, in characters, a reply carries; longer ones are cut. */
+export const MAX_VALUE_CHARS = 1000;
+/** The longest column name, in characters, a reply carries. */
+const MAX_NAME_CHARS = 200;
+/** The largest reply, in UTF-8 bytes of its JSON; rows past it are dropped. */
+export const MAX_REPLY_BYTES = 64_000;
+/**
+ * The largest string or blob SQLite may build while it runs a query. A
+ * bigger one fails the query inside the child, before it is copied anywhere.
+ */
+const MAX_SQLITE_VALUE_BYTES = 1_000_000;
 /** How long one query may run before its process is stopped. */
 export const QUERY_TIMEOUT_MS = 2000;
 const CHILD_FLAG = "--bascik-data-tools-database";
 /** SQLITE_AUTH: the authorizer refused the statement. */
 const SQLITE_AUTH = 23;
+/** SQLITE_TOOBIG: a string or blob passed the length limit. */
+const SQLITE_TOOBIG = 18;
 
 export interface QueryResult {
   columns: string[];
@@ -137,7 +156,39 @@ function selectStatement(sql: string): string {
   return statement;
 }
 
-/** Run a checked statement on the child process's database. */
+const jsonBytes = (value: unknown): number =>
+  Buffer.byteLength(JSON.stringify(value));
+
+function cutText(text: string, limit: number): string {
+  return text.length > limit
+    ? `${text.slice(0, limit)} [cut, ${text.length} characters in all]`
+    : text;
+}
+
+/**
+ * Turn one SQLite value into something small and safe to send: a blob
+ * becomes a placeholder (serialized, a Uint8Array writes one key per byte),
+ * and long text is cut with a marker.
+ */
+function replyValue(value: unknown): { value: unknown; cut: boolean } {
+  if (value instanceof Uint8Array) {
+    return {
+      value: `[blob, ${value.byteLength} bytes, not shown]`,
+      cut: false,
+    };
+  }
+  if (typeof value === "bigint") return { value: String(value), cut: false };
+  if (typeof value === "string" && value.length > MAX_VALUE_CHARS) {
+    return { value: cutText(value, MAX_VALUE_CHARS), cut: true };
+  }
+  return { value, cut: false };
+}
+
+/**
+ * Run a checked statement on the child process's database. Rows are read one
+ * at a time and the reply stops at MAX_ROWS rows or MAX_REPLY_BYTES, so what
+ * the child sends, and what the server copies and serializes, stays small.
+ */
 function query(database: DatabaseSync, statement: string): QueryResult {
   let prepared;
   try {
@@ -152,15 +203,51 @@ function query(database: DatabaseSync, statement: string): QueryResult {
     }
     throw error;
   }
-  const records = prepared.all() as Record<string, unknown>[];
-  const columns = prepared.columns().map((column) => column.name);
-  return {
-    columns,
-    rows: records
-      .slice(0, MAX_ROWS)
-      .map((record) => columns.map((column) => record[column])),
-    truncated: records.length > MAX_ROWS,
-  };
+  prepared.setReturnArrays(true);
+  const columns = prepared
+    .columns()
+    .map((column) => cutText(column.name, MAX_NAME_CHARS));
+  const rows: unknown[][] = [];
+  let truncated = false;
+  let bytes = jsonBytes({ columns, rows: [], truncated: true });
+  if (bytes > MAX_REPLY_BYTES) {
+    throw new Error(
+      `The result's column names alone are larger than ${MAX_REPLY_BYTES} bytes. Select fewer columns.`,
+    );
+  }
+  try {
+    for (const record of prepared.iterate() as Iterable<unknown[]>) {
+      if (rows.length === MAX_ROWS) {
+        truncated = true;
+        break;
+      }
+      const row = record.map((cell) => {
+        const { value, cut } = replyValue(cell);
+        if (cut) truncated = true;
+        return value;
+      });
+      const rowBytes = jsonBytes(row) + (rows.length > 0 ? 1 : 0);
+      if (bytes + rowBytes > MAX_REPLY_BYTES) {
+        if (rows.length === 0) {
+          throw new Error(
+            `One row of the result is larger than ${MAX_REPLY_BYTES} bytes. Select fewer or shorter columns.`,
+          );
+        }
+        truncated = true;
+        break;
+      }
+      bytes += rowBytes;
+      rows.push(row);
+    }
+  } catch (error) {
+    if ((error as { errcode?: unknown }).errcode === SQLITE_TOOBIG) {
+      throw new Error(
+        `A value in the query is too big: SQLite builds strings and blobs of at most ${MAX_SQLITE_VALUE_BYTES} bytes here. Return smaller values.`,
+      );
+    }
+    throw error;
+  }
+  return { columns, rows, truncated };
 }
 
 type DatabaseReply =
@@ -169,6 +256,8 @@ type DatabaseReply =
 /** The child's side: build the database, then answer one query at a time. */
 function serveQueries(): void {
   const database = createDatabase();
+  // A query that builds a huge value fails here, in the child, at once.
+  database.limits.length = MAX_SQLITE_VALUE_BYTES;
   // A recursive CTE can produce rows forever, so the connection refuses one,
   // whether or not the query spells out RECURSIVE.
   database.setAuthorizer((action) =>
@@ -330,8 +419,9 @@ export interface RunSqlOptions {
 }
 
 /**
- * Run one read-only SELECT and return at most 200 rows. It runs in a child
- * process, and a query that runs longer than `timeoutMs` (2 seconds by
+ * Run one read-only SELECT and return at most 200 rows and 64,000 bytes of
+ * JSON, with blobs shown as placeholders and long text cut. It runs in a
+ * child process, and a query that runs longer than `timeoutMs` (2 seconds by
  * default) is stopped and rejected.
  */
 export function runSql(
@@ -353,7 +443,7 @@ export function runSql(
 export const dataTools: Tool[] = [
   {
     name: "run_sql",
-    description: `Run one read-only SQLite SELECT against the bookshop database and get the result as JSON: {columns, rows, truncated}. At most ${MAX_ROWS} rows come back, so aggregate in SQL. Revenue is quantity * price. Schema:\n${SCHEMA}`,
+    description: `Run one read-only SQLite SELECT against the bookshop database and get the result as JSON: {columns, rows, truncated}. At most ${MAX_ROWS} rows and ${MAX_REPLY_BYTES} bytes come back, blobs show as placeholders, and text over ${MAX_VALUE_CHARS} characters is cut, so aggregate in SQL. Revenue is quantity * price. Schema:\n${SCHEMA}`,
     inputSchema: {
       type: "object",
       properties: {
