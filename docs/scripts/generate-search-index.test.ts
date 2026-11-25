@@ -4,16 +4,38 @@ import path from "node:path";
 import config from "../bascik.config.ts";
 import { HOME_SITELINKS } from "../src/lib/nav.ts";
 import { stripMd } from "./generate-search-index.ts";
-import { expandSearchIndex } from "../src/components/docs-search/search-logic.ts";
+import {
+  applySearchText,
+  expandSearchIndex,
+} from "../src/components/docs-search/search-logic.ts";
 import {
   buildSearchEntries,
   searchIndexJson,
   searchIndexPath,
+  searchTextJson,
+  searchTextPath,
 } from "../src/lib/search-index.ts";
 
 const assetsDir = path.resolve(import.meta.dirname, "../dist/assets");
 
-/** The compact index the pages fetch, at its content-hashed name. */
+/** What a page has once it has fetched both hashed files: every entry, with its text. */
+async function writtenEntries() {
+  const built = await buildSearchEntries();
+  const entries = expandSearchIndex(
+    JSON.parse(await fs.readFile(await hashedIndexFile(), "utf8")),
+  );
+  const textFile = path.join(
+    assetsDir,
+    path.basename(searchTextPath(searchTextJson(built))),
+  );
+  if (
+    !applySearchText(entries, JSON.parse(await fs.readFile(textFile, "utf8")))
+  )
+    throw new Error("the text file does not match the outline");
+  return entries;
+}
+
+/** The outline the pages fetch first, at its content-hashed name. */
 async function hashedIndexFile(): Promise<string> {
   const json = searchIndexJson(await buildSearchEntries());
   return path.join(assetsDir, path.basename(searchIndexPath(json)));
@@ -71,10 +93,12 @@ describe("generate-search-index", () => {
   });
 
   // Builds the whole search index; under coverage instrumentation on a loaded machine it passes 5 s.
-  it("writes the compact index at its hashed name and the public array at the unversioned name, and drops stale versions", async () => {
+  it("writes the outline and the text at their hashed names and the public array at the unversioned name, and drops stale versions", async () => {
     const stale = path.join(assetsDir, "search-index.0000000000.json");
+    const staleText = path.join(assetsDir, "search-text.0000000000.json");
     await fs.mkdir(assetsDir, { recursive: true });
     await fs.writeFile(stale, "{}");
+    await fs.writeFile(staleText, "[]");
     vi.resetModules();
     await import("./generate-search-index.js");
 
@@ -86,8 +110,23 @@ describe("generate-search-index", () => {
       await fs.readFile(path.join(assetsDir, "search-index.json"), "utf8"),
     );
     expect(Array.isArray(legacy)).toBe(true);
-    expect(legacy).toEqual(expandSearchIndex(compact));
+    // The two hashed files together hold what the public array holds.
+    const textFile = path.join(
+      assetsDir,
+      path.basename(searchTextPath(searchTextJson(await buildSearchEntries()))),
+    );
+    const both = expandSearchIndex(compact);
+    expect(
+      applySearchText(both, JSON.parse(await fs.readFile(textFile, "utf8"))),
+    ).toBe(true);
+    expect(legacy).toEqual(both);
     await expect(fs.access(stale)).rejects.toThrow();
+    await expect(fs.access(staleText)).rejects.toThrow();
+    expect(
+      (await fs.readdir(assetsDir)).filter((name) =>
+        /^search-text\.[0-9a-f]{10}\.json$/.test(name),
+      ),
+    ).toEqual([path.basename(textFile)]);
     const versions = (await fs.readdir(assetsDir)).filter((name) =>
       /^search-index\.[0-9a-f]{10}\.json$/.test(name),
     );
@@ -115,18 +154,7 @@ describe("generate-search-index", () => {
   it("indexes the Home page first with the ordered sitelinks from nav.ts", async () => {
     await import("./generate-search-index.js");
 
-    const searchIndexFile = await hashedIndexFile();
-    const entries: Array<{
-      title?: string;
-      navLabel: string;
-      section?: string;
-      path: string;
-      heading: string | null;
-      text: string;
-      sitelinks?: string[];
-    }> = expandSearchIndex(
-      JSON.parse(await fs.readFile(searchIndexFile, "utf8")),
-    );
+    const entries = await writtenEntries();
 
     const home = entries[0];
     expect(home.path).toBe("/");
@@ -147,14 +175,7 @@ describe("generate-search-index", () => {
   it("indexes code block contents and h3 headings for deduplicateCss across pages", async () => {
     await import("./generate-search-index.js");
 
-    const searchIndexFile = await hashedIndexFile();
-    const content = await fs.readFile(searchIndexFile, "utf8");
-    const entries: Array<{
-      navLabel: string;
-      heading: string | null;
-      text: string;
-      path: string;
-    }> = expandSearchIndex(JSON.parse(content));
+    const entries = await writtenEntries();
 
     const dedupEntries = entries.filter(
       (e) =>

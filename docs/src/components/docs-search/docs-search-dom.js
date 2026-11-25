@@ -28,6 +28,9 @@ function preload(href) {
 // Portal to <body> so position:fixed escapes the nav's backdrop-filter stacking context
 document.body.appendChild(overlay);
 var index = null;
+/** True once the entries have their text. Until then a search matches titles and headings only. */
+var hasText = false;
+var NO_RESULTS = empty.textContent;
 
 /**
  * Opens the search dialog. `deferIndex` leaves the index download to the caller, for /search, where the
@@ -43,7 +46,7 @@ function open(deferIndex) {
   input.setAttribute("aria-expanded", "true");
   document.body.style.overflow = "hidden";
   input.focus();
-  if (!index && deferIndex !== true) loadIndex();
+  if (deferIndex !== true) loadText();
 }
 
 function close() {
@@ -65,10 +68,17 @@ function close() {
 }
 
 var indexRequest = null;
+var textRequest = null;
+
+function json(response) {
+  if (!response.ok) throw new Error("HTTP " + response.status);
+  return response.json();
+}
 
 /**
- * Downloads the index once. SEARCH_INDEX_URL carries a content hash, so the browser can keep it for a year. A page
- * opened before a deploy names a hashed file the deploy removed; it then reads the unhashed PUBLIC_SEARCH_INDEX_URL.
+ * Downloads the outline once: every page and heading, which is enough to show results at once. SEARCH_INDEX_URL
+ * carries a content hash, so the browser can keep it for a year. A page opened before a deploy names a hashed file
+ * the deploy removed; it then reads the unhashed PUBLIC_SEARCH_INDEX_URL, which has the text too.
  */
 function loadIndex() {
   if (!indexRequest) {
@@ -76,12 +86,10 @@ function loadIndex() {
       .then(function (response) {
         return response.ok ? response : fetch(PUBLIC_SEARCH_INDEX_URL);
       })
-      .then(function (response) {
-        if (!response.ok) throw new Error("HTTP " + response.status);
-        return response.json();
-      })
+      .then(json)
       .then(function (data) {
         index = expandSearchIndex(data);
+        hasText = Array.isArray(data);
         if (input.value.trim()) runSearch(input.value);
       })
       .catch(function (e) {
@@ -93,7 +101,47 @@ function loadIndex() {
   return indexRequest;
 }
 
-/** Starts the download when a visitor is about to search, so results are ready when the dialog opens. */
+/**
+ * Downloads the text of every section, after the outline, and searches again with it. It is most of the index, so
+ * it starts only when the visitor is searching, and the results already shown stay until it arrives.
+ */
+function loadText() {
+  if (!textRequest) {
+    textRequest = loadIndex()
+      .then(function () {
+        if (!index) throw new Error("no outline");
+        if (hasText) return;
+        return fetch(SEARCH_TEXT_URL)
+          .then(json)
+          .then(function (texts) {
+            if (!applySearchText(index, texts))
+              throw new Error("the text does not match the outline");
+          })
+          .catch(function () {
+            // A text file this page's outline does not go with: the unhashed index has both.
+            return fetch(PUBLIC_SEARCH_INDEX_URL)
+              .then(json)
+              .then(function (data) {
+                index = expandSearchIndex(data);
+              });
+          })
+          .then(function () {
+            hasText = true;
+            // Results the visitor has moved into stay as they are until the next keystroke.
+            if (input.value.trim() && !list.contains(document.activeElement))
+              runSearch(input.value);
+          });
+      })
+      .catch(function (e) {
+        // Let the next search try again.
+        textRequest = null;
+        console.error("[docs-search] loadText error:", e);
+      });
+  }
+  return textRequest;
+}
+
+/** Starts the outline download when a visitor is about to search, so results are ready when the dialog opens. */
 function warmIndex() {
   if (!index) loadIndex();
 }
@@ -119,18 +167,26 @@ function runSearch(query) {
   var q = query.toLowerCase().trim();
   list.innerHTML = "";
   empty.hidden = true;
+  empty.textContent = NO_RESULTS;
   hint.hidden = !!q;
   if (!q) {
     if (statusEl) statusEl.textContent = "";
     return;
   }
 
+  // The visitor is searching: fetch the text now, if it is not here or on its way.
+  if (!hasText) loadText();
   var toks = tokens(q);
   var top = buildResults(index, q, toks, 13);
 
   if (!top.length) {
+    // No title or heading matches, and the text may still: say which it is.
+    empty.textContent = hasText ? NO_RESULTS : "Searching page text…";
     empty.hidden = false;
-    if (statusEl) statusEl.textContent = "No results found.";
+    if (statusEl)
+      statusEl.textContent = hasText
+        ? "No results found."
+        : "Searching page text.";
     return;
   }
 
@@ -306,8 +362,8 @@ if (kbd && !/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)) {
   kbd.textContent = "Ctrl+K";
 }
 
-// Auto-open on /search?q= (for SearchAction). The index is about 1 MB, so it waits until the page has loaded
-// instead of competing with the page's own resources.
+// Auto-open on /search?q= (for SearchAction). The index waits until the page has loaded instead of competing
+// with the page's own resources.
 if (window.location.pathname === "/search") {
   var q = new URLSearchParams(window.location.search).get("q");
   if (q) {
@@ -315,9 +371,9 @@ if (window.location.pathname === "/search") {
     open(true);
     hint.hidden = true;
   } else open(true);
-  if (document.readyState === "complete") setTimeout(loadIndex, 0);
+  if (document.readyState === "complete") setTimeout(loadText, 0);
   else
     window.addEventListener("load", function () {
-      setTimeout(loadIndex, 0);
+      setTimeout(loadText, 0);
     });
 }
