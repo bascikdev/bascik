@@ -55,6 +55,7 @@ export {
   type TurnRenderOptions,
 } from "./render-turn.ts";
 export { createBroadcast, type Broadcast } from "./broadcast.ts";
+export { sharedKeys, type SharedKeys } from "./keys.ts";
 export {
   abandonToolCalls,
   answerToolCall,
