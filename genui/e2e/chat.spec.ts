@@ -1294,3 +1294,142 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
     });
   });
 }
+
+test.describe("memory", () => {
+  /** Wait for a button that sent a form from inside the thread to be answered. */
+  async function answered(page: Page): Promise<void> {
+    if (withScripts()) {
+      await expect(page.locator("html")).toHaveAttribute("data-genui", "idle");
+    }
+  }
+
+  async function openMemory(page: Page): Promise<void> {
+    await page.getByTestId("chat-sidebar-memory").click();
+    await expect(page.getByTestId("memory-list")).toBeVisible();
+  }
+
+  test("a reply shows what was remembered, and a new conversation uses it", async ({
+    page,
+  }) => {
+    await send(page, "Remember that I prefer short books");
+    const note = page.getByTestId("memory-note");
+    await expect(note).toHaveCount(1);
+    await expect(note).toContainText("Remembered:");
+    await expect(note.getByTestId("memory-note-text")).toHaveText(
+      "I prefer short books",
+    );
+    // The call is drawn once, as the memory, and again after a reload.
+    await page.reload();
+    await expect(page.getByTestId("memory-note")).toHaveCount(1);
+    await expect(
+      page.getByTestId("turn-assistant").locator(".part"),
+    ).toHaveCount(1);
+
+    // A different conversation, with nothing in common but the reader.
+    await page.getByTestId("chat-sidebar-new").click();
+    await expect(page.getByTestId("chat-welcome")).toBeVisible();
+    await send(page, "What do you know about me?");
+    const live = page.getByTestId("turn-live");
+    await expect(live).toContainText("This is what I remember about you");
+    await expect(live).toContainText("I prefer short books");
+    await expect(live).toContainText("Checked what I remember about you");
+  });
+
+  test("the memory list shows it, and Forget removes it for good", async ({
+    page,
+  }) => {
+    await openMemory(page);
+    await expect(page.getByTestId("memory-list-empty")).toBeVisible();
+    await expect(page.getByTestId("memory-item")).toHaveCount(0);
+    await expect(page.getByTestId("memory-list-about")).toContainText(
+      "between conversations",
+    );
+
+    await page.getByTestId("chat-sidebar-app").first().click();
+    await send(page, "Remember that I prefer short books");
+    await openMemory(page);
+    const items = page.getByTestId("memory-item");
+    await expect(items).toHaveCount(1);
+    await expect(items.first().getByTestId("memory-item-text")).toHaveText(
+      "I prefer short books",
+    );
+    await expect(items.first().getByTestId("memory-item-saved")).toHaveText(
+      /^\d{4}-\d\d-\d\d$/,
+    );
+    await expect(page.getByTestId("memory-list-empty")).toBeHidden();
+
+    await items.first().getByTestId("memory-item-forget").click();
+    // Back on the memory page, with nothing left.
+    await expect(page.getByTestId("memory-list")).toBeVisible();
+    await expect(page.getByTestId("memory-item")).toHaveCount(0);
+    await expect(page.getByTestId("memory-list-empty")).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId("memory-item")).toHaveCount(0);
+
+    // And it is not used any more.
+    await page.getByTestId("chat-sidebar-app").first().click();
+    await page.getByTestId("chat-sidebar-new").click();
+    await send(page, "What do you know about me?");
+    const live = page.getByTestId("turn-live");
+    await expect(live).toContainText("I do not know anything about you yet");
+    await expect(live).not.toContainText("This is what I remember");
+  });
+
+  test("Undo in the reply takes the memory back", async ({ page }) => {
+    await send(page, "Remember that I like tea, <b>not</b> coffee");
+    const note = page.getByTestId("memory-note");
+    // Text is text: the tag is shown, and nothing became bold.
+    await expect(note.getByTestId("memory-note-text")).toHaveText(
+      "I like tea, <b>not</b> coffee",
+    );
+    await expect(note.locator("b")).toHaveCount(0);
+    await note.getByTestId("memory-note-undo").click();
+    await answered(page);
+    await openMemory(page);
+    await expect(page.getByTestId("memory-item")).toHaveCount(0);
+    await expect(page.getByTestId("memory-list-empty")).toBeVisible();
+  });
+
+  test("a memory is shown as text on the list, never as markup", async ({
+    page,
+  }) => {
+    const hostile = '<script>alert(1)</script><admin-panel title="x"> is mine';
+    await send(page, `Remember that ${hostile}`);
+    await openMemory(page);
+    const text = page.getByTestId("memory-item-text");
+    await expect(text).toHaveText(hostile);
+    await expect(text.locator("script, admin-panel")).toHaveCount(0);
+  });
+
+  test("each reader has their own memory", async ({ page, browser }) => {
+    await send(page, "Remember that I prefer short books");
+    const other = await browser.newContext({
+      javaScriptEnabled: withScripts(),
+    });
+    const otherPage = await other.newPage();
+    await otherPage.goto("/");
+    await otherPage.getByTestId("chat-sidebar-memory").click();
+    await expect(otherPage.getByTestId("memory-list-empty")).toBeVisible();
+    await expect(otherPage.getByTestId("memory-item")).toHaveCount(0);
+    await other.close();
+  });
+
+  test("a forget form for a memory that is not there changes nothing, and never leaves the site", async ({
+    page,
+    request,
+  }) => {
+    await send(page, "Remember that I prefer short books");
+    const missing = await request.post("/api/forget", {
+      form: { app: "books", id: "no-such-memory" },
+      maxRedirects: 0,
+    });
+    expect(missing.status()).toBe(303);
+    const away = await request.post("/api/forget", {
+      form: { app: "books", id: "x", back: "//evil.example/" },
+      maxRedirects: 0,
+    });
+    expect(away.headers().location).toBe("/");
+    await openMemory(page);
+    await expect(page.getByTestId("memory-item")).toHaveCount(1);
+  });
+});

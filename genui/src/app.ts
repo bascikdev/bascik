@@ -16,6 +16,13 @@
 import { randomUUID } from "node:crypto";
 import { catalogPrompt, type Catalog } from "./catalog.ts";
 import { createBroadcast, type Broadcast } from "./broadcast.ts";
+import {
+  forgetMemory,
+  memoryPrompt,
+  memoryTools,
+  type Memory,
+  type MemoryStore,
+} from "./memory.ts";
 import type { ChatMessage, Model, Tool } from "./model.ts";
 import { renderTurn, type TurnRenderOptions } from "./render-turn.ts";
 import {
@@ -40,6 +47,12 @@ import {
   type VoiceTurn,
 } from "./voice.ts";
 
+export {
+  fileMemories,
+  inMemoryMemories,
+  type Memory,
+  type MemoryStore,
+} from "./memory.ts";
 export {
   fileStore,
   memoryStore,
@@ -159,6 +172,15 @@ export interface ChatOptions {
   model: (request: Request) => Model | Promise<Model>;
   tools?: Tool[];
   /**
+   * What the assistant knows about each reader across conversations. When
+   * set, every reply (typed or spoken) gets the reader's `remember`,
+   * `recall`, and `forget` tools, and the prompt lists what is known. See
+   * `@bascik/genui/memory`.
+   */
+  memory?: MemoryStore;
+  /** True to make `remember` and `forget` wait for the reader's OK. Default false: the reply shows each one, and the reader can undo it. */
+  memoryApproval?: boolean;
+  /**
    * What the model is told. A string is the app's own instructions: the
    * catalog prompt (or, in a voice session, the voice prompt) follows it. A
    * function returns the whole prompt.
@@ -206,6 +228,15 @@ export interface Chat {
   stop: (request: Request) => Promise<Response>;
   /** Open one of the reader's conversations, or start a new one. */
   open: (request: Request) => Promise<Response>;
+  /**
+   * Remove one of the reader's memories: a form post with `id`, and an
+   * optional `back`, a path on this site to return to (default: the chat's
+   * page). A memory that is not there is not an error: the form is safe to
+   * send twice.
+   */
+  forget: (request: Request) => Promise<Response>;
+  /** The reader's memories as JSON, newest first: `{ memories }`. */
+  memoryList: (request: Request) => Promise<Response>;
   /** Start a spoken conversation: answers with a ticket for the voice provider. */
   voiceSession: (request: Request) => Promise<Response>;
   /** Run a tool call a voice model made. */
@@ -222,6 +253,8 @@ export interface Chat {
    * starts it.
    */
   thread(request: Request): Promise<ThreadState>;
+  /** The reader's memories, newest first (none when the chat has no `memory`). For a page that lists them. */
+  memories(request: Request): Promise<Memory[]>;
   /** The HTML of what a voice tool call put on screen ("" when it put nothing). */
   voiceView(request: Request, call: string): Promise<string>;
   /** The loaded catalog. */
@@ -266,6 +299,8 @@ const MAX_SPEECH = 8000;
 /** A voice tool call's input, as sent. */
 const MAX_TOOL_INPUT = 64_000;
 const NO_STORE = { "cache-control": "no-store" };
+/** A path on this site: one slash first, never `//host` or `/\host`, no line breaks. */
+const LOCAL_PATH = /^\/(?![/\\])[^\r\n]*$/;
 
 /** A conversation's title: the first words of what began it. */
 const titleOf = (text: string): string =>
@@ -317,6 +352,8 @@ export function createChat(options: ChatOptions): Chat {
     id = "chat",
     store,
     tools = [],
+    memory,
+    memoryApproval = false,
     page = "/",
     turnLimitMs = 120_000,
   } = options;
@@ -327,7 +364,24 @@ export function createChat(options: ChatOptions): Chat {
       console.error(`[${id}] ${what}:`, error));
   const renderOptions: TurnRenderOptions = {
     ...options.render,
-    tools: options.render?.tools ?? tools,
+    // The memory tools are built per reader to run, but a note reads only
+    // the call's input, so these (for no reader) are all drawing needs.
+    tools:
+      options.render?.tools ??
+      (memory ? [...tools, ...memoryTools(memory, "")] : tools),
+  };
+
+  /** The tools of one request: the app's, and its reader's memory. */
+  const toolsFor = (session: Session, conversationId?: string): Tool[] => {
+    if (!memory) return tools;
+    const open = conversationId ?? session.conversationId;
+    return [
+      ...tools,
+      ...memoryTools(memory, session.reader, {
+        approval: memoryApproval,
+        ...(open ? { conversationId: open } : {}),
+      }),
+    ];
   };
 
   /* Catalog and prompts */
@@ -349,7 +403,7 @@ export function createChat(options: ChatOptions): Chat {
     elements: renderOptions.elements,
     fences: options.fencePrompts,
   };
-  const promptFor = async (voice: boolean): Promise<string> => {
+  const basePrompt = async (voice: boolean): Promise<string> => {
     const catalogNow = await catalog();
     if (typeof options.system === "function") {
       return options.system({ catalog: catalogNow, voice });
@@ -359,6 +413,17 @@ export function createChat(options: ChatOptions): Chat {
       "",
       (voice ? voicePrompt : catalogPrompt)(catalogNow, promptOptions),
     ].join("\n");
+  };
+  // With memory, the section about it follows, listing this reader's notes
+  // (none when no reader is asking, as for `systemPrompt()`).
+  const promptFor = async (
+    voice: boolean,
+    session?: Session,
+  ): Promise<string> => {
+    const base = await basePrompt(voice);
+    if (!memory) return base;
+    const known = session ? await memory.list(session.reader) : [];
+    return `${base}\n\n${memoryPrompt(known)}`;
   };
 
   /* Conversations */
@@ -402,9 +467,9 @@ export function createChat(options: ChatOptions): Chat {
       const model = await options.model(request);
       const turn = runTurn({
         model,
-        system: await promptFor(false),
+        system: await promptFor(false, session),
         messages,
-        tools,
+        tools: toolsFor(session, conversation.id),
         signal: AbortSignal.any([
           stop.signal,
           AbortSignal.timeout(turnLimitMs),
@@ -577,6 +642,33 @@ export function createChat(options: ChatOptions): Chat {
     return redirect(session, conversation.id);
   };
 
+  const forget: Chat["forget"] = async (request) => {
+    const form = await readForm(request);
+    if (!form) return badRequest("Not a form.");
+    const session = sessions.identify(request);
+    const memoryId = field(form, "id");
+    if (!memory || memoryId === undefined) {
+      return badRequest("No memory to forget.");
+    }
+    await forgetMemory(memory, session.reader, memoryId);
+    // Back to where the form was: a path on this site, never another one.
+    const back = field(form, "back");
+    const headers = session.conversationId
+      ? sessions.remember(session, session.conversationId)
+      : new Headers();
+    headers.set(
+      "location",
+      back !== undefined && LOCAL_PATH.test(back) ? back : page,
+    );
+    return new Response(null, { status: 303, headers });
+  };
+
+  const memories: Chat["memories"] = async (request) =>
+    memory ? memory.list(sessions.identify(request).reader) : [];
+
+  const memoryList: Chat["memoryList"] = async (request) =>
+    Response.json({ memories: await memories(request) }, { headers: NO_STORE });
+
   const voiceSession: Chat["voiceSession"] = async (request) => {
     const session = sessions.identify(request);
     const wanted = new URL(request.url).searchParams.get("provider");
@@ -598,8 +690,8 @@ export function createChat(options: ChatOptions): Chat {
     let ticket;
     try {
       ticket = await voice.createSession({
-        system: await promptFor(true),
-        tools: voiceTools(tools),
+        system: await promptFor(true, session),
+        tools: voiceTools(toolsFor(session, conversation.id)),
       });
     } catch (error) {
       onError(error, "no voice session");
@@ -643,7 +735,7 @@ export function createChat(options: ChatOptions): Chat {
     const result = await runVoiceTool(
       state.turn,
       { id: callId, name, input, ...(decision ? { decision } : {}) },
-      tools,
+      toolsFor(session, conversation.id),
       await catalog(),
       renderOptions,
     );
@@ -687,10 +779,13 @@ export function createChat(options: ChatOptions): Chat {
     answer,
     stop,
     open,
+    forget,
+    memoryList,
     voiceSession,
     voiceTool,
     voiceTurn,
     thread,
+    memories,
     async voiceView(request, call) {
       const conversation = await load(sessions.identify(request));
       return (

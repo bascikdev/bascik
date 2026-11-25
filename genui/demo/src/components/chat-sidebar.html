@@ -147,16 +147,25 @@ The conversation list. Its server script reads the stored conversations on every
       const models = await listModels();
       const chosen = pickModel(models, requestedModel(request));
       const groups = [...new Set(models.map((model) => model.group))];
+      const onMemory = new URL(request.url).pathname === "/memory";
       return html`<nav class="apps" aria-label="Apps">
           ${APPS.map(
             (entry) =>
               html`<a
                 href="${entry.path}"
                 data-testid="chat-sidebar-app"
-                aria-current="${entry.id === app.id ? "page" : "false"}"
+                aria-current="${entry.id === app.id && !onMemory
+                  ? "page"
+                  : "false"}"
                 >${entry.name}</a
               >`,
           )}
+          <a
+            href="/memory?app=${app.id}"
+            data-testid="chat-sidebar-memory"
+            aria-current="${onMemory ? "page" : "false"}"
+            >What I remember</a
+          >
         </nav>
         <form method="post" action="/api/open">
           <input type="hidden" name="app" value="${app.id}" />
