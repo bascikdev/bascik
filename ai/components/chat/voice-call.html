@@ -471,9 +471,9 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         // a page load: the model is waiting on the line for the result.
         reply.addEventListener("submit", (event) => {
           const form = event.target as HTMLFormElement;
-          const id = new FormData(form).get("call");
+          const id = callOf(form);
           const answer = (event.submitter as HTMLButtonElement | null)?.value;
-          const decide = typeof id === "string" && call?.waiting.get(id);
+          const decide = id !== undefined && call?.waiting.get(id);
           if (!decide || !answer) return;
           event.preventDefault();
           event.stopPropagation();
@@ -799,18 +799,36 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     const plain = (text: string | null | undefined): string =>
       (text ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
-    /** A question about allowing an action is the reader's alone to answer. */
+    /*
+     * A form's controls are also its properties, by name, and they win over
+     * the form's own: `<input name="action">` makes `form.action` that input.
+     * The model names the fields of the forms it writes, so a form in the
+     * thread is read only through the prototype, never by property name.
+     */
+    const formGet = <K extends keyof HTMLFormElement>(form: HTMLFormElement, key: K): HTMLFormElement[K] =>
+      Reflect.get(HTMLFormElement.prototype, key, form) as HTMLFormElement[K];
+    const controlsOf = (form: HTMLFormElement): Element[] => [...formGet(form, "elements")];
+
+    /**
+     * A question about allowing an action is the reader's alone to answer. It
+     * answers a call by a hidden field, which no field the model writes is.
+     */
+    const callOf = (form: HTMLFormElement): string | undefined =>
+      controlsOf(form).find(
+        (control): control is HTMLInputElement =>
+          control instanceof HTMLInputElement && control.type === "hidden" && control.name === "call",
+      )?.value;
     const isApproval = (form: HTMLFormElement): boolean =>
-      new FormData(form).has("call") || form.closest("[data-part]") !== null;
+      callOf(form) !== undefined || Element.prototype.closest.call(form, "[data-part]") !== null;
 
     /** The newest form in the thread that has not been sent. */
     function openForm(): HTMLFormElement | null {
       const forms = [...(thread()?.querySelectorAll("form") ?? [])].filter(
         (form) =>
-          !form.dataset.sent &&
+          !formGet(form, "dataset").sent &&
           !isApproval(form) &&
           // One that is on the page but not shown is not one the reader means.
-          form.checkVisibility(),
+          Element.prototype.checkVisibility.call(form),
       );
       return forms.at(-1) ?? null;
     }
@@ -827,18 +845,19 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       // Read before the controls are disabled: a disabled control is not sent.
       const body = new FormData(form, submitter);
       body.set("voice", "1");
-      const locked = [...form.elements].filter(
+      const locked = controlsOf(form).filter(
         (control): control is HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement =>
           "disabled" in control && !control.disabled,
       );
-      form.setAttribute("aria-busy", "true");
+      const style = formGet(form, "style");
+      Element.prototype.setAttribute.call(form, "aria-busy", "true");
       // A form is not part of this component's template, so it is dimmed here.
-      form.style.cssText += ";opacity:0.7;cursor:progress";
+      style.cssText += ";opacity:0.7;cursor:progress";
       for (const control of locked) control.disabled = true;
       let answer: { say?: unknown; hidden?: unknown } | null = null;
       try {
         answer = await busy(call, async () => {
-          const response = await fetch(form.action, { method: "POST", body });
+          const response = await fetch(formGet(form, "action"), { method: "POST", body });
           return response.ok
             ? ((await response.json().catch(() => null)) as {
                 say?: unknown;
@@ -847,22 +866,22 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
             : null;
         });
       } finally {
-        form.removeAttribute("aria-busy");
-        form.style.opacity = "";
-        form.style.cursor = "";
+        Element.prototype.removeAttribute.call(form, "aria-busy");
+        style.opacity = "";
+        style.cursor = "";
         for (const control of locked) control.disabled = false;
       }
       if (typeof answer?.say !== "string" || !answer.say.trim()) return null;
       // Sent once: it stays on screen as it was answered, and says so.
-      form.dataset.sent = "";
-      form.inert = true;
-      form.style.opacity = "0.7";
+      formGet(form, "dataset").sent = "";
+      Reflect.set(HTMLElement.prototype, "inert", true, form);
+      style.opacity = "0.7";
       const pressed = submitter?.textContent?.trim();
       const note = document.createElement("p");
       note.dataset.testid = "voice-call-answered";
       note.style.cssText = "margin:0;font-size:0.8125rem;font-weight:600";
       note.textContent = pressed ? `Answered: ${pressed}` : "Answered";
-      form.append(note);
+      Element.prototype.append.call(form, note);
       // A record in a fixed shape is for the model; the reader's own words are theirs.
       return { say: answer.say.trim(), hidden: answer.hidden === true };
     }
@@ -874,7 +893,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       ) as Record<string, unknown>;
       const form = openForm();
       if (!form) return "Error: there is no form on the screen to fill in.";
-      const controls = [...form.elements] as (HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement)[];
+      const controls = controlsOf(form) as (HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement)[];
       const named = (control: HTMLElement & { labels?: NodeListOf<HTMLLabelElement> | null }): string =>
         control instanceof HTMLButtonElement
           ? plain(control.textContent)
@@ -1203,7 +1222,9 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       "submit",
       (event) => {
         const form = event.target as HTMLFormElement;
-        if (!call || form.dataset.testid !== "chat-composer") return;
+        // Any form's submit comes here: only the composer, which is not the
+        // model's, is used by its own property names.
+        if (!call || formGet(form, "dataset").testid !== "chat-composer") return;
         const input = form.querySelector("textarea");
         const text = input?.value.trim();
         if (!text || call.socket.readyState !== WebSocket.OPEN) return;

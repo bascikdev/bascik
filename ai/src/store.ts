@@ -164,10 +164,27 @@ export function fileStore(directory: string): ConversationStore {
       } catch {
         return [];
       }
-      const all = await Promise.all(
+      // Only the newest `MAX_SCANNED` files, by when each was last saved, are
+      // read and parsed, so this lists at most that many: a reader with many
+      // conversations must not make every page and search read all of them.
+      const dated = await Promise.all(
         files
           .filter((file) => file.endsWith(".json"))
-          .map((file) => read(reader, file.slice(0, -".json".length))),
+          .map(async (file) => {
+            try {
+              const stat = await fs.stat(path.join(directory, reader, file));
+              return stat.isFile() ? { file, time: stat.mtimeMs } : null;
+            } catch {
+              return null;
+            }
+          }),
+      );
+      const newest = dated
+        .filter((entry) => entry !== null)
+        .sort((a, b) => b.time - a.time)
+        .slice(0, MAX_SCANNED);
+      const all = await Promise.all(
+        newest.map(({ file }) => read(reader, file.slice(0, -".json".length))),
       );
       return all
         .filter((entry): entry is Conversation => entry !== null)

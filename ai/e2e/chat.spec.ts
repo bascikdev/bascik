@@ -513,6 +513,61 @@ test("with the client runtime a message is answered without a page load", async 
   await expect(page.getByTestId("turn-live")).toHaveCount(1);
 });
 
+/**
+ * Give a form text fields with names the model chose, the way a text-field
+ * the model wrote does. A control's name is also a property of its form, so
+ * these hide the form's own `action`, `method`, `closest` and the rest.
+ */
+async function shadowFields(
+  form: ReturnType<Page["getByTestId"]>,
+  names: string[],
+): Promise<void> {
+  await form.evaluate((element, list) => {
+    const button = element.querySelector("button");
+    for (const name of list) {
+      const input = element.ownerDocument.createElement("input");
+      input.name = name;
+      input.value = `x-${name}`;
+      if (button) button.before(input);
+      else element.append(input);
+    }
+  }, names);
+}
+
+test("with the client runtime a form whose field names shadow the form's own properties is still sent", async ({
+  page,
+}) => {
+  test.skip(!withScripts(), "the client runtime is a script");
+  await page.evaluate("window.kept = true");
+  await send(page, "Add a book to my reading log");
+  const form = page.getByTestId("turn-live").getByTestId("input-form");
+  await shadowFields(form, [
+    "action",
+    "method",
+    "closest",
+    "dataset",
+    "requestSubmit",
+    "reset",
+    "elements",
+  ]);
+  const fields = form.getByTestId("text-field");
+  await fields.getByLabel("Book").fill("Shipping Small Changes");
+  await fields.getByLabel("Pages read").fill("42");
+  await fields.getByLabel("One-line note").fill("Great so far");
+  await form.getByTestId("input-form-submit").click();
+  await settled(page);
+  // Sent with fetch to the form's own address: no page load.
+  expect(await page.evaluate("window.kept === true")).toBe(true);
+  // Every field was sent, the model's own names with the rest.
+  await expect(page.getByTestId("turn-user").last()).toContainText(
+    "Book: Shipping Small Changes",
+  );
+  await expect(page.getByTestId("turn-user").last()).toContainText(
+    "method: x-method",
+  );
+  await expect(page.getByTestId("turn-live")).toHaveCount(1);
+});
+
 test("with the client runtime a message shows that a reply is on its way", async ({
   page,
 }) => {
@@ -1135,6 +1190,65 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
       await expect(
         page.getByTestId("turn-voice").last().getByTestId("tool-approval"),
       ).toContainText("The Quiet Network");
+      expect(await page.evaluate("window.kept === true")).toBe(true);
+      await page.getByTestId("voice-call-toggle").click();
+    });
+
+    test("fills and sends a form whose field names shadow the form's own properties", async ({
+      page,
+    }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(
+        "navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('no', 'NotAllowedError'); };",
+      );
+      await page.reload();
+      await page.evaluate("window.kept = true");
+      await page.getByTestId("voice-call-toggle").click();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "No microphone: type to talk.",
+      );
+      const composer = page.getByTestId("chat-composer-input");
+      const send = page.getByTestId("chat-composer-send");
+      await composer.fill("Recommend a book");
+      await send.click();
+      const shown = page.getByTestId("turn-voice").getByTestId("ask-button");
+      await expect(shown).toHaveCount(1);
+      await shadowFields(shown, [
+        "checkVisibility",
+        "elements",
+        "action",
+        "closest",
+        "dataset",
+        "style",
+        "setAttribute",
+        "append",
+        "call",
+      ]);
+
+      // The model still finds the form, presses it, and it is sent once.
+      // Read as text content: Playwright's own text and visibility checks call
+      // `checkVisibility` on the form, which the field now hides.
+      await composer.fill("Press that for me");
+      await send.click();
+      const said = (): Promise<string> =>
+        page.evaluate(
+          `[...document.querySelectorAll('[data-testid="turn-voice"]')].at(-1)?.textContent ?? ""`,
+        );
+      await expect
+        .poll(said, PAUSED)
+        .toContain(
+          "Done. Sent for the reader: Hold a copy of Shipping Small Changes",
+        );
+      expect(
+        await page.evaluate(`(() => {
+          const form = document.querySelector('[data-testid="turn-voice"] [data-testid="ask-button"]');
+          return {
+            sent: form?.getAttribute("data-sent"),
+            answered: form?.querySelector('[data-testid="voice-call-answered"]')?.textContent,
+          };
+        })()`),
+      ).toEqual({ sent: "", answered: "Answered: Hold the short one" });
+      await expect(page.getByTestId("turn-assistant")).toHaveCount(0);
       expect(await page.evaluate("window.kept === true")).toBe(true);
       await page.getByTestId("voice-call-toggle").click();
     });
