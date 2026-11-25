@@ -1,0 +1,57 @@
+<!-- @bascik
+A line in a reply that says the assistant just saved something about the reader, with the words it saved as content and an Undo button. Written by the app for a finished remember call, never by a model. The button is a plain form that posts to /api/forget.
+-->
+<style>
+  .note {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    align-items: center;
+    margin: 0.4rem 0;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-inline-start: 3px solid var(--accent);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--surface);
+    font-size: 0.875rem;
+  }
+  .label {
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .text {
+    flex: 1 1 10rem;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+  .undo {
+    padding: 0.25rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .undo:hover,
+  .undo:focus-visible {
+    border-color: var(--accent);
+  }
+</style>
+<form
+  class="note"
+  method="post"
+  action="/api/forget"
+  role="status"
+  data-testid="memory-note"
+>
+  <input type="hidden" name="app" data-bascik-attr-value="app" />
+  <input type="hidden" name="id" data-bascik-attr-value="memory" />
+  <span class="label">Remembered:</span>
+  <span class="text" data-testid="memory-note-text"
+    ><span data-bascik-slot></span
+  ></span>
+  <button class="undo" data-testid="memory-note-undo">Undo</button>
+</form>

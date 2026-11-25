@@ -33,6 +33,7 @@
     "./anthropic": "./src/anthropic.ts",
     "./azure-voice-live": "./src/azure-voice-live.ts",
     "./gemini-live": "./src/gemini-live.ts",
+    "./memory": "./src/memory.ts",
     "./mermaid": "./src/mermaid.ts",
     "./openai": "./src/openai.ts",
     "./openai-responses": "./src/openai-responses.ts",
@@ -61,6 +62,10 @@
       "./gemini-live": {
         "types": "./dist/gemini-live.d.ts",
         "default": "./dist/gemini-live.js"
+      },
+      "./memory": {
+        "types": "./dist/memory.d.ts",
+        "default": "./dist/memory.js"
       },
       "./mermaid": {
         "types": "./dist/mermaid.d.ts",

@@ -13,7 +13,13 @@ import {
   type ToolPart,
   type VoiceProvider,
 } from "@bascik/genui";
-import { createChat, fileStore, type Chat } from "@bascik/genui/app";
+import {
+  createChat,
+  fileMemories,
+  fileStore,
+  type Chat,
+} from "@bascik/genui/app";
+import { savedMemory } from "@bascik/genui/memory";
 import { MERMAID_PROMPT, mermaidFence } from "@bascik/genui/mermaid";
 import { APPS, type ChatApp } from "./apps.ts";
 import { listModels, modelFor, pickModel, requestedModel } from "./models.ts";
@@ -26,12 +32,13 @@ const byPath = (pathname: string): ChatApp | undefined => {
 };
 
 /**
- * A page request names its app by its own path. A form post names it in an
- * `app` field, or, for a form the model generated, by the page it was sent
- * from.
+ * A page request names its app by its own path, or by `?app=` (the memory
+ * page, which is not one app's path). A form post names it in an `app`
+ * field, or, for a form the model generated, by the page it was sent from.
  */
 export function appFor(request: Request, named?: string | null): ChatApp {
-  const fromField = APPS.find((app) => app.id === named);
+  const queried = new URL(request.url).searchParams.get("app");
+  const fromField = APPS.find((app) => app.id === (named ?? queried));
   if (fromField) return fromField;
   const own = byPath(new URL(request.url).pathname);
   if (own) return own;
@@ -164,6 +171,18 @@ function toolView(app: ChatApp, part: ToolPart): SafeHtml | null {
       return html`<tool-status
         >${actionName(part)} failed: ${part.error ?? ""}</tool-status
       >`;
+    case "done": {
+      // What was just remembered is shown as the words themselves, with a
+      // button that takes it back.
+      const saved = savedMemory(part);
+      return saved
+        ? html`<memory-note
+            data-bascik-prop-app="${app.id}"
+            data-bascik-prop-memory="${saved.id}"
+            >${saved.text}</memory-note
+          >`
+        : null;
+    }
     default:
       return null;
   }
@@ -195,6 +214,8 @@ export function chatFor(app: ChatApp): Chat {
       catalog: loadCatalog,
       model: (request) => loadModel(app, request),
       tools: app.tools,
+      // What each reader told this app, kept apart from its conversations.
+      memory: fileMemories(join(DATA_DIR, "memory", app.id)),
       system: app.instructions,
       fencePrompts: { mermaid: MERMAID_PROMPT },
       // How replies are drawn, live and from history: the HTML elements the
@@ -220,6 +241,7 @@ type FormHandler =
   | "send"
   | "approve"
   | "answer"
+  | "forget"
   | "stop"
   | "open"
   | "voiceSession"

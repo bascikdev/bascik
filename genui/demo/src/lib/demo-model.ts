@@ -35,6 +35,36 @@ function afterTool(message: ChatMessage): string {
     const open = hour >= OPENS && hour < CLOSES;
     return `It is ${call.output} for you. The shop is **${open ? "open" : "closed"}** now: its hours are ${OPENS}:00 to ${CLOSES}:00.`;
   }
+  if (call?.name === "remember") {
+    return call.state === "done"
+      ? [
+          "Got it, I will remember that. You can see everything I keep, and remove any of it, under **What I remember** in the sidebar.",
+          "",
+          `<ask-button say="What do you know about me?">What do you know about me?</ask-button>`,
+        ].join("\n")
+      : "I could not save that, so I will not remember it. Say it again in a short sentence and I will try once more.";
+  }
+  if (call?.name === "recall") {
+    const found =
+      call.state === "done"
+        ? ((
+            JSON.parse(call.output ?? "{}") as { memories?: { text: string }[] }
+          ).memories ?? [])
+        : [];
+    return found.length === 0
+      ? [
+          "I do not know anything about you yet. Tell me something to remember, such as that you prefer short books.",
+          "",
+          `<ask-button say="Remember that I prefer short books">Remember that I prefer short books</ask-button>`,
+        ].join("\n")
+      : [
+          "This is what I remember about you:",
+          "",
+          ...found.map((memory) => `- ${memory.text}`),
+          "",
+          `<ask-button say="Recommend a book">Recommend a book</ask-button>`,
+        ].join("\n");
+  }
   if (call?.state === "done") {
     return [
       `Done. ${call.output}`,
@@ -51,6 +81,28 @@ function afterTool(message: ChatMessage): string {
 function reply(text: string): string | ModelEvent[] {
   const asked = text.toLowerCase();
   const book = findBook(text);
+
+  if (/\bwhat do you (know|remember)\b|\babout me\b/.test(asked)) {
+    return [
+      "Let me look at what I have kept about you.",
+      { type: "tool-call", name: "recall", input: { query: "" } },
+    ];
+  }
+
+  const remembered =
+    /^\s*(?:please\s+)?remember\b[\s,:]*(?:that\b)?[\s,:]*(.+)$/is.exec(
+      text,
+    )?.[1];
+  if (remembered) {
+    return [
+      "That sounds like something worth keeping, so I am saving it to your memory.",
+      {
+        type: "tool-call",
+        name: "remember",
+        input: { text: remembered.trim().replace(/[.!\s]+$/, "") },
+      },
+    ];
+  }
 
   if (/\b(open|hours|closed?)\b/.test(asked)) {
     return [
@@ -197,6 +249,7 @@ function reply(text: string): string | ModelEvent[] {
     "- Ask for a diagram of how I pick a book",
     "- Ask me to hold a copy of a book",
     "- Ask whether the shop is open now",
+    "- Ask me to remember something about you, then ask what I know",
     "",
     `<ask-button say="Recommend a book">Recommend a book</ask-button>`,
     `<ask-button say="Add a book to my reading log">Open the reading log form</ask-button>`,

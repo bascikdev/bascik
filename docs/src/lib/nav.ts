@@ -167,6 +167,7 @@ export const NAV: NavSection[] = [
       { href: "/genui/server-kit", label: "Server Kit" },
       { href: "/genui/catalog", label: "Catalog" },
       { href: "/genui/tools", label: "Tools & Approval" },
+      { href: "/genui/memory", label: "Memory" },
       { href: "/genui/providers", label: "Providers" },
       { href: "/genui/client-runtime", label: "Client Runtime" },
       { href: "/genui/voice", label: "Voice & Captions" },
