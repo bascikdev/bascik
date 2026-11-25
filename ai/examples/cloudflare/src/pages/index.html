@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bascik AI on Workers: books</title>
+    <meta
+      name="description"
+      content="A chat with generative UI, streamed as HTML by Bascik from Cloudflare Workers and Durable Objects."
+    />
+    <meta name="robots" content="noindex" />
+    <link rel="stylesheet" href="/style.css" />
+    <!-- Hold the first paint until the stored conversation is parsed. The
+         reply streams in after it. -->
+    <link rel="expect" href="#thread-ready" blocking="render" />
+  </head>
+  <body>
+    <chat-sidebar />
+    <main class="chat">
+      <!-- The composer is first in the source so it is sent before the reply
+           starts streaming; CSS shows it below the thread. Its limits match
+           FILE_LIMITS in src/lib/chat.ts; the server enforces them either way. -->
+      <div class="dock">
+        <chat-composer
+          data-bascik-prop-app="books"
+          data-bascik-prop-enctype="multipart/form-data"
+          data-bascik-prop-max-bytes="1048576"
+          data-bascik-prop-max-files="2"
+          data-bascik-prop-max-total="2097152"
+          data-bascik-prop-types="image/png,image/jpeg,image/webp,text/plain,text/markdown,application/pdf"
+        />
+      </div>
+      <chat-enhance />
+      <div class="scroller">
+        <chat-thread />
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "name": "bascik-ai-cloudflare",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Bascik AI books chat on Cloudflare Workers: Durable Objects for conversations, memories, files and live replies.",
+  "type": "module",
+  "scripts": {
+    "catalog": "node scripts/gen-catalog.ts",
+    "build": "node scripts/gen-catalog.ts && bascik --build --target cloudflare",
+    "dev": "yarn build && node scripts/dev.ts",
+    "unit": "yarn build && vitest run",
+    "e2e": "playwright test",
+    "typecheck": "node scripts/gen-catalog.ts && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@bascik/adapter-cloudflare": "workspace:*",
+    "@bascik/ai": "workspace:*",
+    "@bascik/bascik": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.7.0",
+    "@cloudflare/workers-types": "^5.20261110.1",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^24.19.1",
+    "jsonc-parser": "^3.3.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.160.0"
+  }
+}

@@ -1,0 +1,7 @@
+# Copy to .dev.vars (git-ignored) to run `wrangler dev --config
+# wrangler.wrapper.jsonc` by hand. `yarn ai:cf:dev` passes these itself.
+# Development values only: production sets real secrets with
+# `wrangler secret put` (README.md).
+IP_SALT=local-development-only
+SESSION_SECRET=local-development-only
+GENUI_DEVELOPMENT=1

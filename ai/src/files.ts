@@ -384,7 +384,11 @@ const MARKUP_START =
 export function strictText(bytes: Uint8Array): string | null {
   let text: string;
   try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    // ignoreBOM is spelled out (false is the default): Cloudflare's Workers
+    // types require it.
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
+      bytes,
+    );
   } catch {
     return null;
   }

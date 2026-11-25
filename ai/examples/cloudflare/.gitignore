@@ -1,0 +1,8 @@
+dist/
+.bascik/
+.wrangler/
+.wrangler-state/
+.dev.vars
+src/lib/catalog.generated.ts
+test-results/
+playwright-report/

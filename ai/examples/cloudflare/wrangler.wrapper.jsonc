@@ -1,0 +1,58 @@
+// The config that deploys: worker.ts (the guards, then the Worker Bascik
+// generates, and the three Durable Object classes) over the static files of
+// `yarn build`. Run Wrangler from this folder with --config
+// wrangler.wrapper.jsonc. There are no routes: the owner adds a hostname.
+//
+// `run_worker_first` is the list the build computes (in
+// dist/.bascik/cloudflare/wrangler.jsonc), so the chat's pages and every
+// /api/ path reach worker.ts first while style.css and the other static
+// files are served without it. tests/config.test.ts fails when they differ,
+// or when the name, compatibility settings or vars differ from wrangler.jsonc.
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "bascik-ai-example",
+  "main": "worker.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "alias": {
+    "bascik-worker": "./dist/.bascik/cloudflare/worker.js",
+  },
+  "assets": {
+    "directory": "./dist/.bascik/cloudflare/public",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": [
+      "/",
+      "/_routes.json",
+      "/_worker.js",
+      "/api/*",
+      "/index",
+      "/index.html",
+      "/memory",
+      "/memory.html",
+      "/memory/",
+    ],
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "READER", "class_name": "ReaderData" },
+      { "name": "LIVE", "class_name": "ConversationLive" },
+      { "name": "BUDGET", "class_name": "Budget" },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ReaderData", "ConversationLive", "Budget"],
+    },
+  ],
+  "vars": {
+    "GENUI_DAILY_READERS": "2000",
+    "GENUI_IP_SENDS": "30",
+    "GENUI_IP_UPLOADS": "10",
+    "DEMO_MODEL_DELAY_MS": "20",
+  },
+  // Secrets, set with `wrangler secret put` (see README.md): IP_SALT
+  // (required: sends are refused without it) and SESSION_SECRET.
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+}

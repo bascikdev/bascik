@@ -49,5 +49,10 @@ shop/src/pages/assets/shop.js
 # Conversations the ai demo stores while it runs
 ai/demo/.data/
 
+# The Cloudflare example's build-time catalog, and its local Durable Object data
+ai/examples/cloudflare/src/lib/catalog.generated.ts
+ai/examples/cloudflare/.wrangler-state/
+ai/examples/cloudflare/.wrangler/
+
 # Temporary checkouts made by coding agents
 .claude/worktrees/

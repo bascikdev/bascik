@@ -13,6 +13,7 @@
     "lsp",
     "skills-tests",
     "ai",
+    "ai/examples/cloudflare",
     "ai-site"
   ],
   "engines": {
@@ -175,6 +176,11 @@
     "ai:unit": "yarn workspace @bascik/ai unit",
     "ai:integration": "yarn workspace @bascik/ai integration",
     "ai:e2e": "yarn workspace @bascik/ai e2e",
+    "ai:cf:build": "yarn workspace bascik-ai-cloudflare build",
+    "ai:cf:dev": "yarn workspace bascik-ai-cloudflare dev",
+    "ai:cf:unit": "yarn workspace bascik-ai-cloudflare unit",
+    "ai:cf:e2e": "yarn workspace bascik-ai-cloudflare e2e",
+    "ai:cf:typecheck": "yarn workspace bascik-ai-cloudflare typecheck",
     "check:spelling": "codespell --ignore-regex \"Analysing data\" -L teY,directroy,scirpt,erorr,buld,afterAll,caf,strin --builtin \"clear,rare,en-GB_to_en-US\" pkg/src docs/content docs/src create/src",
     "check:standards": "npx hint docs/src/pages",
     "check:security": "semgrep --error --config p/default",

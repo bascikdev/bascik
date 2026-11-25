@@ -229,7 +229,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@bascik/ai@workspace:ai":
+"@bascik/ai@workspace:*, @bascik/ai@workspace:ai":
   version: 0.0.0-use.local
   resolution: "@bascik/ai@workspace:ai"
   dependencies:
@@ -557,6 +557,21 @@ __metadata:
     workerd:
       optional: true
   checksum: 10c0/c8b9d1304e3679782ea113ec6403767ae55a108e18824f68b771c8764dfb47244cb68aa021ebfbb6cf3c3ae18570c5df3e3ca4158629f12725c01d3d74490fc4
+  languageName: node
+  linkType: hard
+
+"@cloudflare/vitest-plugin@npm:1.7.0":
+  version: 1.7.0
+  resolution: "@cloudflare/vitest-plugin@npm:1.7.0"
+  dependencies:
+    cjs-module-lexer: "npm:1.2.3"
+    esbuild: "npm:0.28.2"
+    miniflare: "npm:5.20261110.0-beta"
+    wrangler: "npm:4.160.0"
+    zod: "npm:4.6.6"
+  peerDependencies:
+    vitest: ^4.1.0 || ^5.0.0
+  checksum: 10c0/4c5da9139aae5f4b05e76a1a15b1b6ff9dde327428637c7dc5b03e4e09682c37d91cb09d21da4227c186c256d56666ad7189ecfa38053f6c9ab05dc99e3fa9fd
   languageName: node
   linkType: hard
 
@@ -5296,6 +5311,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"bascik-ai-cloudflare@workspace:ai/examples/cloudflare":
+  version: 0.0.0-use.local
+  resolution: "bascik-ai-cloudflare@workspace:ai/examples/cloudflare"
+  dependencies:
+    "@bascik/adapter-cloudflare": "workspace:*"
+    "@bascik/ai": "workspace:*"
+    "@bascik/bascik": "workspace:*"
+    "@cloudflare/vitest-plugin": "npm:1.7.0"
+    "@cloudflare/workers-types": "npm:^5.20261110.1"
+    "@playwright/test": "npm:^1.65.0"
+    "@types/node": "npm:^24.19.1"
+    jsonc-parser: "npm:^3.3.1"
+    typescript: "npm:^7.0.2"
+    vite: "npm:^8.3.8"
+    vitest: "npm:^5.1.0"
+    wrangler: "npm:^4.160.0"
+  languageName: unknown
+  linkType: soft
+
 "bascik-ai-site@workspace:ai-site":
   version: 0.0.0-use.local
   resolution: "bascik-ai-site@workspace:ai-site"
@@ -6254,6 +6288,13 @@ __metadata:
     safe-buffer: "npm:^5.2.1"
     to-buffer: "npm:^1.2.2"
   checksum: 10c0/53c5046a9d9b60c586479b8f13fde263c3f905e13f11e8e04c7a311ce399c91d9c3ec96642332e0de077d356e1014ee12bba96f74fbaad0de750f49122258836
+  languageName: node
+  linkType: hard
+
+"cjs-module-lexer@npm:1.2.3":
+  version: 1.2.3
+  resolution: "cjs-module-lexer@npm:1.2.3"
+  checksum: 10c0/0de9a9c3fad03a46804c0d38e7b712fb282584a9c7ef1ed44cae22fb71d9bb600309d66a9711ac36a596fd03422f5bb03e021e8f369c12a39fa1786ae531baab
   languageName: node
   linkType: hard
 
@@ -12553,6 +12594,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"miniflare@npm:5.20261110.0-beta":
+  version: 5.20261110.0-beta
+  resolution: "miniflare@npm:5.20261110.0-beta"
+  dependencies:
+    "@cspotcode/source-map-support": "npm:0.8.1"
+    sharp: "npm:0.35.5"
+    undici: "npm:7.30.1"
+    workerd: "npm:1.20261110.1"
+    ws: "npm:8.21.0"
+    youch: "npm:4.1.0-beta.10"
+  peerDependencies:
+    kerberos: ^2.0.0
+  peerDependenciesMeta:
+    kerberos:
+      optional: true
+  checksum: 10c0/1b580859c52df1db9bc2c9846208aff732674dc69b17a7aac6d0a76c1c570af9feb95c3bad5e61eca84a840520da7ae25d5f7a8828716bcda949fcc2ec6b9fd1
+  languageName: node
+  linkType: hard
+
 "miniflare@npm:5.20261110.1-beta":
   version: 5.20261110.1-beta
   resolution: "miniflare@npm:5.20261110.1-beta"
@@ -18691,6 +18751,36 @@ __metadata:
   languageName: node
   linkType: hard
 
+"wrangler@npm:4.160.0":
+  version: 4.160.0
+  resolution: "wrangler@npm:4.160.0"
+  dependencies:
+    "@cloudflare/kv-asset-handler": "npm:0.5.0"
+    "@cloudflare/unenv-preset": "npm:2.16.2"
+    "@cspotcode/source-map-support": "npm:0.8.1"
+    blake3-wasm: "npm:2.1.5"
+    esbuild: "npm:0.28.2"
+    fsevents: "npm:2.3.3"
+    miniflare: "npm:5.20261110.0-beta"
+    path-to-regexp: "npm:6.3.0"
+    unenv: "npm:2.0.0-rc.24"
+    workerd: "npm:1.20261110.1"
+  peerDependencies:
+    "@cloudflare/workers-types": ^5.20261110.1
+  dependenciesMeta:
+    fsevents:
+      optional: true
+  peerDependenciesMeta:
+    "@cloudflare/workers-types":
+      optional: true
+  bin:
+    cf-wrangler: bin/cf-wrangler.js
+    wrangler: bin/wrangler.js
+    wrangler2: bin/wrangler.js
+  checksum: 10c0/aee97899b265c19c8ee8de32c8bada16554cf5babd1f63a6bf930048c7f8312105bbfc1f161978d258f5ec93b27a79ca4aac6be7dd4c7f6ab7b40ac0f806c409
+  languageName: node
+  linkType: hard
+
 "wrangler@npm:^4.160.0":
   version: 4.160.1
   resolution: "wrangler@npm:4.160.1"
@@ -19081,6 +19171,13 @@ __metadata:
     normalize-path: "npm:^3.0.0"
     readable-stream: "npm:^4.0.0"
   checksum: 10c0/e1669e17031c3c7243cb9014eacfaa66f4cd2e0d613a57dbee9caf7122ae869f8b2ea2e5891b5d9eee2897060c01db048b9b2a544ba83e227f6c162905282e48
+  languageName: node
+  linkType: hard
+
+"zod@npm:4.6.6":
+  version: 4.6.6
+  resolution: "zod@npm:4.6.6"
+  checksum: 10c0/447a3113bb743c54ab839213ff95e9e8c197cc1206f65270c18aac35aa70c47a5c8cab753be911b574df9a8a9801ea74ed6be776575232cae0084e51dab3e970
   languageName: node
   linkType: hard
 
