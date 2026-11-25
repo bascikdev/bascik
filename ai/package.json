@@ -99,7 +99,8 @@
     "dist/",
     "components/",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "!demo/**"
   ],
   "bascik": {
     "components": "./components"
