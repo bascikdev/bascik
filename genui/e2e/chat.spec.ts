@@ -1436,3 +1436,214 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
     });
   });
 }
+
+/* ---- Attachments ---- */
+
+// A 1x1 PNG.
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+  "base64",
+);
+const cover = { name: "cover.png", mimeType: "image/png", buffer: PNG };
+const notes = {
+  name: "notes.txt",
+  mimeType: "text/plain",
+  buffer: Buffer.from("Chapter one is the best one.\n"),
+};
+
+test.describe("attachments", () => {
+  test("a picture and a text file are sent, shown in the thread, and kept", async ({
+    page,
+  }) => {
+    await page
+      .getByTestId("chat-composer-files-input")
+      .setInputFiles([cover, notes]);
+    if (withScripts()) {
+      await expect(page.getByTestId("chat-composer-file")).toHaveCount(2);
+    }
+    await send(page, "What do you make of these?");
+
+    // The model was given both, and says so by name and type.
+    const reply = page.getByTestId("turn-live");
+    await expect(reply).toContainText("I received 2 files");
+    await expect(reply).toContainText("cover.png (image/png)");
+    await expect(reply).toContainText("notes.txt (text/plain)");
+
+    const check = async (): Promise<void> => {
+      await expect(page.getByTestId("turn-user")).toHaveText(
+        "What do you make of these?",
+      );
+      const attachments = page.getByTestId("chat-attachment");
+      await expect(attachments).toHaveCount(2);
+      const thumb = attachments.first().getByTestId("chat-attachment-image");
+      await expect(thumb).toBeVisible();
+      await expect(thumb).toHaveAttribute("alt", "cover.png");
+      const link = attachments.nth(1);
+      await expect(link.getByTestId("chat-attachment-name")).toHaveText(
+        "notes.txt",
+      );
+      await expect(link.getByTestId("chat-attachment-size")).toHaveText("29 B");
+    };
+    await check();
+
+    // After a reload they are stored, not echoed.
+    await page.reload();
+    await expect(page.getByTestId("turn-assistant")).toContainText(
+      "I received 2 files",
+    );
+    await check();
+
+    // The picture opens as a picture, and the text file is a download.
+    const picture = page.getByTestId("chat-attachment").first();
+    const href = (await picture.getAttribute("href"))!;
+    const image = await page.request.get(href);
+    expect(image.headers()["content-type"]).toBe("image/png");
+    expect(image.headers()["x-content-type-options"]).toBe("nosniff");
+    expect(image.headers()["content-disposition"]).toMatch(/^inline/);
+    expect(image.headers()["content-security-policy"]).toContain("sandbox");
+    expect(Buffer.from(await image.body())).toEqual(PNG);
+    await picture.click();
+    await expect(page).toHaveURL(/\/api\/file\?id=/);
+    await page.goBack();
+
+    const download = await page.request.get(
+      (await page.getByTestId("chat-attachment").nth(1).getAttribute("href"))!,
+    );
+    expect(download.headers()["content-disposition"]).toMatch(
+      /^attachment; filename="notes.txt"/,
+    );
+    expect(download.headers()["content-type"]).toBe(
+      "text/plain; charset=utf-8",
+    );
+
+    // Another visitor cannot read them.
+    const stranger = await page.context().browser()!.newContext();
+    const refused = await stranger.request.get(new URL(href, page.url()).href);
+    expect(refused.status()).toBe(404);
+    await stranger.close();
+  });
+
+  test("a type that is not allowed is refused with a message, and the typed text stays", async ({
+    page,
+  }) => {
+    await page.getByTestId("chat-composer-input").fill("keep these words");
+    await page.getByTestId("chat-composer-files-input").setInputFiles({
+      name: "drawing.svg",
+      mimeType: "image/svg+xml",
+      buffer: Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"),
+    });
+    const message =
+      '"drawing.svg" cannot be attached: HTML and SVG files are not allowed.';
+    if (withScripts()) {
+      // Refused before sending, in the server's words.
+      await expect(page.getByTestId("chat-composer-notice")).toHaveText(
+        message,
+      );
+      await expect(page.getByTestId("chat-composer-file")).toHaveCount(0);
+      await expect(page.getByTestId("chat-composer-input")).toHaveValue(
+        "keep these words",
+      );
+      return;
+    }
+    await page.getByTestId("chat-composer-send").click();
+    await expect(page.getByTestId("attach-refused")).toHaveText(message);
+    await expect(page.getByTestId("attach-refused-text")).toHaveValue(
+      "keep these words",
+    );
+  });
+
+  test("a file that is not what it says is refused by the server, and nothing is lost", async ({
+    page,
+  }) => {
+    await page.getByTestId("chat-composer-input").fill("still here");
+    // A browser cannot tell this: it says PNG and the bytes are a page.
+    await page.getByTestId("chat-composer-files-input").setInputFiles({
+      name: "fake.png",
+      mimeType: "image/png",
+      buffer: Buffer.from("<html><script>alert(1)</script></html>"),
+    });
+    await page.getByTestId("chat-composer-send").click();
+    const message = /does not look like the PNG file it says it is/;
+    if (withScripts()) {
+      await expect(page.getByTestId("chat-composer-notice")).toHaveText(
+        message,
+      );
+      await expect(page.getByTestId("chat-composer-input")).toHaveValue(
+        "still here",
+      );
+      await expect(page.getByTestId("chat-composer-file")).toHaveCount(1);
+      await expect(page.getByTestId("turn-user")).toHaveCount(0);
+    } else {
+      await expect(page.getByTestId("attach-refused")).toHaveText(message);
+      await expect(page.getByTestId("attach-refused-text")).toHaveValue(
+        "still here",
+      );
+    }
+  });
+
+  test("too many files are refused", async ({ page }) => {
+    const five = Array.from({ length: 5 }, (_, at) => ({
+      name: `n${at}.txt`,
+      mimeType: "text/plain",
+      buffer: Buffer.from(`note ${at}`),
+    }));
+    await page.getByTestId("chat-composer-input").fill("lots");
+    await page.getByTestId("chat-composer-files-input").setInputFiles(five);
+    const message = "You can attach up to 4 files to one message.";
+    if (withScripts()) {
+      await expect(page.getByTestId("chat-composer-notice")).toHaveText(
+        message,
+      );
+      await expect(page.getByTestId("chat-composer-file")).toHaveCount(4);
+      return;
+    }
+    await page.getByTestId("chat-composer-send").click();
+    await expect(page.getByTestId("attach-refused")).toHaveText(message);
+  });
+
+  test("chips show the chosen files, and one can be taken off", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "chips need the page's script");
+    await page
+      .getByTestId("chat-composer-files-input")
+      .setInputFiles([cover, notes]);
+    const chips = page.getByTestId("chat-composer-file");
+    await expect(chips).toHaveCount(2);
+    await expect(chips.first()).toContainText("cover.png");
+    await expect(chips.first().locator("img")).toBeVisible();
+    await chips.first().getByTestId("chat-composer-file-remove").click();
+    await expect(chips).toHaveCount(1);
+    await expect(chips.first()).toContainText("notes.txt");
+    await send(page, "Just the notes");
+    await expect(page.getByTestId("chat-attachment")).toHaveCount(1);
+    await expect(page.getByTestId("turn-live")).toContainText(
+      "notes.txt (text/plain)",
+    );
+    // Sent: the composer is empty again.
+    await expect(chips).toHaveCount(0);
+  });
+
+  test("a pasted file is added", async ({ page }) => {
+    test.skip(!withScripts(), "paste needs the page's script");
+    await page.getByTestId("chat-composer-input").focus();
+    // Run in the page, which has the DOM types this file does not.
+    await page.evaluate(`(() => {
+      const bytes = Uint8Array.from(atob("${PNG.toString("base64")}"), (c) => c.charCodeAt(0));
+      const data = new DataTransfer();
+      data.items.add(new File([bytes], "pasted.png", { type: "image/png" }));
+      document
+        .querySelector('[data-testid="chat-composer-input"]')
+        .dispatchEvent(
+          new ClipboardEvent("paste", {
+            clipboardData: data,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+    })()`);
+    await expect(page.getByTestId("chat-composer-file")).toContainText(
+      "pasted.png",
+    );
+  });
+});

@@ -63,11 +63,13 @@ export function renderMessage(
 ): string {
   return partsOf(message)
     .map((part) =>
-      part.type === "tool"
-        ? renderToolPart(part, catalog, options)
-        : part.spoken
-          ? `<p class="spoken">${escapeHtml(part.text)}</p>`
-          : renderText(part.text, catalog, options),
+      part.type === "file"
+        ? "" // an attachment is drawn by the thread, beside its message
+        : part.type === "tool"
+          ? renderToolPart(part, catalog, options)
+          : part.spoken
+            ? `<p class="spoken">${escapeHtml(part.text)}</p>`
+            : renderText(part.text, catalog, options),
     )
     .join("");
 }

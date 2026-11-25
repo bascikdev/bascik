@@ -19,12 +19,23 @@ export {
   type RendererOptions,
 } from "./render.ts";
 export {
+  readAttachments,
+  userPieces,
+  MAX_INLINE_TEXT,
+  type Accepts,
+  type Attachment,
+  type Attachments,
+  type Piece,
+} from "./attachments.ts";
+export {
+  filesOf,
   invalidToolInput,
   partsOf,
   roundsOf,
   scriptedModel,
   toolResult,
   type ChatMessage,
+  type FilePart,
   type MessagePart,
   type Model,
   type ModelEvent,

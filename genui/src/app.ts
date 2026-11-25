@@ -16,7 +16,16 @@
 import { randomUUID } from "node:crypto";
 import { catalogPrompt, type Catalog } from "./catalog.ts";
 import { createBroadcast, type Broadcast } from "./broadcast.ts";
-import type { ChatMessage, Model, Tool } from "./model.ts";
+import type { ChatMessage, FilePart, Model, Tool } from "./model.ts";
+import {
+  checkUploads,
+  fileResponse,
+  refusals,
+  refusedPage,
+  resolveLimits,
+  type FileLimits,
+  type FileStore,
+} from "./files.ts";
 import { renderTurn, type TurnRenderOptions } from "./render-turn.ts";
 import {
   abandonToolCalls,
@@ -26,6 +35,7 @@ import {
   turnPending,
 } from "./turn.ts";
 import {
+  isSafeKey,
   newConversation,
   type Conversation,
   type ConversationStore,
@@ -183,6 +193,14 @@ export interface ChatOptions {
     | ((
         protocol: string | null,
       ) => VoiceProvider | null | Promise<VoiceProvider | null>);
+  /**
+   * Where attached files are kept. With it, `send` accepts
+   * `multipart/form-data` with a `files` field and `file` serves them back;
+   * without it, uploads are ignored.
+   */
+  files?: FileStore;
+  /** What is let in: sizes, count, types. Defaults in `@bascik/genui/files`. */
+  fileLimits?: FileLimits;
   /** Who the reader is and which conversation is open. Default `cookieSessions(id)`. */
   sessions?: ChatSessions;
   /** The page the form handlers send the reader back to. Default `/`. */
@@ -208,6 +226,11 @@ export interface Chat {
   open: (request: Request) => Promise<Response>;
   /** Start a spoken conversation: answers with a ticket for the voice provider. */
   voiceSession: (request: Request) => Promise<Response>;
+  /**
+   * Serve one attached file: `GET` with `?id=<file id>`. Only to the reader
+   * it belongs to; 404 for anyone else, and for an id that is not one.
+   */
+  file: (request: Request) => Promise<Response>;
   /** Run a tool call a voice model made. */
   voiceTool: (request: Request) => Promise<Response>;
   /** Store what was just said in a spoken conversation. */
@@ -235,6 +258,8 @@ export interface Chat {
 
   sessions: ChatSessions;
   store: ConversationStore;
+  /** The file store the chat was given, if any. */
+  files: FileStore | undefined;
   /** The request's session. */
   session(request: Request): Session;
   /** A conversation of the session's reader (the open one by default), or null. */
@@ -251,7 +276,7 @@ export interface Chat {
   addMessage(
     session: Session,
     text: string,
-    options?: { title?: string },
+    options?: { title?: string; files?: FilePart[] },
   ): Promise<Conversation>;
   /** A 303 to the page, remembering the open conversation: a form POST ends in a GET, so reload is safe. */
   redirect(session: Session, conversationId: string): Response;
@@ -266,6 +291,8 @@ const MAX_SPEECH = 8000;
 /** A voice tool call's input, as sent. */
 const MAX_TOOL_INPUT = 64_000;
 const NO_STORE = { "cache-control": "no-store" };
+/** What a multipart body may carry besides its files: the text and the field framing. */
+const MULTIPART_ROOM = 256 * 1024;
 
 /** A conversation's title: the first words of what began it. */
 const titleOf = (text: string): string =>
@@ -376,14 +403,90 @@ export function createChat(options: ChatOptions): Chat {
   };
   const addMessage: Chat["addMessage"] = async (session, text, titled) => {
     const conversation = (await load(session)) ?? newConversation();
+    const attached = titled?.files ?? [];
     if (conversation.messages.length === 0) {
-      conversation.title = titled?.title ?? titleOf(text);
+      conversation.title =
+        titled?.title ?? titleOf(text || attached[0]?.name || "Files");
     }
     abandonToolCalls(conversation.messages);
-    conversation.messages.push({ role: "user", content: text });
+    conversation.messages.push(
+      attached.length
+        ? {
+            role: "user",
+            content: text,
+            parts: [
+              ...(text ? [{ type: "text" as const, text }] : []),
+              ...attached,
+            ],
+          }
+        : { role: "user", content: text },
+    );
     await save(session, conversation);
     return conversation;
   };
+
+  /* Attached files: how a model reads one, and what a send accepts */
+
+  const fileStore = options.files;
+  const fileLimits = resolveLimits(options.fileLimits);
+  const readFileFor = (session: Session) =>
+    fileStore
+      ? async (part: FilePart): Promise<Uint8Array | null> =>
+          (await fileStore.get(session.reader, part.id))?.bytes ?? null
+      : undefined;
+
+  /**
+   * The files of a send, checked and stored, as message parts; or the
+   * response that refuses them. Nothing is stored unless every file passes.
+   */
+  async function attach(
+    session: Session,
+    form: FormData,
+    text: string,
+  ): Promise<FilePart[] | Response> {
+    if (!fileStore) return [];
+    // An empty file input still sends one empty, unnamed part: that is no file.
+    const uploads = form
+      .getAll("files")
+      .filter(
+        (value): value is File =>
+          typeof value !== "string" && (value.size > 0 || value.name !== ""),
+      );
+    if (uploads.length === 0) return [];
+    const checked = await checkUploads(uploads, fileLimits);
+    if (!checked.ok) return refusedPage(checked.message, text, page);
+    const stored: string[] = [];
+    try {
+      for (const file of checked.files) {
+        await fileStore.put(session.reader, file.id, {
+          name: file.name,
+          mediaType: file.mediaType,
+          size: file.bytes.byteLength,
+          bytes: file.bytes,
+        });
+        stored.push(file.id);
+      }
+    } catch (error) {
+      onError(error, "an attached file could not be stored");
+      await Promise.all(
+        stored.map((id) =>
+          fileStore.remove(session.reader, id).catch(() => {}),
+        ),
+      );
+      return refusedPage(
+        "The files could not be saved. Nothing was sent; try again.",
+        text,
+        page,
+      );
+    }
+    return checked.files.map((file) => ({
+      type: "file" as const,
+      id: file.id,
+      name: file.name,
+      mediaType: file.mediaType,
+      size: file.bytes.byteLength,
+    }));
+  }
 
   /* Live turns: a reply is written once, whoever is watching */
 
@@ -418,6 +521,7 @@ export function createChat(options: ChatOptions): Chat {
           system: await promptFor(false),
           messages,
           tools,
+          readFile: readFileFor(session),
           signal: AbortSignal.any([
             stop.signal,
             AbortSignal.timeout(turnLimitMs),
@@ -520,6 +624,15 @@ export function createChat(options: ChatOptions): Chat {
   /* Handlers */
 
   const send: Chat["send"] = async (request) => {
+    // A body far past the limits is turned away before it is read.
+    const declared = Number(request.headers.get("content-length"));
+    if (fileStore && declared > fileLimits.maxTotalBytes + MULTIPART_ROOM) {
+      return refusedPage(
+        refusals.total(declared, fileLimits.maxTotalBytes),
+        "",
+        page,
+      );
+    }
     const form = await readForm(request);
     if (!form) return badRequest("Not a form.");
     const session = sessions.identify(request);
@@ -528,11 +641,33 @@ export function createChat(options: ChatOptions): Chat {
       // The call stores its own turns: this only says what to say.
       return Response.json({ say: text }, { headers: NO_STORE });
     }
-    if (!text) {
+    const attached = await attach(session, form, text);
+    if (attached instanceof Response) return attached;
+    if (!text && attached.length === 0) {
       const conversation = (await load(session)) ?? newConversation();
       return redirect(session, conversation.id);
     }
-    return redirect(session, (await addMessage(session, text)).id);
+    return redirect(
+      session,
+      (await addMessage(session, text, { files: attached })).id,
+    );
+  };
+
+  const file: Chat["file"] = async (request) => {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return new Response(null, {
+        status: 405,
+        headers: { allow: "GET, HEAD" },
+      });
+    }
+    const id = new URL(request.url).searchParams.get("id");
+    const { reader } = sessions.identify(request);
+    // Looked up under the reader's own key: another reader's file is not found.
+    const found =
+      fileStore && isSafeKey(id) ? await fileStore.get(reader, id) : null;
+    return found
+      ? fileResponse(found)
+      : new Response("No such file.", { status: 404, headers: NO_STORE });
   };
 
   const approve: Chat["approve"] = async (request) => {
@@ -702,6 +837,7 @@ export function createChat(options: ChatOptions): Chat {
     voiceSession,
     voiceTool,
     voiceTurn,
+    file,
     thread,
     async voiceView(request, call) {
       const conversation = await load(sessions.identify(request));
@@ -715,6 +851,7 @@ export function createChat(options: ChatOptions): Chat {
     systemPrompt: () => promptFor(false),
     sessions,
     store,
+    files: fileStore,
     session: (request) => sessions.identify(request),
     load,
     save,

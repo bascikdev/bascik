@@ -4,7 +4,9 @@
  * real model would be asked to write: prose plus catalog tags.
  */
 import {
+  filesOf,
   scriptedModel,
+  type FilePart,
   type ChatMessage,
   type Model,
   type ModelEvent,
@@ -46,6 +48,23 @@ function afterTool(message: ChatMessage): string {
     return "No problem, nothing was held. Ask again whenever you want a copy kept.";
   }
   return `That did not work: ${call?.error ?? "the hold could not be placed"}.`;
+}
+
+/**
+ * What the offline model says to attached files: each one by name and type.
+ * A real model is sent the files themselves (see the adapters); this one only
+ * reads what the message says about them, so a test can tell they arrived.
+ */
+function acknowledge(files: FilePart[], text: string): string {
+  return [
+    `I received ${files.length} file${files.length === 1 ? "" : "s"}:`,
+    "",
+    ...files.map(
+      (file) => `- ${file.name.replace(/[`<>]/g, "'")} (${file.mediaType})`,
+    ),
+    "",
+    text ? `You said: ${text.replace(/[<>]/g, "")}` : "",
+  ].join("\n");
 }
 
 function reply(text: string): string | ModelEvent[] {
@@ -206,6 +225,8 @@ function reply(text: string): string | ModelEvent[] {
 export const demoModel: Model = scriptedModel(
   (request) => {
     const last = request.messages.at(-1);
+    const files = last?.role === "user" ? filesOf(last) : [];
+    if (files.length) return acknowledge(files, last?.content ?? "");
     return last?.role === "assistant"
       ? afterTool(last)
       : reply(last?.content ?? "");

@@ -48,7 +48,24 @@ export interface ToolPart {
   error?: string;
 }
 
-export type MessagePart = TextPart | ToolPart;
+/**
+ * A file the reader attached to a message. It names a stored file; the bytes
+ * are in a `FileStore` (`@bascik/genui/files`), never in the conversation.
+ * Only a user message carries file parts, after its text part.
+ */
+export interface FilePart {
+  type: "file";
+  /** Made by the library when the file was stored: letters, digits, `_` and `-`. */
+  id: string;
+  /** The name to show: cleaned, and escaped wherever it is drawn. */
+  name: string;
+  /** The type the file's bytes were checked to be, not what the browser said. */
+  mediaType: string;
+  /** In bytes. */
+  size: number;
+}
+
+export type MessagePart = TextPart | ToolPart | FilePart;
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -68,6 +85,12 @@ export interface ChatMessage {
 export const partsOf = (message: ChatMessage): MessagePart[] =>
   message.parts ??
   (message.content ? [{ type: "text", text: message.content }] : []);
+
+/** The files attached to a message, in order. */
+export const filesOf = (message: ChatMessage): FilePart[] =>
+  (message.parts ?? []).filter(
+    (part): part is FilePart => part.type === "file",
+  );
 
 /** What the model is told a tool call came to. */
 export function toolResult(part: ToolPart): { text: string; failed: boolean } {
@@ -103,7 +126,7 @@ export function roundsOf(parts: readonly MessagePart[]): Round[] {
         rounds.push(round);
       }
       round.text += part.text;
-    } else {
+    } else if (part.type === "tool") {
       if (!round) {
         round = { text: "", calls: [] };
         rounds.push(round);
@@ -161,6 +184,12 @@ export interface ModelRequest {
   messages: ChatMessage[];
   tools?: Tool[];
   signal?: AbortSignal;
+  /**
+   * The bytes of an attached file, or null when they are gone. Supplied by
+   * the chat, so an adapter needs no storage of its own. Absent when the
+   * app takes no attachments.
+   */
+  readFile?: (part: FilePart) => Promise<Uint8Array | null>;
 }
 
 /**

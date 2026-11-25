@@ -5,6 +5,11 @@
  * nothing hidden between the request and the reply.
  */
 import {
+  readAttachments,
+  userPieces,
+  type Attachments,
+} from "./attachments.ts";
+import {
   partsOf,
   roundsOf,
   toolResult,
@@ -36,6 +41,13 @@ interface ToolCall {
 
 type WireMessage =
   | { role: "system" | "user" | "assistant"; content: string }
+  | {
+      role: "user";
+      content: (
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+      )[];
+    }
   | {
       role: "assistant";
       content: string | null;
@@ -74,9 +86,35 @@ export async function* events(
 export function toWireMessages(
   system: string,
   messages: ChatMessage[],
+  attachments: Attachments = new Map(),
 ): WireMessage[] {
   const wire: WireMessage[] = [{ role: "system", content: system }];
   for (const message of messages) {
+    // Images are `image_url` data URLs. A PDF is not sent: chat completions
+    // servers do not agree on a shape for one, so the model is told its name.
+    const pieces =
+      message.role === "user"
+        ? userPieces(message, attachments, { image: true, pdf: false })
+        : null;
+    if (pieces) {
+      wire.push({
+        role: "user",
+        content: pieces.map((piece) =>
+          piece.kind === "image"
+            ? {
+                type: "image_url" as const,
+                image_url: {
+                  url: `data:${piece.mediaType};base64,${piece.data}`,
+                },
+              }
+            : {
+                type: "text" as const,
+                text: piece.kind === "text" ? piece.text : "",
+              },
+        ),
+      });
+      continue;
+    }
     if (message.role === "user" || !message.parts) {
       wire.push({ role: message.role, content: message.content });
       continue;
@@ -120,7 +158,8 @@ export function openAiCompatibleModel(options: OpenAiCompatibleOptions): Model {
   const send = options.fetch ?? fetch;
   const endpoint = `${options.baseUrl.replace(/\/+$/, "")}/chat/completions`;
 
-  return async function* ({ system, messages, tools = [], signal }) {
+  return async function* ({ system, messages, tools = [], signal, readFile }) {
+    const attachments = await readAttachments(messages, readFile);
     const response = await send(endpoint, {
       method: "POST",
       signal,
@@ -132,7 +171,7 @@ export function openAiCompatibleModel(options: OpenAiCompatibleOptions): Model {
         ...options.body,
         model,
         stream: true,
-        messages: toWireMessages(system, messages),
+        messages: toWireMessages(system, messages, attachments),
         ...(tools.length > 0
           ? {
               tools: tools.map((tool) => ({

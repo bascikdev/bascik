@@ -1,6 +1,11 @@
 /** A `Model` backed by the Claude API, through the official SDK. */
 import Anthropic from "@anthropic-ai/sdk";
 import {
+  readAttachments,
+  userPieces,
+  type Attachments,
+} from "./attachments.ts";
+import {
   partsOf,
   roundsOf,
   toolResult,
@@ -38,10 +43,53 @@ function remember(id: string, content: Message["content"]): void {
   received.set(id, content);
 }
 
-/** The conversation in the API's shape: each round's calls, then their results. */
-export function toMessageParams(messages: ChatMessage[]): MessageParam[] {
+/**
+ * The conversation in the API's shape: each round's calls, then their results.
+ * A user message with attached files is image and document blocks (PDF) and
+ * text; `attachments` holds their bytes (see `readAttachments`).
+ */
+export function toMessageParams(
+  messages: ChatMessage[],
+  attachments: Attachments = new Map(),
+): MessageParam[] {
   const params: MessageParam[] = [];
   for (const message of messages) {
+    const pieces =
+      message.role === "user"
+        ? userPieces(message, attachments, { image: true, pdf: true })
+        : null;
+    if (pieces) {
+      params.push({
+        role: "user",
+        content: pieces.map((piece): ContentParam => {
+          switch (piece.kind) {
+            case "image":
+              return {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: piece.mediaType as
+                    "image/png" | "image/jpeg" | "image/gif" | "image/webp",
+                  data: piece.data,
+                },
+              };
+            case "pdf":
+              return {
+                type: "document",
+                title: piece.name,
+                source: {
+                  type: "base64",
+                  media_type: "application/pdf",
+                  data: piece.data,
+                },
+              };
+            default:
+              return { type: "text", text: piece.text };
+          }
+        }),
+      });
+      continue;
+    }
     if (message.role === "user" || !message.parts) {
       if (message.content) {
         params.push({ role: message.role, content: message.content });
@@ -96,8 +144,11 @@ export function anthropicModel(options: AnthropicModelOptions = {}): Model {
     maxTokens = 64_000,
   } = options;
 
-  return async function* ({ system, messages, tools = [], signal }) {
-    const conversation = toMessageParams(messages);
+  return async function* ({ system, messages, tools = [], signal, readFile }) {
+    const conversation = toMessageParams(
+      messages,
+      await readAttachments(messages, readFile),
+    );
     // A paused turn is continued here; it is one round to the caller.
     for (;;) {
       const stream = client.beta.messages.stream(
