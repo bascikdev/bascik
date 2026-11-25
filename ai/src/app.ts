@@ -59,8 +59,11 @@ import {
   type Shared,
 } from "./shared.ts";
 import {
+  finishVoiceTool,
   newVoiceTurn,
-  runVoiceTool,
+  noteVoiceView,
+  settleVoiceTool,
+  startVoiceTool,
   voiceMessages,
   voicePrompt,
   voiceTools,
@@ -452,29 +455,6 @@ const failedNotice = (message: string): string =>
 interface TurnRecord {
   turn: string;
   count: number;
-}
-
-const same = (a: unknown, b: unknown): boolean =>
-  JSON.stringify(a) === JSON.stringify(b);
-
-/** Apply to `latest` what a tool call changed in a copy of the turn (`before` became `after`). */
-function mergeVoiceTurn(
-  latest: VoiceTurn,
-  before: VoiceTurn,
-  after: VoiceTurn,
-): void {
-  after.parts.forEach((part, at) => {
-    if (at >= before.parts.length) {
-      latest.parts.push(part);
-    } else if (!same(part, before.parts[at]) && part.type === "tool") {
-      // A call that was waiting for approval moved on.
-      const found = latest.parts.findIndex(
-        (other) => other.type === "tool" && other.id === part.id,
-      );
-      if (found >= 0) latest.parts[found] = part;
-    }
-  });
-  if (!same(after.lastView, before.lastView)) latest.lastView = after.lastView;
 }
 
 export function createChat(options: ChatOptions): Chat {
@@ -1077,11 +1057,11 @@ export function createChat(options: ChatOptions): Chat {
   };
   /**
    * Change a conversation's recorded turn with no one else changing it. Held
-   * only for the read and the write, never while a tool runs.
+   * only for the read, the change and the write, never while a tool runs.
    */
   async function updateVoice<T>(
     conversationId: string,
-    change: (turn: VoiceTurn) => T,
+    change: (turn: VoiceTurn) => T | Promise<T>,
   ): Promise<T> {
     let lock: Lease | null = null;
     for (let tries = 0; !lock; tries++) {
@@ -1093,7 +1073,7 @@ export function createChat(options: ChatOptions): Chat {
     }
     try {
       const turn = await readVoice(conversationId);
-      const result = change(turn);
+      const result = await change(turn);
       await shared.set(
         voiceKey(conversationId),
         JSON.stringify(turn),
@@ -1312,22 +1292,46 @@ export function createChat(options: ChatOptions): Chat {
       // Passed on as it is: the call is refused, and the model is told.
       input = raw;
     }
-    // Run on a copy, so calls that overlap each change only their own part,
-    // then merge what changed into the recorded turn.
-    const before = await readVoice(conversation.id);
-    const turn = structuredClone(before);
-    const result = await runVoiceTool(
-      turn,
-      { id: callId, name, input, ...(decision ? { decision } : {}) },
-      toolsFor(session, conversation.id),
-      await catalog(),
-      renderOptions,
-    );
-    await updateVoice(conversation.id, (latest) =>
-      mergeVoiceTurn(latest, before, turn),
-    );
-    if (result.html) {
-      await shared.set(viewKey(conversation.id, callId), result.html, VOICE_MS);
+    const tools = toolsFor(session, conversation.id);
+    const catalogNow = await catalog();
+    // Keep what a call shows, and no more than MAX_VOICE_VIEWS of them for
+    // the conversation. Called under the turn's lock.
+    const keepView = async (turn: VoiceTurn, html: string): Promise<void> => {
+      if (!html) return;
+      const call = callId.slice(0, 200);
+      await shared.set(viewKey(conversation.id, call), html, VOICE_MS);
+      for (const old of noteVoiceView(turn, call)) {
+        await shared.delete(viewKey(conversation.id, old));
+      }
+    };
+    // Record the call, or claim the call a decision answers, on the latest
+    // turn under its lock: of requests that overlap, one claims a call and
+    // the others are refused, so a call runs at most once.
+    const started = await updateVoice(conversation.id, async (latest) => {
+      const start = startVoiceTool(
+        latest,
+        { id: callId, name, input, ...(decision ? { decision } : {}) },
+        tools,
+        catalogNow,
+        renderOptions,
+      );
+      if (start.run) start.run = structuredClone(start.run);
+      else await keepView(latest, start.result!.html);
+      return start;
+    });
+    let result = started.result!;
+    if (started.run) {
+      // Run with no lock held, then record what came of it.
+      result = await finishVoiceTool(
+        started.run,
+        tools,
+        catalogNow,
+        renderOptions,
+      );
+      await updateVoice(conversation.id, async (latest) => {
+        settleVoiceTool(latest, started.run!);
+        await keepView(latest, result.html);
+      });
     }
     return Response.json(
       { state: result.state, output: result.output, view: result.html !== "" },
