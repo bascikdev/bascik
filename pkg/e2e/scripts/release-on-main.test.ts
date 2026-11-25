@@ -274,6 +274,7 @@ describe("release.yml publishes only commits on main", () => {
       "release-create",
       "release-adapter-cloudflare",
       "release-adapter-netlify",
+      "release-genui",
       "release-language-server",
       "release-extension",
     ]);
@@ -285,11 +286,11 @@ describe("release.yml publishes only commits on main", () => {
     expect(unguardedJobs(workflow)).toEqual([]);
   });
 
-  it("uses tokenless npm trusted publishing for all five npm jobs", () => {
+  it("uses tokenless npm trusted publishing for all six npm jobs", () => {
     const npmJobs = workflow
       .split(/(?=^ {2}[\w-]+:\s*$)/m)
       .filter((job) => /publish-npm\.sh/.test(job));
-    expect(npmJobs).toHaveLength(5);
+    expect(npmJobs).toHaveLength(6);
     for (const job of npmJobs) {
       expect(job).toMatch(/^ {4}runs-on: ubuntu-latest$/m);
       expect(job).toMatch(/^ {6}id-token: write$/m);

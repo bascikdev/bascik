@@ -31,6 +31,7 @@ function fixture({
             "create/package.json": "create-bascik",
             "adapters/cloudflare/package.json": "@bascik/adapter-cloudflare",
             "adapters/netlify/package.json": "@bascik/adapter-netlify",
+            "genui/package.json": "@bascik/genui",
             "extensions/vscode-bascik/package.json": "bascik-vscode",
           };
           return JSON.stringify({
@@ -77,6 +78,7 @@ function fixture({
         "create-bascik",
         "@bascik/adapter-cloudflare",
         "@bascik/adapter-netlify",
+        "@bascik/genui",
       ]).toContain(name);
       expect(registryVersion).toBe(version);
       registryChecks++;
@@ -110,6 +112,7 @@ describe("release script", () => {
         `${SHA}:refs/tags/create-v1.2.3`,
         `${SHA}:refs/tags/adapter-cloudflare-v1.2.3`,
         `${SHA}:refs/tags/adapter-netlify-v1.2.3`,
+        `${SHA}:refs/tags/genui-v1.2.3`,
       ],
       ["git", "push", "--atomic", "origin", `${SHA}:refs/tags/ext-v1.2.3`],
     ]);
@@ -121,7 +124,7 @@ describe("release script", () => {
     ).toHaveLength(4);
     expect(
       calls.slice(second, third).filter((call) => call[0] === "registry"),
-    ).toHaveLength(6);
+    ).toHaveLength(8);
     expect(calls.slice(third).some((call) => call[0] === "registry")).toBe(
       false,
     );
@@ -138,6 +141,34 @@ describe("release script", () => {
       ),
     ).toBe(true);
     expect(logs).toContain(`git push --atomic origin ${SHA}:refs/tags/v1.2.3`);
+  });
+
+  it("releases @bascik/genui in the stage after @bascik/bascik, under genui-v", async () => {
+    const { dependencies, calls } = fixture();
+    await release(["genui"], dependencies);
+    expect(calls.filter((call) => call[1] === "push")).toEqual([
+      ["git", "push", "--atomic", "origin", `${SHA}:refs/tags/genui-v1.2.3`],
+    ]);
+    expect(calls).toContainEqual(["git", "show", `${SHA}:genui/package.json`]);
+
+    const all = fixture();
+    await release([], all.dependencies);
+    const pushes = all.calls.filter((call) => call[1] === "push");
+    expect(
+      pushes.findIndex((call) => call.includes(`${SHA}:refs/tags/v1.2.3`)),
+    ).toBeLessThan(
+      pushes.findIndex((call) =>
+        call.includes(`${SHA}:refs/tags/genui-v1.2.3`),
+      ),
+    );
+  });
+
+  it("names every artifact in the help text", async () => {
+    const { dependencies, logs } = fixture();
+    await release(["--help"], dependencies);
+    expect(logs.join("\n")).toMatch(
+      /pkg lsp create cloudflare netlify genui extension/,
+    );
   });
 
   it("selects the extension pre-release channel explicitly", async () => {
@@ -162,6 +193,7 @@ describe("release script", () => {
       "npm dist-tag add create-bascik@1.2.3 latest --registry https://registry.npmjs.org",
       "npm dist-tag add @bascik/adapter-cloudflare@1.2.3 latest --registry https://registry.npmjs.org",
       "npm dist-tag add @bascik/adapter-netlify@1.2.3 latest --registry https://registry.npmjs.org",
+      "npm dist-tag add @bascik/genui@1.2.3 latest --registry https://registry.npmjs.org",
     ]);
     expect(
       calls.some(

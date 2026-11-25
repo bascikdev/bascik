@@ -65,6 +65,8 @@ The optional client runtime. Without it every form in the chat is a page load, a
     if (text) {
       const turn = document.createElement("p");
       turn.className = "turn-user";
+      // The same hook as the stored thread's message that replaces it.
+      turn.dataset.testid = "turn-user";
       turn.textContent = text;
       thread.append(turn);
     }

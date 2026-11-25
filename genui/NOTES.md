@@ -139,6 +139,8 @@ A generated component that needs to talk back is a `<form method="post" action="
 
 ## How it would ship
 
+2026-11-25: the package is now set up to be published as 0.1.0 through the repository's release flow (`genui-v` tags, `.github/workflows/release.yml`); `RELEASING.md` has the one-time steps for the owner.
+
 The package is shaped the way Bascik shares anything, and has two halves:
 
 - **Functions you import**, from `dist/`. In this repository the exports point at `src/*.ts`, which Node runs as it is. Node does not strip types under `node_modules`, so `publishConfig.exports` points the published package at JavaScript built by `yarn build`. Claude's SDK and `beautiful-mermaid` are optional peers: the core has no dependencies.

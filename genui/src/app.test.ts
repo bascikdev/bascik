@@ -501,6 +501,61 @@ describe("thread: a reply is written once and stored", () => {
     expect(onError).toHaveBeenCalledWith(expect.any(Error), "the model failed");
   });
 
+  it("stores a failed reply when the model cannot be made, and does not start the turn again", async () => {
+    const onError = vi.fn();
+    let made = 0;
+    const chat = setup({
+      onError,
+      model: () => {
+        made++;
+        throw new Error("no key for this provider");
+      },
+    });
+    await seed(chat, [{ role: "user", content: "hi" }]);
+    const state = await replied(chat, page());
+    const chunks: string[] = [];
+    for await (const chunk of state.turn!.html.subscribe()) chunks.push(chunk);
+    // The reader sees the same message as for any other model failure.
+    expect(chunks.join("")).toContain("turn-failed");
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), "the model failed");
+    expect(onError).toHaveBeenCalledTimes(1);
+    const messages = (await stored(chat, CONVERSATION)).messages;
+    expect(messages).toHaveLength(2);
+    expect(messages[1]!.content).toBe(
+      "Something went wrong while writing this reply.",
+    );
+    // The next page load shows the stored thread and asks nobody again.
+    const again = await chat.thread(page());
+    expect(again.turn).toBeUndefined();
+    expect(made).toBe(1);
+    expect((await stored(chat, CONVERSATION)).messages).toHaveLength(2);
+  });
+
+  it("stores a failed reply when the model cannot be made while carrying a turn on", async () => {
+    const chat = setup({
+      model: () => {
+        throw new Error("no key for this provider");
+      },
+    });
+    await seed(chat, [
+      { role: "user", content: "hi" },
+      {
+        role: "assistant",
+        content: "Looking.",
+        awaiting: "model",
+        parts: [{ type: "text", text: "Looking." }],
+      },
+    ]);
+    const state = await replied(chat, page());
+    await state.turn!.over;
+    const messages = (await stored(chat, CONVERSATION)).messages;
+    expect(messages).toHaveLength(2);
+    expect(messages[1]!.awaiting).toBeUndefined();
+    expect(messages[1]!.content).toContain("Looking.");
+    expect(messages[1]!.content).toContain("Something went wrong");
+    expect((await chat.thread(page())).turn).toBeUndefined();
+  });
+
   it("keeps what the reader sent while the reply was being written", async () => {
     const chat = setup({
       model: () => scriptedModel(() => "Slow", { delayMs: 20, chunkSize: 1 }),

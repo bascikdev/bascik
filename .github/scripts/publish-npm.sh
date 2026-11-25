@@ -3,6 +3,10 @@
 # Requires the git tag (GITHUB_REF_NAME) to equal <tag-prefix> + package.json version.
 # Stable versions (1.0.0) publish under latest. A prerelease (1.1.0-rc.1) publishes under the dist-tag named by
 # its identifier (rc), never latest.
+# npm ignores publishConfig.exports and publishConfig.types, which Yarn applies when it packs. A package that
+# declares either (its exports point at src/ in the monorepo and at dist/ once published) is therefore packed with
+# `yarn pack` and the tarball is published, so the registry gets the manifest the package intends. Every other
+# package publishes straight from its directory.
 set -euo pipefail
 
 prefix="${1:?tag prefix required, e.g. v or create-v}"
@@ -29,4 +33,11 @@ if [ "$(npm view "${name}@${version}" version 2>/dev/null || true)" = "${version
 fi
 
 echo "Publishing ${version} with dist-tag ${channel}"
-npm publish --provenance --access public --tag "${channel}"
+if node -e "const c = require('./package.json').publishConfig ?? {}; process.exit(c.exports || c.types ? 0 : 1)"; then
+  tarball_dir="$(mktemp -d)"
+  trap 'rm -rf "${tarball_dir}"' EXIT
+  yarn pack --out "${tarball_dir}/package.tgz"
+  npm publish "${tarball_dir}/package.tgz" --provenance --access public --tag "${channel}"
+else
+  npm publish --provenance --access public --tag "${channel}"
+fi
