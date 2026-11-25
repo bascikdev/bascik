@@ -148,6 +148,11 @@ export interface VoiceTurn {
    * model that shows the same kind of view again can be told so.
    */
   lastView?: string[];
+  /**
+   * The calls whose shown views are stored, oldest first, kept from turn to
+   * turn so no more than `MAX_VOICE_VIEWS` are.
+   */
+  views?: string[];
 }
 
 /** The component tags a piece of markup uses, each once, in order of name. */
@@ -182,19 +187,53 @@ export interface VoiceToolResult {
 
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
+/** The most parts (tool calls and shown views) one voice turn records before it is stored. */
+export const MAX_VOICE_PARTS = 64;
+/** The most characters one voice turn's parts hold, as JSON, before it is stored. */
+export const MAX_VOICE_TURN_CHARS = 512_000;
+/** The most shown views kept for one conversation's voice calls; the oldest go first. */
+export const MAX_VOICE_VIEWS = 64;
+
+/** What `startVoiceTool` decided: an answer now, or a call to run. */
+export interface VoiceToolStart {
+  /** The answer, when there is nothing to run. */
+  result?: VoiceToolResult;
+  /**
+   * The call to run, already recorded in the turn as `running` or
+   * `approved`. Only the request that recorded it runs it.
+   */
+  run?: ToolPart;
+}
+
+const TOO_MUCH: VoiceToolResult = {
+  state: "failed",
+  output:
+    "Error: this turn holds too much. Finish what you are saying; the next turn can show more.",
+  html: "",
+};
+
+/** Whether `turn` has room for one more part. */
+const roomFor = (turn: VoiceTurn, part: MessagePart): boolean =>
+  turn.parts.length < MAX_VOICE_PARTS &&
+  JSON.stringify(turn.parts).length + JSON.stringify(part).length <=
+    MAX_VOICE_TURN_CHARS;
+
 /**
- * Run one tool call a voice model made, and record it in the turn. This is
- * the server's side of a voice session: the input is checked, a tool that
- * needs approval waits for the reader, and `show` is rendered through the
- * catalog like any reply.
+ * The first half of a voice tool call, done on the latest turn with no one
+ * else changing it: the input is checked, the call is recorded, a call that
+ * needs approval waits, and a decision claims the call it answers. A call
+ * with an id the turn already holds is refused, and a decision about a call
+ * that is not waiting does nothing, so a call runs at most once however many
+ * requests arrive together. `show` is rendered through the catalog like any
+ * reply. A call to run comes back as `run`, for `finishVoiceTool`.
  */
-export async function runVoiceTool(
+export function startVoiceTool(
   turn: VoiceTurn,
   request: VoiceToolRequest,
   tools: readonly Tool[],
   catalog: Catalog,
   options: TurnRenderOptions = {},
-): Promise<VoiceToolResult> {
+): VoiceToolStart {
   const id = SAFE_ID.test(request.id)
     ? request.id
     : `call_${crypto.randomUUID()}`;
@@ -204,9 +243,11 @@ export async function runVoiceTool(
   if (request.name === FILL_TOOL) {
     // The form is in the reader's browser, which is where this is done.
     return {
-      state: "failed",
-      output: "Error: a form is filled in by the reader's browser.",
-      html: "",
+      result: {
+        state: "failed",
+        output: "Error: a form is filled in by the reader's browser.",
+        html: "",
+      },
     };
   }
   if (request.name === SHOW_TOOL && !request.decision) {
@@ -216,13 +257,17 @@ export async function runVoiceTool(
         : undefined;
     if (typeof markup !== "string" || !markup.trim()) {
       return {
-        state: "failed",
-        output: "Error: markup is required.",
-        html: "",
+        result: {
+          state: "failed",
+          output: "Error: markup is required.",
+          html: "",
+        },
       };
     }
     // Stored as text, so a reload renders it through the same catalog.
-    turn.parts.push({ type: "text", text: markup });
+    const shown: MessagePart = { type: "text", text: markup };
+    if (!roomFor(turn, shown)) return { result: TOO_MUCH };
+    turn.parts.push(shown);
     // A reader who asks to "see it another way" often gets the same view
     // back. The model is told when a view repeats, and decides what that means.
     const view = componentsIn(markup);
@@ -230,11 +275,13 @@ export async function runVoiceTool(
       view.length > 0 && view.join() === (turn.lastView ?? []).join();
     turn.lastView = view;
     return {
-      state: "done",
-      output: repeated
-        ? `Shown on the reader's screen. This view uses the same components as the one before it (${view.join(", ")}). If the reader asked to see it a different way, that was not a different way: call ${SHOW_TOOL} again now with other components from the catalog. If they asked for new content, carry on.`
-        : "Shown on the reader's screen.",
-      html: renderText(markup, catalog, options),
+      result: {
+        state: "done",
+        output: repeated
+          ? `Shown on the reader's screen. This view uses the same components as the one before it (${view.join(", ")}). If the reader asked to see it a different way, that was not a different way: call ${SHOW_TOOL} again now with other components from the catalog. If they asked for new content, carry on.`
+          : "Shown on the reader's screen.",
+        html: renderText(markup, catalog, options),
+      },
     };
   }
 
@@ -246,15 +293,24 @@ export async function runVoiceTool(
   if (request.decision) {
     if (part?.state !== "approval-requested") {
       return {
-        state: "failed",
-        output: "Error: nothing is waiting.",
-        html: "",
+        result: {
+          state: "failed",
+          output: "Error: nothing is waiting.",
+          html: "",
+        },
       };
     }
+    // The claim: once the state moves on, no other decision finds it waiting.
     part.state = request.decision === "approve" ? "approved" : "denied";
   } else {
     if (part) {
-      return { state: "failed", output: "Error: already called.", html: "" };
+      return {
+        result: {
+          state: "failed",
+          output: "Error: already called.",
+          html: "",
+        },
+      };
     }
     const tool = offered.find((candidate) => candidate.name === request.name);
     const invalid = tool
@@ -270,6 +326,7 @@ export async function runVoiceTool(
           : {},
       state: "running",
     };
+    if (!roomFor(turn, part)) return { result: TOO_MUCH };
     turn.parts.push(part);
     if (invalid || !tool) {
       part.state = "failed";
@@ -280,21 +337,25 @@ export async function runVoiceTool(
         : tool.approval === true
     ) {
       part.state = "approval-requested";
-      return { state: part.state, html: renderToolPart(part, catalog, view) };
+      return {
+        result: {
+          state: part.state,
+          html: renderToolPart(part, catalog, view),
+        },
+      };
     }
   }
-
   if (part.state === "running" || part.state === "approved") {
-    const tool = offered.find((candidate) => candidate.name === part.name);
-    try {
-      if (!tool?.run) throw new Error(`There is no tool named ${part.name}.`);
-      part.output = await tool.run(part.input, {});
-      part.state = "done";
-    } catch (error) {
-      part.error = error instanceof Error ? error.message : "The tool failed.";
-      part.state = "failed";
-    }
+    return { run: part };
   }
+  return { result: voiceToolResult(part, catalog, view) };
+}
+
+function voiceToolResult(
+  part: ToolPart,
+  catalog: Catalog,
+  view: TurnRenderOptions,
+): VoiceToolResult {
   return {
     state: part.state,
     output:
@@ -307,6 +368,76 @@ export async function runVoiceTool(
   };
 }
 
+/**
+ * The second half of a voice tool call: run the call `startVoiceTool`
+ * claimed, with no lock held, and change `part` to what came of it. Record
+ * it with `settleVoiceTool`.
+ */
+export async function finishVoiceTool(
+  part: ToolPart,
+  tools: readonly Tool[],
+  catalog: Catalog,
+  options: TurnRenderOptions = {},
+): Promise<VoiceToolResult> {
+  const offered = voiceTools(tools);
+  const tool = offered.find((candidate) => candidate.name === part.name);
+  try {
+    if (!tool?.run) throw new Error(`There is no tool named ${part.name}.`);
+    part.output = await tool.run(part.input, {});
+    part.state = "done";
+  } catch (error) {
+    part.error = error instanceof Error ? error.message : "The tool failed.";
+    part.state = "failed";
+  }
+  return voiceToolResult(part, catalog, { ...options, tools: offered });
+}
+
+/**
+ * Record a finished call in the latest turn, in place of the part that said
+ * it was running. A turn stored meanwhile no longer has it, and is left as it is.
+ */
+export function settleVoiceTool(turn: VoiceTurn, part: ToolPart): void {
+  const at = turn.parts.findIndex(
+    (other) =>
+      other.type === "tool" &&
+      other.id === part.id &&
+      (other.state === "running" || other.state === "approved"),
+  );
+  if (at >= 0) turn.parts[at] = part;
+}
+
+/**
+ * Note that the view for `call` is stored, newest last. Answers the calls
+ * whose views are past `MAX_VOICE_VIEWS`, oldest first, for the caller to delete.
+ */
+export function noteVoiceView(turn: VoiceTurn, call: string): string[] {
+  const views = (turn.views ?? []).filter((other) => other !== call);
+  views.push(call);
+  const dropped = views.splice(0, Math.max(0, views.length - MAX_VOICE_VIEWS));
+  turn.views = views;
+  return dropped;
+}
+
+/**
+ * Run one tool call a voice model made, and record it in the turn. This is
+ * the server's side of a voice session: the input is checked, a tool that
+ * needs approval waits for the reader, and `show` is rendered through the
+ * catalog like any reply. A server whose calls can overlap uses
+ * `startVoiceTool` under a lock, then `finishVoiceTool` and
+ * `settleVoiceTool`, so a call runs at most once.
+ */
+export async function runVoiceTool(
+  turn: VoiceTurn,
+  request: VoiceToolRequest,
+  tools: readonly Tool[],
+  catalog: Catalog,
+  options: TurnRenderOptions = {},
+): Promise<VoiceToolResult> {
+  const started = startVoiceTool(turn, request, tools, catalog, options);
+  if (!started.run) return started.result!;
+  // The part is the turn's own, so finishing it records it.
+  return finishVoiceTool(started.run, tools, catalog, options);
+}
 /**
  * End a voice turn: the messages to store for it. What the reader said, then
  * one assistant message with what the model said, called, and showed. A call

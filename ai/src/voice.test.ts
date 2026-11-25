@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { describeComponent, type Catalog } from "./catalog.ts";
 import { geminiLiveSetup, geminiLiveVoice } from "./gemini-live.ts";
-import type { Tool, ToolPart } from "./model.ts";
+import { createChat, memoryStore, newConversation } from "./app.ts";
+import { scriptedModel, type Tool, type ToolPart } from "./model.ts";
 import { renderMessage } from "./render-turn.ts";
 import {
+  MAX_VOICE_PARTS,
+  MAX_VOICE_TURN_CHARS,
+  MAX_VOICE_VIEWS,
   newVoiceTurn,
   runVoiceTool,
   FILL_TOOL,
@@ -454,5 +458,229 @@ describe("geminiLiveVoice", () => {
     } finally {
       if (saved !== undefined) process.env.GEMINI_API_KEY = saved;
     }
+  });
+});
+
+describe("voice tool calls through createChat", () => {
+  const READER = "22222222-2222-4222-8222-222222222222";
+  const CONVERSATION = "44444444-4444-4444-8444-444444444444";
+  const posted = (fields: Record<string, string>): Request =>
+    new Request("http://localhost/api/x", {
+      method: "POST",
+      headers: { cookie: `visitor=${READER}; chat_t=${CONVERSATION}` },
+      body: new URLSearchParams(fields),
+    });
+  const page = (): Request =>
+    new Request("http://x/books", {
+      headers: { cookie: `visitor=${READER}; chat_t=${CONVERSATION}` },
+    });
+
+  async function voiced() {
+    const ran: string[] = [];
+    const pay: Tool = {
+      name: "pay",
+      description: "Pay.",
+      inputSchema: {
+        type: "object",
+        properties: { title: { type: "string" } },
+        required: ["title"],
+      },
+      approval: true,
+      // Slow enough that requests sent together overlap while it runs.
+      run: async (input) => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        ran.push(String(input.title));
+        return `Paid ${input.title}`;
+      },
+    };
+    const chat = createChat({
+      id: "t",
+      store: memoryStore(),
+      catalog,
+      model: () => scriptedModel(() => "Hi", { delayMs: 0 }),
+      system: "You help.",
+      page: "/books",
+      onError: () => {},
+      tools: [pay],
+      voice: {
+        protocol: "fake",
+        createSession: async () => ({ protocol: "fake", url: "", setup: null }),
+      },
+    });
+    await chat.store.save(READER, {
+      ...newConversation(),
+      id: CONVERSATION,
+      messages: [],
+    });
+    const call = async (fields: Record<string, string>) =>
+      (await (await chat.voiceTool(posted(fields))).json()) as {
+        state: string;
+        output?: string;
+      };
+    const stored = async () => {
+      await chat.voiceTurn(posted({ reader: "go", model: "ok" }));
+      return (await chat.store.load(READER, CONVERSATION))!.messages.at(-1)!
+        .parts!;
+    };
+    return { chat, ran, call, stored };
+  }
+
+  it("runs an approved call once when the approval is sent several times at once", async () => {
+    const { ran, call, stored } = await voiced();
+    const asked = { id: "c1", name: "pay", input: '{"title":"Dune"}' };
+    expect((await call(asked)).state).toBe("approval-requested");
+    const answers = await Promise.all(
+      [1, 2, 3].map(() => call({ ...asked, decision: "approve" })),
+    );
+    expect(ran).toEqual(["Dune"]);
+    expect(answers.map((answer) => answer.state).sort()).toEqual([
+      "done",
+      "failed",
+      "failed",
+    ]);
+    expect(await stored()).toMatchObject([
+      { type: "text" },
+      { type: "tool", id: "c1", state: "done" },
+    ]);
+  });
+
+  it("lets only one of an approval and a denial sent together count, and stores what happened", async () => {
+    const { ran, call, stored } = await voiced();
+    const asked = { id: "c1", name: "pay", input: '{"title":"Dune"}' };
+    await call(asked);
+    const answers = await Promise.all([
+      call({ ...asked, decision: "approve" }),
+      call({ ...asked, decision: "deny" }),
+    ]);
+    const states = answers.map((answer) => answer.state).sort();
+    const part = (await stored()).find((p) => p.type === "tool") as ToolPart;
+    expect(ran.length).toBeLessThanOrEqual(1);
+    if (ran.length) {
+      expect(states).toEqual(["done", "failed"]);
+      expect(part.state).toBe("done");
+    } else {
+      expect(states).toEqual(["denied", "failed"]);
+      expect(part.state).toBe("denied");
+    }
+  });
+
+  it("does not run a call the turn stored as refused before the approval arrived", async () => {
+    const { ran, call, stored } = await voiced();
+    const asked = { id: "c1", name: "pay", input: '{"title":"Dune"}' };
+    await call(asked);
+    const [answer, parts] = await Promise.all([
+      call({ ...asked, decision: "approve" }),
+      stored(),
+    ]);
+    const part = parts.find((p) => p.type === "tool") as ToolPart;
+    if (part.state === "denied") {
+      expect(answer.state).toBe("failed");
+      expect(ran).toEqual([]);
+    } else {
+      expect(ran).toEqual(["Dune"]);
+    }
+  });
+
+  it("refuses a second call with an id already in the turn, even when both arrive at once", async () => {
+    const { ran, call, stored } = await voiced();
+    const answers = await Promise.all([
+      call({ id: "X", name: "pay", input: '{"title":"EVIL"}' }),
+      call({ id: "X", name: "pay", input: '{"title":"Dune"}' }),
+    ]);
+    expect(answers.map((answer) => answer.state).sort()).toEqual([
+      "approval-requested",
+      "failed",
+    ]);
+    const waiting =
+      answers[0]!.state === "approval-requested" ? "EVIL" : "Dune";
+    await call({
+      id: "X",
+      name: "pay",
+      input: JSON.stringify({ title: waiting }),
+      decision: "approve",
+    });
+    expect(ran).toEqual([waiting]);
+    expect(
+      (await stored()).filter((part) => part.type === "tool"),
+    ).toHaveLength(1);
+  });
+
+  it("caps the bytes and parts one turn holds, and the views a conversation keeps", async () => {
+    const { chat, call, stored } = await voiced();
+    const markup = `<book-card title="Dune">${"x".repeat(60_000)}</book-card>`;
+    const big = [];
+    for (let at = 0; at < 20; at++) {
+      big.push(
+        await call({
+          id: `big${at}`,
+          name: "show",
+          input: JSON.stringify({ markup }),
+        }),
+      );
+    }
+    expect(big[0]!.state).toBe("done");
+    expect(big.at(-1)).toMatchObject({
+      state: "failed",
+      output: expect.stringContaining("holds too much"),
+    });
+    expect(JSON.stringify(await stored()).length).toBeLessThan(
+      MAX_VOICE_TURN_CHARS + 1000,
+    );
+
+    const small = [];
+    for (let at = 0; at < MAX_VOICE_PARTS + 5; at++) {
+      small.push(
+        await call({
+          id: `s${at}`,
+          name: "show",
+          input: JSON.stringify({ markup: `<book-card title="${at}" />` }),
+        }),
+      );
+    }
+    expect(small.filter((answer) => answer.state === "done")).toHaveLength(
+      MAX_VOICE_PARTS,
+    );
+
+    // Views outlive the turn, so they are capped for the conversation.
+    for (let round = 0; round < 3; round++) {
+      await stored();
+      for (let at = 0; at < 30; at++) {
+        await call({
+          id: `v${round}_${at}`,
+          name: "show",
+          input: JSON.stringify({ markup: `<book-card title="v${at}" />` }),
+        });
+      }
+    }
+    expect(await chat.voiceView(page(), "big0")).toBe("");
+    expect(await chat.voiceView(page(), "v0_0")).toBe("");
+    expect(await chat.voiceView(page(), "v2_29")).toContain("v29");
+    let kept = 0;
+    for (let round = 0; round < 3; round++) {
+      for (let at = 0; at < 30; at++) {
+        if (await chat.voiceView(page(), `v${round}_${at}`)) kept++;
+      }
+    }
+    expect(kept).toBe(MAX_VOICE_VIEWS);
+  });
+
+  it("caps parts in runVoiceTool too", async () => {
+    const turn = newVoiceTurn();
+    for (let at = 0; at < MAX_VOICE_PARTS; at++) {
+      await runVoiceTool(
+        turn,
+        { id: `a${at}`, name: "list_books", input: {} },
+        tools,
+        catalog,
+      );
+    }
+    const over = await runVoiceTool(
+      turn,
+      { id: "over", name: "list_books", input: {} },
+      tools,
+      catalog,
+    );
+    expect(over.state).toBe("failed");
+    expect(turn.parts).toHaveLength(MAX_VOICE_PARTS);
   });
 });
