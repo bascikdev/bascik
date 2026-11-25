@@ -93,9 +93,14 @@ export async function* renderTurn(
   catalog: Catalog,
   options: TurnRenderOptions = {},
 ): AsyncGenerator<string, void, undefined> {
-  // One budget for the turn's text, as `renderMessage` has for the stored
-  // message, so the reply shows the same components live and on reload.
+  // One budget for the turn's text and tool notes, as `renderMessage` has for
+  // the stored message, so the reply shows the same components live and on
+  // reload.
   const budget: ComponentBudget = { used: 0 };
+  // A tool part is sent again each time its state changes, but stored once.
+  // Each sending is drawn from the budget as it stood when the part was
+  // first sent, and the part is charged once, for its costliest sending.
+  const parts = new Map<string, { start: number; charged: number }>();
   let renderer = createRenderer(catalog, options, budget);
   for await (const event of events) {
     if (event.type === "text") {
@@ -106,7 +111,19 @@ export async function* renderTurn(
     // A tool call ends the text before it: what follows is a new part.
     const rest = renderer.end();
     renderer = createRenderer(catalog, options, budget);
-    yield rest + renderToolPart(event.part, catalog, options);
+    let seen = parts.get(event.part.id);
+    if (!seen) {
+      seen = { start: budget.used, charged: 0 };
+      parts.set(event.part.id, seen);
+    }
+    const sending: ComponentBudget = { used: seen.start };
+    const html = renderToolPart(event.part, catalog, options, sending);
+    const cost = sending.used - seen.start;
+    if (cost > seen.charged) {
+      budget.used += cost - seen.charged;
+      seen.charged = cost;
+    }
+    yield rest + html;
   }
   const rest = renderer.end();
   if (rest) yield rest;

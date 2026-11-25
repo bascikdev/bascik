@@ -158,10 +158,78 @@ describe("renderMessage", () => {
     )) {
       html += chunk;
     }
-    // 250 from the text, plus the tool part's note, which is sent again each
-    // time its state changes and so is not counted.
-    expect(html.match(/<tool-note/g)).toHaveLength(251);
-    expect(html).toContain("150 more items were left out");
+    // 250 in all, the tool part's note among them.
+    expect(html.match(/<tool-note/g)).toHaveLength(250);
+    expect(html).toContain("151 more items were left out");
+  });
+
+  it.each([
+    ["the note in every state", undefined],
+    [
+      "the note only once the call is done",
+      (drawn: ToolPart) => (drawn.state === "running" ? "<i>…</i>" : null),
+    ],
+  ])(
+    "shows the same components live as on reload, with %s",
+    async (_, view) => {
+      const many = `<tool-note>x</tool-note>\n`.repeat(200);
+      const options = { tools, view, maxComponents: 250 };
+      let live = "";
+      for await (const chunk of renderTurn(
+        play([
+          { type: "text", delta: many },
+          { type: "tool", part: part("running") },
+          { type: "tool", part: part("done", { output: "x" }) },
+          { type: "text", delta: many },
+        ]),
+        catalog,
+        options,
+      )) {
+        live += chunk;
+      }
+      const stored = renderMessage(
+        {
+          role: "assistant",
+          content: "",
+          parts: [
+            { type: "text", text: many },
+            part("done", { output: "x" }),
+            { type: "text", text: many },
+          ],
+        },
+        catalog,
+        options,
+      );
+      // The running part is hidden once the done one follows it.
+      expect(
+        live.replace(
+          /<div class="part"[^>]*data-state="running">.*?<\/div>/,
+          "",
+        ),
+      ).toBe(stored);
+    },
+  );
+
+  it("charges a tool part's note once however often it is sent", async () => {
+    let html = "";
+    const events: TurnEvent[] = [
+      { type: "tool", part: part("running") },
+      { type: "tool", part: part("approval-requested") },
+      { type: "tool", part: part("done", { output: "x" }) },
+      {
+        type: "text",
+        delta: "<tool-note>a</tool-note>\n<tool-note>b</tool-note>",
+      },
+    ];
+    for await (const chunk of renderTurn(play(events), catalog, {
+      tools,
+      maxComponents: 3,
+    })) {
+      html += chunk;
+    }
+    expect(html).toContain("<tool-note>a</tool-note>");
+    expect(html).toContain("<tool-note>b</tool-note>");
+    expect(html).not.toContain("left out");
   });
 
   it("renders a message stored before parts existed", () => {

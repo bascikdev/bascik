@@ -32,6 +32,30 @@ describe("mermaidFence", () => {
     expect(fences.mermaid(source)).toMatch(/^<figure class="diagram"/);
   });
 
+  // Labels land in text and in data attributes, never in CSS, so characters
+  // that safeSvg refuses in CSS do not cost a diagram its drawing.
+  it.each([
+    ["flowchart", `flowchart TD\n  A["a@b /* c \\ url(d)"] -->|"e@f \\"| B`],
+    ["sequenceDiagram", "sequenceDiagram\n  Reader->>Shop: a@b /* c \\ url(d)"],
+    ["stateDiagram-v2", "stateDiagram-v2\n  [*] --> Reading : a@b \\ url(d)"],
+    ["classDiagram", "classDiagram\n  Book <|-- Novel : a@b \\ url(d)"],
+    ["erDiagram", `erDiagram\n  AUTHOR ||--o{ BOOK : "a@b \\ url(d)"`],
+    [
+      "xychart-beta",
+      `xychart-beta\n  x-axis ["a@b", "c \\ url(d)"]\n  bar [1, 5]`,
+    ],
+  ])("draws a %s whose labels hold CSS characters", (_, source) => {
+    expect(fences.mermaid(source)).toMatch(/^<figure class="diagram"/);
+  });
+
+  it("draws a diagram with every kind of style a model can give it", () => {
+    expect(
+      fences.mermaid(
+        `${FLOW}\n  style A fill:#f00,stroke:#00f,stroke-width:2px,color:#fff\n  classDef k fill:#0f0\n  class B k\n  linkStyle 0 stroke:#f0f`,
+      ),
+    ).toMatch(/^<figure class="diagram"/);
+  });
+
   it("leaves the font and the colors to the page", () => {
     const html = fences.mermaid(FLOW)!;
     expect(html).not.toMatch(
@@ -114,6 +138,8 @@ describe("safeSvg", () => {
 
   it("accepts drawing elements that refer only to themselves", () => {
     expect(safeSvg(ok)).toBe(ok);
+    const local = `<svg><style>rect { fill: url(#g); }</style><rect fill="URL(#a-1)" data-label="a@b /* \\ url(x)" /></svg>`;
+    expect(safeSvg(local)).toBe(local);
   });
 
   it.each([
@@ -158,6 +184,76 @@ describe("safeSvg", () => {
     [
       "an escaped stylesheet import",
       `<svg><style>@\\69mport "https://example.com/x.css";</style></svg>`,
+    ],
+    // A comment opener in a string hides nothing from the browser.
+    [
+      "a url() after a comment opener in a stylesheet string",
+      `<svg><style>a{content:"/*"}svg{background:url(https://evil.example/x)}b{content:"*/"}</style></svg>`,
+    ],
+    [
+      "a url() after a comment opener in a style attribute string",
+      `<svg><rect style="--a:'/*';fill:url(https://evil.example/fill.svg#a);--b:'*/'"/></svg>`,
+    ],
+    [
+      "a mask url() after a comment opener in a string",
+      `<svg><rect style="--a:'/*';mask:url(https://evil.example/mask.svg#a);--b:'*/'"/></svg>`,
+    ],
+    [
+      "a url() after an escaped newline and a comment opener in a string",
+      `<svg><style>a{content:"\\\n/*"}html{background:url(https://evil.example/z)}b{content:"*/"}</style></svg>`,
+    ],
+    [
+      "an import after a comment opener in a string",
+      `<svg><style>a{content:"/*"}@import "https://evil.example/i.css";b{content:"*/"}</style></svg>`,
+    ],
+    [
+      "an image-set() in a stylesheet",
+      `<svg><style>body{background-image:image-set("https://evil.example/imageset" 1x)}</style></svg>`,
+    ],
+    [
+      "a -webkit-image-set() in a stylesheet",
+      `<svg><style>body{background-image:-webkit-image-set("https://evil.example/w" 1x)}</style></svg>`,
+    ],
+    [
+      "a src() in a stylesheet",
+      `<svg><style>body{background-image:src("https://evil.example/s")}</style></svg>`,
+    ],
+    [
+      "a cross-fade() in a style attribute",
+      `<svg><rect style="background:cross-fade(&quot;https://evil.example/c&quot;, red 50%)" /></svg>`,
+    ],
+    [
+      "an image() in a presentation attribute",
+      `<svg><rect fill="image(&quot;https://evil.example/i&quot;)" /></svg>`,
+    ],
+    [
+      "an element() in a stylesheet",
+      `<svg><style>svg{background:element(#a)}</style></svg>`,
+    ],
+    [
+      "an attr() in a stylesheet",
+      `<svg><style>svg{--a:attr(data-x)}</style></svg>`,
+    ],
+    [
+      "an image-set() written with a character reference",
+      `<svg><rect fill="&#105;mage-set(&quot;https://evil.example/r&quot; 1x)" /></svg>`,
+    ],
+    [
+      "a url() with anything but a local id",
+      `<svg><rect fill="url(#a) url(https://evil.example/x)" /></svg>`,
+    ],
+    ["a quoted local url()", `<svg><rect fill="url('#a')" /></svg>`],
+    ["any backslash", `<svg><rect fill="re\\64" /></svg>`],
+    [
+      "a backslash written as a character reference",
+      `<svg><rect fill="&#92;75rl(#a)" /></svg>`,
+    ],
+    ["any comment", `<svg><style>svg { /* note */ }</style></svg>`],
+    ["a comment in an attribute", `<svg><rect fill="red/**/" /></svg>`],
+    ["any at-rule", `<svg><style>@media print { svg { } }</style></svg>`],
+    [
+      "an at-rule written with a character reference",
+      `<svg><style>&#64;import "x.css";</style></svg>`,
     ],
     ["a tag it cannot read", `<svg><rect x=1 /></svg>`],
     ["a stray angle bracket", `<svg><text>a < b</text></svg>`],
