@@ -12,7 +12,8 @@
     "adapters/netlify/e2e/fixture",
     "lsp",
     "skills-tests",
-    "ai"
+    "ai",
+    "ai-site"
   ],
   "engines": {
     "node": ">=24.21.0"
@@ -167,6 +168,9 @@
     "skills:coverage": "yarn workspace bascik-skills-tests coverage",
     "skills:cover": "yarn skills:coverage",
     "ai:build": "yarn workspace @bascik/ai build",
+    "ai-site:build": "yarn workspace bascik-ai-site build",
+    "ai-site:dev": "yarn workspace bascik-ai-site dev",
+    "ai-site:check": "yarn workspace bascik-ai-site check",
     "ai:typecheck": "yarn workspace @bascik/ai typecheck",
     "ai:unit": "yarn workspace @bascik/ai unit",
     "ai:integration": "yarn workspace @bascik/ai integration",

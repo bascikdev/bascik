@@ -1,0 +1,28 @@
+<!-- @bascik
+A bordered, unfilled button-looking link.
+-->
+<style>
+  .quiet {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.55rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: inherit;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .quiet:hover {
+    border-color: var(--accent);
+  }
+  .quiet:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+</style>
+<a class="quiet" data-testid="quiet-link" data-bascik-attr-href="href"
+  ><span data-bascik-slot></span
+></a>

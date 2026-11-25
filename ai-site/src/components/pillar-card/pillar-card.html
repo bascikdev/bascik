@@ -1,0 +1,21 @@
+<!-- @bascik
+A pillar card: a title prop and a short description with a list as content.
+-->
+<style>
+  .card {
+    margin: 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .title {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+</style>
+<article class="card" data-testid="pillar-card">
+  <h3 class="title" data-bascik-prop-name></h3>
+  <span data-bascik-slot></span>
+</article>

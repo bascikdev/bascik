@@ -5294,6 +5294,14 @@ __metadata:
   languageName: node
   linkType: hard
 
+"bascik-ai-site@workspace:ai-site":
+  version: 0.0.0-use.local
+  resolution: "bascik-ai-site@workspace:ai-site"
+  dependencies:
+    "@bascik/bascik": "npm:^1.0.2"
+  languageName: unknown
+  linkType: soft
+
 "bascik-docs@workspace:docs":
   version: 0.0.0-use.local
   resolution: "bascik-docs@workspace:docs"
