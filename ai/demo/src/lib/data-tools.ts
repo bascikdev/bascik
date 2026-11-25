@@ -15,7 +15,8 @@
  * and copying and serializing that on the server would block its event loop
  * for a minute. So the child caps the reply before it sends it: values SQLite
  * may build, rows, bytes of JSON, and the length of each text value, with
- * blobs replaced by a short placeholder.
+ * blobs replaced by a short placeholder. A failed query's error message is
+ * cut the same way, since SQLite can repeat a megabyte of its input in one.
  */
 import { fork, type ChildProcess } from "node:child_process";
 import { constants, DatabaseSync } from "node:sqlite";
@@ -166,6 +167,16 @@ function cutText(text: string, limit: number): string {
 }
 
 /**
+ * The message of a failed query, cut to MAX_VALUE_CHARS. SQLite repeats its
+ * input in some messages (a bad JSON path, an unknown column, an unterminated
+ * string), and that input can be a megabyte long.
+ */
+function errorText(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return cutText(message, MAX_VALUE_CHARS);
+}
+
+/**
  * Turn one SQLite value into something small and safe to send: a blob
  * becomes a placeholder (serialized, a Uint8Array writes one key per byte),
  * and long text is cut with a marker.
@@ -270,7 +281,7 @@ function serveQueries(): void {
     try {
       reply = { result: query(database, statement) };
     } catch (error) {
-      reply = { error: error instanceof Error ? error.message : String(error) };
+      reply = { error: errorText(error) };
     }
     process.send!(reply);
   });

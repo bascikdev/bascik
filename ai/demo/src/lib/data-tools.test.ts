@@ -195,6 +195,46 @@ describe("runSql", () => {
       ).rejects.toThrow(/too big/);
     });
 
+    describe("cuts a long error message", () => {
+      const long = "x' || hex(zeroblob(499000))";
+      // SQLite repeats what it was given in some error messages: a bad JSON
+      // path, an unknown column, a token it cannot parse.
+      it.each([
+        ["a bad json_extract path", `SELECT json_extract('{}', '${long})`],
+        ["a bad json_set path", `SELECT json_set('{}', '${long}, 1)`],
+        ["a bad jsonb_extract path", `SELECT jsonb_extract('{}', '${long})`],
+        ["a bad json_each path", `SELECT * FROM json_each('{}', '${long})`],
+        ["an unknown column", `SELECT "${"n".repeat(200_000)}" FROM books`],
+        [
+          "an unknown function",
+          `SELECT 1 FROM books WHERE ${"q".repeat(200_000)}(1)`,
+        ],
+        ["an unterminated string", `SELECT '${"t".repeat(200_000)}`],
+      ])("%s", async (_label, sql) => {
+        let message = "";
+        const gap = await longestLoopGap(async () => {
+          try {
+            await runTool(sql);
+          } catch (error) {
+            message = (error as Error).message;
+          }
+        });
+        expect(gap).toBeLessThan(500);
+        expect(message.length).toBeGreaterThan(0);
+        expect(message.length).toBeLessThanOrEqual(MAX_VALUE_CHARS + 100);
+        expect(message).toMatch(/\[cut, \d+ characters in all\]$/);
+        expect((await runSql("SELECT COUNT(*) FROM books")).rows).toEqual([
+          [40],
+        ]);
+      });
+
+      it("leaves a short error message alone", async () => {
+        await expect(runSql("SELECT nope FROM books")).rejects.toThrow(
+          /^no such column: nope$/,
+        );
+      });
+    });
+
     it("leaves numbers and short text alone", async () => {
       const result = await runSql(
         "SELECT 1.5 AS n, NULL AS z, 'short' AS s, 9007199254740991 AS big",
