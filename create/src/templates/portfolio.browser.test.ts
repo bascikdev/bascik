@@ -270,7 +270,9 @@ describe("fresh portfolio production browser", () => {
         Buffer.from(data, "base64"),
       );
     await page.close();
-  });
+    // The first page this browser opens, then four more: it passed the
+    // default 5s limit on the Windows runner.
+  }, 30_000);
 
   it("supports keyboard theme switching, persistence, and accessible responsive navigation", async () => {
     const page = await browser!.newPage();
