@@ -13,7 +13,7 @@ it is not `@bascik/bascik`.
 
 ### Added
 
-- `@bascik/ai` 0.1.0 (experimental): generative UI for Bascik. A model streams prose and component tags, and Bascik renders the tags from your own catalog as scoped HTML while the reply is still arriving, so a reply needs no client JavaScript. It has adapters for Claude, OpenAI-compatible servers, and the OpenAI Responses API, tools with approval, voice sessions, and Mermaid diagrams, and `npx bascik add @bascik/ai` copies its catalog and chat components into your project. The API may change between 0.x releases. See [Generative UI](https://bascik.dev/ai).
+- `@bascik/ai` 0.1.0 (experimental): Bascik AI, the AI interface for Bascik, consists of Chat, Generative UI, and Voice. Chat includes the message box, thread, tool approval, memory, conversation search, attachments, and the server kit. Generative UI renders model-written component tags from your catalog as server-side HTML. Voice enables spoken conversations with captions. It works with Claude, OpenAI-compatible servers, and the OpenAI Responses API for typed chat, and with Gemini Live and Azure Voice Live for voice. Run `npx bascik add @bascik/ai` to copy the catalog and chat components into your project. The API may change between 0.x releases. See [Bascik AI](https://bascik.dev/ai).
 
 ### Changed
 
