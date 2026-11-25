@@ -225,4 +225,4 @@ void (async () => {
 yield * html.subscribe();
 ```
 
-Keep the broadcast in a map by conversation id while the turn runs. A reload in the middle of a reply then joins it from its first chunk, a second tab shows the same reply, and a reply is finished and stored when nobody is watching. This is one process's memory: with several servers, put the chunks in a shared store.
+Keep the broadcast in a map by conversation id while the turn runs. A reload in the middle of a reply then joins it from its first chunk, a second tab shows the same reply, and a reply is finished and stored when nobody is watching. This is one process's memory. With several servers, see [Running on Several Servers](/genui/scaling).

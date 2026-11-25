@@ -50,7 +50,7 @@ These are the places the prototype bends a Bascik rule, or leans on something ne
 
 - **It needs a server.** Bascik's first promise is a folder of static files. Generative UI renders per request, so it needs the dev server, the production server, or an adapter. It is an opt-in package for that reason, and nothing in it is part of Bascik itself.
 - **It is a package with an API.** Bascik's guidance is that a task which seems to need a helper usually needs five lines in `src/lib/`. The renderer and the turn loop are more than that, and getting them wrong is a security problem, which is the same reason [`@bascik/bascik/html`](/html-helpers) exists. The package is kept to what is hard to get right; storage, routes, and layout stay in your project.
-- **Live replies are one process's memory.** A reply that outlives its page is held in memory while it is written. With several servers that needs a shared store, which the prototype does not have.
+- **Live replies are one process's memory.** A reply that outlives its page is held in memory while it is written. With several servers, pass `createChat` a `shared` store: see [Running on Several Servers](/genui/scaling).
 - **A reply nobody reads still costs tokens.** Finishing a reply after the reader leaves is a choice, and a model's time is not free.
 - **Some CSS is recent.** The tool-call rule and the typing caret use `:has()`, and the first paint is held with `<link rel="expect">`. Older browsers show a little more than they should, and nothing breaks.
 

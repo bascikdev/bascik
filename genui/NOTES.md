@@ -284,7 +284,7 @@ Each has unit tests (`src/turn.test.ts`, `src/render-turn.test.ts`, `src/broadca
 ### What this did not test
 
 - **A real model.** The Claude adapter is checked against a fake client, not the API. The message shapes it sends for tool results are the ones the previous adapter used.
-- **More than one server.** A live reply is one process's memory. A reader who lands on another server mid-reply starts a second one, and Stop only reaches the server it lands on. A shared store behind `createBroadcast()` would fix both.
+- **More than one server.** A live reply is one process's memory. A reader who lands on another server mid-reply starts a second one, and Stop only reaches the server it lands on. Fixed by the `shared` option (`@bascik/genui/shared`): a lease, a replayable channel, and a small key-value store; see the "Running on Several Servers" docs page.
 - **A reply nobody reads still costs tokens.** That is the price of finishing it. The limit is two minutes per reply.
 - **File and source parts, and reasoning.** AI SDK UI has them. None is here yet.
 
