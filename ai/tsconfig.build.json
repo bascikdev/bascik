@@ -14,5 +14,7 @@
     "rewriteRelativeImportExtensions": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts"]
+  // The storage contracts are test suites, run by this package's tests and
+  // by other implementations' tests; they are not published.
+  "exclude": ["src/**/*.test.ts", "src/**/*.contract.ts"]
 }
