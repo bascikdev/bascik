@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { describeComponent, type Catalog } from "./catalog.ts";
 import type { ChatMessage, Tool, ToolPart } from "./model.ts";
 import { escapeHtml } from "./render.ts";
-import { renderMessage, renderToolPart, renderTurn } from "./render-turn.ts";
+import {
+  renderMessage,
+  renderToolPart,
+  renderTurn,
+  type TurnRenderOptions,
+} from "./render-turn.ts";
 import type { TurnEvent } from "./turn.ts";
 
 const catalog: Catalog = new Map(
@@ -230,6 +235,90 @@ describe("renderMessage", () => {
     expect(html).toContain("<tool-note>a</tool-note>");
     expect(html).toContain("<tool-note>b</tool-note>");
     expect(html).not.toContain("left out");
+  });
+
+  describe("with calls running side by side", () => {
+    const wide: Tool[] = [
+      {
+        name: "look_up",
+        description: "",
+        inputSchema: { type: "object", properties: {} },
+        note: () => `<tool-note>x</tool-note>\n`.repeat(200),
+        run: () => "",
+      },
+    ];
+    const a = (state: ToolPart["state"]) => part(state, { id: "a" });
+    const b = (state: ToolPart["state"]) => part(state, { id: "b" });
+    const shown = (html: string) =>
+      html.replace(
+        // A note can hold a `<div>`, so a part runs to the next part's start.
+        /<div class="part"[^>]*data-state="running">.*?<\/div>(?=<div class="part"|$)/gs,
+        () => "",
+      );
+    const live = async (events: TurnEvent[], options: TurnRenderOptions) => {
+      let html = "";
+      for await (const chunk of renderTurn(play(events), catalog, options)) {
+        html += chunk;
+      }
+      return html;
+    };
+    const views = [
+      ["the note in every state", undefined],
+      [
+        "the note only once the call is done",
+        (drawn: ToolPart) => (drawn.state === "running" ? "<i>…</i>" : null),
+      ],
+    ] as const;
+
+    it.each(views)(
+      "shows the same components live as on reload, with %s",
+      async (_, view) => {
+        const options = { tools: wide, view, maxComponents: 300 };
+        // As a turn runs them: every call running, then every call done.
+        const html = await live(
+          [
+            { type: "tool", part: a("running") },
+            { type: "tool", part: b("running") },
+            { type: "tool", part: a("done") },
+            { type: "tool", part: b("done") },
+          ],
+          options,
+        );
+        const stored = renderMessage(
+          { role: "assistant", content: "", parts: [a("done"), b("done")] },
+          catalog,
+          options,
+        );
+        expect(stored.match(/<tool-note/g)).toHaveLength(300);
+        expect(shown(html)).toBe(stored);
+      },
+    );
+
+    it.each(views)(
+      "never shows more than the budget, whatever order the calls finish in, with %s",
+      async (_, view) => {
+        const options = { tools: wide, view, maxComponents: 300 };
+        for (const order of [
+          ["a", "b", "c", "a", "b", "c"],
+          ["a", "b", "c", "c", "b", "a"],
+          ["a", "b", "b", "c", "a", "c"],
+          ["a", "a", "b", "c", "c", "b"],
+        ]) {
+          const sent = new Set<string>();
+          const events: TurnEvent[] = order.map((id) => {
+            const state = sent.has(id) ? "done" : "running";
+            sent.add(id);
+            return { type: "tool", part: part(state, { id }) };
+          });
+          events.push({ type: "text", delta: "<tool-note>y</tool-note>" });
+          const html = shown(await live(events, options));
+          expect(
+            html.match(/<tool-note/g)!.length,
+            order.join(""),
+          ).toBeLessThanOrEqual(300);
+        }
+      },
+    );
   });
 
   it("renders a message stored before parts existed", () => {

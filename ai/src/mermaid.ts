@@ -35,8 +35,20 @@ const ELEMENTS: ReadonlySet<string> = new Set([
   "tspan",
 ]);
 
-const TAG = /<(\/?)([A-Za-z][\w:-]*)((?:\s+[\w:-]+="[^"]*")*)\s*(\/?)>/y;
-const ATTRIBUTE = /\s+([\w:-]+)="([^"]*)"/g;
+/*
+ * A tag as the HTML parser reads it. HTML ends a name only at one of these
+ * five spaces (tab, line feed, form feed, carriage return, space), `/`, or
+ * `>`; JavaScript's \s also matches U+00A0, \v, and other spaces, which HTML
+ * reads as part of a name, so it is never used here. A quoted value holds no
+ * `<` or `>`: beautiful-mermaid escapes both in every label, and refusing
+ * them means no value can read as markup if this and the browser disagree.
+ */
+const SPACE = "[ \\t\\n\\f\\r]";
+const TAG = new RegExp(
+  `<(\\/?)([A-Za-z][\\w:-]*)((?:${SPACE}+[\\w:-]+="[^"<>]*")*)${SPACE}*(\\/?)>`,
+  "y",
+);
+const ATTRIBUTE = new RegExp(`${SPACE}+([\\w:-]+)="([^"]*)"`, "g");
 
 const BASIC_REFERENCES: Readonly<Record<string, string>> = {
   amp: "&",

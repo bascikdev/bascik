@@ -44,6 +44,10 @@ describe("mermaidFence", () => {
       "xychart-beta",
       `xychart-beta\n  x-axis ["a@b", "c \\ url(d)"]\n  bar [1, 5]`,
     ],
+    [
+      "flowchart with spaces and brackets",
+      `flowchart TD\n  A["a b\vc > d < e"] -->|"f g > h"| B`,
+    ],
   ])("draws a %s whose labels hold CSS characters", (_, source) => {
     expect(fences.mermaid(source)).toMatch(/^<figure class="diagram"/);
   });
@@ -138,6 +142,9 @@ describe("safeSvg", () => {
 
   it("accepts drawing elements that refer only to themselves", () => {
     expect(safeSvg(ok)).toBe(ok);
+    // Every space HTML ends a name at, and text holding any other.
+    const spaced = `<svg\tviewBox="0 0 1 1"\n\f\r><rect\r\nfill="red"\t/><text>a b\vc</text></svg>`;
+    expect(safeSvg(spaced)).toBe(spaced);
     const local = `<svg><style>rect { fill: url(#g); }</style><rect fill="URL(#a-1)" data-label="a@b /* \\ url(x)" /></svg>`;
     expect(safeSvg(local)).toBe(local);
   });
@@ -255,6 +262,37 @@ describe("safeSvg", () => {
       "an at-rule written with a character reference",
       `<svg><style>&#64;import "x.css";</style></svg>`,
     ],
+    // HTML ends a tag name or an attribute only at a tab, a line feed, a form
+    // feed, a carriage return, a space, `/` or `>`; JavaScript's \s also
+    // matches the characters below, which HTML reads as part of a name.
+    ...[" ", "\v", " ", "﻿", "　"].flatMap((space): [string, string][] => [
+      [
+        `a tag name ended by U+${space.codePointAt(0)!.toString(16).padStart(4, "0")} hiding an external fill`,
+        `<svg><g${space}data-x="/><rect width=100 height=100 style=fill:url(https://evil.example/f.svg#a) />"></g></svg>`,
+      ],
+      [
+        `a tag name ended by U+${space.codePointAt(0)!.toString(16).padStart(4, "0")} hiding a stylesheet`,
+        `<svg><g${space}data-x="/><style>svg{background:url(https://evil.example/bg)}</style>"></g></svg>`,
+      ],
+      [
+        `a tag name ended by U+${space.codePointAt(0)!.toString(16).padStart(4, "0")} hiding an event handler`,
+        `<svg><g${space}x="/><image href=x onerror=fetch('https://evil.example/xss') />"></g></svg>`,
+      ],
+      [
+        `attributes separated by U+${space.codePointAt(0)!.toString(16).padStart(4, "0")}`,
+        `<svg><rect fill="red"${space}x="1" /></svg>`,
+      ],
+      [
+        `a tag closed after U+${space.codePointAt(0)!.toString(16).padStart(4, "0")}`,
+        `<svg><rect fill="red"${space}/></svg>`,
+      ],
+    ]),
+    // A label is written escaped, so markup in any attribute value is refused.
+    [
+      "markup in a data attribute",
+      `<svg><g data-x="<rect fill='url(https://evil.example/x)'/>"></g></svg>`,
+    ],
+    ["a closing bracket in an attribute", `<svg><g data-x="a > b"></g></svg>`],
     ["a tag it cannot read", `<svg><rect x=1 /></svg>`],
     ["a stray angle bracket", `<svg><text>a < b</text></svg>`],
   ])("rejects %s", (_, svg) => {
