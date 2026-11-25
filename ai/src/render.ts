@@ -56,6 +56,8 @@ interface Frame {
   children: string;
   /** Text seen since the last child. */
   text: string;
+  /** False when the component budget ran out at its opening tag. */
+  kept: boolean;
 }
 
 const MAX_DEPTH = 6;
@@ -192,17 +194,27 @@ export interface RendererOptions {
    */
   fences?: Readonly<Record<string, FenceRenderer>>;
   /**
-   * The most components one top-level element may hold (default 300). Bascik
-   * refuses a script output that expands to more than its own budget, which
-   * would lose the whole reply, so the renderer stops adding components here
-   * and says how many it left out.
+   * The most components one reply may hold (default 300), counted across the
+   * whole message, top-level and nested alike. Bascik refuses a script output
+   * that expands to more than its own budget, which would lose the whole
+   * reply (and, for a stored reply, every message after it on each load), so
+   * the renderer stops adding components here and says how many it left out.
    */
   maxComponents?: number;
+}
+
+/**
+ * How many components renderers have used so far. Renderers given the same
+ * budget share `maxComponents`, as the text parts of one message do.
+ */
+export interface ComponentBudget {
+  used: number;
 }
 
 export function createRenderer(
   components: Catalog,
   options: RendererOptions = {},
+  budget: ComponentBudget = { used: 0 },
 ): Renderer {
   // Passed-through elements are looked up like components with no props.
   const catalog = new Map(components);
@@ -216,8 +228,7 @@ export function createRenderer(
   }
   const fences = new Map(Object.entries(options.fences ?? {}));
   const maxComponents = options.maxComponents ?? 300;
-  /** Components inside the open top-level element, and how many were left out. */
-  let held = 0;
+  /** Components left out since the last note that said so. */
   let omitted = 0;
   let buffer = "";
   let lineStart = true;
@@ -286,7 +297,17 @@ export function createRenderer(
     // most one blank line), a block element replaces them. A kept newline is
     // a <br>, so the page never has to treat whitespace as content: the
     // whitespace Bascik writes around a rendered component stays invisible.
+    /** Say how many components were left out, before anything else is shown. */
+    const note = (): void => {
+      if (!omitted) return;
+      const count = omitted;
+      omitted = 0;
+      text(
+        `${count} more ${count === 1 ? "item was" : "items were"} left out to keep this reply a reasonable size.`,
+      );
+    };
     const text = (html: string): void => {
+      note();
       if (newlines) {
         // After a component, an empty <div> starts the new line: a component
         // may be inline, such as a button, and a block needs no blank line.
@@ -302,29 +323,35 @@ export function createRenderer(
     // line, so an inline component such as a button does not continue the
     // sentence, and no blank line is added above a component that is a block.
     const block = (html: string): void => {
+      note();
       if (newlines && !afterBlock) out += "<div></div>";
       newlines = 0;
       afterBlock = true;
       out += html;
     };
+    /**
+     * Count a component against the budget as its tag opens, so a container
+     * comes before what it holds. False when it is past the budget.
+     */
+    const take = (name: string): boolean =>
+      !components.has(name) || ++budget.used <= maxComponents;
     /** A finished element goes to its parent, or out when it has none. */
-    const deliver = (html: string, component: boolean): void => {
+    const deliver = (html: string, kept: boolean): void => {
       const parent = stack.at(-1);
+      if (!kept) omitted++;
       if (parent) {
-        if (component && ++held > maxComponents) {
-          omitted++;
-          return;
-        }
+        if (!kept) return;
         parent.children += html;
         pending += html.length;
       } else {
+        pending = 0;
+        if (!kept) return;
+        // What was left out inside this element is said after it.
+        const inside = omitted;
+        omitted = 0;
         block(html);
-        if (omitted) {
-          text(
-            `${omitted} more ${omitted === 1 ? "item was" : "items were"} left out to keep this reply a reasonable size.`,
-          );
-        }
-        pending = held = omitted = 0;
+        omitted += inside;
+        note();
       }
     };
     const codeLine = (line: string): void =>
@@ -346,7 +373,7 @@ export function createRenderer(
     const closeAll = (): void => {
       while (stack.length) {
         const frame = stack.pop()!;
-        deliver(closeFrame(frame), components.has(frame.entry.name));
+        deliver(closeFrame(frame), frame.kept);
       }
     };
 
@@ -403,7 +430,7 @@ export function createRenderer(
         const close = `</${frame.entry.name}>`;
         if (source.startsWith(close)) {
           stack.pop();
-          deliver(closeFrame(frame), components.has(frame.entry.name));
+          deliver(closeFrame(frame), frame.kept);
           buffer = source.slice(close.length);
           continue;
         }
@@ -419,16 +446,14 @@ export function createRenderer(
         if (before) frame.children += inline(before);
         frame.text = "";
         if (tag.selfClosed) {
-          deliver(
-            `${tag.html}</${tag.entry.name}>`,
-            components.has(tag.entry.name),
-          );
+          deliver(`${tag.html}</${tag.entry.name}>`, take(tag.entry.name));
         } else {
           stack.push({
             entry: tag.entry,
             open: tag.html,
             children: "",
             text: "",
+            kept: take(tag.entry.name),
           });
         }
         buffer = source.slice(tag.end);
@@ -536,7 +561,7 @@ export function createRenderer(
         text("&lt;");
         buffer = source.slice(1);
       } else if (tag.selfClosed) {
-        block(`${tag.html}</${tag.entry.name}>`);
+        deliver(`${tag.html}</${tag.entry.name}>`, take(tag.entry.name));
         buffer = source.slice(tag.end);
       } else {
         stack.push({
@@ -544,6 +569,7 @@ export function createRenderer(
           open: tag.html,
           children: "",
           text: "",
+          kept: take(tag.entry.name),
         });
         buffer = source.slice(tag.end);
       }
@@ -553,6 +579,7 @@ export function createRenderer(
     if (final) {
       closeDrawn();
       closeAll();
+      note();
     }
     return out;
   }
@@ -578,8 +605,9 @@ export function renderText(
   text: string,
   catalog: Catalog,
   options?: RendererOptions,
+  budget?: ComponentBudget,
 ): string {
-  const renderer = createRenderer(catalog, options);
+  const renderer = createRenderer(catalog, options, budget);
   return renderer.push(text) + renderer.end();
 }
 

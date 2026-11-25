@@ -20,6 +20,7 @@ import {
 import {
   createRenderer,
   escapeHtml,
+  type ComponentBudget,
   renderText,
   type RendererOptions,
 } from "./render.ts";
@@ -36,11 +37,15 @@ export interface TurnRenderOptions extends RendererOptions {
   view?: (part: ToolPart) => { toString(): string } | string | null | undefined;
 }
 
-/** One tool part in its wrapper. */
+/**
+ * One tool part in its wrapper. A `budget` shared with the message's text
+ * parts counts the note's components against the same `maxComponents`.
+ */
 export function renderToolPart(
   part: ToolPart,
   catalog: Catalog,
   options: TurnRenderOptions = {},
+  budget?: ComponentBudget,
 ): string {
   const drawn = options.view?.(part);
   let inner: string;
@@ -50,26 +55,31 @@ export function renderToolPart(
     const note = options.tools
       ?.find((tool) => tool.name === part.name)
       ?.note?.(part.input);
-    inner = note ? renderText(note, catalog, options) : "";
+    inner = note ? renderText(note, catalog, options, budget) : "";
   }
   return `<div class="part" data-part="${escapeHtml(part.id)}" data-tool="${escapeHtml(part.name)}" data-state="${part.state}">${inner}</div>`;
 }
 
-/** A stored message. Every part is drawn once, in the state it was stored in. */
+/**
+ * A stored message. Every part is drawn once, in the state it was stored in.
+ * The whole message shares one `maxComponents` budget, so it stays one
+ * script output Bascik can render however many components the model wrote.
+ */
 export function renderMessage(
   message: ChatMessage,
   catalog: Catalog,
   options: TurnRenderOptions = {},
 ): string {
+  const budget: ComponentBudget = { used: 0 };
   return partsOf(message)
     .map((part) =>
       part.type === "file"
         ? "" // an attachment is drawn by the thread, beside its message
         : part.type === "tool"
-          ? renderToolPart(part, catalog, options)
+          ? renderToolPart(part, catalog, options, budget)
           : part.spoken
             ? `<p class="spoken">${escapeHtml(part.text)}</p>`
-            : renderText(part.text, catalog, options),
+            : renderText(part.text, catalog, options, budget),
     )
     .join("");
 }
@@ -83,7 +93,10 @@ export async function* renderTurn(
   catalog: Catalog,
   options: TurnRenderOptions = {},
 ): AsyncGenerator<string, void, undefined> {
-  let renderer = createRenderer(catalog, options);
+  // One budget for the turn's text, as `renderMessage` has for the stored
+  // message, so the reply shows the same components live and on reload.
+  const budget: ComponentBudget = { used: 0 };
+  let renderer = createRenderer(catalog, options, budget);
   for await (const event of events) {
     if (event.type === "text") {
       const html = renderer.push(event.delta);
@@ -92,7 +105,7 @@ export async function* renderTurn(
     }
     // A tool call ends the text before it: what follows is a new part.
     const rest = renderer.end();
-    renderer = createRenderer(catalog, options);
+    renderer = createRenderer(catalog, options, budget);
     yield rest + renderToolPart(event.part, catalog, options);
   }
   const rest = renderer.end();

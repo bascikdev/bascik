@@ -222,18 +222,59 @@ describe("createRenderer", () => {
       catalog,
       { maxComponents: 3 },
     );
-    expect(html.match(/<book-card/g)).toHaveLength(3);
+    // The grid is a component too, counted before what it holds.
+    expect(html.match(/<book-card/g)).toHaveLength(2);
     expect(html).toContain(
-      "</card-grid>2 more items were left out to keep this reply a reasonable size.",
+      "</card-grid>3 more items were left out to keep this reply a reasonable size.",
     );
-    // The count starts over for the next element.
-    expect(
-      renderText(
-        `<card-grid>${CARD.repeat(4)}</card-grid><card-grid>${CARD}</card-grid>`,
-        catalog,
-        { maxComponents: 3 },
-      ).match(/<book-card/g),
-    ).toHaveLength(4);
+    // The count is for the whole reply, not one element at a time: the
+    // second grid is past the budget, and so is everything in it.
+    const two = renderText(
+      `<card-grid>${CARD}</card-grid><card-grid>${CARD.repeat(2)}</card-grid>`,
+      catalog,
+      { maxComponents: 2 },
+    );
+    expect(two.match(/<book-card/g)).toHaveLength(1);
+    expect(two.match(/<card-grid>/g)).toHaveLength(1);
+    expect(two).toContain("3 more items were left out");
+  });
+
+  it("counts top-level components against the limit too", () => {
+    const html = renderText(`${CARD}\n`.repeat(1200) + "That is all.", catalog);
+    expect(html.match(/<book-card/g)).toHaveLength(300);
+    expect(html).toContain(
+      "900 more items were left out to keep this reply a reasonable size.",
+    );
+    expect(html).toMatch(/That is all\.$/);
+    // Self-closed tags, streamed in small slices, are held to the same budget.
+    const renderer = createRenderer(catalog, { maxComponents: 5 });
+    const tags = `<bar-row value="1" max="2" />\n`.repeat(40);
+    let streamed = "";
+    for (let at = 0; at < tags.length; at += 7) {
+      streamed += renderer.push(tags.slice(at, at + 7));
+    }
+    streamed += renderer.end();
+    expect(streamed.match(/<bar-row/g)).toHaveLength(5);
+    expect(streamed).toContain("35 more items were left out");
+  });
+
+  it("shares one budget between renderers given the same budget", () => {
+    const budget = { used: 0 };
+    const first = renderText(
+      CARD.repeat(3),
+      catalog,
+      { maxComponents: 4 },
+      budget,
+    );
+    const second = renderText(
+      CARD.repeat(3),
+      catalog,
+      { maxComponents: 4 },
+      budget,
+    );
+    expect(first.match(/<book-card/g)).toHaveLength(3);
+    expect(second.match(/<book-card/g)).toHaveLength(1);
+    expect(second).toContain("2 more items were left out");
   });
 
   it("refuses nesting deeper than six levels", () => {
