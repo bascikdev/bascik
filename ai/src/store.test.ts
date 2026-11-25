@@ -4,20 +4,31 @@ import {
   readdir,
   readFile,
   rm,
+  stat,
+  symlink,
   utimes,
   writeFile,
 } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { createChat } from "./app.ts";
+import { scriptedModel, type ChatMessage } from "./model.ts";
 import {
   fileStore,
-  MAX_SCANNED,
+  limitConversations,
+  MAX_CONVERSATION_BYTES,
+  MAX_CONVERSATIONS,
+  MAX_LISTED_BYTES,
+  MAX_SEARCHED_BYTES,
   memoryStore,
   newConversation,
+  searchConversations,
   type Conversation,
   type ConversationStore,
 } from "./store.ts";
+import type { VoiceProvider } from "./voice.ts";
 
 const READER = "11111111-1111-4111-8111-111111111111";
 const at = (updatedAt: number, text = "hi"): Conversation => ({
@@ -78,6 +89,38 @@ function behavesAsAStore(make: () => Promise<ConversationStore>): void {
       middle.id,
       old.id,
     ]);
+  });
+
+  it("summarizes every conversation without its messages, in list's order", async () => {
+    const store = await make();
+    const saved = [at(2, "b"), at(3, "c"), at(1, "a")];
+    for (const conversation of saved) await store.save(READER, conversation);
+    const listed = await store.list(READER);
+    expect(await store.summaries!(READER)).toEqual(
+      listed.map(({ id, title, updatedAt }) => ({ id, title, updatedAt })),
+    );
+    expect(await store.summaries!("someone-else")).toEqual([]);
+    expect(await store.summaries!("../escape")).toEqual([]);
+  });
+
+  it("deletes a conversation, and a missing one without an error", async () => {
+    const store = await make();
+    const [kept, gone] = [at(1), at(2)];
+    await store.save(READER, kept);
+    await store.save(READER, gone);
+    await store.delete!(READER, gone.id);
+    await store.delete!(READER, gone.id);
+    await store.delete!(READER, newConversation().id);
+    await store.delete!("someone-else", kept.id);
+    expect(await store.load(READER, gone.id)).toBeNull();
+    expect((await store.list(READER)).map((entry) => entry.id)).toEqual([
+      kept.id,
+    ]);
+    for (const bad of HOSTILE) {
+      await store.delete!(bad, kept.id);
+      await store.delete!(READER, bad);
+    }
+    expect(await store.load(READER, kept.id)).toEqual(kept);
   });
 
   it("keeps one reader's conversations from another", async () => {
@@ -177,29 +220,121 @@ describe("fileStore", () => {
     expect(await store.load(READER, "other")).toBeNull();
   });
 
-  it("reads only the newest MAX_SCANNED files, by when each was saved", async () => {
+  it("lists every conversation, newest first by updatedAt, not by file time", async () => {
     const directory = await folder();
     const own = join(directory, READER);
     await mkdir(own, { recursive: true });
-    const total = MAX_SCANNED + 25;
+    const total = 250;
     const saved = Array.from({ length: total }, (_, n) => at(n + 1));
-    // Written in a shuffled order, so the folder's order is not the answer.
-    const shuffled = saved.map((_, n) => saved[(n * 37) % total]!);
-    expect(new Set(shuffled).size).toBe(total);
-    for (const entry of shuffled) {
+    // File times that disagree with updatedAt, so they are not the answer.
+    for (const [n, entry] of saved.entries()) {
       const file = join(own, `${entry.id}.json`);
       await writeFile(file, JSON.stringify(entry));
-      const seconds = 1_700_000_000 + entry.updatedAt;
+      const seconds = 1_700_000_000 + ((n * 37) % total);
       await utimes(file, seconds, seconds);
     }
     const listed = await fileStore(directory).list(READER);
-    expect(listed).toHaveLength(MAX_SCANNED);
     expect(listed.map((entry) => entry.updatedAt)).toEqual(
-      saved
-        .slice(-MAX_SCANNED)
-        .map((entry) => entry.updatedAt)
-        .reverse(),
+      saved.map((entry) => entry.updatedAt).reverse(),
     );
+  });
+
+  it("never opens a link or a pipe in the reader's folder", async () => {
+    const directory = await folder();
+    const store = fileStore(directory);
+    const saved = at(1);
+    await store.save(READER, saved);
+    const own = join(directory, READER);
+    await symlink(join(own, `${saved.id}.json`), join(own, "linked.json"));
+    // Reading a pipe would wait forever for a writer.
+    if (process.platform !== "win32") {
+      execFileSync("mkfifo", [join(own, "pipe.json")]);
+    }
+    expect((await store.list(READER)).map((entry) => entry.id)).toEqual([
+      saved.id,
+    ]);
+  });
+
+  it("brings an overfull folder back to the cap at the next new conversation", async () => {
+    const directory = await folder();
+    const own = join(directory, READER);
+    await mkdir(own, { recursive: true });
+    const old = Array.from({ length: 40 }, (_, n) => at(n + 1));
+    for (const entry of old) {
+      await writeFile(join(own, `${entry.id}.json`), JSON.stringify(entry));
+    }
+    const store = limitConversations(fileStore(directory), 10);
+    const fresh = at(1000);
+    await store.save(READER, fresh);
+    expect(await readdir(own)).toHaveLength(10);
+    expect((await store.list(READER)).map((entry) => entry.id)).toEqual([
+      fresh.id,
+      ...old
+        .slice(-9)
+        .map((entry) => entry.id)
+        .reverse(),
+    ]);
+  });
+
+  it("summarizes from the start of each file, and reads all of one it did not write", async () => {
+    const directory = await folder();
+    const store = fileStore(directory);
+    const long = at(2, "x".repeat(50_000));
+    long.title = 'A "quoted" title \\ with ✓';
+    await store.save(READER, long);
+    const own = join(directory, READER);
+    expect(
+      (await readFile(join(own, `${long.id}.json`), "utf8")).startsWith(
+        `{"id":${JSON.stringify(long.id)},"title":`,
+      ),
+    ).toBe(true);
+    // Written by something else, with its fields in another order.
+    const foreign = at(1);
+    const { messages, ...rest } = foreign;
+    await writeFile(
+      join(own, `${foreign.id}.json`),
+      JSON.stringify({ messages, ...rest }),
+    );
+    await writeFile(join(own, "broken.json"), "{");
+    expect(await store.summaries!(READER)).toEqual([
+      { id: long.id, title: long.title, updatedAt: 2 },
+      { id: foreign.id, title: foreign.title, updatedAt: 1 },
+    ]);
+  });
+
+  it("answers every one of many lists at once", async () => {
+    const store = fileStore(await folder());
+    const saved = Array.from({ length: 40 }, (_, n) => at(n + 1));
+    for (const entry of saved) await store.save(READER, entry);
+    const lists = await Promise.all(
+      Array.from({ length: 12 }, () => store.list(READER)),
+    );
+    for (const listed of lists) expect(listed).toHaveLength(40);
+  });
+
+  it("never makes one reader's list wait for another reader's", async () => {
+    const store = fileStore(await folder());
+    const attacker = "22222222-2222-4222-8222-222222222222";
+    const theirs = Array.from({ length: 150 }, (_, n) =>
+      at(n + 1, "x".repeat(2000)),
+    );
+    for (const entry of theirs) await store.save(attacker, entry);
+    const mine = at(1);
+    await store.save(READER, mine);
+    let done = 0;
+    const theirLists = Array.from({ length: 30 }, () =>
+      store.list(attacker).then((listed) => {
+        done += 1;
+        return listed;
+      }),
+    );
+    const listed = await store.list(READER);
+    const doneBeforeMine = done;
+    expect(listed.map((entry) => entry.id)).toEqual([mine.id]);
+    for (const their of await Promise.all(theirLists)) {
+      expect(their).toHaveLength(150);
+    }
+    expect(doneBeforeMine).toBeLessThan(10);
   });
 
   it("leaves no partial file behind", async () => {
@@ -211,5 +346,477 @@ describe("fileStore", () => {
     const files = await readdir(join(directory, READER));
     expect(files).toHaveLength(10);
     expect(files.every((file) => file.endsWith(".json"))).toBe(true);
+  });
+});
+
+describe("limitConversations", () => {
+  const folders: string[] = [];
+  afterEach(async () => {
+    await Promise.all(
+      folders.splice(0).map((folder) => rm(folder, { recursive: true })),
+    );
+  });
+  const stores: Array<[string, () => Promise<ConversationStore>]> = [
+    ["memoryStore", async () => memoryStore()],
+    [
+      "fileStore",
+      async () => {
+        const made = await mkdtemp(join(tmpdir(), "genui-limit-"));
+        folders.push(made);
+        return fileStore(made);
+      },
+    ],
+  ];
+
+  for (const [name, make] of stores) {
+    describe(name, () => {
+      it("keeps a reader to the cap by deleting their oldest", async () => {
+        const store = limitConversations(await make(), 5);
+        const saved = Array.from({ length: 8 }, (_, n) => at(n + 1));
+        // Saved newest first: the oldest is the least updatedAt, not the first saved.
+        for (const entry of [...saved].reverse()) {
+          await store.save(READER, entry);
+        }
+        expect((await store.list(READER)).map((entry) => entry.id)).toEqual(
+          [saved[7], saved[6], saved[5], saved[4], saved[0]].map(
+            (entry) => entry!.id,
+          ),
+        );
+      });
+
+      it("never deletes to save a conversation it already has", async () => {
+        const store = limitConversations(await make(), 3);
+        const saved = [at(1), at(2), at(3)];
+        for (const entry of saved) await store.save(READER, entry);
+        await store.save(READER, { ...saved[0]!, title: "Renamed" });
+        expect(await store.list(READER)).toHaveLength(3);
+        expect((await store.load(READER, saved[0]!.id))!.title).toBe("Renamed");
+      });
+
+      it("holds the cap when new conversations arrive at once", async () => {
+        const store = limitConversations(await make(), 4);
+        await Promise.all(
+          Array.from({ length: 20 }, (_, n) => store.save(READER, at(n + 1))),
+        );
+        expect(await store.list(READER)).toHaveLength(4);
+      });
+
+      it("counts each reader on their own", async () => {
+        const store = limitConversations(await make(), 2);
+        const others = [at(1), at(2)];
+        for (const entry of others) await store.save("someone-else", entry);
+        for (const n of [3, 4, 5]) await store.save(READER, at(n));
+        expect(
+          (await store.list("someone-else")).map((entry) => entry.id),
+        ).toEqual([others[1]!.id, others[0]!.id]);
+        expect(await store.list(READER)).toHaveLength(2);
+      });
+    });
+  }
+
+  it("keeps MAX_CONVERSATIONS, 200, by default", async () => {
+    expect(MAX_CONVERSATIONS).toBe(200);
+    const store = limitConversations(memoryStore());
+    for (let n = 0; n < MAX_CONVERSATIONS + 10; n += 1) {
+      await store.save(READER, at(n));
+    }
+    expect(await store.list(READER)).toHaveLength(MAX_CONVERSATIONS);
+  });
+
+  it("refuses a new conversation at the cap when the store cannot delete", async () => {
+    const { delete: _remove, ...inner } = memoryStore();
+    const store = limitConversations(inner, 2);
+    const [first, second] = [at(1), at(2)];
+    await store.save(READER, first);
+    await store.save(READER, second);
+    await expect(store.save(READER, at(3))).rejects.toThrow(
+      /already has 2 conversations/,
+    );
+    // What the reader has can still be saved: the refusal did not stick.
+    await store.save(READER, { ...first, title: "Renamed" });
+    expect(await store.list(READER)).toHaveLength(2);
+    expect(store.delete).toBeUndefined();
+  });
+
+  it("passes search and delete through only when the store has them", async () => {
+    const found = {
+      id: "a",
+      title: "t",
+      updatedAt: 1,
+      snippet: "s",
+      marks: [],
+    };
+    const store = limitConversations({
+      ...memoryStore(),
+      search: async () => [found],
+    });
+    expect(await store.search!(READER, "dune", 5)).toEqual([found]);
+    expect(store.delete).toBeTypeOf("function");
+    expect(limitConversations(memoryStore()).search).toBeUndefined();
+  });
+
+  it("refuses a cap that is not a whole number of at least 1", () => {
+    for (const bad of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => limitConversations(memoryStore(), bad), String(bad)).toThrow(
+        RangeError,
+      );
+      expect(
+        () => limitConversations(memoryStore(), 5, bad),
+        `bytes ${bad}`,
+      ).toThrow(RangeError);
+    }
+  });
+
+  it("counts with summaries, so a list that returns a page cannot lift the cap", async () => {
+    const inner = memoryStore();
+    const paged: ConversationStore = {
+      ...inner,
+      list: async (reader) => (await inner.list(reader)).slice(0, 50),
+    };
+    const store = limitConversations(paged, 100);
+    for (let n = 0; n < 500; n += 1) await store.save(READER, at(n + 1));
+    expect(await inner.summaries!(READER)).toHaveLength(100);
+    expect(store.summaries).toBeTypeOf("function");
+  });
+
+  it("never reads whole conversations to save one", async () => {
+    const inner = memoryStore();
+    const read: string[] = [];
+    const watched: ConversationStore = {
+      ...inner,
+      load: (reader, id) => (read.push("load"), inner.load(reader, id)),
+      list: (reader) => (read.push("list"), inner.list(reader)),
+    };
+    const store = limitConversations(watched, 3);
+    const first = at(1);
+    for (const entry of [first, at(2), at(3), at(4)]) {
+      await store.save(READER, entry);
+    }
+    await store.save(READER, { ...first, title: "Again" });
+    expect(read).toEqual([]);
+  });
+
+  it("holds the cap across two chats over one store", async () => {
+    const shared = memoryStore();
+    const [a, b] = [
+      limitConversations(shared, 5),
+      limitConversations(shared, 5),
+    ];
+    await Promise.all(
+      Array.from({ length: 20 }, (_, n) =>
+        (n % 2 ? a : b).save(READER, at(n + 1)),
+      ),
+    );
+    expect(await shared.list(READER)).toHaveLength(5);
+  });
+
+  it("counts with list when summaries fails, so the cap still holds", async () => {
+    const inner = memoryStore();
+    const store = limitConversations(
+      {
+        ...inner,
+        summaries: async () => {
+          throw new Error("the count query fails");
+        },
+      },
+      3,
+    );
+    for (let n = 0; n < 10; n += 1) await store.save(READER, at(n + 1));
+    expect(await inner.list(READER)).toHaveLength(3);
+  });
+
+  it("refuses a new conversation, and saves one the reader has, when nothing can count", async () => {
+    const inner = memoryStore();
+    const down = async (): Promise<never> => {
+      throw new Error("the database is down");
+    };
+    const store = limitConversations(
+      { ...inner, summaries: down, list: down },
+      3,
+    );
+    const had = at(1);
+    await inner.save(READER, had);
+    for (let n = 0; n < 10; n += 1) {
+      await expect(store.save(READER, at(n + 2))).rejects.toThrow(
+        /could not count/,
+      );
+    }
+    expect(await inner.summaries!(READER)).toHaveLength(1);
+    await store.save(READER, { ...had, title: "Renamed" });
+    expect((await inner.load(READER, had.id))!.title).toBe("Renamed");
+  });
+
+  it("holds the cap across two file stores over one folder", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "genui-shared-"));
+    folders.push(directory);
+    const [a, b] = [
+      limitConversations(fileStore(directory), 5),
+      limitConversations(fileStore(directory), 5),
+    ];
+    await Promise.all(
+      Array.from({ length: 20 }, (_, n) =>
+        (n % 2 ? a : b).save(READER, at(n + 1)),
+      ),
+    );
+    expect(await readdir(join(directory, READER))).toHaveLength(5);
+    // A wrapper over a wrapper of the same folder still finishes its saves.
+    const nested = limitConversations(
+      limitConversations(fileStore(directory), 5),
+      5,
+    );
+    await Promise.all(
+      Array.from({ length: 6 }, (_, n) => nested.save(READER, at(n + 100))),
+    );
+    expect(await readdir(join(directory, READER))).toHaveLength(5);
+  });
+
+  describe("how much a list or a search reads", () => {
+    const bytes = (value: unknown): number =>
+      Buffer.byteLength(JSON.stringify(value));
+    /**
+     * One message of eight text parts of 63,990 CJK characters: under the
+     * voice turn's character cap, and about 1.5 MiB as UTF-8, so it is kept
+     * whole however small `maxBytes` is.
+     */
+    const wide = (updatedAt: number): Conversation => {
+      const text = "書".repeat(63_990);
+      return {
+        ...newConversation(),
+        updatedAt,
+        messages: [
+          {
+            role: "assistant",
+            content: text,
+            parts: Array.from({ length: 8 }, () => ({
+              type: "text" as const,
+              text,
+            })),
+          },
+        ],
+      };
+    };
+    /** A store that counts what it reads, and how many loads run at once. */
+    const watched = (inner: ConversationStore) => {
+      const seen = { loaded: 0, loads: 0, atOnce: 0, most: 0, lists: 0 };
+      const store: ConversationStore = {
+        ...inner,
+        load: async (reader, id) => {
+          seen.loads += 1;
+          seen.atOnce += 1;
+          seen.most = Math.max(seen.most, seen.atOnce);
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          const found = await inner.load(reader, id);
+          seen.atOnce -= 1;
+          if (found) seen.loaded += bytes(found);
+          return found;
+        },
+        list: async (reader) => {
+          seen.lists += 1;
+          return inner.list(reader);
+        },
+      };
+      return { store, seen };
+    };
+
+    it("lists every conversation, reading whole only the newest MAX_LISTED_BYTES, counted in bytes", async () => {
+      const inner = memoryStore();
+      const saved = Array.from({ length: 12 }, (_, n) => wide(n + 1));
+      for (const entry of saved) await inner.save(READER, entry);
+      const one = bytes(saved[0]);
+      expect(one).toBeGreaterThan(1.4 * MAX_CONVERSATION_BYTES);
+      const { store: seen, seen: counts } = watched(inner);
+      const store = limitConversations(seen);
+      const listed = await store.list(READER);
+      expect(listed.map((entry) => entry.id)).toEqual(
+        [...saved].reverse().map((entry) => entry.id),
+      );
+      const whole = listed.filter((entry) => entry.messages.length > 0);
+      expect(whole.length).toBeGreaterThan(0);
+      // The whole ones are the newest.
+      expect(listed.slice(0, whole.length)).toEqual(whole);
+      expect(whole.reduce((sum, entry) => sum + bytes(entry), 0)).toBeLessThan(
+        MAX_LISTED_BYTES + one,
+      );
+      expect(counts.loaded).toBeLessThan(MAX_LISTED_BYTES + one);
+      expect(counts.most).toBe(1);
+      expect(counts.lists).toBe(0);
+    });
+
+    it("searches one conversation at a time, and at most MAX_SEARCHED_BYTES", async () => {
+      const inner = memoryStore();
+      const saved = Array.from({ length: 12 }, (_, n) => wide(n + 1));
+      for (const entry of saved) await inner.save(READER, entry);
+      const one = bytes(saved[0]);
+      const { store: seen, seen: counts } = watched(inner);
+      const found = await searchConversations(
+        limitConversations(seen),
+        READER,
+        "書書",
+      );
+      expect(found.length).toBeGreaterThan(0);
+      expect(found[0]!.id).toBe(saved.at(-1)!.id);
+      expect(counts.loaded).toBeLessThan(MAX_SEARCHED_BYTES + one);
+      expect(counts.most).toBe(1);
+      expect(counts.lists).toBe(0);
+    });
+
+    it("keeps the chat's sidebar and search within those through a file store", async () => {
+      const directory = await mkdtemp(join(tmpdir(), "genui-sidebar-"));
+      folders.push(directory);
+      let calls = 0;
+      const chat = createChat({
+        id: "t",
+        store: fileStore(directory),
+        catalog: new Map(),
+        model: () => {
+          calls += 1;
+          return scriptedModel(() => "never");
+        },
+        system: "You help.",
+        onError: () => {},
+      });
+      const said = "y".repeat(8000);
+      for (let c = 0; c < 10; c += 1) {
+        const conversation = { ...newConversation(), updatedAt: c + 1 };
+        for (let n = 0; n < 70; n += 1) {
+          conversation.messages.push(
+            { role: "user", content: said },
+            { role: "assistant", content: said },
+          );
+        }
+        await chat.store.save(READER, conversation);
+      }
+      const session = { reader: READER, conversationId: undefined };
+      const listed = await chat.list(session);
+      expect(listed).toHaveLength(10);
+      const whole = listed.filter((entry) => entry.messages.length > 0);
+      expect(whole.length).toBeLessThan(listed.length);
+      expect(whole.reduce((sum, entry) => sum + bytes(entry), 0)).toBeLessThan(
+        MAX_LISTED_BYTES + MAX_CONVERSATION_BYTES,
+      );
+      const { matches } = await chat.search(
+        new Request("http://localhost/?q=yy", {
+          headers: { cookie: `visitor=${READER}` },
+        }),
+      );
+      expect(matches.length).toBeGreaterThan(0);
+      expect(matches.length).toBeLessThan(10);
+      expect(calls).toBe(0);
+    });
+  });
+
+  describe("how long one conversation grows", () => {
+    const turn = (n: number, size: number): ChatMessage[] => [
+      { role: "user", content: `${n} ${"y".repeat(size)}` },
+      { role: "assistant", content: `${n} ${"z".repeat(size)}` },
+    ];
+    const bytes = (value: unknown): number =>
+      Buffer.byteLength(JSON.stringify(value));
+
+    it("keeps MAX_CONVERSATION_BYTES, 1 MiB, by default", () => {
+      expect(MAX_CONVERSATION_BYTES).toBe(1024 * 1024);
+    });
+
+    it("drops the oldest messages to fit, starting at something the reader said", async () => {
+      const inner = memoryStore();
+      const store = limitConversations(inner, 5, 10_000);
+      const conversation = at(1);
+      conversation.messages = [];
+      for (let n = 0; n < 40; n += 1) {
+        conversation.messages.push(...turn(n, 1000));
+        await store.save(READER, conversation);
+      }
+      // What the caller saved is not changed.
+      expect(conversation.messages).toHaveLength(80);
+      const kept = (await inner.load(READER, conversation.id))!;
+      expect(bytes(kept)).toBeLessThanOrEqual(10_000);
+      expect(kept.messages[0]!.role).toBe("user");
+      expect(kept.messages.at(-1)!.content.startsWith("39 ")).toBe(true);
+      // As few as it takes: one more turn would not have fitted.
+      expect(
+        bytes({ ...kept, messages: [...turn(38, 1000), ...kept.messages] }),
+      ).toBeGreaterThan(10_000);
+      expect(kept.messages.length).toBeGreaterThan(4);
+    });
+
+    it("keeps only the newest message when it alone is too long", async () => {
+      const inner = memoryStore();
+      const store = limitConversations(inner, 5, 1000);
+      const conversation = at(1, "x".repeat(500));
+      conversation.messages.push({
+        role: "assistant",
+        content: "y".repeat(2000),
+      });
+      await store.save(READER, conversation);
+      expect(
+        (await inner.load(READER, conversation.id))!.messages.map(
+          (message) => message.role,
+        ),
+      ).toEqual(["assistant"]);
+    });
+
+    it("keeps what list returns within the cap times the bytes, however much is sent", async () => {
+      const directory = await mkdtemp(join(tmpdir(), "genui-bytes-"));
+      folders.push(directory);
+      const store = limitConversations(fileStore(directory), 4, 8000);
+      for (let c = 0; c < 10; c += 1) {
+        const conversation = { ...newConversation(), updatedAt: c + 1 };
+        for (let n = 0; n < 20; n += 1) {
+          conversation.messages.push(...turn(n, 900));
+          await store.save(READER, conversation);
+        }
+      }
+      const listed = await store.list(READER);
+      expect(listed).toHaveLength(4);
+      for (const entry of listed) {
+        expect(bytes(entry)).toBeLessThanOrEqual(8000);
+      }
+    });
+
+    it("stays within the cap through the chat's voice turns, with no model call", async () => {
+      const directory = await mkdtemp(join(tmpdir(), "genui-voice-"));
+      folders.push(directory);
+      let calls = 0;
+      const voice: VoiceProvider = {
+        protocol: "fake",
+        async createSession() {
+          return { protocol: "fake", url: "wss://example.test/", setup: null };
+        },
+      };
+      const chat = createChat({
+        id: "t",
+        store: fileStore(directory),
+        catalog: new Map(),
+        model: () => {
+          calls += 1;
+          return scriptedModel(() => "never");
+        },
+        system: "You help.",
+        voice,
+        onError: () => {},
+      });
+      const opened = { ...newConversation(), messages: [] };
+      await chat.store.save(READER, opened);
+      const said = "y".repeat(8000);
+      for (let n = 0; n < 60; n += 1) {
+        const response = await chat.voiceTurn(
+          new Request("http://localhost/api/voice-turn", {
+            method: "POST",
+            headers: { cookie: `visitor=${READER}; chat_t=${opened.id}` },
+            body: new URLSearchParams({ reader: said, model: said }),
+          }),
+        );
+        expect(response.status).toBe(204);
+      }
+      const file = join(directory, READER, `${opened.id}.json`);
+      expect((await stat(file)).size).toBeLessThanOrEqual(
+        MAX_CONVERSATION_BYTES,
+      );
+      const kept = (await chat.store.load(READER, opened.id))!.messages;
+      expect(kept.length).toBeLessThan(120);
+      expect(kept[0]!.role).toBe("user");
+      expect(kept.at(-1)!.role).toBe("assistant");
+      expect(calls).toBe(0);
+    });
   });
 });
