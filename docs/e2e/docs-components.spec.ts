@@ -199,6 +199,59 @@ test.describe("Docs Component E2E Tests", () => {
     await expect(modal).toBeHidden();
   });
 
+  test("docs-search shows title matches at once and matches in the text when the text arrives", async ({
+    page,
+  }) => {
+    // Hold the text back, as a slow connection would.
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route(
+      /\/assets\/search-text\.[0-9a-f]{10}\.json$/,
+      async (route) => {
+        await held;
+        await route.continue();
+      },
+    );
+    await page.goto("/");
+    await page.getByRole("button", { name: "Search docs" }).first().click();
+    const input = page.getByPlaceholder("Search docs…");
+    const results = page
+      .getByRole("listbox", { name: "Search results" })
+      .locator("li");
+    const modal = page.getByTestId("search-overlay");
+
+    // A page's name is in the outline: results without the text.
+    await input.fill("scoped styles");
+    await expect(results.first()).toContainText("Scoped Styles");
+
+    // A phrase that is only in a section's text: not "No results" while the text is on its way.
+    await input.fill("ECONNRESET");
+    await expect(modal).toContainText("Searching page text…");
+    await expect(modal).not.toContainText("No results.");
+    await expect(results).toHaveCount(0);
+
+    release();
+    await expect(results.first()).toBeVisible();
+    await expect(modal).not.toContainText("Searching page text…");
+    await expect(
+      page.getByRole("listbox", { name: "Search results" }),
+    ).toContainText(/ECONNRESET/i);
+  });
+
+  test("docs-search still searches the text when a deploy removed the page's hashed text file", async ({
+    page,
+  }) => {
+    await page.route(/\/assets\/search-text\.[0-9a-f]{10}\.json$/, (route) =>
+      route.fulfill({ status: 404, body: "Not Found" }),
+    );
+    await page.goto("/");
+    await page.getByRole("button", { name: "Search docs" }).first().click();
+    await page.getByPlaceholder("Search docs…").fill("ECONNRESET");
+    await expect(
+      page.getByRole("listbox", { name: "Search results" }),
+    ).toContainText(/ECONNRESET/i);
+  });
+
   test("docs-search still finds results when a deploy removed the page's hashed index", async ({
     page,
   }) => {
