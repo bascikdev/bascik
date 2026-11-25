@@ -48,7 +48,7 @@ type WireMessage =
   | { role: "tool"; tool_call_id: string; content: string };
 
 /** The `data:` payloads of a server-sent event stream, one at a time. */
-async function* events(
+export async function* events(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<string> {
   const decoder = new TextDecoder();

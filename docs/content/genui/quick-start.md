@@ -110,7 +110,19 @@ const model = openAiCompatibleModel({
 });
 ```
 
-The Claude adapter needs `@anthropic-ai/sdk` installed. The OpenAI-compatible one uses `fetch` and needs nothing. `catalogPrompt(catalog)` is the system prompt that teaches the model the output format and your components; put your own instructions before it.
+Or with OpenAI's Responses API, which OpenAI and Azure OpenAI speak, and which some newer models need before they will call a tool:
+
+```ts
+import { openAiResponsesModel } from "@bascik/genui/openai-responses";
+
+const model = openAiResponsesModel({
+  baseUrl: "https://my-resource.openai.azure.com/openai/v1",
+  apiKey: process.env.AZURE_OPENAI_API_KEY,
+  model: "my-deployment",
+});
+```
+
+The Claude adapter needs `@anthropic-ai/sdk` installed. The two OpenAI ones use `fetch` and need nothing. `catalogPrompt(catalog)` is the system prompt that teaches the model the output format and your components; put your own instructions before it.
 
 ## Make it a chat
 

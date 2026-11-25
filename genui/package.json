@@ -26,6 +26,7 @@
     "./gemini-live": "./src/gemini-live.ts",
     "./mermaid": "./src/mermaid.ts",
     "./openai": "./src/openai.ts",
+    "./openai-responses": "./src/openai-responses.ts",
     "./voice": "./src/voice.ts"
   },
   "publishConfig": {
@@ -53,6 +54,10 @@
       "./openai": {
         "types": "./dist/openai.d.ts",
         "default": "./dist/openai.js"
+      },
+      "./openai-responses": {
+        "types": "./dist/openai-responses.d.ts",
+        "default": "./dist/openai-responses.js"
       },
       "./voice": {
         "types": "./dist/voice.d.ts",

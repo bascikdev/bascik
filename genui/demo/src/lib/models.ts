@@ -12,9 +12,8 @@
  *   Azure               when AZURE_OPENAI_MODELS names the deployments to offer, on
  *                       AZURE_OPENAI_ENDPOINT or the resource of AZURE_VOICE_LIVE_ENDPOINT,
  *                       with AZURE_OPENAI_API_KEY or, without one, the Azure CLI sign-in.
- *                       AZURE_OPENAI_REASONING_EFFORT, when set, is sent with each request.
- *                       The model has to take tools on the chat completions API: gpt-5.4
- *                       does, and gpt-6.1-sol does not (it wants the Responses API)
+ *                       They are asked on the Responses API, which the newest models need
+ *                       for tools; AZURE_OPENAI_API=chat uses chat completions instead
  *   OpenAI-compatible   when OPENAI_BASE_URL is set (with OPENAI_API_KEY if it needs one)
  *
  * Set GENUI_LOCAL_MODELS=0 on a deployed server so it does not look for
@@ -42,6 +41,8 @@ interface Endpoint {
   models?: string[];
   /** Extra fields this server's requests need. */
   body?: Record<string, unknown>;
+  /** The API it is asked on. Chat completions unless it says otherwise. */
+  api?: "chat" | "responses";
 }
 
 type Environment = Record<string, string | undefined>;
@@ -125,10 +126,9 @@ export function endpointsFrom(env: Environment): Endpoint[] {
             "https://cognitiveservices.azure.com/.default",
           )),
       models: deployments,
-      // A model that needs a reasoning level named gets it from here.
-      ...(env.AZURE_OPENAI_REASONING_EFFORT
-        ? { body: { reasoning_effort: env.AZURE_OPENAI_REASONING_EFFORT } }
-        : {}),
+      // The Responses API, which Azure's newest models need for tools.
+      // AZURE_OPENAI_API=chat asks on chat completions instead.
+      api: env.AZURE_OPENAI_API === "chat" ? "chat" : "responses",
     });
   }
   if (env.OPENAI_BASE_URL) {
@@ -255,11 +255,22 @@ export async function modelFor(
     (candidate) => candidate.provider === choice.provider,
   );
   if (!endpoint) return app.offline;
+  // Asked for now: a short-lived key is fresh for this reply.
+  const apiKey = await keyOf(endpoint.apiKey).catch(() => undefined);
+  if (endpoint.api === "responses") {
+    const { openAiResponsesModel } =
+      await import("@bascik/genui/openai-responses");
+    return openAiResponsesModel({
+      baseUrl: endpoint.baseUrl,
+      apiKey,
+      model: choice.name,
+      body: endpoint.body,
+    });
+  }
   const { openAiCompatibleModel } = await import("@bascik/genui/openai");
   return openAiCompatibleModel({
     baseUrl: endpoint.baseUrl,
-    // Asked for now: a short-lived key is fresh for this reply.
-    apiKey: await keyOf(endpoint.apiKey).catch(() => undefined),
+    apiKey,
     model: choice.name,
     body: endpoint.body,
   });
