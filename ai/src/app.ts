@@ -46,6 +46,7 @@ import {
   MAX_QUERY,
   MIN_QUERY,
   isSafeKey,
+  limitConversations,
   newConversation,
   searchConversations,
   type Conversation,
@@ -252,6 +253,12 @@ export interface ChatOptions {
   id?: string;
   /** Where conversations are kept. */
   store: ConversationStore;
+  /**
+   * The most conversations one reader keeps. Starting one more deletes their
+   * oldest, through the store's `delete`; a store without it refuses the new
+   * conversation. Default 200.
+   */
+  maxConversations?: number;
   /** The components a model may write, or a function that loads them (called once, on first use). */
   catalog: Catalog | (() => Catalog | Promise<Catalog>);
   /**
@@ -579,13 +586,13 @@ interface TurnRecord {
 export function createChat(options: ChatOptions): Chat {
   const {
     id = "chat",
-    store,
     tools = [],
     memory,
     memoryApproval = false,
     page = "/",
     turnLimitMs = 120_000,
   } = options;
+  const store = limitConversations(options.store, options.maxConversations);
   const sessions =
     options.sessions ??
     cookieSessions(

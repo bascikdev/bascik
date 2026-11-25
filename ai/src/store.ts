@@ -43,6 +43,13 @@ export interface ConversationStore {
    * outputs, and only the reader's own conversations.
    */
   search?(reader: string, query: string, limit: number): Promise<SearchMatch[]>;
+  /**
+   * Optional: remove the reader's conversation with that id. Removing one
+   * that is not there is not an error. The chat keeps each reader to
+   * `maxConversations` and deletes their oldest to make room for a new one;
+   * without `delete`, a reader at the cap cannot start another.
+   */
+  delete?(reader: string, id: string): Promise<void>;
 }
 
 /** One conversation that matched a search. */
@@ -111,6 +118,12 @@ export function memoryStore(): ConversationStore {
         .map((conversation) => structuredClone(conversation))
         .sort(newestFirst);
     },
+    async delete(reader, id) {
+      if (!isSafeKey(reader) || !isSafeKey(id)) return;
+      const own = readers.get(reader);
+      own?.delete(id);
+      if (own?.size === 0) readers.delete(reader);
+    },
   };
 }
 
@@ -158,39 +171,112 @@ export function fileStore(directory: string): ConversationStore {
     async list(reader) {
       if (!isSafeKey(reader)) return [];
       const [fs, path] = await modules;
-      let files: string[];
+      let entries: import("node:fs").Dirent[];
       try {
-        files = await fs.readdir(path.join(directory, reader));
+        entries = await fs.readdir(path.join(directory, reader), {
+          withFileTypes: true,
+        });
       } catch {
         return [];
       }
-      // Only the newest `MAX_SCANNED` files, by when each was last saved, are
-      // read and parsed, so this lists at most that many: a reader with many
-      // conversations must not make every page and search read all of them.
-      const dated = await Promise.all(
-        files
-          .filter((file) => file.endsWith(".json"))
-          .map(async (file) => {
-            try {
-              const stat = await fs.stat(path.join(directory, reader, file));
-              return stat.isFile() ? { file, time: stat.mtimeMs } : null;
-            } catch {
-              return null;
-            }
-          }),
-      );
-      const newest = dated
-        .filter((entry) => entry !== null)
-        .sort((a, b) => b.time - a.time)
-        .slice(0, MAX_SCANNED);
-      const all = await Promise.all(
-        newest.map(({ file }) => read(reader, file.slice(0, -".json".length))),
-      );
-      return all
-        .filter((entry): entry is Conversation => entry !== null)
-        .sort(newestFirst);
+      // Every conversation is read: the chat keeps a reader to
+      // `maxConversations`, so there are only that many. Only regular files
+      // are opened (never a folder, a link, or a pipe), and only `OPEN_AT_ONCE`
+      // at a time, so a folder that holds more than it should costs time,
+      // not every file descriptor and the heap.
+      const ids = entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+        .map((entry) => entry.name.slice(0, -".json".length));
+      const all: Conversation[] = [];
+      for (let at = 0; at < ids.length; at += OPEN_AT_ONCE) {
+        const batch = await Promise.all(
+          ids.slice(at, at + OPEN_AT_ONCE).map((id) => read(reader, id)),
+        );
+        for (const entry of batch) if (entry !== null) all.push(entry);
+      }
+      return all.sort(newestFirst);
+    },
+    async delete(reader, id) {
+      if (!isSafeKey(reader) || !isSafeKey(id)) return;
+      const [fs] = await modules;
+      await fs.rm(await fileOf(reader, id), { force: true });
     },
   };
+}
+
+/** How many of a reader's files `fileStore.list` reads at once. */
+const OPEN_AT_ONCE = 32;
+
+/* ---- How many conversations a reader keeps ---- */
+
+/** The most conversations the chat keeps for one reader, by default. */
+export const MAX_CONVERSATIONS = 200;
+
+/**
+ * The store, keeping each reader to at most `max` conversations. Saving a
+ * conversation the store does not have yet, when the reader already has
+ * `max`, first deletes their oldest (by `updatedAt`), so a reader is never
+ * stuck and never holds more. A store without `delete` refuses that save
+ * with an error instead. Saving one the store already has never deletes
+ * anything.
+ *
+ * A reader's saves take turns, so two new conversations at once cannot both
+ * see room for one. That holds within one server; across several, the
+ * database has to keep the count.
+ */
+export function limitConversations(
+  store: ConversationStore,
+  max = MAX_CONVERSATIONS,
+): ConversationStore {
+  if (!Number.isSafeInteger(max) || max < 1) {
+    throw new RangeError(
+      "maxConversations must be a whole number of at least 1.",
+    );
+  }
+  const saving = new Map<string, Promise<unknown>>();
+  const inTurn = (reader: string, step: () => Promise<void>): Promise<void> => {
+    const run = (saving.get(reader) ?? Promise.resolve()).then(step);
+    const settled = run.then(
+      () => {},
+      () => {},
+    );
+    saving.set(reader, settled);
+    void settled.then(() => {
+      if (saving.get(reader) === settled) saving.delete(reader);
+    });
+    return run;
+  };
+  const makeRoom = async (reader: string, id: string): Promise<void> => {
+    if ((await store.load(reader, id)) !== null) return;
+    const others = (await store.list(reader)).filter(
+      (entry) => entry.id !== id,
+    );
+    const over = others.length - (max - 1);
+    if (over <= 0) return;
+    const remove = store.delete;
+    if (!remove) {
+      throw new Error(
+        `This reader already has ${max} conversations, the most the chat keeps, and the store has no delete to make room for a new one.`,
+      );
+    }
+    const oldest = others
+      .sort((a, b) => a.updatedAt - b.updatedAt)
+      .slice(0, over);
+    for (const entry of oldest) await remove.call(store, reader, entry.id);
+  };
+  const limited: ConversationStore = {
+    load: (reader, id) => store.load(reader, id),
+    list: (reader) => store.list(reader),
+    save: (reader, conversation) =>
+      inTurn(reader, async () => {
+        await makeRoom(reader, conversation.id);
+        await store.save(reader, conversation);
+      }),
+  };
+  const { search, delete: remove } = store;
+  if (search) limited.search = (...args) => search.apply(store, args);
+  if (remove) limited.delete = (...args) => remove.apply(store, args);
+  return limited;
 }
 
 /** A file in the folder is only a conversation when it has the shape of one. */

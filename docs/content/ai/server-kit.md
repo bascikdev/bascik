@@ -133,6 +133,8 @@ const files = fileStore(join(process.cwd(), ".data"));
 
 `fileStore(directory)` writes one JSON file per conversation. The path is `<directory>/<reader>/<id>.json`. It creates the reader directory when it saves. It writes a temporary file first, then renames it into place, so a reader never sees half a conversation. Its `list` reads the `.json` files in the reader directory.
 
+The chat keeps each reader to at most `maxConversations` conversations (default 200), so a reader cannot make every page and search slower by starting more. When a reader at the cap starts a new one, the chat deletes their oldest by `updatedAt`, so they are never stuck. It deletes through the store's optional `delete(reader, id)`, which `memoryStore` and `fileStore` both have. A store of your own without `delete` still works: a reader at the cap is refused a new conversation with an error. With several servers, keep the count in the database, since the chat counts within one server.
+
 A store accepts a reader id and a conversation id only when they use letters, digits, `_`, and `-`, up to 128 characters. This keeps either out of a path and out of a file name that means something else. `memoryStore` returns null or an empty list for an unsafe key. `fileStore` returns null from `load` for an unsafe key. Both throw when `save` gets an unsafe key.
 
 ```ts
