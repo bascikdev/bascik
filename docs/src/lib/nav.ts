@@ -164,6 +164,7 @@ export const NAV: NavSection[] = [
     pages: [
       { href: "/genui", label: "Overview" },
       { href: "/genui/quick-start", label: "Quick Start" },
+      { href: "/genui/server-kit", label: "Server Kit" },
       { href: "/genui/catalog", label: "Catalog" },
       { href: "/genui/tools", label: "Tools & Approval" },
       { href: "/genui/providers", label: "Providers" },
