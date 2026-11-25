@@ -13,9 +13,9 @@ import {
   resolveLimits,
   sniffFile,
   strictText,
-  type FileStore,
   type StoredFile,
 } from "./files.ts";
+import { fileStoreContract } from "./file-store.contract.ts";
 
 const bytes = (...values: number[]): Uint8Array => new Uint8Array(values);
 const text = (value: string): Uint8Array => new TextEncoder().encode(value);
@@ -29,7 +29,6 @@ const file = (content: Uint8Array, name: string, type = ""): File =>
   new File([content as Uint8Array<ArrayBuffer>], name, { type });
 
 const READER = "11111111-1111-4111-8111-111111111111";
-const OTHER = "22222222-2222-4222-8222-222222222222";
 const ID = "33333333-3333-4333-8333-333333333333";
 const stored = (name = "a.png"): StoredFile => ({
   name,
@@ -45,62 +44,20 @@ afterEach(async () => {
   );
 });
 
-function storeContract(
-  name: string,
-  make: () => Promise<{ store: FileStore; directory?: string }>,
-): void {
-  describe(name, () => {
-    it("keeps a file for its reader and hands out copies", async () => {
-      const { store } = await make();
-      await store.put(READER, ID, stored("cover.png"));
-      const first = await store.get(READER, ID);
-      expect(first).toEqual(stored("cover.png"));
-      first!.bytes[0] = 0;
-      expect((await store.get(READER, ID))!.bytes[0]).toBe(0x89);
-    });
-
-    it("never gives one reader's file to another", async () => {
-      const { store } = await make();
-      await store.put(READER, ID, stored());
-      expect(await store.get(OTHER, ID)).toBeNull();
-    });
-
-    it("answers null for an unknown id and removes a file", async () => {
-      const { store } = await make();
-      expect(await store.get(READER, ID)).toBeNull();
-      await store.put(READER, ID, stored());
-      await store.remove(READER, ID);
-      expect(await store.get(READER, ID)).toBeNull();
-      await store.remove(READER, ID);
-    });
-
-    it.each([
-      "../x",
-      "..",
-      "a/b",
-      "a\\b",
-      "C:\\x",
-      "a\0b",
-      "",
-      "a".repeat(129),
-      "id.json",
-    ])("refuses the hostile id %j", async (hostile) => {
-      const { store } = await make();
-      await expect(store.put(READER, hostile, stored())).rejects.toThrow();
-      await expect(store.put(hostile, ID, stored())).rejects.toThrow();
-      expect(await store.get(READER, hostile)).toBeNull();
-      expect(await store.get(hostile, ID)).toBeNull();
-      await store.remove(READER, hostile);
-    });
-  });
-}
-
-storeContract("inMemoryFiles", async () => ({ store: inMemoryFiles() }));
-storeContract("diskFiles", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "genui-files-"));
-  folders.push(directory);
-  return { store: diskFiles(join(directory, "files")), directory };
+fileStoreContract("inMemoryFiles", () => inMemoryFiles(), {
+  describe,
+  it,
+  expect,
 });
+fileStoreContract(
+  "diskFiles",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "genui-files-"));
+    folders.push(directory);
+    return diskFiles(join(directory, "files"));
+  },
+  { describe, it, expect },
+);
 
 describe("diskFiles", () => {
   it("keeps a hostile name as data, never as a path", async () => {

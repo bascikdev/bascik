@@ -24,6 +24,7 @@ import {
   type Memory,
   type MemoryStore,
 } from "./memory.ts";
+import { memoryStoreContract } from "./memory-store.contract.ts";
 import { invalidToolInput, type Tool } from "./model.ts";
 
 const READER = "11111111-1111-4111-8111-111111111111";
@@ -34,20 +35,6 @@ const memory = (id: string, text: string, created: number): Memory => ({
   created,
 });
 
-const HOSTILE = [
-  "../escape",
-  "..",
-  ".",
-  "a/b",
-  "a\\b",
-  "/etc/passwd",
-  "C:\\x",
-  "a\0b",
-  "",
-  "x".repeat(200),
-  "%2e%2e",
-];
-
 const directories: string[] = [];
 afterEach(async () => {
   for (const directory of directories.splice(0)) {
@@ -55,83 +42,12 @@ afterEach(async () => {
   }
 });
 
-function behavesAsAStore(make: () => Promise<MemoryStore>): void {
-  it("lists what was added, newest first, as copies", async () => {
-    const store = await make();
-    await store.add(READER, memory("a", "Likes tea", 1));
-    await store.add(READER, memory("b", "Likes jazz", 2));
-    const listed = await store.list(READER);
-    expect(listed.map((entry) => entry.id)).toEqual(["b", "a"]);
-    listed[0]!.text = "changed, not saved";
-    expect((await store.list(READER))[0]!.text).toBe("Likes jazz");
-  });
-
-  it("replaces a memory added again with the same id", async () => {
-    const store = await make();
-    await store.add(READER, memory("a", "one", 1));
-    await store.add(READER, { ...memory("a", "two", 1), updated: 5 });
-    expect(await store.list(READER)).toEqual([
-      { id: "a", text: "two", created: 1, updated: 5 },
-    ]);
-  });
-
-  it("removes one, and says whether there was one", async () => {
-    const store = await make();
-    await store.add(READER, memory("a", "one", 1));
-    expect(await store.remove(READER, "a")).toBe(true);
-    expect(await store.remove(READER, "a")).toBe(false);
-    expect(await store.list(READER)).toEqual([]);
-  });
-
-  it("keeps each reader's memories apart", async () => {
-    const store = await make();
-    await store.add(READER, memory("a", "mine", 1));
-    expect(await store.list(OTHER)).toEqual([]);
-    expect(await store.search(OTHER, "mine", 5)).toEqual([]);
-    expect(await store.remove(OTHER, "a")).toBe(false);
-    expect(await store.list(READER)).toHaveLength(1);
-  });
-
-  it("searches by shared words, then recency", async () => {
-    const store = await make();
-    await store.add(READER, memory("a", "Prefers short books", 1));
-    await store.add(READER, memory("b", "Lives in Lisbon", 2));
-    await store.add(
-      READER,
-      memory("c", "Likes short stories and short books", 3),
-    );
-    await store.add(READER, memory("d", "Prefers tea", 4));
-    const found = await store.search(READER, "short books", 5);
-    expect(found.map((entry) => entry.id)).toEqual(["c", "a"]);
-    expect(await store.search(READER, "nothing like it", 5)).toEqual([]);
-    expect(await store.search(READER, "short books", 1)).toHaveLength(1);
-  });
-
-  it("answers the newest for an empty query", async () => {
-    const store = await make();
-    await store.add(READER, memory("a", "one", 1));
-    await store.add(READER, memory("b", "two", 2));
-    expect((await store.search(READER, "  ", 1)).map((m) => m.id)).toEqual([
-      "b",
-    ]);
-  });
-
-  it("never lets a reader or a memory id become a path or a key", async () => {
-    const store = await make();
-    for (const bad of HOSTILE) {
-      await expect(store.add(bad, memory("a", "x", 1))).rejects.toThrow();
-      expect(await store.list(bad)).toEqual([]);
-      expect(await store.search(bad, "x", 5)).toEqual([]);
-      expect(await store.remove(bad, "a")).toBe(false);
-      await expect(store.add(READER, memory(bad, "x", 1))).rejects.toThrow();
-    }
-    expect(await store.remove(READER, "../a")).toBe(false);
-    expect(await store.list(READER)).toEqual([]);
-  });
-}
-
 describe("inMemoryMemories", () => {
-  behavesAsAStore(async () => inMemoryMemories());
+  memoryStoreContract("contract", () => inMemoryMemories(), {
+    describe,
+    it,
+    expect,
+  });
 });
 
 describe("fileMemories", () => {
@@ -140,7 +56,7 @@ describe("fileMemories", () => {
     directories.push(directory);
     return fileMemories(join(directory, "memory"));
   };
-  behavesAsAStore(make);
+  memoryStoreContract("contract", make, { describe, it, expect });
 
   it("writes one file per reader, atomically, and leaves nothing else", async () => {
     const directory = await mkdtemp(join(tmpdir(), "genui-memory-"));
