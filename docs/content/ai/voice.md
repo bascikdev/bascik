@@ -216,3 +216,7 @@ A call still running or approved when its turn is stored is stored as failed, "e
 ### No voice provider
 
 `voiceTool` and `voiceTurn` answer 404 when `createChat` has no `voice` option, as `voiceSession` does, and `voiceView` answers nothing.
+
+When `voice` is a function that picks a provider by name, the voice handlers serve only a conversation it opened a voice session for: `voiceSession` marks the conversation in the shared store when the picked provider hands out a ticket, and the mark lasts two hours after the call last used it. A picker that answers null for every request leaves `voiceTool` and `voiceTurn` answering 404 and `voiceView` answering nothing, so no tool runs and no turn is stored. A call's tool calls and turns go to the conversation open when the call started; opening another conversation during a call that a picker started makes them answer 404 until a new call starts there.
+
+`addMessage` rejects with `ConversationFullError` when the message would take the conversation past `maxConversationBytes`. A route of yours that calls it answers that with 413, as `send` does.

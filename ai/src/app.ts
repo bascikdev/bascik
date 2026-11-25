@@ -289,7 +289,8 @@ export interface ChatOptions {
   /**
    * The voice provider to offer, or a function that picks one by the
    * `?provider=` the request names (null when it names none). Without one,
-   * the voice session handler answers 404.
+   * the voice handlers answer 404. With a function, the tool call and turn
+   * handlers serve only a conversation it opened a voice session for.
    */
   voice?:
     | VoiceProvider
@@ -424,6 +425,9 @@ export interface Chat {
    * Add the reader's message to their open conversation (a new one when none
    * is open) and store it. The conversation's first message titles it, unless
    * `title` does. Tool calls still waiting for the reader are refused.
+   * Rejects with `ConversationFullError` when the message would take the
+   * conversation past `maxConversationBytes`; answer it with 413 (the `send`
+   * handler does).
    */
   addMessage(
     session: Session,
@@ -1266,8 +1270,24 @@ export function createChat(options: ChatOptions): Chat {
   /* Voice: the turn being recorded for each conversation. It is in the
      shared store, so a call's tool calls may land on different servers. */
 
-  /** Whether a voice provider is configured: without one, the voice handlers answer 404. */
-  const hasVoice = options.voice != null;
+  /**
+   * Whether a voice call may use this conversation. A fixed provider serves
+   * every request. A picker serves only the conversations it opened a voice
+   * session for (within `VOICE_MS` of the last use): a picker that offers no
+   * provider leaves the voice handlers answering 404, like no `voice` at all.
+   */
+  const pickedVoice = typeof options.voice === "function";
+  const voiceOpenKey = (conversationId: string): string =>
+    `${ns}voice-open:${conversationId}`;
+  const voiceOpen = async (conversationId: string): Promise<boolean> => {
+    if (options.voice == null) return false;
+    if (!pickedVoice) return true;
+    const key = voiceOpenKey(conversationId);
+    if ((await shared.get(key)) === undefined) return false;
+    // Kept while the call goes on, as the turn is.
+    await shared.set(key, "1", VOICE_MS);
+    return true;
+  };
   const noVoice = (): Response =>
     new Response("This server has no voice provider.", {
       status: 404,
@@ -1492,6 +1512,18 @@ export function createChat(options: ChatOptions): Chat {
         status: 502,
       });
     }
+    if (pickedVoice) {
+      // The picker offered a provider for this conversation: its tool calls
+      // and turns are taken from now on.
+      try {
+        await shared.set(voiceOpenKey(conversation.id), "1", VOICE_MS);
+      } catch (error) {
+        onError(error, "the shared store did not answer");
+        return new Response("The voice call could not be started.", {
+          status: 502,
+        });
+      }
+    }
     const headers = sessions.remember(session, conversation.id);
     headers.set("content-type", "application/json");
     headers.set("cache-control", "no-store");
@@ -1517,7 +1549,7 @@ export function createChat(options: ChatOptions): Chat {
     ) {
       return badRequest("Not a tool call.");
     }
-    if (!hasVoice) return noVoice();
+    if (!(await voiceOpen(conversation.id))) return noVoice();
     if (!roomIn(conversation, [])) {
       // Nothing more of this call could be stored: the model is told now.
       return Response.json(
@@ -1600,7 +1632,7 @@ export function createChat(options: ChatOptions): Chat {
     if (!conversation || reader === undefined || model === undefined) {
       return badRequest("Not a voice turn.");
     }
-    if (!hasVoice) return noVoice();
+    if (!(await voiceOpen(conversation.id))) return noVoice();
     // The turn is taken either way: one with no room is dropped, not kept
     // to be refused again.
     const messages = await updateVoice(conversation.id, (turn) =>
@@ -1642,10 +1674,11 @@ export function createChat(options: ChatOptions): Chat {
     search,
     async voiceView(request, call) {
       // With no voice provider there are no voice views: nothing is looked up.
-      if (!hasVoice) return "";
+      if (options.voice == null) return "";
       const conversation = await load(sessions.identify(request));
       if (!conversation) return "";
       try {
+        if (!(await voiceOpen(conversation.id))) return "";
         // Under the id the call was recorded under, as voiceTool keeps it.
         return (
           (await shared.get(viewKey(conversation.id, voiceCallId(call)))) ?? ""

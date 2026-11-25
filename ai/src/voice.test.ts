@@ -842,6 +842,64 @@ describe("voice tool calls through createChat", () => {
     expect((await conversationOf(chat)).messages).toEqual([]);
   });
 
+  it("answers 404 when a provider picker offers no provider, and runs and stores nothing", async () => {
+    const { chat, ran } = await voiced({
+      approval: false,
+      options: { voice: () => null },
+    });
+    expect((await chat.voiceSession(posted({}))).status).toBe(404);
+    const paid = await chat.voiceTool(
+      posted({ id: "c1", name: "pay", input: '{"title":"A"}' }),
+    );
+    expect(paid.status).toBe(404);
+    expect(ran).toEqual([]);
+    const shown = await chat.voiceTool(
+      posted({
+        id: "c2",
+        name: "show",
+        input: JSON.stringify({ markup: `<book-card title="Dune" />` }),
+      }),
+    );
+    expect(shown.status).toBe(404);
+    expect(await chat.voiceView(page(), "c2")).toBe("");
+    const turn = await chat.voiceTurn(posted({ reader: "", model: "" }));
+    expect(turn.status).toBe(404);
+    expect((await conversationOf(chat)).messages).toEqual([]);
+  });
+
+  it("with a provider picker, takes voice calls only for a conversation it opened a voice session for", async () => {
+    let offered = false;
+    const { chat, ran } = await voiced({
+      approval: false,
+      options: {
+        voice: () =>
+          offered
+            ? {
+                protocol: "fake",
+                createSession: async () => ({
+                  protocol: "fake",
+                  url: "",
+                  setup: null,
+                }),
+              }
+            : null,
+      },
+    });
+    const pay = () =>
+      chat.voiceTool(posted({ id: "c1", name: "pay", input: '{"title":"A"}' }));
+    // No session yet: the picker has offered nothing for this conversation.
+    expect((await pay()).status).toBe(404);
+    offered = true;
+    expect((await chat.voiceSession(posted({}))).status).toBe(200);
+    // The picker is not asked again: the session it opened is what counts.
+    offered = false;
+    expect(await (await pay()).json()).toMatchObject({ state: "done" });
+    expect(ran).toEqual(["A"]);
+    expect(
+      (await chat.voiceTurn(posted({ reader: "hi", model: "ok" }))).status,
+    ).toBe(204);
+  });
+
   it("stops storing voice turns once the conversation is full, however many turns are sent", async () => {
     const max = 200_000;
     const { chat, call } = await voiced({
