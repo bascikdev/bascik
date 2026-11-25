@@ -219,6 +219,11 @@ describe("sniffFile: the bytes decide", () => {
     "report.htm⁠l",
     "page.xhtml\u0007",
     `${"a".repeat(115)}.htmlmore`,
+    "report.html️",
+    "report.htmlㅤ",
+    "report.htmĺ",
+    "report.htmlᅟ",
+    "report.htmlﾠ",
   ])(
     "refuses a markup name hidden behind characters the stored name drops: %j",
     async (name) => {
@@ -231,6 +236,47 @@ describe("sniffFile: the bytes decide", () => {
         resolveLimits(),
       );
       expect(checked.ok).toBe(false);
+    },
+  );
+
+  it.each([
+    "report.xht",
+    "report.shtml",
+    "report.shtm",
+    "report.xhtm",
+    "report.mhtml",
+    "report.mht",
+    "report.xsl",
+    "report.xslt",
+    "report.hta",
+    "report.php",
+    "report.js",
+    "report.exe",
+    "report.TXT️",
+    "report",
+  ])(
+    "stores and serves %j only under the extension of the type it was checked as",
+    async (name) => {
+      const content = "hello\n<script>alert(1)</script>\n";
+      const checked = await checkUploads(
+        [new File([content], name, { type: "text/plain" })],
+        resolveLimits(),
+      );
+      expect(checked.ok).toBe(true);
+      if (!checked.ok) return;
+      const [one] = checked.files;
+      expect(one!.mediaType).toBe("text/plain");
+      expect(one!.name).toMatch(/\.txt$/);
+      // A file stored under its old name (another store, an older version)
+      // is renamed when it is served, too.
+      const disposition = fileResponse({
+        name,
+        mediaType: "text/plain",
+        size: content.length,
+        bytes: text(content),
+      }).headers.get("content-disposition")!;
+      expect(disposition).toMatch(/filename="[^"]*\.txt"; /);
+      expect(disposition).toMatch(/filename\*=UTF-8''\S*\.txt$/);
     },
   );
 
@@ -301,11 +347,44 @@ describe("checkUploads", () => {
     expect(result.files[0]!.id).not.toBe(result.files[1]!.id);
   });
 
+  it.each([
+    ["photo.txt", PNG, "image/png", "photo.txt.png"],
+    ["photo.PNG", PNG, "image/png", "photo.PNG"],
+    ["shot.jpg", JPEG, "image/jpeg", "shot.jpg"],
+    ["shot.jpeg", JPEG, "image/jpeg", "shot.jpeg"],
+    ["shot.png", JPEG, "", "shot.png.jpg"],
+    ["paper", PDF, "", "paper.pdf"],
+    ["notes.md", text("# hi"), "", "notes.md"],
+    ["notes.markdown", text("# hi"), "", "notes.markdown"],
+    ["notes", text("# hi"), "text/markdown", "notes.md"],
+    ["data.csv", text("a,b"), "", "data.csv"],
+    ["server.log", text("ok"), "text/plain", "server.log.txt"],
+  ])(
+    "gives %j the extension of the type its bytes are",
+    async (name, content, type, kept) => {
+      const result = await checkUploads([file(content, name, type)], limits);
+      expect(result).toMatchObject({ ok: true, files: [{ name: kept }] });
+    },
+  );
+
+  it("keeps a long name to 120 characters with its extension", async () => {
+    const result = await checkUploads(
+      [file(text("hi"), `${"é".repeat(200)}.xht`, "text/plain")],
+      limits,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const name = result.files[0]!.name;
+    expect([...name]).toHaveLength(120);
+    expect(name).toMatch(/é\.txt$/);
+  });
+
   it("has the documented defaults", () => {
     expect(limits).toMatchObject({
       maxFileBytes: 5 * 1024 * 1024,
       maxFiles: 4,
       maxTotalBytes: 10 * 1024 * 1024,
+      maxAttachedBytes: 20 * 1024 * 1024,
     });
     expect(limits.types).toEqual([
       "image/png",
@@ -317,6 +396,27 @@ describe("checkUploads", () => {
       "text/markdown",
       "text/csv",
     ]);
+  });
+
+  it("lets an app set what one model request may carry, never below one message", () => {
+    const MB = 1024 * 1024;
+    expect(resolveLimits({ maxAttachedBytes: 50 * MB }).maxAttachedBytes).toBe(
+      50 * MB,
+    );
+    // Raising the per-message limit raises the default with it, so the
+    // newest message always fits.
+    expect(
+      resolveLimits({ maxFileBytes: 25 * MB, maxTotalBytes: 30 * MB })
+        .maxAttachedBytes,
+    ).toBe(30 * MB);
+    expect(() =>
+      resolveLimits({ maxTotalBytes: 30 * MB, maxAttachedBytes: 20 * MB }),
+    ).toThrow(/maxAttachedBytes/);
+    for (const bad of [0, -1, Number.NaN, Infinity, 1.5]) {
+      expect(() => resolveLimits({ maxAttachedBytes: bad })).toThrow(
+        /maxAttachedBytes/,
+      );
+    }
   });
 
   it("only accepts types the library knows how to check", () => {

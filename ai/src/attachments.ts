@@ -6,6 +6,7 @@
  * into its own content blocks.
  */
 import { randomBytes } from "node:crypto";
+import { DEFAULT_MAX_ATTACHED_BYTES } from "./files.ts";
 import {
   filesOf,
   type ChatMessage,
@@ -37,22 +38,29 @@ export const MAX_INLINE_TEXT = 20_000;
 export const MAX_ATTACHED_MESSAGES = 3;
 
 /**
- * One model request carries at most this many bytes of files, counted from
- * the newest file back. It is twice the default per-message limit, so the
- * newest message's files always fit.
+ * One model request carries at most this many bytes of files by default
+ * (`fileLimits.maxAttachedBytes`), counted from the newest file back. The
+ * newest message's files are always sent, whatever the cap.
  */
-export const MAX_ATTACHED_BYTES = 20 * 1024 * 1024;
+export const MAX_ATTACHED_BYTES = DEFAULT_MAX_ATTACHED_BYTES;
+
+const sizeOf = (part: FilePart): number =>
+  Number.isFinite(part.size) && part.size > 0 ? part.size : 0;
 
 /**
  * Read the bytes of the files a model request carries (none when the app has
  * no store): those of the last `MAX_ATTACHED_MESSAGES` user messages with
- * files, up to `MAX_ATTACHED_BYTES` in all. Every other file of the
- * conversation is returned as `older`, unread, so it becomes a short note.
- * Without this, each turn would read and encode every file ever attached.
+ * files, up to `maxBytes` in all. The newest message's files are always
+ * read: they passed the upload limits, and they are what the reader is
+ * asking about, so a cap below them would tell the model they were attached
+ * "earlier". Every other file of the conversation is returned as `older`,
+ * unread, so it becomes a short note. Without this, each turn would read and
+ * encode every file ever attached.
  */
 export async function readAttachments(
   messages: readonly ChatMessage[],
   readFile: ModelRequest["readFile"],
+  maxBytes: number = MAX_ATTACHED_BYTES,
 ): Promise<Attachments> {
   const found = new Map<string, Attachment>();
   if (!readFile) return found;
@@ -61,12 +69,17 @@ export async function readAttachments(
     .map(filesOf)
     .filter((files) => files.length > 0);
   const recent = withFiles.slice(-MAX_ATTACHED_MESSAGES).flat();
-  const recentIds = new Set<string>();
-  let budget = MAX_ATTACHED_BYTES;
+  const newest = withFiles.at(-1) ?? [];
+  const recentIds = new Set<string>(newest.map((part) => part.id));
+  const newestBytes = newest.reduce((sum, part) => sum + sizeOf(part), 0);
+  // The cap, raised to the newest message when that alone is larger.
+  const cap = Math.max(maxBytes, newestBytes);
+  let budget = cap - newestBytes;
   // Newest first, so the bytes go to the files the reader is asking about.
   for (const part of [...recent].reverse()) {
-    const size = Number.isFinite(part.size) && part.size > 0 ? part.size : 0;
-    if (size > budget || recentIds.has(part.id)) continue;
+    if (recentIds.has(part.id)) continue;
+    const size = sizeOf(part);
+    if (size > budget) continue;
     budget -= size;
     recentIds.add(part.id);
   }
@@ -92,8 +105,8 @@ export async function readAttachments(
   );
   // A store that returns more than a file's recorded size is not trusted with
   // the budget: past it, the newest files are kept and the rest become notes.
-  if (read > MAX_ATTACHED_BYTES) {
-    let left = MAX_ATTACHED_BYTES;
+  if (read > cap) {
+    let left = cap;
     for (const part of [...recent].reverse()) {
       const entry = found.get(part.id);
       if (!entry?.bytes) continue;
@@ -126,14 +139,57 @@ function boundaryFor(text: string): string {
   return token;
 }
 
+const MARKER = /\b(begin|end)[^\p{L}\p{N}]*(file)/giu;
+const HAS_MARKER = /\b(?:begin|end)[^\p{L}\p{N}]*file/iu;
+
+/** Letters from other scripts drawn like the Latin letters of the markers. */
+const LOOK_ALIKES: Record<string, string> = {
+  е: "e", // Cyrillic small ie
+  Е: "E", // Cyrillic capital ie
+  і: "i", // Cyrillic small byelorussian-ukrainian i
+  І: "I", // Cyrillic capital byelorussian-ukrainian i
+  ԁ: "d", // Cyrillic small komi de
+  ɡ: "g", // Latin small script g
+  ı: "i", // Latin small dotless i
+  ι: "i", // Greek small iota
+  Β: "B", // Greek capital beta
+  Ε: "E", // Greek capital epsilon
+  Ι: "I", // Greek capital iota
+  Ν: "N", // Greek capital nu
+};
+const LOOK_ALIKE = new RegExp(`[${Object.keys(LOOK_ALIKES).join("")}]`, "gu");
+
 /**
- * Any line in the file that looks like a marker, in any case, spacing or
- * punctuation, is changed so it reads as data (`end-of-file`). The random
- * boundary is what makes the real markers unforgeable; this keeps a near
- * miss from looking like one.
+ * A line as a reader sees it: compatibility forms (fullwidth, bold and
+ * script math letters, ligatures) as their plain letters, accents and
+ * zero-width or invisible characters gone, and the common look-alike
+ * letters from other scripts as Latin ones.
+ */
+const fold = (line: string): string =>
+  line
+    .normalize("NFKD")
+    .replace(/[\p{M}\p{Cf}ᅟᅠㅤﾠ]/gu, "")
+    .replace(LOOK_ALIKE, (letter) => LOOK_ALIKES[letter]!);
+
+/**
+ * Any line in the file that looks like a marker, in any case, spacing,
+ * punctuation, width or script, is changed so it reads as data
+ * (`end-of-file`). The random boundary is what makes the real markers
+ * unforgeable; this keeps a near miss from looking like one. A line that
+ * only looks like a marker once folded is shown folded, so the change is
+ * visible in it too.
  */
 const neutralize = (text: string): string =>
-  text.replace(/\b(begin|end)[^\p{L}\p{N}]*(file)/giu, "$1-of-$2");
+  text
+    .split("\n")
+    .map((line) => {
+      const plain = line.replace(MARKER, "$1-of-$2");
+      const folded = fold(plain);
+      return HAS_MARKER.test(folded)
+        ? folded.replace(MARKER, "$1-of-$2")
+        : plain;
+    })
+    .join("\n");
 
 /** A name as the model reads it: one line, and no quote to end it early. */
 const plainName = (name: string): string =>

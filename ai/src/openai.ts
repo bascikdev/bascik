@@ -17,6 +17,33 @@ import {
   type Model,
 } from "./model.ts";
 
+/**
+ * The highest tool-call `index` a server may send. One round with more calls
+ * than this is not a real reply, and the bound keeps the calls map small.
+ */
+export const MAX_TOOL_CALL_INDEX = 127;
+
+/**
+ * The slot of a streamed tool-call piece: a whole number from 0 to
+ * `MAX_TOOL_CALL_INDEX`, sent as a number or (by some servers) as a string
+ * of decimal digits. Anything else, a missing index included, throws: it is
+ * never guessed, because guessing merges separate calls or splits one.
+ */
+export function toolCallIndex(index: unknown): number {
+  const value =
+    typeof index === "number"
+      ? index
+      : typeof index === "string" && /^\d{1,3}$/.test(index)
+        ? Number(index)
+        : Number.NaN;
+  if (!Number.isInteger(value) || value < 0 || value > MAX_TOOL_CALL_INDEX) {
+    throw new Error(
+      `The model server sent a tool call index that is not a whole number from 0 to ${MAX_TOOL_CALL_INDEX}: ${JSON.stringify(index)?.slice(0, 40) ?? String(index)}.`,
+    );
+  }
+  return value;
+}
+
 export interface OpenAiCompatibleOptions {
   /** The API root, for example `http://127.0.0.1:11434/v1`. */
   baseUrl: string;
@@ -194,9 +221,7 @@ export function openAiCompatibleModel(options: OpenAiCompatibleOptions): Model {
     }
 
     let finish = "";
-    // Keyed by the server's `index`, which can be any number: a Map, not an
-    // array, so a huge index costs one entry instead of a sparse array that
-    // takes a minute to walk.
+    // Keyed by the server's `index`, checked by `toolCallIndex`.
     const calls = new Map<number, ToolCall>();
     for await (const data of events(response.body)) {
       if (data === "[DONE]") break;
@@ -205,7 +230,7 @@ export function openAiCompatibleModel(options: OpenAiCompatibleOptions): Model {
           delta?: {
             content?: string | null;
             tool_calls?: {
-              index?: number;
+              index?: unknown;
               id?: string;
               function?: { name?: string; arguments?: string };
             }[];
@@ -225,7 +250,7 @@ export function openAiCompatibleModel(options: OpenAiCompatibleOptions): Model {
       if (content) yield content;
       // A tool call arrives in pieces: its name first, then its input.
       for (const piece of choice.delta?.tool_calls ?? []) {
-        const index = typeof piece.index === "number" ? piece.index : 0;
+        const index = toolCallIndex(piece.index);
         let call = calls.get(index);
         if (!call) {
           call = { id: "", name: "", arguments: "" };

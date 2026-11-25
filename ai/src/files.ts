@@ -175,6 +175,13 @@ export interface FileLimits {
   /** The most all of one message's files may add up to, in bytes. Default 10 MB. */
   maxTotalBytes?: number;
   /**
+   * The most bytes of files one model request may carry, counted from the
+   * newest file back; older files are named to the model instead. The
+   * newest message's files are always sent, so this cannot be below
+   * `maxTotalBytes`. Default 20 MB, or `maxTotalBytes` when that is larger.
+   */
+  maxAttachedBytes?: number;
+  /**
    * The media types accepted: a subset of `DEFAULT_FILE_TYPES`. A type that
    * is not one of those cannot be added, because the library only knows how
    * to check these; in particular SVG and HTML are never accepted.
@@ -185,19 +192,42 @@ export interface FileLimits {
 export const DEFAULT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const DEFAULT_MAX_FILES = 4;
 export const DEFAULT_MAX_TOTAL_BYTES = 10 * 1024 * 1024;
+export const DEFAULT_MAX_ATTACHED_BYTES = 20 * 1024 * 1024;
 
 export interface ResolvedFileLimits {
   maxFileBytes: number;
   maxFiles: number;
   maxTotalBytes: number;
+  maxAttachedBytes: number;
   types: readonly string[];
 }
 
+/**
+ * The limits with their defaults filled in. A `maxAttachedBytes` that is not
+ * a positive whole number, or that is below `maxTotalBytes` (so a message
+ * the app accepted could not be sent to the model), is a mistake in the
+ * app's options and throws when the app starts.
+ */
 export function resolveLimits(limits: FileLimits = {}): ResolvedFileLimits {
+  const maxTotalBytes = limits.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES;
+  const maxAttachedBytes =
+    limits.maxAttachedBytes ??
+    Math.max(DEFAULT_MAX_ATTACHED_BYTES, maxTotalBytes);
+  if (!Number.isSafeInteger(maxAttachedBytes) || maxAttachedBytes <= 0) {
+    throw new RangeError(
+      `fileLimits.maxAttachedBytes must be a positive whole number of bytes, not ${maxAttachedBytes}.`,
+    );
+  }
+  if (maxAttachedBytes < maxTotalBytes) {
+    throw new RangeError(
+      `fileLimits.maxAttachedBytes (${maxAttachedBytes}) cannot be below fileLimits.maxTotalBytes (${maxTotalBytes}): the newest message's files are always sent.`,
+    );
+  }
   return {
     maxFileBytes: limits.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
     maxFiles: limits.maxFiles ?? DEFAULT_MAX_FILES,
-    maxTotalBytes: limits.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES,
+    maxTotalBytes,
+    maxAttachedBytes,
     types: (limits.types ?? DEFAULT_FILE_TYPES).filter((type) =>
       DEFAULT_FILE_TYPES.includes(type),
     ),
@@ -249,6 +279,40 @@ export function cleanName(name: string): string {
     .trim();
   const short = [...cleaned].slice(0, 120).join("").trim();
   return short && short !== "." && short !== ".." ? short : "file";
+}
+
+/**
+ * The extensions each checked type is kept under; the first is the one a
+ * name is given when it has none of them.
+ */
+const EXTENSIONS: Record<string, readonly string[]> = {
+  "image/png": ["png"],
+  "image/jpeg": ["jpg", "jpeg"],
+  "image/webp": ["webp"],
+  "image/gif": ["gif"],
+  "application/pdf": ["pdf"],
+  "text/plain": ["txt"],
+  "text/markdown": ["md", "markdown"],
+  "text/csv": ["csv"],
+};
+
+/**
+ * The name a file is stored and served under: its cleaned name, ending in
+ * an extension of the type its bytes were checked to be. When the name ends
+ * any other way, that extension is added (`report.xht` holding plain text
+ * becomes `report.xht.txt`), so whatever the reader's file was called, a
+ * downloaded copy opens as only what it was checked to be. No list of
+ * dangerous extensions is needed. A type the library does not know gets
+ * `.bin`. The result stays within `cleanName`'s 120 characters.
+ */
+export function storedName(name: string, mediaType: string): string {
+  const clean = cleanName(name);
+  const allowed = EXTENSIONS[mediaType] ?? ["bin"];
+  const ending = /\.([A-Za-z0-9]+)$/.exec(clean)?.[1]?.toLowerCase();
+  if (ending && allowed.includes(ending)) return clean;
+  const extension = `.${allowed[0]!}`;
+  const base = [...clean].slice(0, 120 - extension.length).join("");
+  return `${base}${extension}`;
 }
 
 /** What a reader is told. The page's script says the same words. */
@@ -339,9 +403,13 @@ const mediaTypeOf = (claimed: string): string =>
  * characters, and without the trailing dots and spaces that Windows drops
  * when it saves a file. Otherwise `report.html` followed by a zero-width
  * space passes the check and is then stored as `report.html` by `cleanName`.
+ * Combining marks and the Hangul fillers draw nothing either. The stored
+ * name is given its checked type's extension anyway (`storedName`); this
+ * keeps the refusal saying what the reader tried.
  */
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Mn}\p{Me}\u115F\u1160\u3164\uFFA0]/gu;
 const bareName = (name: string): string =>
-  name.replace(/[\p{Cc}\p{Cf}]/gu, "").replace(/[\s.]+$/u, "");
+  name.replace(INVISIBLE, "").replace(/[\s.]+$/u, "");
 
 /**
  * True when the file says it is HTML, SVG or XML, by its type or its name.
@@ -452,7 +520,12 @@ export async function checkUploads(
                 : refusals.type(name, limits.types),
       };
     }
-    files.push({ id: randomUUID(), name, mediaType: found.mediaType, bytes });
+    files.push({
+      id: randomUUID(),
+      name: storedName(upload.name, found.mediaType),
+      mediaType: found.mediaType,
+      bytes,
+    });
   }
   return { ok: true, files };
 }
@@ -472,8 +545,9 @@ function dispositionName(name: string): string {
 /**
  * A stored file as a response. Whatever the bytes are, they are shown as
  * only what they were checked to be (`nosniff`), only to the reader they
- * belong to (the caller looked it up for them), and with a policy that lets
- * the response do nothing if it is ever opened as a page. Images are shown
+ * belong to (the caller looked it up for them), under a name that ends in
+ * that type's extension (`storedName`), and with a policy that lets the
+ * response do nothing if it is ever opened as a page. Images are shown
  * in the page; everything else is a download.
  */
 export function fileResponse(file: StoredFile): Response {
@@ -484,12 +558,15 @@ export function fileResponse(file: StoredFile): Response {
       : file.mediaType
     : "application/octet-stream";
   const inline = known && isImageType(file.mediaType);
+  // Named again here, for a file stored by another store or an older
+  // version under a name that does not end in its type's extension.
+  const name = storedName(file.name, known ? file.mediaType : "");
   return new Response(file.bytes as Uint8Array<ArrayBuffer>, {
     headers: {
       "content-type": type,
       "content-length": String(file.bytes.byteLength),
       "x-content-type-options": "nosniff",
-      "content-disposition": `${inline ? "inline" : "attachment"}; ${dispositionName(file.name)}`,
+      "content-disposition": `${inline ? "inline" : "attachment"}; ${dispositionName(name)}`,
       "cache-control": "private, max-age=3600",
       "content-security-policy": "default-src 'none'; sandbox",
       "cross-origin-resource-policy": "same-origin",
