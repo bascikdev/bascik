@@ -1,7 +1,8 @@
 /**
- * What every `MemoryStore` has to do, as a suite any implementation can run:
- * the in-memory and file stores here, and a store over another database (a
- * Durable Object, a vector index) wherever its tests live.
+ * What every `MemoryStore` has to do, as a suite: the in-memory and file
+ * stores run it here. The suite is internal to this package and not
+ * published; a store over another database (a Durable Object, a vector
+ * index) elsewhere copies it into its own tests.
  *
  * The Vitest functions are passed in, so this module loads nothing from
  * Vitest itself.

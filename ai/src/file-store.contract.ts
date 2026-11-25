@@ -1,7 +1,8 @@
 /**
- * What every `FileStore` has to do, as a suite any implementation can run:
- * the in-memory and disk stores here, and a store over object storage (R2, a
- * Durable Object) wherever its tests live.
+ * What every `FileStore` has to do, as a suite: the in-memory and disk
+ * stores run it here. The suite is internal to this package and not
+ * published; a store over object storage (R2, a Durable Object) elsewhere
+ * copies it into its own tests.
  *
  * The Vitest functions are passed in, so this module loads nothing from
  * Vitest itself.

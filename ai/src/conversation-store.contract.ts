@@ -1,10 +1,12 @@
 /**
- * What every `ConversationStore` has to do, as a suite any implementation can
- * run: the in-memory and file stores here, and a store over another database
- * (a Durable Object, SQL) wherever its tests live.
+ * What every `ConversationStore` has to do, as a suite: the in-memory and
+ * file stores run it here. The suite is internal to this package and not
+ * published; a store over another database (a Durable Object, SQL) elsewhere
+ * copies it into its own tests.
  *
  * The Vitest functions are passed in, so this module loads nothing from
- * Vitest itself and runs under whichever runner the caller's tests use.
+ * Vitest itself; it runs under Vitest or a runner with the same `describe`,
+ * `it`, and `expect`.
  */
 import type { describe, expect, it } from "vitest";
 import {

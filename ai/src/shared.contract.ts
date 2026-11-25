@@ -1,12 +1,14 @@
 /**
- * What every `Shared` has to do, as a suite any implementation can run:
- * `inProcessShared` here, and an adapter over Redis, Postgres, or Durable
- * Objects wherever its tests live.
+ * What every `Shared` has to do, as a suite: `inProcessShared` runs it here.
+ * The suite is internal to this package and not published; an adapter over
+ * Redis, Postgres, or Durable Objects elsewhere copies it into its own tests.
  *
  * The Vitest functions are passed in, so this module loads nothing from
- * Vitest itself. Time is passed in too: `advance` moves the implementation's
+ * Vitest itself (a runner with Vitest's `describe`, `it`, and `expect` can
+ * run it). Time is passed in too: `advance` moves the implementation's
  * clock, by fake timers for one in this process, or by waiting for one whose
- * clock cannot be faked.
+ * clock cannot be faked. The cases leave hundreds of milliseconds of margin
+ * around every deadline, so a real wait and the time calls take still pass.
  */
 import type { ContractTest } from "./conversation-store.contract.ts";
 import type {
@@ -19,10 +21,19 @@ import type {
 export interface SharedContractOptions {
   /**
    * Move time on by `ms`, letting any timers that fall due run. The cases
-   * use leases and values of a second, and a channel kept for ten seconds.
+   * use leases, values, and channel retention of a second, and wait at most
+   * two seconds plus `sweepMs` in one case.
    */
   advance(ms: number): Promise<void>;
+  /**
+   * How long past `replayMs` the implementation may still keep a channel
+   * before it forgets it, such as its sweep interval. Default 0.
+   */
+  sweepMs?: number;
 }
+
+/** A case's own time limit: its waits, plus room for the calls around them. */
+const timeoutFor = (waitMs: number): number => waitMs + 5000;
 
 /**
  * The retention a case asks `make` for. An implementation keeps at most
@@ -55,7 +66,7 @@ export function sharedContract(
   name: string,
   make: (bounds?: SharedBounds) => Shared | Promise<Shared>,
   { describe, it, expect }: ContractTest,
-  { advance }: SharedContractOptions,
+  { advance, sweepMs = 0 }: SharedContractOptions,
 ): void {
   describe(name, () => {
     describe("lease", () => {
@@ -73,11 +84,12 @@ export function sharedContract(
       it("expires when it is not renewed, and renewing keeps it", async () => {
         const shared = await make();
         const lease = (await shared.claim("a", 1000))!;
-        await advance(800);
+        await advance(500);
         expect(await lease.renew()).toBe(true);
-        await advance(800);
+        // Past the first claim's second, inside the renewed one.
+        await advance(500);
         expect(await shared.claim("a", 1000)).toBeNull();
-        await advance(300);
+        await advance(1000);
         const next = await shared.claim("a", 1000);
         expect(next).not.toBeNull();
         // The one that lapsed cannot renew or release the new holder's claim.
@@ -159,24 +171,31 @@ export function sharedContract(
       it("stops a subscriber when its signal aborts", async () => {
         const shared = await make();
         const stop = new AbortController();
-        const reading = drain(shared, "c", stop.signal);
+        const reading = shared
+          .subscribe("c", { signal: stop.signal })
+          [Symbol.asyncIterator]();
         await shared.publish("c", data("x"));
+        // However long delivery takes, the event arrives before the abort.
+        expect(await reading.next()).toEqual({ done: false, value: data("x") });
         stop.abort();
-        expect(await reading).toEqual([data("x")]);
+        expect(await reading.next()).toEqual({ done: true, value: undefined });
       });
 
-      it("forgets a channel nobody wrote to for a while, and lets its readers go", async () => {
-        const shared = await make({ replayMs: 10_000 });
-        await shared.publish("c", data("x"));
-        const reading = drain(shared, "c");
-        await advance(20_000);
-        expect(await reading).toEqual([data("x")]);
-        // A new subscriber finds nothing left to replay.
-        const stop = new AbortController();
-        const late = drain(shared, "c", stop.signal);
-        stop.abort();
-        expect(await late).toEqual([]);
-      });
+      const forgetWait = 2000 + sweepMs;
+      it(
+        "forgets a channel nobody wrote to for a while, and lets its readers go",
+        async () => {
+          const shared = await make({ replayMs: 1000 });
+          await shared.publish("c", data("x"));
+          const reading = drain(shared, "c");
+          await advance(forgetWait);
+          expect(await reading).toEqual([data("x")]);
+          // A new subscriber finds nothing left to replay: only what comes next.
+          await shared.publish("c", END);
+          expect(await drain(shared, "c")).toEqual([END]);
+        },
+        timeoutFor(forgetWait),
+      );
     });
 
     describe("values", () => {
@@ -193,9 +212,9 @@ export function sharedContract(
       it("forgets a value after its time", async () => {
         const shared = await make();
         await shared.set("k", "v", 1000);
-        await advance(999);
+        await advance(500);
         expect(await shared.get("k")).toBe("v");
-        await advance(2);
+        await advance(1000);
         expect(await shared.get("k")).toBeUndefined();
       });
 
@@ -214,7 +233,7 @@ export function sharedContract(
       it("gives nothing for an expired value", async () => {
         const shared = await make();
         await shared.set("ticket", "v", 1000);
-        await advance(1001);
+        await advance(2000);
         expect(await shared.take("ticket")).toBeUndefined();
       });
     });

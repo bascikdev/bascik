@@ -13,7 +13,11 @@ sharedContract(
   "inProcessShared",
   (bounds) => inProcessShared(bounds),
   { describe, it, expect },
-  { advance: (ms) => vi.advanceTimersByTimeAsync(ms).then(() => {}) },
+  {
+    advance: (ms) => vi.advanceTimersByTimeAsync(ms).then(() => {}),
+    // inProcessShared sweeps every five seconds.
+    sweepMs: 5000,
+  },
 );
 
 describe("inProcessShared: housekeeping", () => {
