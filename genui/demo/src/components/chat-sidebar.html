@@ -186,7 +186,7 @@ The conversation list. Its server script reads the stored conversations on every
           data-testid="chat-sidebar-model"
         >
           <input type="hidden" name="app" value="${app.id}" />
-          <label class="model-label" for="model">Model</label>
+          <label class="model-label" for="model">Model for typed chat</label>
           <select
             class="model-select"
             id="model"
@@ -213,6 +213,10 @@ The conversation list. Its server script reads the stored conversations on every
           <button class="model-use" data-testid="chat-sidebar-model-use">
             Use
           </button>
+          <p class="model-note" data-testid="chat-sidebar-voice-note">
+            A voice call uses the speech model this server started with, not
+            this one.
+          </p>
           ${models.length === 1
             ? html`<p class="model-note" data-testid="chat-sidebar-model-note">
                 No model is set up, so typed replies come from a fixed script.

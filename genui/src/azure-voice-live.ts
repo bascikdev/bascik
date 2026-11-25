@@ -336,6 +336,7 @@ export function azureVoiceLiveVoice(
         url: `${base}${base.includes("?") ? "&" : "?"}ticket=${id}`,
         // The relay sends the setup; the browser has none to send.
         setup: null,
+        label: `Azure Voice Live · ${model}`,
       };
     },
     async close(): Promise<void> {

@@ -75,6 +75,57 @@ server.on("upgrade", (request, socket) => {
 
   /** One scripted turn, by what was asked. */
   const answer = (asked: string): void => {
+    if (/press/i.test(asked)) {
+      // The reader said their answer: the form on screen is sent for them.
+      send({
+        toolCall: {
+          functionCalls: [
+            {
+              id: "call_fill",
+              name: "fill_form",
+              args: { press: "hold the short one" },
+            },
+          ],
+        },
+      });
+      afterTool = (result) => {
+        say(`Done. ${result}`);
+        endTurn();
+      };
+      return;
+    }
+    if (/sneak/i.test(asked)) {
+      // A model that tries to allow its own action: it asks to hold a book,
+      // then, once the question is on screen, tries to press Allow itself.
+      send({
+        toolCall: {
+          functionCalls: [
+            {
+              id: "call_hold",
+              name: "place_hold",
+              args: { title: "The Quiet Network" },
+            },
+          ],
+        },
+      });
+      setTimeout(() => {
+        send({
+          toolCall: {
+            functionCalls: [
+              { id: "call_fill", name: "fill_form", args: { press: "Allow" } },
+            ],
+          },
+        });
+      }, 1500);
+      afterTool = (blocked) => {
+        say(`Blocked. ${blocked}`);
+        afterTool = (result) => {
+          say(`The shop says: ${result}`);
+          endTurn();
+        };
+      };
+      return;
+    }
     if (/hold/i.test(asked)) {
       say("I can hold that for you.");
       send({

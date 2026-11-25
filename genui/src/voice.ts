@@ -38,6 +38,8 @@ export interface VoiceTicket {
   url: string;
   /** The first message to send once connected, or null when there is none. */
   setup: unknown;
+  /** Who is on the line, as the reader is told: the provider and its model. */
+  label?: string;
 }
 
 export interface VoiceSessionConfig {
@@ -57,13 +59,23 @@ export interface VoiceProvider {
 export const SHOW_TOOL = "show";
 
 /**
- * The tools a voice session offers: the app's own, and `show`. A client tool
- * is left out: it is answered by a form in a text reply, which a voice
- * session has no turn for.
+ * The name of the tool a voice model calls to fill in and send a form on the
+ * reader's screen, when the reader says their answer instead of pressing it.
+ * The reader's browser does it, where the reader can see it happen.
+ */
+export const FILL_TOOL = "fill_form";
+
+/**
+ * The tools a voice session offers: the app's own, `show`, and `fill_form`.
+ * A client tool is left out: it is answered by a form in a text reply, which
+ * a voice session has no turn for.
  */
 export function voiceTools(tools: readonly Tool[]): Tool[] {
   return [
-    ...tools.filter((tool) => !tool.client && tool.name !== SHOW_TOOL),
+    ...tools.filter(
+      (tool) =>
+        !tool.client && tool.name !== SHOW_TOOL && tool.name !== FILL_TOOL,
+    ),
     {
       name: SHOW_TOOL,
       description:
@@ -77,6 +89,31 @@ export function voiceTools(tools: readonly Tool[]): Tool[] {
           },
         },
         required: ["markup"],
+      },
+    },
+    {
+      name: FILL_TOOL,
+      description:
+        "Fill in and send the form on the reader's screen for them, when they say their answer aloud instead of pressing it. `press` is the words on the button or option to press, such as Correct. `text` is what to type into the form's text box first, such as a note they dictated. Use only what the reader said: never choose for them, and never guess. It cannot answer a question about allowing an action: the reader presses that themselves.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          press: {
+            type: "string",
+            description: "The words on the button or option to press",
+          },
+          text: {
+            type: "string",
+            description:
+              "What to type into the form's text box before pressing",
+          },
+          field: {
+            type: "string",
+            description:
+              "The label of the text box, when the form has more than one",
+          },
+        },
+        required: ["press"],
       },
     },
   ];
@@ -93,6 +130,7 @@ export function voicePrompt(
   return [
     "You are in a spoken conversation. The reader hears you and sees a screen beside the conversation.",
     "Everything you say is spoken aloud by a voice. Speak briefly and naturally: one to three sentences. Never say markup, tags, tables, or long lists.",
+    `When the reader answers a form on the screen aloud, call ${FILL_TOOL} to fill it in and send it for them, and say what you sent.`,
     `The only way to put anything on the screen is the ${SHOW_TOOL} tool. Put every component you want shown, buttons included, in one ${SHOW_TOOL} call per turn. Its markup uses the format below. Say in a few words what you are showing, then let the screen carry the detail.`,
     "",
     "The format for markup:",
@@ -147,6 +185,14 @@ export async function runVoiceTool(
   const offered = voiceTools(tools);
   const view = { ...options, tools: offered };
 
+  if (request.name === FILL_TOOL) {
+    // The form is in the reader's browser, which is where this is done.
+    return {
+      state: "failed",
+      output: "Error: a form is filled in by the reader's browser.",
+      html: "",
+    };
+  }
   if (request.name === SHOW_TOOL && !request.decision) {
     const markup =
       typeof request.input === "object" && request.input !== null

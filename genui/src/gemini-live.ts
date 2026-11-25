@@ -139,6 +139,7 @@ export function geminiLiveVoice(
         url: `${wsBase}/ws/${SERVICE}.BidiGenerateContentConstrained?access_token=${encodeURIComponent(body.name)}`,
         // The token carries the rest of the setup; the model has to be named again.
         setup: { setup: { model } },
+        label: `Gemini Live · ${model.replace(/^models\//, "")}`,
       };
     },
   };

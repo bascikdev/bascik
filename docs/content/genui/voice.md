@@ -4,13 +4,15 @@ Two optional components give a chat a voice. `chat-voice` uses the browser's own
 
 ## Add it
 
-`bascik add @bascik/genui` copies the component to `src/components/chat/`. Put it next to the composer:
+`bascik add @bascik/genui` copies the component to `src/components/chat/`. Put it inside the composer:
 
 ```html
-<chat-voice /> <chat-composer data-bascik-prop-app="books" />
+<chat-composer data-bascik-prop-app="books">
+  <chat-voice />
+</chat-composer>
 ```
 
-It adds a caption line and a Reading aids disclosure with three toggles. Closed, the disclosure is one line that names what is on:
+Inside the composer, it adds a CC button to the composer's row. The button opens a line of controls above the message box, and shows a light while any of them is on. Captions appear as a line in the same box:
 
 | Control    | What it does                                                                                  |
 | :--------- | :-------------------------------------------------------------------------------------------- |
@@ -64,11 +66,15 @@ A control whose API is missing is not shown.
 The browser's voices are free and instant, and they sound like a browser. `voice-call` is the other kind of voice: a spoken conversation with a speech-to-speech model, which hears the reader and answers aloud with no text step in between. It works with Google's Gemini Live API and with Azure Voice Live.
 
 ```html
-<voice-call data-bascik-prop-app="books" />
-<chat-composer data-bascik-prop-app="books" />
+<chat-composer data-bascik-prop-app="books">
+  <chat-voice />
+  <voice-call data-bascik-prop-app="books" />
+</chat-composer>
 ```
 
-Pressing Voice call connects, turns on the microphone, and the reader talks. The model's voice plays, a caption line follows it, and what each side says appears in the thread. Typing in the composer during a call says the message to the model, so a call also works with no microphone. While a call is on, the button reads End call, a label names the provider on the line, and the Reading aids step aside: a call has its own voice and captions. When a call ends because the relay or the provider hung up, the reason is shown beside the button.
+Pressing the microphone button connects, turns on the microphone, and the reader talks. The model's voice plays, a caption line follows it, and what each side says appears in the thread. Typing in the composer during a call says the message to the model, so a call also works with no microphone. While a call is on, the button reads End call, and a line above the message box names the provider and its model, says what the call is doing, and carries the captions. The Reading aids step aside: a call has its own voice and captions. When a call ends because the relay or the provider hung up, the reason is shown on that line.
+
+Both components have no box of their own. Their parts are laid out by the composer, so the chat has one box at the bottom of the page and not three. Either one also works outside the composer, as plain elements in the page.
 
 ### What goes direct and what goes through your server
 
@@ -150,6 +156,17 @@ When the relay cannot connect to Azure, the call ends with "The voice provider r
 ### Approval in a call
 
 A tool that needs the reader's OK works in a call as it does in text. The model says what it wants to do, the approval card appears in the thread, and the model waits on the line. The reader presses Allow or Don't allow, the server runs the tool or does not, and the model is told and says what happened. What runs is the call the model made, not anything sent with the answer.
+
+### Forms in a call
+
+A reply can show a form: a button that asks a follow-up, a choice, a review with a note. In a call the reader can press it, or say their answer and let the model press it.
+
+- **The reader presses it.** The form is not posted as a page load. It is sent to its own address with one more field, `voice=1`, and your route answers with what the form says, as `{ "say": "..." }`. That text is said to the speech model as the reader's message, so the model answers aloud. The route still does whatever the form does, such as recording a decision; it only skips starting a typed reply.
+- **The reader says it.** The model is given one more tool, `fill_form`, with `press` (the words on a button or option), `text` (what to type into the form's text box), and `field` (which text box, when there are several). The reader's browser does it, on the newest form that is on screen and not yet sent, where the reader watches it happen. The form is then sent the same way, and what it said is shown and stored as the reader's message. When nothing matches, the model is told which buttons, options, and text boxes the form has, so it can try again.
+
+A form is sent once: it stays on screen as it was answered, and cannot be pressed again.
+
+`fill_form` cannot answer an approval. A question about allowing an action is never among the forms it can reach, so a model cannot allow its own tool call: the reader presses that themselves.
 
 ### Captions in a call
 

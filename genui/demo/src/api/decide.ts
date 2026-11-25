@@ -7,6 +7,10 @@
 //
 // The decision is appended to the visitor's log as one line of JSON, and added
 // to the conversation as the reviewer's message, so the model sees it too.
+//
+// During a voice call (voice=1) the decision is recorded the same way, and
+// the answer is { "say": "..." }: the reviewer's message, for the call to say
+// to the speech model and store with its own turn.
 import {
   abandonApprovals,
   backToChat,
@@ -31,6 +35,14 @@ export const POST = async (request: Request): Promise<Response> => {
   const conversation = (await loadConversation(session)) ?? newConversation();
   if (conversation.messages.length === 0) {
     conversation.title = `Review: ${decision.item}`;
+  }
+  if (form.get("voice") === "1") {
+    await saveConversation(session, conversation);
+    await recordDecision(session.visitor, conversation.id, decision);
+    return Response.json(
+      { say: decisionMessage(decision) },
+      { headers: { "cache-control": "no-store" } },
+    );
   }
   abandonApprovals(conversation);
   conversation.messages.push({

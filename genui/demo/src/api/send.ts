@@ -1,6 +1,10 @@
 // POST /api/send: add the visitor's message, then go back to the app's page,
 // which streams the reply. Every form posts here, including the forms the
 // model generates.
+//
+// During a voice call the reader's message goes to the speech model, not to a
+// typed reply. A form posted with voice=1 is answered with what it says,
+// { "say": "..." }, and nothing is added here: the call stores its own turns.
 import {
   abandonApprovals,
   backToChat,
@@ -18,7 +22,12 @@ function messageFrom(form: FormData): string {
   if (typeof text === "string") return text.trim();
   const lines: string[] = [];
   for (const [name, value] of form) {
-    if (name !== "app" && typeof value === "string" && value.trim()) {
+    if (
+      name !== "app" &&
+      name !== "voice" &&
+      typeof value === "string" &&
+      value.trim()
+    ) {
       lines.push(`${name}: ${value.trim()}`);
     }
   }
@@ -33,6 +42,12 @@ export const POST = async (request: Request): Promise<Response> => {
     typeof named === "string" ? named : undefined,
   );
   const text = messageFrom(form).slice(0, MAX_LENGTH);
+  if (form.get("voice") === "1") {
+    return Response.json(
+      { say: text },
+      { headers: { "cache-control": "no-store" } },
+    );
+  }
   const conversation = (await loadConversation(session)) ?? newConversation();
   if (text) {
     if (conversation.messages.length === 0) {

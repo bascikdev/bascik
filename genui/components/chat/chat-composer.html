@@ -1,10 +1,12 @@
 <!-- @bascik
-The message box. A plain form that posts to /api/send, so sending works with no JavaScript.
+The message box. A plain form that posts to /api/send, so sending works with no JavaScript. Anything put inside the tag joins the row before the Send button, which is where chat-voice and voice-call go.
 -->
 <style>
   .composer {
     display: flex;
-    gap: 0.5rem;
+    /* A component in the row can add a line of its own above the box. */
+    flex-wrap: wrap;
+    gap: 0.5rem 0.25rem;
     align-items: end;
     max-inline-size: 46rem;
     inline-size: 100%;
@@ -18,7 +20,7 @@ The message box. A plain form that posts to /api/send, so sending works with no 
     border-color: var(--accent);
   }
   .input {
-    flex: 1;
+    flex: 1 1 10rem;
     min-block-size: 2.5rem;
     max-block-size: 12rem;
     padding: 0.5rem 0.6rem;
@@ -39,6 +41,7 @@ The message box. A plain form that posts to /api/send, so sending works with no 
     font: inherit;
     font-weight: 600;
     cursor: pointer;
+    margin-inline-start: 0.25rem;
   }
 </style>
 <form
@@ -59,6 +62,7 @@ The message box. A plain form that posts to /api/send, so sending works with no 
     aria-label="Message"
     data-testid="chat-composer-input"
   ></textarea>
+  <div data-bascik-slot></div>
   <button class="send" data-testid="chat-composer-send">Send</button>
   <!-- Shown by chat-enhance while a reply streams; never without a script. -->
   <button class="send" type="button" hidden data-testid="chat-composer-stop">

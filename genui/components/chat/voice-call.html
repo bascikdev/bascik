@@ -1,94 +1,108 @@
 <!-- @bascik
-A spoken conversation with a speech-to-speech model: the reader talks, the model answers aloud, and what it shows arrives in the thread as components. Captions follow the voice a few words at a time, with the current word in bold. It speaks two providers' protocols, named by the ticket: gemini-live and azure-voice-live. Optional and all script. It needs three routes of yours: /api/voice-session for a ticket, /api/voice-tool to run the model's tool calls, and /api/voice-turn to store what was said, and a /voice-view page that renders what a call shows. The app prop is sent to them. Put it next to the composer.
+A spoken conversation with a speech-to-speech model: the reader talks, the model answers aloud, and what it shows arrives in the thread as components. Captions follow the voice a few words at a time, with the current word in bold. It speaks two providers' protocols, named by the ticket: gemini-live and azure-voice-live. Optional and all script. It needs three routes of yours: /api/voice-session for a ticket, /api/voice-tool to run the model's tool calls, and /api/voice-turn to store what was said, and a /voice-view page that renders what a call shows. The app prop is sent to them. Put it inside the composer (`<chat-composer><voice-call /></chat-composer>`): its button joins the composer's row, and its caption and status are a line above the message box. It also works on its own, next to the composer.
 -->
 <style>
+  /* The component has no box of its own: its parts are laid out by whatever
+     holds it, which in a composer is the row of the message box. */
   .call {
-    display: grid;
-    gap: 0.5rem;
-    max-inline-size: 46rem;
-    inline-size: 100%;
-    margin: 0 auto 0.5rem;
+    display: contents;
   }
-  /* The class sets a display, which would otherwise undo the attribute. */
   .call[hidden] {
     display: none;
   }
-  .caption {
-    min-block-size: 2.75rem;
-    margin: 0;
-    padding: 0.5rem 0.9rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--muted);
-    font-size: 1.25rem;
-    line-height: 1.4;
-    text-align: center;
-    text-wrap: balance;
-  }
-  .caption:empty {
-    display: none;
-  }
-  .bar {
+  /* One line above the message box: who is on the line, what is happening,
+     and the words being spoken. */
+  .strip {
+    order: -2;
+    flex: 0 0 100%;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.6rem;
+    gap: 0.25rem 0.6rem;
     align-items: center;
-    justify-content: end;
-    font-size: 0.875rem;
+    padding: 0.15rem 0.4rem 0.5rem;
+    border-block-end: 1px solid var(--border);
+    font-size: 0.8125rem;
+  }
+  /* Nothing to say: no line. */
+  .strip:not(:has(:not(:empty))) {
+    display: none;
   }
   .status {
     margin: 0;
     color: var(--muted);
+  }
+  .status:empty,
+  .provider:empty,
+  .caption:empty {
+    display: none;
   }
   /* Which speech model is on the line, so it is not taken for the browser's voice. */
   .provider {
     margin: 0;
     padding: 0.1rem 0.5rem;
     border-radius: 999px;
-    background: var(--surface);
+    background: var(--bg);
     color: var(--muted);
     font-size: 0.75rem;
     font-weight: 600;
   }
-  .provider:empty {
-    display: none;
+  .caption {
+    flex: 1 1 14rem;
+    margin: 0;
+    color: var(--muted);
+    font-size: 1.125rem;
+    line-height: 1.35;
+    text-align: center;
+    text-wrap: balance;
   }
   .toggle {
     display: inline-flex;
-    gap: 0.45rem;
+    gap: 0.4rem;
     align-items: center;
-    padding: 0.4rem 0.9rem 0.4rem 0.7rem;
-    border: 1px solid var(--accent);
-    border-radius: 999px;
-    background: var(--bg);
-    color: var(--accent);
+    justify-content: center;
+    min-inline-size: 2.5rem;
+    block-size: 2.5rem;
+    padding: 0 0.6rem;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--muted);
     font: inherit;
     font-weight: 600;
     cursor: pointer;
   }
   .toggle:hover {
-    background: var(--surface);
+    background: var(--bg);
+    color: var(--accent);
   }
   .toggle:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
   .toggle[aria-pressed="true"] {
+    padding-inline: 0.8rem;
     background: var(--accent);
     color: var(--on-accent);
   }
   .icon {
-    inline-size: 1rem;
-    block-size: 1rem;
+    inline-size: 1.15rem;
+    block-size: 1.15rem;
     flex: none;
+  }
+  /* Until a call is on, the button is its icon; its name is still read out. */
+  .toggle[aria-pressed="false"] .label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   /* While a call is on, the microphone gives way to a light that it is live. */
   .live {
     display: none;
     inline-size: 0.55rem;
     block-size: 0.55rem;
-    margin-inline: 0.2rem;
     border-radius: 50%;
     background: currentColor;
     animation: pulse 1.4s ease-in-out infinite;
@@ -111,44 +125,45 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
   }
 </style>
 <div id="call" class="call" hidden data-testid="voice-call">
-  <!-- The same words as the voice, so it is hidden from a screen reader. -->
-  <p
-    id="caption"
-    class="caption"
-    aria-hidden="true"
-    data-testid="voice-call-caption"
-  ></p>
-  <div class="bar">
+  <div class="strip">
+    <p id="provider" class="provider" data-testid="voice-call-provider"></p>
     <p
       id="status"
       class="status"
       role="status"
       data-testid="voice-call-status"
     ></p>
-    <p id="provider" class="provider" data-testid="voice-call-provider"></p>
-    <button
-      id="toggle"
-      class="toggle"
-      type="button"
-      aria-pressed="false"
-      data-testid="voice-call-toggle"
-    >
-      <svg
-        class="icon"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        aria-hidden="true"
-      >
-        <rect x="5.5" y="1.5" width="5" height="8" rx="2.5" />
-        <path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" />
-      </svg>
-      <span class="live" aria-hidden="true"></span>
-      <span id="label">Voice call</span>
-    </button>
+    <!-- The same words as the voice, so it is hidden from a screen reader. -->
+    <p
+      id="caption"
+      class="caption"
+      aria-hidden="true"
+      data-testid="voice-call-caption"
+    ></p>
   </div>
+  <button
+    id="toggle"
+    class="toggle"
+    type="button"
+    aria-pressed="false"
+    title="Voice call"
+    data-testid="voice-call-toggle"
+  >
+    <svg
+      class="icon"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      aria-hidden="true"
+    >
+      <rect x="5.5" y="1.5" width="5" height="8" rx="2.5" />
+      <path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" />
+    </svg>
+    <span class="live" aria-hidden="true"></span>
+    <span id="label" class="label">Voice call</span>
+  </button>
   <input id="app" type="hidden" data-bascik-attr-value="app" />
   <script type="text/typescript">
     const root = document.getElementById("call")!;
@@ -166,6 +181,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     const pressed = (on: boolean): void => {
       toggle.setAttribute("aria-pressed", String(on));
       label.textContent = on ? "End call" : "Voice call";
+      toggle.title = on ? "End call" : "Voice call";
       if (!on) provider.textContent = "";
     };
     const app = (document.getElementById("app") as HTMLInputElement).value;
@@ -527,7 +543,110 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     }
 
     const answerTool = (tool: { id: string; name: string; args: unknown }): Promise<string> =>
-      runTool(tool).catch(() => "Error: the tool could not be run.");
+      (tool.name === "fill_form" ? fillForm(tool.args) : runTool(tool)).catch(
+        () => "Error: the tool could not be run.",
+      );
+
+    /* ---- Forms on screen: the reader presses them, or says the answer ---- */
+
+    const plain = (text: string | null | undefined): string =>
+      (text ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+    /** A question about allowing an action is the reader's alone to answer. */
+    const isApproval = (form: HTMLFormElement): boolean =>
+      new FormData(form).has("call") || form.closest("[data-part]") !== null;
+
+    /** The newest form in the thread that has not been sent. */
+    function openForm(): HTMLFormElement | null {
+      const forms = [...(thread()?.querySelectorAll("form") ?? [])].filter(
+        (form) =>
+          !form.dataset.sent &&
+          !isApproval(form) &&
+          // One that is on the page but not shown is not one the reader means.
+          form.checkVisibility(),
+      );
+      return forms.at(-1) ?? null;
+    }
+
+    /**
+     * Send a form the way a call needs it sent: to its own address, marked as
+     * coming from a call. The server does what the form does and answers with
+     * what it says, which goes to the speech model in place of a typed reply.
+     */
+    async function sendForm(
+      form: HTMLFormElement,
+      submitter: HTMLElement | null,
+    ): Promise<string | null> {
+      const body = new FormData(form, submitter);
+      body.set("voice", "1");
+      const response = await fetch(form.action, { method: "POST", body });
+      const answer = response.ok
+        ? ((await response.json().catch(() => null)) as { say?: unknown } | null)
+        : null;
+      if (typeof answer?.say !== "string" || !answer.say.trim()) return null;
+      // Sent once: it stays on screen as it was answered.
+      form.dataset.sent = "";
+      form.inert = true;
+      return answer.say.trim();
+    }
+
+    /** The model fills in the newest form with what the reader said, and presses it. */
+    async function fillForm(input: unknown): Promise<string> {
+      const { press, text, field } = (
+        typeof input === "object" && input !== null ? input : {}
+      ) as Record<string, unknown>;
+      const form = openForm();
+      if (!form) return "Error: there is no form on the screen to fill in.";
+      const controls = [...form.elements] as (HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement)[];
+      const named = (control: HTMLElement & { labels?: NodeListOf<HTMLLabelElement> | null }): string =>
+        control instanceof HTMLButtonElement
+          ? plain(control.textContent)
+          : plain(control.labels?.[0]?.textContent);
+      const boxes = controls.filter(
+        (control) =>
+          control instanceof HTMLTextAreaElement ||
+          (control instanceof HTMLInputElement &&
+            !["hidden", "radio", "checkbox", "submit", "button"].includes(control.type)),
+      );
+      const options = controls.filter(
+        (control): control is HTMLInputElement =>
+          control instanceof HTMLInputElement &&
+          (control.type === "radio" || control.type === "checkbox"),
+      );
+      const buttons = controls.filter(
+        (control): control is HTMLButtonElement =>
+          control instanceof HTMLButtonElement && control.type === "submit",
+      );
+      const has = (kind: string, list: HTMLElement[]): string =>
+        list.length ? ` ${kind}: ${list.map((control) => named(control) || "unnamed").join(", ")}.` : "";
+      const contents = `This form has${has("buttons", buttons)}${has("options", options)}${has("text boxes", boxes)}`;
+
+      if (typeof text === "string" && text.trim()) {
+        const wanted = plain(typeof field === "string" ? field : "");
+        const box = (wanted && boxes.find((candidate) => named(candidate).includes(wanted))) || boxes[0];
+        if (!box) return `Error: this form has no text box. ${contents}`;
+        (box as HTMLTextAreaElement).value = text.trim();
+        box.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      const wanted = plain(typeof press === "string" ? press : "");
+      if (!wanted) return `Error: say what to press. ${contents}`;
+      const match = <T extends HTMLElement>(list: T[]): T | undefined =>
+        list.find((control) => named(control) === wanted) ??
+        list.find((control) => named(control).includes(wanted));
+      const option = match(options);
+      if (option) {
+        option.checked = true;
+        option.dispatchEvent(new Event("change", { bubbles: true }));
+        return `Chose "${named(option)}". It is not sent yet. ${contents}`;
+      }
+      const button = match(buttons);
+      if (!button) return `Error: no button or option says "${String(press)}". ${contents}`;
+      const say = await sendForm(form, button);
+      if (!say) return "Error: the form could not be sent.";
+      // What was sent is the reader's answer, and is shown and stored as theirs.
+      heard(reader.trim() ? `\n${say}` : say);
+      return `Sent for the reader: ${say}`;
+    }
 
     /* ---- The providers ---- */
 
@@ -706,6 +825,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         protocol: string;
         url: string;
         setup: unknown;
+        label?: string;
       };
       const current = {
         socket: new WebSocket(ticket.url),
@@ -720,7 +840,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
           : geminiLive(current, ticket.setup);
       newResponse();
       call = current;
-      provider.textContent = PROVIDERS[ticket.protocol] ?? "";
+      provider.textContent = ticket.label ?? PROVIDERS[ticket.protocol] ?? "";
       // Other voices on the page stay quiet while a call is on.
       document.documentElement.dataset.genuiCall = "on";
       if (current.socket.readyState === WebSocket.OPEN) current.wire.begin();
@@ -755,6 +875,28 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         showReader();
         call.wire.text(text);
         form.reset();
+      },
+      true,
+    );
+
+    // During a call, a form in the thread that the reader presses is said to
+    // the model too: its answer does not start a typed reply.
+    document.addEventListener(
+      "submit",
+      (event) => {
+        const form = event.target as HTMLFormElement;
+        if (!call || !thread()?.contains(form) || isApproval(form)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const current = call;
+        void sendForm(form, event.submitter).then((say) => {
+          if (!say || current !== call) return;
+          quiet();
+          if (reader.trim() || said.trim()) endTurn();
+          reader = say;
+          showReader();
+          current.wire.text(say);
+        });
       },
       true,
     );

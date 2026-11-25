@@ -960,5 +960,88 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
         page.getByTestId("turn-assistant").locator('.part[data-state="done"]'),
       ).toHaveCount(1);
     });
+    test("sends a form for the reader who says their answer, and one they press themselves", async ({
+      page,
+    }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(
+        "navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('no', 'NotAllowedError'); };",
+      );
+      await page.reload();
+      await page.evaluate("window.kept = true");
+      await page.getByTestId("voice-call-toggle").click();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "No microphone: type to talk.",
+      );
+      const composer = page.getByTestId("chat-composer-input");
+      const send = page.getByTestId("chat-composer-send");
+
+      // The model shows a button, which is a form.
+      await composer.fill("Recommend a book");
+      await send.click();
+      const shown = page.getByTestId("turn-voice").getByTestId("ask-button");
+      await expect(shown).toHaveCount(1);
+
+      // The reader says what to press. The model presses it for them: the
+      // form goes to the server, and what it says goes back to the model.
+      await composer.fill("Press that for me");
+      await send.click();
+      await expect(page.getByTestId("turn-voice").last()).toContainText(
+        "Done. Sent for the reader: Hold a copy of Shipping Small Changes",
+      );
+      // It was the reader's answer, and is shown as theirs. It is sent once.
+      await expect(page.getByTestId("turn-user").last()).toContainText(
+        "Hold a copy of Shipping Small Changes",
+      );
+      await expect(shown).toHaveAttribute("data-sent", "");
+      // No typed reply was started, and the page did not load again.
+      await expect(page.getByTestId("turn-assistant")).toHaveCount(0);
+      expect(await page.evaluate("window.kept === true")).toBe(true);
+
+      // A form the reader presses themselves is said to the model the same way.
+      await composer.fill("Recommend a book");
+      await send.click();
+      const again = page
+        .getByTestId("turn-voice")
+        .last()
+        .getByTestId("ask-button");
+      await again.getByTestId("ask-button-submit").click();
+      await expect(page.getByTestId("turn-user").last()).toHaveText(
+        "Hold a copy of Shipping Small Changes",
+      );
+      // The model heard it: it asks to hold the book, which waits for the reader.
+      await expect(
+        page.getByTestId("turn-voice").last().getByTestId("tool-approval"),
+      ).toContainText("The Quiet Network");
+      expect(await page.evaluate("window.kept === true")).toBe(true);
+      await page.getByTestId("voice-call-toggle").click();
+    });
+
+    test("never lets the model allow its own action", async ({ page }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(
+        "navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('no', 'NotAllowedError'); };",
+      );
+      await page.reload();
+      await page.getByTestId("voice-call-toggle").click();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "No microphone: type to talk.",
+      );
+      // The model asks to hold a book and then tries to press Allow itself.
+      await page.getByTestId("chat-composer-input").fill("Try to sneak one in");
+      await page.getByTestId("chat-composer-send").click();
+      const reply = page.getByTestId("turn-voice");
+      const card = reply.getByTestId("tool-approval");
+      await expect(card).toContainText("The Quiet Network");
+      // Give the second call time to arrive: the question is still open.
+      await page.waitForTimeout(2500);
+      await expect(card).toHaveCount(1);
+      await expect(reply).not.toContainText("Hold number");
+      await card.getByTestId("tool-approval-deny").click();
+      await expect(reply).toContainText("Blocked. Error:");
+      await expect(reply).toContainText("The reader declined this action");
+      await expect(reply).not.toContainText("Hold number");
+      await page.getByTestId("voice-call-toggle").click();
+    });
   });
 }

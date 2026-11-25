@@ -46,6 +46,7 @@ describe("azureVoiceLiveSession", () => {
     expect(session.tools.map((tool) => tool.name)).toEqual([
       "place_hold",
       "show",
+      "fill_form",
     ]);
     expect(session.tools[0]).toMatchObject({
       type: "function",

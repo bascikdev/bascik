@@ -19,9 +19,10 @@
       <!-- The composer is first in the source so it is sent before the reply
            starts streaming; CSS shows it below the thread. -->
       <div class="dock">
-        <chat-voice />
-        <voice-call data-bascik-prop-app="review" />
-        <chat-composer data-bascik-prop-app="review" />
+        <chat-composer data-bascik-prop-app="review">
+          <chat-voice />
+          <voice-call data-bascik-prop-app="review" />
+        </chat-composer>
       </div>
       <chat-enhance />
       <div class="scroller">

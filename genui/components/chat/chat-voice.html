@@ -1,28 +1,24 @@
 <!-- @bascik
-Voice for a chat: reads each reply aloud as it streams, captions it a few words at a time with the current word in bold, and can listen for the next message. Optional and all script: with scripts off it shows nothing. Put it next to the composer. Captions also run with the sound off, as a paced reading aid. A component in a reply is spoken only when an element in it has a data-say attribute.
+Voice for a chat: reads each reply aloud as it streams, captions it a few words at a time with the current word in bold, and can listen for the next message. Optional and all script: with scripts off it shows nothing. Put it inside the composer (`<chat-composer><chat-voice /></chat-composer>`): its button joins the composer's row, and its caption and controls open above the message box. It also works on its own, next to the composer. Captions also run with the sound off, as a paced reading aid. A component in a reply is spoken only when an element in it has a data-say attribute.
 -->
 <style>
+  /* The component has no box of its own: its parts are laid out by whatever
+     holds it, which in a composer is the row of the message box. */
   .voice {
-    display: grid;
-    gap: 0.5rem;
-    max-inline-size: 46rem;
-    inline-size: 100%;
-    margin: 0 auto 0.5rem;
+    display: contents;
   }
-  /* The class sets a display, which would otherwise undo the attribute. */
   .voice[hidden] {
     display: none;
   }
   .caption {
-    min-block-size: 2.75rem;
+    order: -3;
+    flex: 0 0 100%;
     margin: 0;
-    padding: 0.5rem 0.9rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
+    padding: 0.15rem 0.4rem 0.5rem;
+    border-block-end: 1px solid var(--border);
     color: var(--muted);
-    font-size: 1.25rem;
-    line-height: 1.4;
+    font-size: 1.125rem;
+    line-height: 1.35;
     text-align: center;
     text-wrap: balance;
   }
@@ -30,32 +26,79 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
   .caption:empty {
     display: none;
   }
-  /* Closed, it is one quiet line: these are aids, not the way to talk to the model. */
+  /* The controls, opened by the button: a line above the message box. */
   .aids {
-    justify-self: end;
+    order: -1;
+    flex: 0 0 100%;
+    padding: 0.15rem 0.4rem 0.5rem;
+    border-block-end: 1px solid var(--border);
     font-size: 0.8125rem;
   }
-  .aids[open] {
-    justify-self: stretch;
-    padding: 0.6rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
+  .aids[hidden] {
+    display: none;
   }
   .summary {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
     color: var(--muted);
+    font: inherit;
     cursor: pointer;
   }
-  .summary:focus-visible {
+  /* The sign for captions. Drawn here, so the button's text is its name alone. */
+  .summary::before {
+    content: "CC";
+    padding: 0.05rem 0.25rem;
+    border: 1.5px solid currentColor;
+    border-radius: 4px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .summary[hidden] {
+    display: none;
+  }
+  .summary:hover,
+  .summary[aria-expanded="true"] {
+    background: var(--bg);
+    color: var(--accent);
+  }
+  /* A light on the button while any aid is on, seen with the controls closed. */
+  .summary[data-on]::after {
+    content: "";
+    position: absolute;
+    inset-block-start: 0.35rem;
+    inset-inline-end: 0.3rem;
+    inline-size: 0.4rem;
+    block-size: 0.4rem;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .summary:focus-visible,
+  .toggle:focus-visible,
+  .speed:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+  .name {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .controls {
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
     align-items: center;
-    margin-block-start: 0.5rem;
   }
   .toggle,
   .speed {
@@ -66,11 +109,6 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     color: inherit;
     font: inherit;
     cursor: pointer;
-  }
-  .toggle:focus-visible,
-  .speed:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
   }
   .toggle[aria-pressed="true"] {
     border-color: var(--accent);
@@ -85,7 +123,7 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     color: var(--muted);
   }
   .hint {
-    margin: 0.5rem 0 0;
+    margin: 0.4rem 0 0;
     color: var(--muted);
   }
 </style>
@@ -98,10 +136,7 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     aria-hidden="true"
     data-testid="chat-voice-caption"
   ></p>
-  <details id="aids" class="aids" data-testid="chat-voice-aids">
-    <summary id="summary" class="summary" data-testid="chat-voice-summary">
-      Reading aids
-    </summary>
+  <div id="aids" class="aids" hidden data-testid="chat-voice-aids">
     <div class="controls" role="group" aria-label="Reading aids">
       <button
         id="captions"
@@ -146,7 +181,17 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
       Read aloud and Dictate use your browser's own voice and speech
       recognition, not a speech model.
     </p>
-  </details>
+  </div>
+  <button
+    id="summary"
+    class="summary"
+    type="button"
+    aria-expanded="false"
+    title="Reading aids"
+    data-testid="chat-voice-summary"
+  >
+    <span id="name" class="name">Reading aids</span>
+  </button>
   <script type="text/typescript">
     interface Recognizer {
       lang: string;
@@ -167,8 +212,9 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     const aloudButton = document.getElementById("aloud")!;
     const talkButton = document.getElementById("talk")!;
     const speed = document.getElementById("speed") as HTMLSelectElement;
-    const aids = document.getElementById("aids") as HTMLDetailsElement;
+    const aids = document.getElementById("aids")!;
     const summary = document.getElementById("summary")!;
+    const summaryName = document.getElementById("name")!;
 
     const synth: SpeechSynthesis | undefined = window.speechSynthesis;
     const scope = window as unknown as Record<string, new () => Recognizer>;
@@ -428,9 +474,12 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
         settings.aloud && "read aloud",
         settings.talk && "dictate",
       ].filter(Boolean);
-      summary.textContent = on.length
+      summaryName.textContent = on.length
         ? `Reading aids: ${on.join(", ")}`
         : "Reading aids";
+      summary.title = summaryName.textContent;
+      if (on.length) summary.dataset.on = "";
+      else delete summary.dataset.on;
       speed.value = settings.speed;
     }
     captionsButton.addEventListener("click", () => {
@@ -469,11 +518,20 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
 
     aloudButton.hidden = !synth;
     talkButton.hidden = !Recognition;
+    summary.addEventListener("click", () => {
+      aids.hidden = !aids.hidden;
+      summary.setAttribute("aria-expanded", String(!aids.hidden));
+    });
     reflect();
     root.hidden = false;
     // A voice call has its own voice and captions: these step aside for it.
     new MutationObserver(() => {
-      aids.hidden = Boolean(document.documentElement.dataset.genuiCall);
+      const calling = Boolean(document.documentElement.dataset.genuiCall);
+      summary.hidden = calling;
+      if (calling) {
+        aids.hidden = true;
+        summary.setAttribute("aria-expanded", "false");
+      }
     }).observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-genui-call"],

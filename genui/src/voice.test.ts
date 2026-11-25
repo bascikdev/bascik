@@ -6,6 +6,7 @@ import { renderMessage } from "./render-turn.ts";
 import {
   newVoiceTurn,
   runVoiceTool,
+  FILL_TOOL,
   SHOW_TOOL,
   voiceMessages,
   voicePrompt,
@@ -62,9 +63,10 @@ describe("voiceTools and voicePrompt", () => {
       "place_hold",
       "list_books",
       SHOW_TOOL,
+      FILL_TOOL,
     ]);
-    // Asking twice does not add show twice.
-    expect(voiceTools(voiceTools(tools))).toHaveLength(3);
+    // Asking twice does not add them twice.
+    expect(voiceTools(voiceTools(tools))).toHaveLength(4);
   });
 
   it("teaches a speaking model the catalog and that only show puts things on screen", () => {
@@ -281,6 +283,30 @@ describe("voiceMessages", () => {
   });
 });
 
+describe("fill_form", () => {
+  it("is taught to a speaking model, and is never run on the server", async () => {
+    expect(voicePrompt(catalog)).toContain(`call ${FILL_TOOL}`);
+    const fill = voiceTools(tools).find((tool) => tool.name === FILL_TOOL)!;
+    expect(fill.inputSchema.required).toEqual(["press"]);
+    // It cannot be replaced by an app's tool of the same name.
+    expect(
+      voiceTools([{ ...tools[0]!, name: FILL_TOOL }]).filter(
+        (tool) => tool.name === FILL_TOOL,
+      ),
+    ).toHaveLength(1);
+    // The form is in the reader's browser: the server has nothing to press.
+    const turn = newVoiceTurn();
+    const result = await runVoiceTool(
+      turn,
+      { id: "call_9", name: FILL_TOOL, input: { press: "Allow" } },
+      tools,
+      catalog,
+    );
+    expect(result).toMatchObject({ state: "failed", html: "" });
+    expect(turn.parts).toEqual([]);
+  });
+});
+
 describe("geminiLiveVoice", () => {
   const config = { system: "Be brief.", tools: voiceTools(tools) };
 
@@ -309,6 +335,7 @@ describe("geminiLiveVoice", () => {
       "place_hold",
       "list_books",
       "show",
+      "fill_form",
     ]);
     expect(declared[0]!.parameters).toEqual({
       type: "OBJECT",

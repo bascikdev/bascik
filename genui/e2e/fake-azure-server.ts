@@ -43,12 +43,15 @@ server.on("upgrade", (request, socket) => {
   let responses = 0;
   let heardAudio = false;
   let afterTool: ((result: string) => void) | null = null;
-  let toolResult = "";
+  /** What the tools of the reply being made came to, in the order they answered. */
+  let toolResults: string[] = [];
 
   /** One response: spoken words with their times and audio, then a tool call or the end. */
   const respond = (
     words: string,
     call?: { id: string; name: string; args: unknown },
+    /** A second call, made a moment later in the same reply. */
+    later?: { id: string; name: string; args: unknown },
   ): void => {
     const response_id = `resp_${++responses}`;
     send({ type: "response.created", response: { id: response_id } });
@@ -85,23 +88,60 @@ server.on("upgrade", (request, socket) => {
     for (let sent = 0; sent < at; sent += 1000) {
       send({ type: "response.audio.delta", response_id, delta: SECOND });
     }
-    if (call) {
+    const calling = (made: { id: string; name: string; args: unknown }): void =>
       send({
         type: "response.function_call_arguments.done",
         response_id,
-        call_id: call.id,
-        name: call.name,
-        arguments: JSON.stringify(call.args),
+        call_id: made.id,
+        name: made.name,
+        arguments: JSON.stringify(made.args),
       });
+    const finish = (): void =>
+      send({
+        type: "response.done",
+        response: { id: response_id, status: "completed" },
+      });
+    if (call) calling(call);
+    if (!later) {
+      finish();
+      return;
     }
-    send({
-      type: "response.done",
-      response: { id: response_id, status: "completed" },
-    });
+    setTimeout(() => {
+      calling(later);
+      finish();
+    }, 1500);
   };
 
   /** One scripted turn, by what was asked. */
   const answer = (asked: string): void => {
+    if (/press/i.test(asked)) {
+      // The reader said their answer: the form on screen is sent for them.
+      respond("", {
+        id: "call_fill",
+        name: "fill_form",
+        args: { press: "hold the short one" },
+      });
+      afterTool = (result) => respond(`Done. ${result}`);
+      return;
+    }
+    if (/sneak/i.test(asked)) {
+      // A model that tries to allow its own action: it asks to hold a book,
+      // then, once the question is on screen, tries to press Allow itself.
+      respond(
+        "",
+        {
+          id: "call_hold",
+          name: "place_hold",
+          args: { title: "The Quiet Network" },
+        },
+        { id: "call_fill", name: "fill_form", args: { press: "Allow" } },
+      );
+      afterTool = () => {
+        const [blocked, result] = toolResults;
+        respond(`Blocked. ${blocked} The shop says: ${result}`);
+      };
+      return;
+    }
     if (/hold/i.test(asked)) {
       respond("I can hold that for you.", {
         id: "call_hold",
@@ -178,9 +218,9 @@ server.on("upgrade", (request, socket) => {
       answer("Recommend a book");
     } else if (message.type === "conversation.item.create") {
       if (message.item?.type === "function_call_output") {
-        toolResult = message.item.output ?? "";
+        toolResults.push(message.item.output ?? "");
       } else {
-        toolResult = "";
+        toolResults = [];
         afterTool = null;
         pendingText = message.item?.content?.[0]?.text ?? "";
       }
@@ -192,7 +232,9 @@ server.on("upgrade", (request, socket) => {
       } else {
         const done = afterTool;
         afterTool = null;
-        done?.(toolResult);
+        const result = toolResults[0] ?? "";
+        done?.(result);
+        toolResults = [];
       }
     }
   };
