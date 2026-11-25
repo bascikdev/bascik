@@ -160,6 +160,20 @@ export function dbStore(): ConversationStore {
 
 > **Note:** `fileStore` is a good store for one server. With several servers, use a database.
 
+### Changing a conversation in your own handler
+
+The chat's handlers change a conversation one at a time: each reads it afresh and stores it before the next one reads it. A handler of your own joins that line with `chat.change`. It reads the open conversation (a new one when none is open), lets your function change it, and stores it.
+
+```ts
+await chat.change(session, (conversation) => {
+  if (conversation.messages.length === 0) conversation.title = "Review";
+});
+```
+
+`chat.load` and `chat.save` still work. When the conversation you save came from `chat.load` and another write stored it in between, such as a spoken turn during a call, `save` keeps both. Messages you added follow the ones stored since, and a field you changed replaces the stored one. When both writes changed or removed messages that were there when you loaded it, even different ones, `save` throws and stores nothing. Load it again, or use `chat.change`. A `save` that fails, because of that or because the store failed, leaves your conversation as you changed it, so saving it again is safe. The conversation `chat.change` returns saves the same way.
+
+> **Caution:** Inside the function you pass to `chat.change`, do not call `chat.save`, `chat.change`, or `chat.addMessage` for the same conversation. Each waits for the change in progress, which never finishes. Writes straight to `chat.store` skip the line, and writes from another server are not in it either: with several servers, the store has to settle them.
+
 ## Who the reader is
 
 A request needs a reader and the conversation that is open. `ChatSessions` gives both, and lets a response remember them.
@@ -176,7 +190,7 @@ export interface ChatSessions {
 
 ```ts
 import { cookieSessions } from "@bascik/ai/app";
-const sessions = cookieSessions("library", { secure: true });
+const sessions = cookieSessions("library");
 ```
 
 It sets two cookies:
@@ -184,20 +198,30 @@ It sets two cookies:
 - `chat_<id>`: the open conversation.
 - `visitor`: the anonymous reader.
 
-Both get `Path=/; HttpOnly; SameSite=Lax`. The `visitor` cookie also gets `Max-Age=31536000`. Both get `Secure` by default, unless the request is plain `http:` to `localhost`, `127.0.0.1`, or `[::1]`, so local development keeps working. Pass `secure: true` to always add it, or `secure: false` to never add it (for example, when testing over plain http from another device on your network).
+Both get `Path=/; HttpOnly; SameSite=Lax; Secure`. The `visitor` cookie also gets `Max-Age=31536000`. `Secure` is on for every response, whatever the request's URL says: behind a proxy, requests to a public https site can arrive as plain http to `127.0.0.1`, so the server never guesses. Chrome and Firefox keep Secure cookies on `http://localhost` and `http://127.0.0.1`, so local development works with the default. Pass `secure: false` only to develop on a browser that drops them there, or over plain http from another device on your network.
 
-Pass `secret` (or `sessionSecret` to `createChat`) to sign the reader id with an HMAC. The `visitor` cookie then holds the id and its signature, and a cookie the server did not sign is refused: the request gets a new reader. Without a secret, any cookie shaped like an id is taken as the reader. Whoever can set a cookie on your site (a sibling subdomain, or a network attacker on plain http) can then choose the reader id a visitor uses, and later read what that visitor stores. Set a secret in production. Turning it on starts every existing reader over, because their unsigned cookies are refused.
+Pass `secret` (or `sessionSecret` to `createChat`) to sign the reader id with an HMAC. The `visitor` cookie then holds the id and its signature, and a cookie the server did not sign is refused: the request gets a new reader. Turning it on starts every existing reader over, because their unsigned cookies are refused.
+
+Pass `hostPrefix: true` to name the cookies `__Host-visitor` and `__Host-chat_<id>`, and read only those. A browser accepts a `__Host-` cookie only from an https response with `Secure`, `Path=/`, and no `Domain`, so a sibling subdomain or a plain-http response cannot set one. It needs `secure` left on (`cookieSessions` throws otherwise), and turning it on starts every existing reader over.
 
 ```ts
 import { cookieSessions } from "@bascik/ai/app";
 const sessions = cookieSessions("library", {
   secret: process.env.CHAT_SECRET,
+  hostPrefix: true,
 });
 ```
 
-The cookies do not use the `__Host-` prefix. Renaming `visitor` would start every existing reader over, and a `__Host-` cookie needs `Secure`, which plain http on localhost cannot always keep.
+Pass it as `sessions` to `createChat`; `sessionSecret` alone does not set `hostPrefix`.
 
-`identify` reads `visitor` and `chat_<id>`. It accepts a cookie value only when it is an id shaped as `randomUUID` writes it, and, with a secret, signed by this server. `remember` writes the open conversation and the reader back.
+What these do and do not prevent:
+
+- Without a secret, any cookie shaped like an id is taken as the reader. Whoever can set a cookie on your site can choose the reader id a visitor uses, and later read what that visitor stores.
+- `secret` stops ids the server never issued. It does not stop an id the server did issue: anyone can visit, get a signed id, and plant that same value in someone else's browser. Both then share one reader.
+- `hostPrefix` stops that planting from a sibling subdomain or from a network attacker who answers a plain-http request. It does not stop script running on your own origin, or anyone with access to the browser.
+- Neither ties a reader to a person. When conversations hold anything private, put the chat behind your own sign-in and implement `ChatSessions` with the signed-in user as the reader.
+
+`identify` reads `visitor` and `chat_<id>` (with their `__Host-` names when `hostPrefix` is on). It accepts a cookie value only when it is an id shaped as `randomUUID` writes it, and, with a secret, signed by this server. `remember` writes the open conversation and the reader back.
 
 To replace it, implement `ChatSessions`. `identify` answers from the request. `remember` returns the headers that make the next request say the same. Pass the result as `sessions` to `createChat`.
 

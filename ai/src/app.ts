@@ -125,54 +125,56 @@ function cookieValue(request: Request, name: string): string | undefined {
 const cookieId = (value: string | undefined): string | undefined =>
   value !== undefined && COOKIE_ID.test(value) ? value : undefined;
 
-/** Plain http to this machine: the one place a browser may not keep a Secure cookie. */
-function plainLocal(request: Request): boolean {
-  try {
-    const { protocol, hostname } = new URL(request.url);
-    return (
-      protocol === "http:" &&
-      (hostname === "localhost" ||
-        hostname.endsWith(".localhost") ||
-        hostname === "127.0.0.1" ||
-        hostname === "[::1]")
-    );
-  } catch {
-    return false;
-  }
-}
-
 export interface CookieSessionOptions {
   /**
-   * True always adds Secure to both cookies, false never does. Default: Secure,
-   * unless the request that identified the reader is plain `http:` to
-   * localhost, 127.0.0.1, or [::1], so local development keeps working.
+   * Default true: both cookies are Secure, on every response. Chrome and
+   * Firefox keep a Secure cookie on http://localhost and http://127.0.0.1
+   * too. False is the opt-out, for development on a browser that drops them
+   * (Safari on plain http) or from another device over plain http. It is
+   * never guessed from the request: behind a proxy, a public https site's
+   * requests can look like plain http to 127.0.0.1.
    */
   secure?: boolean;
   /**
    * Signs the reader id this server issues with an HMAC, and refuses a
-   * `visitor` cookie it did not sign (a new reader is made instead). Without
-   * it, any cookie shaped like an id is taken as the reader, so whoever can
-   * set a cookie on the site can choose a reader id for a visitor.
+   * `visitor` cookie it did not sign (a new reader is made instead). This
+   * stops an id the server never issued. It does not stop one the server did
+   * issue (to an attacker, say) being planted in someone else's browser.
    */
   secret?: string;
+  /**
+   * Default false. True names both cookies with the `__Host-` prefix
+   * (`__Host-visitor`, `__Host-chat_<id>`) and reads only those. A browser
+   * accepts a `__Host-` cookie only from a secure origin, with Secure,
+   * `Path=/` and no Domain, so a sibling subdomain or a plain-http response
+   * cannot plant one. Turning it on starts every existing reader over, and
+   * it needs `secure` left on.
+   */
+  hostPrefix?: boolean;
 }
 
 /**
  * The default sessions: an anonymous reader and an open conversation, each in
  * an HttpOnly cookie (`visitor`, and `chat_<id>` so apps on one site keep
  * their own). Readers never see each other's conversations, and a reader who
- * clears cookies starts over. See `CookieSessionOptions` for Secure and for
- * signing the reader id.
+ * clears cookies starts over. See `CookieSessionOptions` for Secure, for
+ * signing the reader id, and for the `__Host-` prefix.
  */
 export function cookieSessions(
   id = "chat",
   options: CookieSessionOptions = {},
 ): ChatSessions {
-  const { secret } = options;
+  const { secret, secure = true, hostPrefix = false } = options;
   if (secret === "") throw new Error("cookieSessions: the secret is empty.");
-  const attributes = "Path=/; HttpOnly; SameSite=Lax";
-  // Sessions this object identified from plain http to this machine.
-  const local = new WeakSet<Session>();
+  if (hostPrefix && !secure) {
+    throw new Error(
+      "cookieSessions: hostPrefix needs Secure cookies; a browser drops a __Host- cookie without it.",
+    );
+  }
+  const prefix = hostPrefix ? "__Host-" : "";
+  const visitorName = `${prefix}visitor`;
+  const chatName = `${prefix}chat_${id}`;
+  const tail = `Path=/; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
   const sign = (reader: string): string =>
     createHmac("sha256", secret!)
       .update(`visitor:${reader}`)
@@ -190,27 +192,21 @@ export function cookieSessions(
   };
   return {
     identify(request) {
-      const session: Session = {
-        reader: readerOf(cookieValue(request, "visitor")) ?? randomUUID(),
-        conversationId: cookieId(cookieValue(request, `chat_${id}`)),
+      return {
+        reader: readerOf(cookieValue(request, visitorName)) ?? randomUUID(),
+        conversationId: cookieId(cookieValue(request, chatName)),
       };
-      if (options.secure === undefined && plainLocal(request)) {
-        local.add(session);
-      }
-      return session;
     },
     remember(session, conversationId) {
-      const secure = options.secure ?? !local.has(session);
-      const tail = `${attributes}${secure ? "; Secure" : ""}`;
       const visitor =
         secret === undefined
           ? session.reader
           : `${session.reader}.${sign(session.reader)}`;
       const headers = new Headers();
-      headers.append("set-cookie", `chat_${id}=${conversationId}; ${tail}`);
+      headers.append("set-cookie", `${chatName}=${conversationId}; ${tail}`);
       headers.append(
         "set-cookie",
-        `visitor=${visitor}; Max-Age=31536000; ${tail}`,
+        `${visitorName}=${visitor}; Max-Age=31536000; ${tail}`,
       );
       return headers;
     },
@@ -409,8 +405,31 @@ export interface Chat {
   session(request: Request): Session;
   /** A conversation of the session's reader (the open one by default), or null. */
   load(session: Session, id?: string): Promise<Conversation | null>;
-  /** Store a conversation, stamping `updatedAt`. */
+  /**
+   * Store a conversation, stamping `updatedAt`, in turn with every other
+   * write to it. When it came from `load` and was stored again since (a
+   * spoken turn, an approval, a reply), what you changed is applied over that:
+   * messages you added follow the ones stored since, and a field you changed
+   * replaces it. When both writes changed or removed messages that were
+   * there when it was loaded, even different ones, `save` throws and stores
+   * nothing. A save that fails leaves the conversation as you changed it, so
+   * it can be saved again. One that came from neither `load` nor `change`
+   * replaces what is stored. Prefer `change`.
+   */
   save(session: Session, conversation: Conversation): Promise<void>;
+  /**
+   * Read the reader's conversation (the open one by default, a new one when
+   * there is none), let `edit` change it, and store it, in turn with every
+   * other write to it, so no write made at the same time is lost. Returns
+   * what was stored. `edit` must not itself save, change or add a message to
+   * the same conversation: that waits for this one to finish, which never
+   * comes.
+   */
+  change(
+    session: Session,
+    edit: (conversation: Conversation) => void | Promise<void>,
+    id?: string,
+  ): Promise<Conversation>;
   /** The session's reader's conversations, newest first. */
   list(session: Session): Promise<Conversation[]>;
   /**
@@ -457,12 +476,13 @@ const LOCAL_PATH = /^\/(?![/\\])[^\u0000-\u001f\u007f]*$/;
 function localPath(back: string | undefined): string | undefined {
   if (back === undefined || !LOCAL_PATH.test(back)) return undefined;
   // Resolved the way a browser resolves Location, then kept only when it
-  // stays on the same origin.
+  // stays on the same origin and the result is itself a local path: taking
+  // out dot segments can leave `//host` (`/.//host`, `/a/..//host`,
+  // `/%2e//host`), which the browser would then resolve to another site.
   const base = "http://this.invalid";
   const url = new URL(back, base);
-  return url.origin === base
-    ? `${url.pathname}${url.search}${url.hash}`
-    : undefined;
+  const path = `${url.pathname}${url.search}${url.hash}`;
+  return url.origin === base && LOCAL_PATH.test(path) ? path : undefined;
 }
 /** What a multipart body may carry besides its files: the text and the field framing. */
 const MULTIPART_ROOM = 256 * 1024;
@@ -470,6 +490,59 @@ const MULTIPART_ROOM = 256 * 1024;
 /** A conversation's title: the first words of what began it. */
 const titleOf = (text: string): string =>
   text.length > 40 ? `${text.slice(0, 40)}…` : text;
+
+const same = (a: unknown, b: unknown): boolean =>
+  JSON.stringify(a) === JSON.stringify(b);
+/** Whether `list` begins with every item of `head`, unchanged. */
+const startsWith = (list: unknown[], head: unknown[]): boolean =>
+  list.length >= head.length && head.every((item, i) => same(item, list[i]));
+
+/**
+ * `latest` (what other writes stored since `base`) with the changes in `ours`
+ * (`base` as it was loaded, then changed by a caller) applied over it, as a
+ * new conversation: `ours` is left as it is, so a save that fails can be
+ * tried again. Messages one side added after `base` follow the other side's;
+ * a field the caller changed replaces the stored one. When both sides
+ * changed or removed messages that `base` had, even different ones, they
+ * cannot be put together, and this throws.
+ */
+function applyChanges(
+  ours: Conversation,
+  base: Conversation,
+  latest: Conversation,
+): Conversation {
+  let messages = ours.messages;
+  if (same(ours.messages, base.messages)) messages = latest.messages;
+  else if (!same(latest.messages, base.messages)) {
+    if (startsWith(ours.messages, base.messages)) {
+      messages = [
+        ...latest.messages,
+        ...ours.messages.slice(base.messages.length),
+      ];
+    } else if (startsWith(latest.messages, base.messages)) {
+      messages = [
+        ...ours.messages,
+        ...latest.messages.slice(base.messages.length),
+      ];
+    } else {
+      throw new Error(
+        `Conversation ${ours.id} was changed by another write since it was loaded, in the same messages: load it again, or use chat.change.`,
+      );
+    }
+  }
+  const merged = JSON.parse(JSON.stringify(ours)) as Conversation;
+  const fields = merged as unknown as Record<string, unknown>;
+  const was = base as unknown as Record<string, unknown>;
+  const now = latest as unknown as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
+    if (key === "id" || key === "messages" || key === "updatedAt") continue;
+    if (!same(fields[key], was[key])) continue;
+    if (key in now) fields[key] = now[key];
+    else delete fields[key];
+  }
+  merged.messages = JSON.parse(JSON.stringify(messages)) as ChatMessage[];
+  return merged;
+}
 
 const field = (form: FormData, name: string): string | undefined => {
   const value = form.get(name);
@@ -709,6 +782,74 @@ export function createChat(options: ChatOptions): Chat {
     });
     return run;
   }
+  /**
+   * Read the reader's open conversation and change it, in turn with every
+   * other write to it. `change` gets null when none is open, and stores what
+   * it changes before it returns. Every handler that changes a stored
+   * conversation goes through here (or `serialized`).
+   */
+  function changingOpen<T>(
+    session: Session,
+    change: (conversation: Conversation | null) => Promise<T>,
+  ): Promise<T> {
+    const open = session.conversationId;
+    return open === undefined
+      ? change(null)
+      : serialized(session, open, async () =>
+          change(await load(session, open)),
+        );
+  }
+  /*
+   * The public load and save, for handlers of your own. What `load` handed
+   * out is remembered as it was, so a `save` of it later can tell what the
+   * caller changed from what other writes stored in between, and keep both.
+   */
+  const loadedAs = new WeakMap<Conversation, string>();
+  const loadForCaller: Chat["load"] = async (session, conversationId) => {
+    const found = await load(session, conversationId);
+    if (found) loadedAs.set(found, JSON.stringify(found));
+    return found;
+  };
+  const saveForCaller: Chat["save"] = (session, conversation) =>
+    serialized(session, conversation.id, async () => {
+      const base = loadedAs.get(conversation);
+      let merged = conversation;
+      if (base !== undefined) {
+        const latest = await load(session, conversation.id);
+        if (latest && JSON.stringify(latest) !== base) {
+          merged = applyChanges(
+            conversation,
+            JSON.parse(base) as Conversation,
+            latest,
+          );
+        }
+      }
+      await save(session, merged);
+      // Only a stored merge becomes the caller's: a failed save leaves their
+      // conversation, and what it was loaded as, for a retry to merge again.
+      if (merged !== conversation) {
+        const fields = conversation as unknown as Record<string, unknown>;
+        for (const key of Object.keys(fields)) {
+          if (!(key in merged)) delete fields[key];
+        }
+        Object.assign(conversation, merged);
+      }
+      loadedAs.set(conversation, JSON.stringify(conversation));
+    });
+  const change: Chat["change"] = (session, edit, conversationId) => {
+    const wanted = conversationId ?? session.conversationId;
+    const run = async (): Promise<Conversation> => {
+      const conversation =
+        (wanted === undefined ? null : await load(session, wanted)) ??
+        newConversation();
+      await edit(conversation);
+      await save(session, conversation);
+      // What `change` returns saves like what `load` returns.
+      loadedAs.set(conversation, JSON.stringify(conversation));
+      return conversation;
+    };
+    return wanted === undefined ? run() : serialized(session, wanted, run);
+  };
   const addMessage: Chat["addMessage"] = async (session, text, titled) =>
     session.conversationId === undefined
       ? appendMessage(session, text, titled)
@@ -1324,17 +1465,18 @@ export function createChat(options: ChatOptions): Chat {
     const session = sessions.identify(request);
     const call = field(form, "call");
     const verdict = form.get("verdict");
-    const conversation = await load(session);
-    if (
-      !conversation ||
-      call === undefined ||
-      (verdict !== "approve" && verdict !== "deny") ||
-      !decideToolCall(conversation.messages, call, verdict === "approve")
-    ) {
-      return badRequest("No tool call is waiting for that answer.");
-    }
-    await save(session, conversation);
-    return redirect(session, conversation.id);
+    return changingOpen(session, async (conversation) => {
+      if (
+        !conversation ||
+        call === undefined ||
+        (verdict !== "approve" && verdict !== "deny") ||
+        !decideToolCall(conversation.messages, call, verdict === "approve")
+      ) {
+        return badRequest("No tool call is waiting for that answer.");
+      }
+      await save(session, conversation);
+      return redirect(session, conversation.id);
+    });
   };
 
   const answer: Chat["answer"] = async (request) => {
@@ -1343,17 +1485,18 @@ export function createChat(options: ChatOptions): Chat {
     const session = sessions.identify(request);
     const call = field(form, "call");
     const output = field(form, "output")?.trim();
-    const conversation = await load(session);
-    if (
-      !conversation ||
-      call === undefined ||
-      !output ||
-      !answerToolCall(conversation.messages, call, output)
-    ) {
-      return badRequest("No tool call is waiting for that result.");
-    }
-    await save(session, conversation);
-    return redirect(session, conversation.id);
+    return changingOpen(session, async (conversation) => {
+      if (
+        !conversation ||
+        call === undefined ||
+        !output ||
+        !answerToolCall(conversation.messages, call, output)
+      ) {
+        return badRequest("No tool call is waiting for that result.");
+      }
+      await save(session, conversation);
+      return redirect(session, conversation.id);
+    });
   };
 
   const stop: Chat["stop"] = async (request) => {
@@ -1422,11 +1565,13 @@ export function createChat(options: ChatOptions): Chat {
         status: 404,
       });
     }
-    // What is said is stored, so there has to be a conversation to store it in.
-    let conversation = await load(session);
+    // What is said is stored, so there has to be a conversation to store it
+    // in. A new one has an id of its own, which nothing else writes yet.
+    let conversation = await changingOpen(session, async (found) => found);
     if (!conversation) {
-      conversation = newConversation();
-      await save(session, conversation);
+      const created = newConversation();
+      await serialized(session, created.id, () => save(session, created));
+      conversation = created;
     }
     let ticket;
     try {
@@ -1525,27 +1670,28 @@ export function createChat(options: ChatOptions): Chat {
     const session = sessions.identify(request);
     const reader = field(form, "reader");
     const model = field(form, "model");
-    const conversation = await load(session);
-    if (!conversation || reader === undefined || model === undefined) {
-      return badRequest("Not a voice turn.");
-    }
-    const messages = await updateVoice(conversation.id, (turn) =>
-      voiceMessages(turn, {
-        reader: reader.slice(0, MAX_SPEECH),
-        model: model.slice(0, MAX_SPEECH),
-      }),
-    );
-    if (messages.length) {
-      abandonToolCalls(conversation.messages);
-      if (conversation.messages.length === 0) {
-        conversation.title = titleOf(
-          messages[0]!.content || "Voice conversation",
-        );
+    return changingOpen(session, async (conversation) => {
+      if (!conversation || reader === undefined || model === undefined) {
+        return badRequest("Not a voice turn.");
       }
-      conversation.messages.push(...messages);
-      await save(session, conversation);
-    }
-    return new Response(null, { status: 204 });
+      const messages = await updateVoice(conversation.id, (turn) =>
+        voiceMessages(turn, {
+          reader: reader.slice(0, MAX_SPEECH),
+          model: model.slice(0, MAX_SPEECH),
+        }),
+      );
+      if (messages.length) {
+        abandonToolCalls(conversation.messages);
+        if (conversation.messages.length === 0) {
+          conversation.title = titleOf(
+            messages[0]!.content || "Voice conversation",
+          );
+        }
+        conversation.messages.push(...messages);
+        await save(session, conversation);
+      }
+      return new Response(null, { status: 204 });
+    });
   };
 
   return {
@@ -1580,8 +1726,9 @@ export function createChat(options: ChatOptions): Chat {
     store,
     files: fileStore,
     session: (request) => sessions.identify(request),
-    load,
-    save,
+    load: loadForCaller,
+    save: saveForCaller,
+    change,
     list: (session) => store.list(session.reader),
     addMessage,
     redirect,
