@@ -19,13 +19,28 @@ A rule the sources leave open, for the reader to decide: a short id as item, the
     padding: 0 0.35rem;
     font-weight: 600;
   }
+  /* The same box as a fork-branch above it: it is one more option. */
   .none {
-    display: flex;
-    gap: 0.6rem;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.15rem 0.6rem;
     align-items: baseline;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    cursor: pointer;
+  }
+  .none:has(:checked) {
+    border-color: var(--accent);
+  }
+  .none-when {
+    font-weight: 600;
+  }
+  .none-then {
+    grid-column: 2;
     color: var(--muted);
     font-size: 0.9375rem;
-    cursor: pointer;
   }
   .actions {
     display: flex;
@@ -82,7 +97,8 @@ A rule the sources leave open, for the reader to decide: a short id as item, the
         required
         data-testid="decision-fork-none"
       />
-      None of these. I will say what we do in the note.
+      <span class="none-when">None of these</span>
+      <span class="none-then">I will say what we do in the note.</span>
     </label>
     <label class="note">
       Note (optional)
