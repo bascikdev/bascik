@@ -1,5 +1,5 @@
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { connect, type AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -142,9 +142,9 @@ describe("azureVoiceLiveVoice", () => {
   async function startUpstream(): Promise<Upstream> {
     const connections: Upstream["connections"] = [];
     const server = createServer();
-    server.on("upgrade", (request, socket) => {
+    server.on("upgrade", (request, socket, head) => {
       socket.on("error", () => {});
-      const accepted = acceptWebSocket(request, socket)!;
+      const accepted = acceptWebSocket(request, socket, head)!;
       const connection = {
         url: request.url ?? "",
         headers: request.headers,
@@ -343,6 +343,43 @@ describe("azureVoiceLiveVoice", () => {
     }
   });
 
+  it("passes on what a browser sends in the same write as its handshake", async () => {
+    upstream = await startUpstream();
+    provider = azureVoiceLiveVoice({ apiKey: "k", wsBase: upstream.base });
+    const url = new URL((await provider.createSession(config)).url);
+    const payload = Buffer.from(
+      JSON.stringify({ type: "input_audio_buffer.append", audio: "QUJD" }),
+    );
+    const mask = Buffer.from([1, 2, 3, 4]);
+    const masked = Buffer.from(payload.map((byte, at) => byte ^ mask[at % 4]!));
+    const client = connect(Number(url.port), url.hostname);
+    client.on("error", () => {});
+    try {
+      await new Promise<void>((resolve) => client.once("connect", resolve));
+      client.write(
+        Buffer.concat([
+          Buffer.from(
+            `GET /${url.search} HTTP/1.1\r\nHost: ${url.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n`,
+          ),
+          Buffer.from([0x81, 0x80 | payload.length]),
+          mask,
+          masked,
+        ]),
+      );
+      await until(() =>
+        (upstream.connections[0]?.received ?? []).some(
+          (event) => event.type === "input_audio_buffer.append",
+        ),
+      );
+      expect(upstream.connections[0]!.received).toContainEqual({
+        type: "input_audio_buffer.append",
+        audio: "QUJD",
+      });
+    } finally {
+      client.destroy();
+    }
+  });
+
   it("ends a call at its time limit, and when the relay closes", async () => {
     upstream = await startUpstream();
     provider = azureVoiceLiveVoice({
@@ -369,7 +406,7 @@ describe("azureVoiceLiveVoice", () => {
     let seen = 0;
     let firstAt = 0;
     const flaky = createServer();
-    flaky.on("upgrade", (request, socket) => {
+    flaky.on("upgrade", (request, socket, head) => {
       socket.on("error", () => {});
       seen++;
       firstAt ||= Date.now();
@@ -379,7 +416,7 @@ describe("azureVoiceLiveVoice", () => {
         );
         return;
       }
-      const accepted = acceptWebSocket(request, socket)!;
+      const accepted = acceptWebSocket(request, socket, head)!;
       accepted.onMessage = (text) => {
         if (JSON.parse(text).type === "session.update") {
           accepted.send(JSON.stringify({ type: "session.updated" }));
@@ -436,10 +473,10 @@ describe("azureVoiceLiveVoice", () => {
     mode: "silent" | "stalled",
   ): Promise<Upstream> {
     const server = createServer();
-    server.on("upgrade", (request, socket) => {
+    server.on("upgrade", (request, socket, head) => {
       socket.on("error", () => {});
       stuck.push(socket);
-      const accepted = acceptWebSocket(request, socket)!;
+      const accepted = acceptWebSocket(request, socket, head)!;
       accepted.onMessage = (text) => {
         if (mode === "stalled" && JSON.parse(text).type === "session.update") {
           accepted.send(JSON.stringify({ type: "session.updated" }));

@@ -1,5 +1,8 @@
-import type { IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
+import { connect, type AddressInfo } from "node:net";
 import { Duplex } from "node:stream";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { acceptWebSocket, type ServerSocket } from "./ws.ts";
 
@@ -58,7 +61,10 @@ function fakeSocket(reading = true): {
   return { socket, sent, ended };
 }
 
-function open(reading = true): {
+function open(
+  reading = true,
+  head?: Buffer,
+): {
   connection: ServerSocket;
   socket: Duplex;
   sent: Buffer[];
@@ -72,7 +78,7 @@ function open(reading = true): {
       upgrade: "websocket",
     },
   } as unknown as IncomingMessage;
-  const connection = acceptWebSocket(request, fake.socket)!;
+  const connection = acceptWebSocket(request, fake.socket, head)!;
   const messages: string[] = [];
   connection.onMessage = (text) => messages.push(text);
   return { connection, messages, ...fake };
@@ -200,5 +206,157 @@ describe("acceptWebSocket", () => {
     await expect
       .poll(() => messages, { timeout: 2000 })
       .toEqual(["after the pings"]);
+  });
+
+  it("holds about one copy of a frame's bytes, however many reads it comes in", () => {
+    setFlagsFromString("--expose-gc");
+    const gc = runInNewContext("gc") as () => void;
+    const { socket, messages } = open();
+    // A frame declared at 4 MB, whose body then arrives a byte per read.
+    const declared = 3_999_000;
+    const header = Buffer.alloc(14);
+    header[0] = 0x81;
+    header[1] = 0xff;
+    header.writeBigUInt64BE(BigInt(declared), 2);
+    socket.emit("data", header);
+    const reads = 200_000;
+    const body = Buffer.alloc(reads, 0x41);
+    gc();
+    const before = process.memoryUsage().heapUsed;
+    for (let at = 0; at < reads; at++) {
+      socket.emit("data", body.subarray(at, at + 1));
+    }
+    gc();
+    const grown = process.memoryUsage().heapUsed - before;
+    expect(messages).toEqual([]);
+    // Every read kept as its own piece would hold over 200 bytes each.
+    expect(grown).toBeLessThan(10_000_000);
+  });
+
+  it("does not set aside the whole declared length before the bytes arrive", () => {
+    const { socket } = open();
+    const header = Buffer.alloc(14);
+    header[0] = 0x81;
+    header[1] = 0xff;
+    header.writeBigUInt64BE(3_999_000n, 2);
+    const alloc = vi.spyOn(Buffer, "allocUnsafe");
+    const allocated = (): number =>
+      alloc.mock.calls.reduce((sum, [size]) => sum + Number(size), 0);
+    socket.emit("data", header);
+    socket.emit("data", Buffer.alloc(10, 0x41));
+    expect(allocated()).toBeLessThan(100_000);
+  });
+
+  it("closes a message split into too many pieces, empty ones counted", () => {
+    for (const piece of [Buffer.alloc(0), Buffer.from("a")]) {
+      const { socket, ended, connection } = open();
+      socket.emit("data", clientFrame(Buffer.from("start"), 0x1, false));
+      const continuation = clientFrame(piece, 0x0, false);
+      socket.emit(
+        "data",
+        Buffer.concat(Array.from({ length: 5000 }, () => continuation)),
+      );
+      expect(closeCode(ended)).toBe(1009);
+      expect(connection.open).toBe(false);
+    }
+  });
+
+  it("still reads a message split into a few hundred pieces", () => {
+    const { socket, messages } = open();
+    const parts = Array.from({ length: 300 }, (_, index) =>
+      clientFrame(Buffer.from("x"), index === 0 ? 0x1 : 0x0, index === 299),
+    );
+    socket.emit("data", Buffer.concat(parts));
+    expect(messages).toEqual(["x".repeat(300)]);
+  });
+
+  it("closes with 1002 on pieces of a message out of order", () => {
+    const cases: Buffer[] = [
+      // A continuation with no message started.
+      clientFrame(Buffer.from("lost"), 0x0, true),
+      // A new message before the last one ended.
+      Buffer.concat([
+        clientFrame(Buffer.from("one"), 0x1, false),
+        clientFrame(Buffer.from("two"), 0x1, true),
+      ]),
+      // An opcode RFC 6455 reserves.
+      clientFrame(Buffer.from("odd"), 0x3, true),
+      clientFrame(Buffer.from("odd"), 0xb, true),
+    ];
+    for (const input of cases) {
+      const { socket, ended, messages } = open();
+      socket.emit("data", input);
+      expect(closeCode(ended)).toBe(1002);
+      expect(messages).toEqual([]);
+    }
+    // Reserved bits, set without an extension that defines them.
+    const { socket, ended } = open();
+    const frame = clientFrame(Buffer.from("rsv"));
+    frame[0]! |= 0x40;
+    socket.emit("data", frame);
+    expect(closeCode(ended)).toBe(1002);
+  });
+
+  it("answers a ping between the pieces of a message", () => {
+    const { socket, sent, messages } = open();
+    sent.length = 0;
+    socket.emit(
+      "data",
+      Buffer.concat([
+        clientFrame(Buffer.from("one "), 0x1, false),
+        clientFrame(Buffer.from("hi"), 0x9),
+        clientFrame(Buffer.from("two"), 0x0, true),
+      ]),
+    );
+    expect(messages).toEqual(["one two"]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]![0]).toBe(0x8a);
+  });
+
+  it("reads frames that came with the handshake, before what follows", async () => {
+    const both = Buffer.concat([
+      clientFrame(Buffer.from("first")),
+      clientFrame(Buffer.from("second")),
+    ]);
+    // The second frame is cut, and the rest arrives as the socket's data.
+    const { socket, messages } = open(true, both.subarray(0, both.length - 3));
+    socket.emit("data", both.subarray(both.length - 3));
+    await settle();
+    expect(messages).toEqual(["first", "second"]);
+  });
+
+  it("reads a frame sent in the same write as the handshake, over a real socket", async () => {
+    const server = createServer();
+    const received: string[] = [];
+    const upgraded: Duplex[] = [];
+    server.on("upgrade", (request, socket, head) => {
+      upgraded.push(socket);
+      const accepted = acceptWebSocket(request, socket, head)!;
+      accepted.onMessage = (text) => received.push(text);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const client = connect(port, "127.0.0.1");
+    try {
+      await new Promise<void>((resolve) => client.once("connect", resolve));
+      client.write(
+        Buffer.concat([
+          Buffer.from(
+            "GET / HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+          ),
+          clientFrame(Buffer.from("with the handshake")),
+        ]),
+      );
+      await expect
+        .poll(() => received, { timeout: 2000 })
+        .toEqual(["with the handshake"]);
+    } finally {
+      client.destroy();
+      // An upgraded socket is no longer the HTTP server's to close.
+      for (const socket of upgraded) socket.destroy();
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });
