@@ -75,6 +75,21 @@ export function runTurn(options: TurnOptions): Turn {
     ),
   );
 
+  // Each tool round asks the model again with the same files: they are read
+  // from the store once per turn, not once per round.
+  const reads = new Map<string, Promise<Uint8Array | null>>();
+  const given = options.readFile;
+  const readFile: ModelRequest["readFile"] = given
+    ? (part) => {
+        let read = reads.get(part.id);
+        if (!read) {
+          read = given(part);
+          reads.set(part.id, read);
+        }
+        return read;
+      }
+    : undefined;
+
   const settle = (): void => {
     message.content = parts
       .flatMap((part) => (part.type === "text" ? [part.text] : []))
@@ -162,7 +177,7 @@ export function runTurn(options: TurnOptions): Turn {
           messages: parts.length ? [...history, message] : history,
           tools,
           signal,
-          ...(options.readFile ? { readFile: options.readFile } : {}),
+          ...(readFile ? { readFile } : {}),
         });
         for await (const event of asked) {
           if (typeof event === "string") yield* write(event);

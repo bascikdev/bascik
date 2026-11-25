@@ -334,9 +334,24 @@ const BINARY_TYPES = new Set([
 const mediaTypeOf = (claimed: string): string =>
   claimed.toLowerCase().split(";")[0]!.trim();
 
-/** True when the file says it is HTML, SVG or XML, by its type or its name. */
+/**
+ * A name as the extension check reads it: without invisible and control
+ * characters, and without the trailing dots and spaces that Windows drops
+ * when it saves a file. Otherwise `report.html` followed by a zero-width
+ * space passes the check and is then stored as `report.html` by `cleanName`.
+ */
+const bareName = (name: string): string =>
+  name.replace(/[\p{Cc}\p{Cf}]/gu, "").replace(/[\s.]+$/u, "");
+
+/**
+ * True when the file says it is HTML, SVG or XML, by its type or its name.
+ * The name is checked both as sent and as it will be stored (`cleanName`
+ * also shortens it, which can leave a new extension at the end).
+ */
 export const claimsMarkup = (claimedType: string, name: string): boolean =>
-  MARKUP_TYPES.has(mediaTypeOf(claimedType)) || MARKUP_NAME.test(name);
+  MARKUP_TYPES.has(mediaTypeOf(claimedType)) ||
+  MARKUP_NAME.test(bareName(name)) ||
+  MARKUP_NAME.test(bareName(cleanName(name)));
 
 export type Sniffed =
   { mediaType: string } | { refused: "type" | "markup" | "mismatch" | "empty" };

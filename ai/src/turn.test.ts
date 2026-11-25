@@ -86,6 +86,42 @@ const toolParts = (message: ChatMessage): ToolPart[] =>
   );
 
 describe("runTurn", () => {
+  it("reads each attached file once per turn, however many rounds it takes", async () => {
+    const file = {
+      type: "file" as const,
+      id: "scan",
+      name: "scan.png",
+      mediaType: "image/png",
+      size: 3,
+    };
+    const withFile: ChatMessage = {
+      role: "user",
+      content: "Find this",
+      parts: [{ type: "text", text: "Find this" }, file],
+    };
+    let reads = 0;
+    let round = 0;
+    const model: Model = async function* (request) {
+      expect(await request.readFile!(file)).toEqual(new Uint8Array([1, 2, 3]));
+      if (round++ < 2) {
+        yield { type: "tool-call", name: "look_up", input: { title: "Dune" } };
+      } else yield "Done.";
+    };
+    const turn = runTurn({
+      model,
+      system: "",
+      messages: [withFile],
+      tools,
+      readFile: async () => {
+        reads++;
+        return new Uint8Array([1, 2, 3]);
+      },
+    });
+    await collect(turn.events);
+    expect(round).toBe(3);
+    expect(reads).toBe(1);
+  });
+
   it("passes a reply with no tool calls through as one text part", async () => {
     const { model } = rounds(["Hello"]);
     const turn = runTurn({ model, system: "", messages: [ask] });

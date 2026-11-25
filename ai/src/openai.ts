@@ -194,7 +194,10 @@ export function openAiCompatibleModel(options: OpenAiCompatibleOptions): Model {
     }
 
     let finish = "";
-    const calls: ToolCall[] = [];
+    // Keyed by the server's `index`, which can be any number: a Map, not an
+    // array, so a huge index costs one entry instead of a sparse array that
+    // takes a minute to walk.
+    const calls = new Map<number, ToolCall>();
     for await (const data of events(response.body)) {
       if (data === "[DONE]") break;
       let event: {
@@ -222,11 +225,12 @@ export function openAiCompatibleModel(options: OpenAiCompatibleOptions): Model {
       if (content) yield content;
       // A tool call arrives in pieces: its name first, then its input.
       for (const piece of choice.delta?.tool_calls ?? []) {
-        const call = (calls[piece.index ?? 0] ??= {
-          id: "",
-          name: "",
-          arguments: "",
-        });
+        const index = typeof piece.index === "number" ? piece.index : 0;
+        let call = calls.get(index);
+        if (!call) {
+          call = { id: "", name: "", arguments: "" };
+          calls.set(index, call);
+        }
         if (piece.id) call.id = piece.id;
         if (piece.function?.name) call.name += piece.function.name;
         if (piece.function?.arguments) {
@@ -240,8 +244,9 @@ export function openAiCompatibleModel(options: OpenAiCompatibleOptions): Model {
       yield "\n\nThe reply was cut off at the length limit.";
       return;
     }
-    for (const call of calls) {
-      if (!call?.name) continue;
+    const ordered = [...calls].sort(([a], [b]) => a - b);
+    for (const [, call] of ordered) {
+      if (!call.name) continue;
       // Input that is not JSON is passed on as it is: the turn refuses it
       // and tells the model, like any other invalid call.
       let input: unknown = call.arguments;
