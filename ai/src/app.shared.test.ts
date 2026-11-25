@@ -393,11 +393,16 @@ describe("a voice call across two servers", () => {
       (input: Record<string, unknown>) => `Held ${input.title}`,
     );
     const tools = [{ ...hold, run }, slow];
+    // The voice handlers answer 404 on a server with no voice provider.
+    const voice = {
+      protocol: "fake",
+      createSession: async () => ({ protocol: "fake", url: "", setup: null }),
+    };
     return {
       ...f,
       run,
-      a: f.server(gatedModel().model, { tools }),
-      b: f.server(gatedModel().model, { tools }),
+      a: f.server(gatedModel().model, { tools, voice }),
+      b: f.server(gatedModel().model, { tools, voice }),
     };
   };
   const call = (fields: Record<string, string>) =>

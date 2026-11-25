@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { describeComponent, type Catalog } from "./catalog.ts";
 import { geminiLiveSetup, geminiLiveVoice } from "./gemini-live.ts";
-import { createChat, memoryStore, newConversation } from "./app.ts";
+import {
+  createChat,
+  memoryStore,
+  newConversation,
+  type ChatOptions,
+} from "./app.ts";
 import { scriptedModel, type Tool, type ToolPart } from "./model.ts";
 import { renderMessage } from "./render-turn.ts";
 import {
@@ -12,6 +17,9 @@ import {
   runVoiceTool,
   FILL_TOOL,
   SHOW_TOOL,
+  settleVoiceTool,
+  startVoiceTool,
+  voiceCallId,
   voiceMessages,
   voicePrompt,
   voiceTools,
@@ -475,7 +483,14 @@ describe("voice tool calls through createChat", () => {
       headers: { cookie: `visitor=${READER}; chat_t=${CONVERSATION}` },
     });
 
-  async function voiced() {
+  async function voiced(
+    setup: {
+      approval?: boolean;
+      delayMs?: number | ((title: string) => number);
+      output?: (title: string) => string;
+      options?: Partial<ChatOptions>;
+    } = {},
+  ) {
     const ran: string[] = [];
     const pay: Tool = {
       name: "pay",
@@ -485,12 +500,17 @@ describe("voice tool calls through createChat", () => {
         properties: { title: { type: "string" } },
         required: ["title"],
       },
-      approval: true,
+      approval: setup.approval ?? true,
       // Slow enough that requests sent together overlap while it runs.
       run: async (input) => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        ran.push(String(input.title));
-        return `Paid ${input.title}`;
+        const title = String(input.title);
+        const delay =
+          typeof setup.delayMs === "function"
+            ? setup.delayMs(title)
+            : (setup.delayMs ?? 20);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        ran.push(title);
+        return setup.output ? setup.output(title) : `Paid ${title}`;
       },
     };
     const chat = createChat({
@@ -506,6 +526,7 @@ describe("voice tool calls through createChat", () => {
         protocol: "fake",
         createSession: async () => ({ protocol: "fake", url: "", setup: null }),
       },
+      ...setup.options,
     });
     await chat.store.save(READER, {
       ...newConversation(),
@@ -682,5 +703,314 @@ describe("voice tool calls through createChat", () => {
     );
     expect(over.state).toBe("failed");
     expect(turn.parts).toHaveLength(MAX_VOICE_PARTS);
+  });
+
+  const sleep = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+  const conversationOf = async (chat: {
+    store: ReturnType<typeof memoryStore>;
+  }) => (await chat.store.load(READER, CONVERSATION))!;
+
+  for (const raw of ["x.y", "y".repeat(65), "a b", "é"]) {
+    it(`sees two calls with the raw id ${JSON.stringify(raw.slice(0, 8))} as one, even when both arrive at once`, async () => {
+      const { ran, call, stored } = await voiced({ approval: false });
+      const answers = await Promise.all([
+        call({ id: raw, name: "pay", input: '{"title":"A"}' }),
+        call({ id: raw, name: "pay", input: '{"title":"B"}' }),
+      ]);
+      expect(answers.map((answer) => answer.state).sort()).toEqual([
+        "done",
+        "failed",
+      ]);
+      expect(ran).toHaveLength(1);
+      const kept = (await stored()).filter((part) => part.type === "tool");
+      expect(kept).toEqual([
+        expect.objectContaining({ id: voiceCallId(raw), state: "done" }),
+      ]);
+    });
+  }
+
+  it("answers an approval sent with the same unsafe raw id, and keeps its view under it", async () => {
+    const { chat, ran, call } = await voiced();
+    const asked = { id: "x.y", name: "pay", input: '{"title":"Dune"}' };
+    expect((await call(asked)).state).toBe("approval-requested");
+    // The card shown is the part recorded: one id for both.
+    expect(await chat.voiceView(page(), "x.y")).toContain(
+      `data-part="${voiceCallId("x.y")}"`,
+    );
+    expect(await call({ ...asked, decision: "approve" })).toMatchObject({
+      state: "done",
+      output: "Paid Dune",
+    });
+    expect(ran).toEqual(["Dune"]);
+    // A second call under that id does not replace what the first showed.
+    const again = await call({
+      id: "x.y",
+      name: "show",
+      input: JSON.stringify({ markup: `<book-card title="Other" />` }),
+    });
+    expect(again.output).toBe("Error: already called.");
+    expect(await chat.voiceView(page(), "x.y")).not.toContain("Other");
+  });
+
+  it("refuses a second show with an id the turn already holds", async () => {
+    const { chat, call } = await voiced();
+    const show = (title: string) =>
+      call({
+        id: "s1",
+        name: "show",
+        input: JSON.stringify({ markup: `<book-card title="${title}" />` }),
+      });
+    expect((await show("First")).state).toBe("done");
+    expect((await show("Second")).output).toBe("Error: already called.");
+    expect(await chat.voiceView(page(), "s1")).toContain("First");
+  });
+
+  it("stores a call still running when its turn is stored as ended, and keeps its result out of the next turn", async () => {
+    const { chat, ran, call, stored } = await voiced({
+      delayMs: (title) => (title === "Old" ? 80 : 5),
+    });
+    const old = { id: "c1", name: "pay", input: '{"title":"Old"}' };
+    await call(old);
+    const running = call({ ...old, decision: "approve" });
+    await sleep(20);
+    // The turn is stored while Old runs.
+    const first = (await stored()).find((part) => part.type === "tool");
+    expect(first).toMatchObject({
+      id: "c1",
+      state: "failed",
+      error: "ended with the call",
+    });
+    // A new call with the same id, in the next turn.
+    const fresh = { id: "c1", name: "pay", input: '{"title":"New"}' };
+    expect((await call(fresh)).state).toBe("approval-requested");
+    expect(await call({ ...fresh, decision: "approve" })).toMatchObject({
+      state: "done",
+      output: "Paid New",
+    });
+    expect(await running).toMatchObject({ state: "done", output: "Paid Old" });
+    expect(ran.sort()).toEqual(["New", "Old"]);
+    const second = (await stored()).find((part) => part.type === "tool");
+    expect(second).toMatchObject({
+      id: "c1",
+      input: { title: "New" },
+      output: "Paid New",
+      state: "done",
+    });
+    // Neither stored message says a call is still approved or running.
+    const states = (await conversationOf(chat)).messages.flatMap((message) =>
+      (message.parts ?? []).flatMap((part) =>
+        part.type === "tool" ? [part.state] : [],
+      ),
+    );
+    expect(states).toEqual(["failed", "done"]);
+  });
+
+  it("keeps a finished call's long output out of the turn's limit", async () => {
+    const { call, stored } = await voiced({
+      approval: false,
+      delayMs: 0,
+      output: () => "z".repeat(MAX_VOICE_TURN_CHARS + 10),
+    });
+    const answer = await call({
+      id: "c1",
+      name: "pay",
+      input: '{"title":"A"}',
+    });
+    expect(answer.state).toBe("done");
+    const parts = await stored();
+    expect(JSON.stringify(parts).length).toBeLessThan(MAX_VOICE_TURN_CHARS);
+    expect(parts.find((part) => part.type === "tool")).toMatchObject({
+      state: "done",
+      output: "(too long to keep)",
+    });
+  });
+
+  it("answers 404 for a voice tool call, a voice turn, and nothing for a view, with no voice provider", async () => {
+    const { chat } = await voiced({ options: { voice: undefined } });
+    const shown = await chat.voiceTool(
+      posted({
+        id: "c1",
+        name: "show",
+        input: JSON.stringify({ markup: `<book-card title="Dune" />` }),
+      }),
+    );
+    expect(shown.status).toBe(404);
+    const turn = await chat.voiceTurn(posted({ reader: "hi", model: "ok" }));
+    expect(turn.status).toBe(404);
+    expect(await chat.voiceView(page(), "c1")).toBe("");
+    expect((await conversationOf(chat)).messages).toEqual([]);
+  });
+
+  it("answers 404 when a provider picker offers no provider, and runs and stores nothing", async () => {
+    const { chat, ran } = await voiced({
+      approval: false,
+      options: { voice: () => null },
+    });
+    expect((await chat.voiceSession(posted({}))).status).toBe(404);
+    const paid = await chat.voiceTool(
+      posted({ id: "c1", name: "pay", input: '{"title":"A"}' }),
+    );
+    expect(paid.status).toBe(404);
+    expect(ran).toEqual([]);
+    const shown = await chat.voiceTool(
+      posted({
+        id: "c2",
+        name: "show",
+        input: JSON.stringify({ markup: `<book-card title="Dune" />` }),
+      }),
+    );
+    expect(shown.status).toBe(404);
+    expect(await chat.voiceView(page(), "c2")).toBe("");
+    const turn = await chat.voiceTurn(posted({ reader: "", model: "" }));
+    expect(turn.status).toBe(404);
+    expect((await conversationOf(chat)).messages).toEqual([]);
+  });
+
+  it("with a provider picker, takes voice calls only for a conversation it opened a voice session for", async () => {
+    let offered = false;
+    const { chat, ran } = await voiced({
+      approval: false,
+      options: {
+        voice: () =>
+          offered
+            ? {
+                protocol: "fake",
+                createSession: async () => ({
+                  protocol: "fake",
+                  url: "",
+                  setup: null,
+                }),
+              }
+            : null,
+      },
+    });
+    const pay = () =>
+      chat.voiceTool(posted({ id: "c1", name: "pay", input: '{"title":"A"}' }));
+    // No session yet: the picker has offered nothing for this conversation.
+    expect((await pay()).status).toBe(404);
+    offered = true;
+    expect((await chat.voiceSession(posted({}))).status).toBe(200);
+    // The picker is not asked again: the session it opened is what counts.
+    offered = false;
+    expect(await (await pay()).json()).toMatchObject({ state: "done" });
+    expect(ran).toEqual(["A"]);
+    expect(
+      (await chat.voiceTurn(posted({ reader: "hi", model: "ok" }))).status,
+    ).toBe(204);
+  });
+
+  it("stops storing voice turns once the conversation is full, however many turns are sent", async () => {
+    const max = 200_000;
+    const { chat, call } = await voiced({
+      options: { maxConversationBytes: max },
+    });
+    const markup = `<book-card title="Dune">${"x".repeat(60_000)}</book-card>`;
+    const statuses: number[] = [];
+    for (let round = 0; round < 6; round++) {
+      for (let at = 0; at < 3; at++) {
+        await call({
+          id: `r${round}_${at}`,
+          name: "show",
+          input: JSON.stringify({ markup }),
+        });
+      }
+      const turn = await chat.voiceTurn(
+        posted({ reader: "more", model: "here" }),
+      );
+      statuses.push(turn.status);
+      if (turn.status === 413) {
+        expect(await turn.text()).toContain("This conversation is full");
+      }
+    }
+    expect(statuses[0]).toBe(204);
+    expect(statuses.slice(1).every((status) => status === 413)).toBe(true);
+    const size = new TextEncoder().encode(
+      JSON.stringify(await conversationOf(chat)),
+    ).length;
+    expect(size).toBeLessThanOrEqual(max);
+    // Typed messages count against the same limit.
+    const typed = await chat.send(posted({ text: "y".repeat(3999) }));
+    expect([303, 413]).toContain(typed.status);
+    let sent = typed.status;
+    for (let at = 0; at < 20 && sent === 303; at++) {
+      sent = (await chat.send(posted({ text: "y".repeat(3999) }))).status;
+    }
+    expect(sent).toBe(413);
+    expect(
+      new TextEncoder().encode(JSON.stringify(await conversationOf(chat)))
+        .length,
+    ).toBeLessThanOrEqual(max);
+  });
+
+  it("tells the model a conversation that is already full stores nothing more", async () => {
+    const { chat, call } = await voiced({
+      options: { maxConversationBytes: 1000 },
+    });
+    await chat.store.save(READER, {
+      ...newConversation(),
+      id: CONVERSATION,
+      messages: [{ role: "assistant", content: "w".repeat(2000) }],
+    });
+    const answer = await call({
+      id: "c1",
+      name: "show",
+      input: JSON.stringify({ markup: `<book-card title="Dune" />` }),
+    });
+    expect(answer).toMatchObject({
+      state: "failed",
+      output: expect.stringContaining("This conversation is full"),
+    });
+    expect(await chat.voiceView(page(), "c1")).toBe("");
+  });
+});
+
+describe("voiceCallId", () => {
+  it("keeps a safe id, and maps any other to one safe id, the same each time", () => {
+    expect(voiceCallId("call_1-A")).toBe("call_1-A");
+    for (const raw of ["x.y", "y".repeat(65), "", "../x", "a\nb"]) {
+      const id = voiceCallId(raw);
+      expect(id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+      expect(voiceCallId(raw)).toBe(id);
+    }
+    expect(voiceCallId("x.y")).not.toBe(voiceCallId("x,y"));
+  });
+});
+
+describe("a call that finishes after its turn was stored", () => {
+  it("is stored as ended with the call, and settles into no later turn", async () => {
+    const pay: Tool = {
+      name: "pay",
+      description: "Pay.",
+      inputSchema: { type: "object", properties: {} },
+      run: () => "Paid",
+    };
+    const turn = newVoiceTurn();
+    const first = startVoiceTool(
+      turn,
+      { id: "c1", name: "pay", input: {} },
+      [pay],
+      catalog,
+    );
+    expect(first.run).toBeDefined();
+    const claimed = structuredClone(first.run!);
+    const [stored] = voiceMessages(turn, { reader: "", model: "ok" });
+    expect(stored!.parts!.at(-1)).toMatchObject({
+      id: "c1",
+      state: "failed",
+      error: "ended with the call",
+    });
+    // The next turn has its own c1, still running.
+    const second = startVoiceTool(
+      turn,
+      { id: "c1", name: "pay", input: {} },
+      [pay],
+      catalog,
+    );
+    expect(second.round).toBe(first.round! + 1);
+    claimed.state = "done";
+    claimed.output = "Paid late";
+    settleVoiceTool(turn, claimed, first.round);
+    expect(turn.parts).toMatchObject([{ id: "c1", state: "running" }]);
   });
 });

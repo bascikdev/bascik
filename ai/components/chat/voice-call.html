@@ -787,9 +787,17 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       saidText!.data = said;
     }
 
-    const answerTool = (tool: { id: string; name: string; args: unknown }): Promise<string> => {
+    const answerTool = (tool: { id: unknown; name: string; args: unknown }): Promise<string> => {
       mark({ thinking: false });
-      return (tool.name === "fill_form" ? fillForm(tool.args) : runTool(tool)).catch(
+      // A call with no id cannot be matched to its answer or its approval:
+      // it is refused here, and never posted as "undefined".
+      const id = tool.id;
+      if (typeof id !== "string" || !id) {
+        return Promise.resolve("Error: the tool call has no id.");
+      }
+      return (
+        tool.name === "fill_form" ? fillForm(tool.args) : runTool({ ...tool, id })
+      ).catch(
         () => "Error: the tool could not be run.",
       );
     };
