@@ -137,8 +137,9 @@ export function inProcessShared(options: InProcessSharedOptions = {}): Shared {
   const keepSwept = (): void => {
     if (sweeper) return;
     sweeper = setInterval(sweep, SWEEP_MS);
-    // Housekeeping never keeps a finished process alive.
-    sweeper.unref();
+    // Housekeeping never keeps a finished process alive. Some hosts
+    // (workerd) hand back a plain number, which has nothing to unref.
+    (sweeper as { unref?: () => void }).unref?.();
   };
 
   const live = (key: string): Held | undefined => {

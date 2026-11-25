@@ -42,6 +42,7 @@ import {
   turnPending,
 } from "./turn.ts";
 import { historyTool } from "./history.ts";
+import { sharedKeys } from "./keys.ts";
 import {
   MAX_QUERY,
   MIN_QUERY,
@@ -73,6 +74,7 @@ import {
   type VoiceTurn,
 } from "./voice.ts";
 
+export { sharedKeys, type SharedKeys } from "./keys.ts";
 export {
   fileMemories,
   inMemoryMemories,
@@ -153,7 +155,16 @@ export interface CookieSessionOptions {
    * it needs `secure` left on.
    */
   hostPrefix?: boolean;
+  /**
+   * How long the `visitor` cookie lasts, in seconds (its `Max-Age`). Default
+   * one year, 31 536 000. The open conversation's cookie lasts the browser
+   * session either way.
+   */
+  maxAgeSeconds?: number;
 }
+
+/** `CookieSessionOptions.maxAgeSeconds` when it is not given: one year. */
+const VISITOR_MAX_AGE = 31_536_000;
 
 /**
  * The default sessions: an anonymous reader and an open conversation, each in
@@ -166,8 +177,18 @@ export function cookieSessions(
   id = "chat",
   options: CookieSessionOptions = {},
 ): ChatSessions {
-  const { secret, secure = true, hostPrefix = false } = options;
+  const {
+    secret,
+    secure = true,
+    hostPrefix = false,
+    maxAgeSeconds = VISITOR_MAX_AGE,
+  } = options;
   if (secret === "") throw new Error("cookieSessions: the secret is empty.");
+  if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0) {
+    throw new Error(
+      "cookieSessions: maxAgeSeconds is a whole number of seconds, 0 or more.",
+    );
+  }
   if (hostPrefix && !secure) {
     throw new Error(
       "cookieSessions: hostPrefix needs Secure cookies; a browser drops a __Host- cookie without it.",
@@ -208,7 +229,7 @@ export function cookieSessions(
       headers.append("set-cookie", `${chatName}=${conversationId}; ${tail}`);
       headers.append(
         "set-cookie",
-        `${visitorName}=${visitor}; Max-Age=31536000; ${tail}`,
+        `${visitorName}=${visitor}; Max-Age=${maxAgeSeconds}; ${tail}`,
       );
       return headers;
     },
@@ -339,6 +360,19 @@ export interface ChatOptions {
   page?: string;
   /** The longest one reply may take, tools included. Default two minutes. */
   turnLimitMs?: number;
+  /** How many times one reply may ask the model, tool rounds included. Default 8. */
+  maxRounds?: number;
+  /**
+   * Default true: a request may read a reply another request on this server
+   * is writing straight from memory, and two pages asking at once start one
+   * reply. False never hands one request another request's stream or
+   * promise: each follows a reply through `shared.subscribe` and the turn
+   * record, Stop goes through the shared store, and writes to one
+   * conversation are not queued in memory (the store has to arbitrate).
+   * Set it to false on a host where one request must not touch another
+   * request's I/O, such as Cloudflare Workers.
+   */
+  followLocally?: boolean;
   /**
    * State that must be the same on every server: the reply being written,
    * Stop, and a voice call's turn. Default `inProcessShared()`, which is
@@ -350,39 +384,58 @@ export interface ChatOptions {
   onError?: (error: unknown, what: string) => void;
 }
 
+/**
+ * What the host serving a request offers, passed as the last argument of a
+ * handler or of `thread`. Cloudflare's `ExecutionContext` is one.
+ */
+export interface HostContext {
+  /**
+   * Keep the request's work going until `promise` settles, after the response
+   * is sent. Given it, a reply this request starts is handed over, so the
+   * reply is finished and stored when the reader leaves.
+   */
+  waitUntil?: (promise: Promise<unknown>) => void;
+}
+
+/** A web standard handler, with the host's context as an optional last argument. */
+export type ChatHandler = (
+  request: Request,
+  context?: HostContext,
+) => Promise<Response>;
+
 export interface Chat {
   /* Handlers: `export const POST = chat.send;` */
 
   /** Add the reader's message and go back to the page, which streams the reply. */
-  send: (request: Request) => Promise<Response>;
+  send: ChatHandler;
   /** Record the reader's answer to a tool call that needs their say-so. */
-  approve: (request: Request) => Promise<Response>;
+  approve: ChatHandler;
   /** Record the result of a client tool call. */
-  answer: (request: Request) => Promise<Response>;
+  answer: ChatHandler;
   /** End the reply being written for the open conversation. 204, or 404 when none is. */
-  stop: (request: Request) => Promise<Response>;
+  stop: ChatHandler;
   /** Open one of the reader's conversations, or start a new one. */
-  open: (request: Request) => Promise<Response>;
+  open: ChatHandler;
   /**
    * Remove one of the reader's memories: a form post with `id`, and an
    * optional `back`, a path on this site to return to (default: the chat's
    * page). A memory that is not there is not an error: the form is safe to
    * send twice.
    */
-  forget: (request: Request) => Promise<Response>;
+  forget: ChatHandler;
   /** The reader's memories as JSON, newest first: `{ memories }`. */
-  memoryList: (request: Request) => Promise<Response>;
+  memoryList: ChatHandler;
   /** Start a spoken conversation: answers with a ticket for the voice provider. */
-  voiceSession: (request: Request) => Promise<Response>;
+  voiceSession: ChatHandler;
   /**
    * Serve one attached file: `GET` with `?id=<file id>`. Only to the reader
    * it belongs to; 404 for anyone else, and for an id that is not one.
    */
-  file: (request: Request) => Promise<Response>;
+  file: ChatHandler;
   /** Run a tool call a voice model made. */
-  voiceTool: (request: Request) => Promise<Response>;
+  voiceTool: ChatHandler;
   /** Store what was just said in a spoken conversation. */
-  voiceTurn: (request: Request) => Promise<Response>;
+  voiceTurn: ChatHandler;
 
   /* What a page needs */
 
@@ -390,9 +443,11 @@ export interface Chat {
    * The open conversation and the reply being written, if any. The thread's
    * stream scripts both call this and get one answer per request. When the
    * conversation is waiting for a reply and none is being written, this
-   * starts it.
+   * starts it, and hands the promise that settles once it is stored to
+   * `context.waitUntil` when one is given (the first call of a request
+   * decides).
    */
-  thread(request: Request): Promise<ThreadState>;
+  thread(request: Request, context?: HostContext): Promise<ThreadState>;
   /** The reader's memories, newest first (none when the chat has no `memory`). For a page that lists them. */
   memories(request: Request): Promise<Memory[]>;
   /** The HTML of what a voice tool call put on screen ("" when it put nothing). */
@@ -653,6 +708,13 @@ const WATCH_MS = 500;
 const RENEW_MS = 5000;
 /** How long a server following a reply waits in silence before it asks whether the writer is still there. */
 const FOLLOW_IDLE_MS = 2000;
+/**
+ * With `followLocally: false`, how often a follower wakes while it waits on
+ * the shared channel: a timer of its own stays pending, so a host that
+ * cancels a request waiting only on another request's I/O (workerd) does not
+ * take it for hung.
+ */
+const KEEPALIVE_MS = 1000;
 /** How long a voice call's recorded turn and shown views are kept after the last tool call. */
 const VOICE_MS = 2 * 60 * 60 * 1000;
 
@@ -695,6 +757,8 @@ export function createChat(options: ChatOptions): Chat {
     memoryApproval = false,
     page = "/",
     turnLimitMs = 120_000,
+    maxRounds,
+    followLocally = true,
   } = options;
   const store = limitConversations(options.store, options.maxConversations);
   const sessions =
@@ -744,17 +808,24 @@ export function createChat(options: ChatOptions): Chat {
   /* Catalog and prompts */
 
   let loaded: Promise<Catalog> | undefined;
+  const loadCatalog = (): Promise<Catalog> =>
+    Promise.resolve().then(() =>
+      typeof options.catalog === "function"
+        ? options.catalog()
+        : options.catalog,
+    );
+  // Without local following, a request never waits on a load another request
+  // started: only a loaded catalog is kept for the next.
+  let catalogLoaded: Catalog | undefined;
   const catalog = (): Promise<Catalog> =>
-    (loaded ??= Promise.resolve()
-      .then(() =>
-        typeof options.catalog === "function"
-          ? options.catalog()
-          : options.catalog,
-      )
-      .catch((error: unknown) => {
-        loaded = undefined;
-        throw error;
-      }));
+    followLocally
+      ? (loaded ??= loadCatalog().catch((error: unknown) => {
+          loaded = undefined;
+          throw error;
+        }))
+      : catalogLoaded
+        ? Promise.resolve(catalogLoaded)
+        : loadCatalog().then((value) => (catalogLoaded = value));
 
   const promptOptions = {
     elements: renderOptions.elements,
@@ -821,6 +892,8 @@ export function createChat(options: ChatOptions): Chat {
     conversationId: string,
     change: () => Promise<T>,
   ): Promise<T> {
+    // Queuing behind another request's write is waiting on its promise.
+    if (!followLocally) return change();
     const key = `${session.reader}\n${conversationId}`;
     const run = (writing.get(key) ?? Promise.resolve()).then(change);
     const settled = run.then(
@@ -1015,24 +1088,26 @@ export function createChat(options: ChatOptions): Chat {
   /* Live turns: a reply is written once, whoever is watching */
 
   const shared = options.shared ?? inProcessShared();
-  const ns = `genui:${id}:`;
-  const leaseKey = (conversationId: string): string =>
-    `${ns}lease:${conversationId}`;
-  const recordKey = (conversationId: string): string =>
-    `${ns}turn:${conversationId}`;
-  const stopKey = (conversationId: string, turn: string): string =>
-    `${ns}stop:${conversationId}:${turn}`;
-  const channelKey = (conversationId: string, turn: string): string =>
-    `${ns}reply:${conversationId}:${turn}`;
+  const keys = sharedKeys(id);
+  const leaseKey = keys.lease;
+  const recordKey = keys.turn;
+  const stopKey = keys.stop;
+  const channelKey = keys.reply;
 
-  /** Every reply this server writes or follows, by conversation. */
+  /**
+   * Every reply this server writes or follows, by conversation. Unused with
+   * `followLocally: false`: no request reads another's entry there.
+   */
   const live = new Map<string, LiveTurn>();
+  /** The turn of each entry in `live` that this server writes (not follows). */
+  const writtenHere = new WeakMap<LiveTurn, string>();
 
   function startTurn(
     session: Session,
     conversation: Conversation,
     request: Request,
     held: { lease: Lease; turn: string },
+    context: HostContext | undefined,
   ): LiveTurn {
     const html = createBroadcast<string>();
     const stop = new AbortController();
@@ -1100,7 +1175,8 @@ export function createChat(options: ChatOptions): Chat {
         looking = false;
       }
     }, WATCH_MS);
-    watch.unref();
+    // Some hosts (workerd) hand back a plain number, which has nothing to unref.
+    (watch as { unref?: () => void }).unref?.();
     const write = async (): Promise<void> => {
       // What is stored if the turn cannot even start (a model that cannot be
       // made, a catalog that does not load): the reply being carried on, or a
@@ -1122,6 +1198,7 @@ export function createChat(options: ChatOptions): Chat {
           messages,
           tools: toolsFor(session, conversation.id),
           readFile: readFileFor(session),
+          ...(maxRounds === undefined ? {} : { maxRounds }),
           signal: AbortSignal.any([
             stop.signal,
             AbortSignal.timeout(turnLimitMs),
@@ -1197,7 +1274,14 @@ export function createChat(options: ChatOptions): Chat {
           await tidy("the claim was not released", () => held.lease.release());
         }),
     };
-    live.set(conversation.id, entry);
+    if (followLocally) {
+      live.set(conversation.id, entry);
+      writtenHere.set(entry, held.turn);
+    }
+    // The host keeps this request's work going until the reply is stored,
+    // after the reader has gone. Called as a method: Cloudflare's
+    // `ExecutionContext.waitUntil` needs its `this`.
+    if (typeof context?.waitUntil === "function") context.waitUntil(entry.over);
     return entry;
   }
 
@@ -1229,18 +1313,22 @@ export function createChat(options: ChatOptions): Chat {
         [Symbol.asyncIterator]();
       let next = events.next();
       let gone = 0;
+      // Each wait for the next event races a timer of this request's own,
+      // cleared when the event comes. Without local following it is a short
+      // keepalive, and the silence it measures adds up to FOLLOW_IDLE_MS.
+      const tick = followLocally ? FOLLOW_IDLE_MS : KEEPALIVE_MS;
+      let silent = 0;
       for (;;) {
-        const got = await within(next, FOLLOW_IDLE_MS);
+        const got = await within(next, tick);
         if (got === undefined) {
+          silent += tick;
+          if (silent < FOLLOW_IDLE_MS) continue;
+          silent = 0;
           // Silence: is the writer still there? Its record, renewed with its
           // claim, says. One missed look is not enough: it may be mid-cleanup.
           let there = true;
           try {
-            const raw = await shared.get(recordKey(conversation.id));
-            // A record of a later reply is not this writer being there.
-            there =
-              raw !== undefined &&
-              (JSON.parse(raw) as TurnRecord).turn === record.turn;
+            there = await writerThere(conversation.id, record.turn);
           } catch {
             // Not knowing is not a reason to give up.
           }
@@ -1249,6 +1337,7 @@ export function createChat(options: ChatOptions): Chat {
           html.push(failedNotice(WRITER_GONE));
           return;
         }
+        silent = 0;
         gone = 0;
         if (got.done) {
           html.push(failedNotice(WRITER_GONE));
@@ -1279,16 +1368,57 @@ export function createChat(options: ChatOptions): Chat {
           html.end();
         }),
     };
-    live.set(conversation.id, entry);
+    if (followLocally) live.set(conversation.id, entry);
     return entry;
+  }
+
+  /** Whether the turn record still names `turn`: a record of a later reply is not this writer being there. Throws when the store does not answer. */
+  async function writerThere(
+    conversationId: string,
+    turn: string,
+  ): Promise<boolean> {
+    const raw = await shared.get(recordKey(conversationId));
+    return raw !== undefined && (JSON.parse(raw) as TurnRecord).turn === turn;
+  }
+
+  /**
+   * The entry this server holds for the conversation, unless it is a reply
+   * this server was writing whose writer is gone: its record ran out without
+   * the entry ending (on a host that cancels a request, its timers and
+   * promises can stop mid-reply). Such an entry is ended for whoever reads
+   * it and dropped, so it does not hang later readers.
+   */
+  async function localEntry(
+    conversationId: string,
+  ): Promise<LiveTurn | undefined> {
+    const here = live.get(conversationId);
+    const turn = here && writtenHere.get(here);
+    if (!here || turn === undefined || here.html.ended) return here;
+    try {
+      if (await writerThere(conversationId, turn)) return here;
+    } catch {
+      // Not knowing is not a reason to give up on it.
+      return here;
+    }
+    // A writer that finished takes its entry out before its record, so one
+    // still here with no record of its turn never finished.
+    if (live.get(conversationId) === here && !here.html.ended) {
+      live.delete(conversationId);
+      here.html.push(failedNotice(WRITER_GONE));
+      here.html.end();
+      return undefined;
+    }
+    return live.get(conversationId);
   }
 
   /** The reply being written for a conversation, by this server or another, or undefined. */
   async function following(
     conversation: Conversation,
   ): Promise<LiveTurn | undefined> {
-    const here = live.get(conversation.id);
-    if (here) return here;
+    if (followLocally) {
+      const here = await localEntry(conversation.id);
+      if (here) return here;
+    }
     let record: TurnRecord;
     try {
       const raw = await shared.get(recordKey(conversation.id));
@@ -1299,7 +1429,10 @@ export function createChat(options: ChatOptions): Chat {
       return undefined;
     }
     // Another page may have joined while this one waited.
-    return live.get(conversation.id) ?? follow(conversation, record);
+    return (
+      (followLocally ? live.get(conversation.id) : undefined) ??
+      follow(conversation, record)
+    );
   }
 
   /** Claim the conversation and start its reply, or join the reply whoever holds it is writing. */
@@ -1307,6 +1440,7 @@ export function createChat(options: ChatOptions): Chat {
     session: Session,
     conversation: Conversation,
     request: Request,
+    context: HostContext | undefined,
   ): Promise<LiveTurn | undefined> {
     let lease: Lease | null = null;
     try {
@@ -1335,7 +1469,7 @@ export function createChat(options: ChatOptions): Chat {
         JSON.stringify(record),
         LEASE_MS,
       );
-      return startTurn(session, fresh, request, { lease, turn });
+      return startTurn(session, fresh, request, { lease, turn }, context);
     } catch (error) {
       onError(error, "no reply could be started");
       await lease?.release().catch(() => {});
@@ -1343,16 +1477,23 @@ export function createChat(options: ChatOptions): Chat {
     }
   }
 
-  /** Two pages of one server asking at once start one reply. */
+  /**
+   * Two pages of one server asking at once start one reply. Without local
+   * following, each request makes its own claim, and the lease decides.
+   */
   const starting = new Map<string, Promise<LiveTurn | undefined>>();
   function startOnce(
     session: Session,
     conversation: Conversation,
     request: Request,
+    context: HostContext | undefined,
   ): Promise<LiveTurn | undefined> {
+    if (!followLocally) {
+      return claimTurn(session, conversation, request, context);
+    }
     let pending = starting.get(conversation.id);
     if (!pending) {
-      pending = claimTurn(session, conversation, request).finally(() =>
+      pending = claimTurn(session, conversation, request, context).finally(() =>
         starting.delete(conversation.id),
       );
       starting.set(conversation.id, pending);
@@ -1360,9 +1501,13 @@ export function createChat(options: ChatOptions): Chat {
     return pending;
   }
 
+  /** One answer per request: keyed by the request itself, never shared between two. */
   const states = new WeakMap<Request, Promise<ThreadState>>();
 
-  function thread(request: Request): Promise<ThreadState> {
+  function thread(
+    request: Request,
+    context?: HostContext,
+  ): Promise<ThreadState> {
     let state = states.get(request);
     if (!state) {
       state = (async () => {
@@ -1375,7 +1520,7 @@ export function createChat(options: ChatOptions): Chat {
           conversation = (await load(session)) ?? conversation;
           turn = await following(conversation);
           if (!turn && turnPending(conversation.messages)) {
-            turn = await startOnce(session, conversation, request);
+            turn = await startOnce(session, conversation, request, context);
           }
         }
         return {
@@ -1390,7 +1535,9 @@ export function createChat(options: ChatOptions): Chat {
   }
 
   async function stopTurn(conversationId: string): Promise<boolean> {
-    const entry = live.get(conversationId);
+    // Without local following, Stop always goes through the shared store,
+    // and the writer's own watch picks it up.
+    const entry = followLocally ? await localEntry(conversationId) : undefined;
     if (entry) {
       entry.stop.abort();
       await entry.over;
@@ -1425,8 +1572,7 @@ export function createChat(options: ChatOptions): Chat {
    * provider leaves the voice handlers answering 404, like no `voice` at all.
    */
   const pickedVoice = typeof options.voice === "function";
-  const voiceOpenKey = (conversationId: string): string =>
-    `${ns}voice-open:${conversationId}`;
+  const voiceOpenKey = keys.voiceOpen;
   const voiceOpen = async (conversationId: string): Promise<boolean> => {
     if (options.voice == null) return false;
     if (!pickedVoice) return true;
@@ -1441,11 +1587,9 @@ export function createChat(options: ChatOptions): Chat {
       status: 404,
       headers: NO_STORE,
     });
-  const voiceKey = (conversationId: string): string =>
-    `${ns}voice:${conversationId}`;
+  const voiceKey = keys.voice;
   /** `call` is a `voiceCallId`, so it is short and safe in a key. */
-  const viewKey = (conversationId: string, call: string): string =>
-    `${ns}view:${conversationId}:${call}`;
+  const viewKey = keys.view;
   const readVoice = async (conversationId: string): Promise<VoiceTurn> => {
     const raw = await shared.get(voiceKey(conversationId));
     return raw === undefined ? newVoiceTurn() : (JSON.parse(raw) as VoiceTurn);
@@ -1460,7 +1604,7 @@ export function createChat(options: ChatOptions): Chat {
   ): Promise<T> {
     let lock: Lease | null = null;
     for (let tries = 0; !lock; tries++) {
-      lock = await shared.claim(`${ns}voice-lock:${conversationId}`, 5000);
+      lock = await shared.claim(keys.voiceLock(conversationId), 5000);
       if (!lock) {
         if (tries >= 200) throw new Error("The voice call's state is busy.");
         await sleep(25);
