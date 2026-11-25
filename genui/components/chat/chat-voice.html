@@ -30,23 +30,47 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
   .caption:empty {
     display: none;
   }
+  /* Closed, it is one quiet line: these are aids, not the way to talk to the model. */
+  .aids {
+    justify-self: end;
+    font-size: 0.8125rem;
+  }
+  .aids[open] {
+    justify-self: stretch;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .summary {
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
   .controls {
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
     align-items: center;
-    justify-content: end;
-    font-size: 0.8125rem;
+    margin-block-start: 0.5rem;
   }
   .toggle,
   .speed {
-    padding: 0.25rem 0.7rem;
+    padding: 0.3rem 0.75rem;
     border: 1px solid var(--border);
     border-radius: 999px;
     background: var(--bg);
     color: inherit;
     font: inherit;
     cursor: pointer;
+  }
+  .toggle:focus-visible,
+  .speed:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   .toggle[aria-pressed="true"] {
     border-color: var(--accent);
@@ -57,6 +81,11 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     display: flex;
     gap: 0.35rem;
     align-items: center;
+    margin-inline-start: auto;
+    color: var(--muted);
+  }
+  .hint {
+    margin: 0.5rem 0 0;
     color: var(--muted);
   }
 </style>
@@ -69,46 +98,55 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     aria-hidden="true"
     data-testid="chat-voice-caption"
   ></p>
-  <div class="controls" role="group" aria-label="Voice">
-    <button
-      id="captions"
-      class="toggle"
-      type="button"
-      aria-pressed="false"
-      data-testid="chat-voice-captions"
-    >
-      Captions
-    </button>
-    <button
-      id="aloud"
-      class="toggle"
-      type="button"
-      aria-pressed="false"
-      hidden
-      data-testid="chat-voice-aloud"
-    >
-      Read aloud
-    </button>
-    <button
-      id="talk"
-      class="toggle"
-      type="button"
-      aria-pressed="false"
-      hidden
-      data-testid="chat-voice-talk"
-    >
-      Talk
-    </button>
-    <label class="pace">
-      Speed
-      <select id="speed" class="speed" data-testid="chat-voice-speed">
-        <option value="0.75">Slow</option>
-        <option value="1" selected>Normal</option>
-        <option value="1.5">Fast</option>
-        <option value="2">Faster</option>
-      </select>
-    </label>
-  </div>
+  <details id="aids" class="aids" data-testid="chat-voice-aids">
+    <summary id="summary" class="summary" data-testid="chat-voice-summary">
+      Reading aids
+    </summary>
+    <div class="controls" role="group" aria-label="Reading aids">
+      <button
+        id="captions"
+        class="toggle"
+        type="button"
+        aria-pressed="false"
+        data-testid="chat-voice-captions"
+      >
+        Captions
+      </button>
+      <button
+        id="aloud"
+        class="toggle"
+        type="button"
+        aria-pressed="false"
+        hidden
+        data-testid="chat-voice-aloud"
+      >
+        Read aloud
+      </button>
+      <button
+        id="talk"
+        class="toggle"
+        type="button"
+        aria-pressed="false"
+        hidden
+        data-testid="chat-voice-talk"
+      >
+        Dictate
+      </button>
+      <label class="pace">
+        Speed
+        <select id="speed" class="speed" data-testid="chat-voice-speed">
+          <option value="0.75">Slow</option>
+          <option value="1" selected>Normal</option>
+          <option value="1.5">Fast</option>
+          <option value="2">Faster</option>
+        </select>
+      </label>
+    </div>
+    <p class="hint">
+      Read aloud and Dictate use your browser's own voice and speech
+      recognition, not a speech model.
+    </p>
+  </details>
   <script type="text/typescript">
     interface Recognizer {
       lang: string;
@@ -129,6 +167,8 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     const aloudButton = document.getElementById("aloud")!;
     const talkButton = document.getElementById("talk")!;
     const speed = document.getElementById("speed") as HTMLSelectElement;
+    const aids = document.getElementById("aids") as HTMLDetailsElement;
+    const summary = document.getElementById("summary")!;
 
     const synth: SpeechSynthesis | undefined = window.speechSynthesis;
     const scope = window as unknown as Record<string, new () => Recognizer>;
@@ -382,6 +422,15 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
       captionsButton.setAttribute("aria-pressed", String(settings.captions));
       aloudButton.setAttribute("aria-pressed", String(settings.aloud));
       talkButton.setAttribute("aria-pressed", String(settings.talk));
+      // Closed, the line still says what is on.
+      const on = [
+        settings.captions && "captions",
+        settings.aloud && "read aloud",
+        settings.talk && "dictate",
+      ].filter(Boolean);
+      summary.textContent = on.length
+        ? `Reading aids: ${on.join(", ")}`
+        : "Reading aids";
       speed.value = settings.speed;
     }
     captionsButton.addEventListener("click", () => {
@@ -422,6 +471,13 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     talkButton.hidden = !Recognition;
     reflect();
     root.hidden = false;
+    // A voice call has its own voice and captions: these step aside for it.
+    new MutationObserver(() => {
+      aids.hidden = Boolean(document.documentElement.dataset.genuiCall);
+    }).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-genui-call"],
+    });
 
     // The reply grows as it streams: look again whenever the page changes.
     let scheduled = false;

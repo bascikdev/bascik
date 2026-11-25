@@ -66,12 +66,38 @@ The conversation list. Its server script reads the stored conversations on every
     font: inherit;
     font-size: 0.875rem;
   }
+  /* Drawn here, so it matches the theme in every browser: the system's own
+     arrow and focus ring do not. */
   .model-select {
     min-inline-size: 0;
+    padding-inline-end: 1.9rem;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23807c74' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 0.75rem;
+    text-overflow: ellipsis;
+    cursor: pointer;
   }
   .model-use {
     font-weight: 600;
     cursor: pointer;
+  }
+  .model-select:focus-visible,
+  .model-use:focus-visible {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .model-use:hover {
+    border-color: var(--accent);
+  }
+  .model-note {
+    grid-column: 1 / -1;
+    margin: 0.2rem 0 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+    line-height: 1.4;
   }
   .list {
     display: grid;
@@ -187,6 +213,12 @@ The conversation list. Its server script reads the stored conversations on every
           <button class="model-use" data-testid="chat-sidebar-model-use">
             Use
           </button>
+          ${models.length === 1
+            ? html`<p class="model-note" data-testid="chat-sidebar-model-note">
+                No model is set up, so typed replies come from a fixed script.
+                Set ANTHROPIC_API_KEY, or run Ollama or LM Studio, and restart.
+              </p>`
+            : ""}
         </form>`;
     };
   </script>

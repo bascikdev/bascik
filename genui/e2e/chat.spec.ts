@@ -718,6 +718,7 @@ test.describe("voice", () => {
     test.skip(!withScripts(), "voice is a script");
     await page.addInitScript(fakeSpeech);
     await page.reload();
+    await page.getByTestId("chat-voice-summary").click();
     const aloud = page.getByTestId("chat-voice-aloud");
     await aloud.click();
     await expect(aloud).toHaveAttribute("aria-pressed", "true");
@@ -737,6 +738,10 @@ test.describe("voice", () => {
 
     // The choice is the reader's, and is kept.
     await page.reload();
+    // Closed again after the reload, the line still says what is on.
+    await expect(page.getByTestId("chat-voice-summary")).toHaveText(
+      "Reading aids: read aloud",
+    );
     await expect(page.getByTestId("chat-voice-aloud")).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -753,6 +758,7 @@ test.describe("voice", () => {
       `${fakeSpeech}; Object.defineProperty(window, "speechSynthesis", { value: undefined });`,
     );
     await page.reload();
+    await page.getByTestId("chat-voice-summary").click();
     // No speech engine: there is nothing to read aloud with.
     await expect(page.getByTestId("chat-voice-aloud")).toBeHidden();
     await page.getByTestId("chat-voice-speed").selectOption("2");
@@ -781,6 +787,7 @@ test.describe("voice", () => {
     test.skip(!withScripts(), "voice is a script");
     await page.addInitScript(fakeSpeech);
     await page.reload();
+    await page.getByTestId("chat-voice-summary").click();
     await page.getByTestId("chat-voice-talk").click();
     // What was heard is sent like a typed message.
     await expect(page.getByTestId("turn-user")).toHaveText("Recommend a book");

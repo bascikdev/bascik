@@ -31,28 +31,83 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
   }
   .bar {
     display: flex;
-    gap: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.6rem;
     align-items: center;
     justify-content: end;
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
   }
   .status {
     margin: 0;
     color: var(--muted);
   }
+  /* Which speech model is on the line, so it is not taken for the browser's voice. */
+  .provider {
+    margin: 0;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .provider:empty {
+    display: none;
+  }
   .toggle {
-    padding: 0.25rem 0.7rem;
-    border: 1px solid var(--border);
+    display: inline-flex;
+    gap: 0.45rem;
+    align-items: center;
+    padding: 0.4rem 0.9rem 0.4rem 0.7rem;
+    border: 1px solid var(--accent);
     border-radius: 999px;
     background: var(--bg);
-    color: inherit;
+    color: var(--accent);
     font: inherit;
+    font-weight: 600;
     cursor: pointer;
   }
+  .toggle:hover {
+    background: var(--surface);
+  }
+  .toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
   .toggle[aria-pressed="true"] {
-    border-color: var(--accent);
     background: var(--accent);
     color: var(--on-accent);
+  }
+  .icon {
+    inline-size: 1rem;
+    block-size: 1rem;
+    flex: none;
+  }
+  /* While a call is on, the microphone gives way to a light that it is live. */
+  .live {
+    display: none;
+    inline-size: 0.55rem;
+    block-size: 0.55rem;
+    margin-inline: 0.2rem;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .toggle[aria-pressed="true"] .icon {
+    display: none;
+  }
+  .toggle[aria-pressed="true"] .live {
+    display: block;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .live {
+      animation: none;
+    }
   }
 </style>
 <div id="call" class="call" hidden data-testid="voice-call">
@@ -70,6 +125,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       role="status"
       data-testid="voice-call-status"
     ></p>
+    <p id="provider" class="provider" data-testid="voice-call-provider"></p>
     <button
       id="toggle"
       class="toggle"
@@ -77,7 +133,20 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       aria-pressed="false"
       data-testid="voice-call-toggle"
     >
-      Voice call
+      <svg
+        class="icon"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <rect x="5.5" y="1.5" width="5" height="8" rx="2.5" />
+        <path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" />
+      </svg>
+      <span class="live" aria-hidden="true"></span>
+      <span id="label">Voice call</span>
     </button>
   </div>
   <input id="app" type="hidden" data-bascik-attr-value="app" />
@@ -86,6 +155,19 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     const caption = document.getElementById("caption")!;
     const status = document.getElementById("status")!;
     const toggle = document.getElementById("toggle")!;
+    const label = document.getElementById("label")!;
+    const provider = document.getElementById("provider")!;
+    /** The speech models a ticket can name, as the reader is told. */
+    const PROVIDERS: Record<string, string> = {
+      "azure-voice-live": "Azure Voice Live",
+      "gemini-live": "Gemini Live",
+    };
+    /** The button says what pressing it does. */
+    const pressed = (on: boolean): void => {
+      toggle.setAttribute("aria-pressed", String(on));
+      label.textContent = on ? "End call" : "Voice call";
+      if (!on) provider.textContent = "";
+    };
     const app = (document.getElementById("app") as HTMLInputElement).value;
 
     /** Everything one call holds, so ending it is letting go of this. */
@@ -601,19 +683,19 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       void ending.playback.close();
       caption.replaceChildren();
       status.textContent = why;
-      toggle.setAttribute("aria-pressed", "false");
+      pressed(false);
       delete document.documentElement.dataset.genuiCall;
     }
 
     async function start(): Promise<void> {
-      toggle.setAttribute("aria-pressed", "true");
+      pressed(true);
       status.textContent = "Connecting…";
       // Made in the click, so the browser lets it play.
       const playback = new AudioContext({ sampleRate: 24_000 });
       const response = await post("/api/voice-session", {});
       if (!response.ok) {
         void playback.close();
-        toggle.setAttribute("aria-pressed", "false");
+        pressed(false);
         status.textContent =
           response.status === 404
             ? "Voice is not set up on this server."
@@ -638,13 +720,15 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
           : geminiLive(current, ticket.setup);
       newResponse();
       call = current;
+      provider.textContent = PROVIDERS[ticket.protocol] ?? "";
       // Other voices on the page stay quiet while a call is on.
       document.documentElement.dataset.genuiCall = "on";
       if (current.socket.readyState === WebSocket.OPEN) current.wire.begin();
       else current.socket.onopen = () => current.wire.begin();
       current.socket.onmessage = (event) => void onMessage(current, event);
-      current.socket.onclose = () => {
-        if (current === call) hangUp("The call ended.");
+      current.socket.onclose = (event) => {
+        // A relay or a provider can say why it hung up.
+        if (current === call) hangUp(event.reason.slice(0, 160) || "The call ended.");
       };
       requestAnimationFrame(captions);
     }

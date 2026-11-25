@@ -248,6 +248,20 @@ export function azureVoiceLiveVoice(
       upstream.close();
       return;
     }
+    let reached = false;
+    upstream.onopen = () => {
+      reached = true;
+    };
+    /** Why the provider's side ended, for the reader and for the server's log. */
+    const lost = (said: string): void => {
+      const reason =
+        said ||
+        (reached
+          ? "The voice provider hung up."
+          : "The voice provider refused the connection. Its key or token may have expired.");
+      if (browser.open) console.error(`[azure-voice-live] ${reason}`);
+      end(reason);
+    };
     upstream.onmessage = (event: MessageEvent) => {
       const raw = String(event.data);
       // Only the kind of message is read here; the rest passes as it came.
@@ -265,9 +279,8 @@ export function azureVoiceLiveVoice(
         browser.send(raw);
       }
     };
-    upstream.onclose = (event: CloseEvent) =>
-      end(event.reason.slice(0, 100) || "The voice provider hung up.");
-    upstream.onerror = () => end("The voice provider could not be reached.");
+    upstream.onclose = (event: CloseEvent) => lost(event.reason.slice(0, 100));
+    upstream.onerror = () => lost("");
   }
 
   const listen = (): Promise<Server> =>

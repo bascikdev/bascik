@@ -10,15 +10,15 @@ Two optional components give a chat a voice. `chat-voice` uses the browser's own
 <chat-voice /> <chat-composer data-bascik-prop-app="books" />
 ```
 
-It adds a caption line and three toggles:
+It adds a caption line and a Reading aids disclosure with three toggles. Closed, the disclosure is one line that names what is on:
 
 | Control    | What it does                                                                                  |
 | :--------- | :-------------------------------------------------------------------------------------------- |
 | Captions   | Shows the reply a few words at a time, the current word in bold, at a reading pace. No sound. |
 | Read aloud | Speaks the reply with the browser's own voice. The captions follow the voice.                 |
-| Talk       | A conversation: listens, sends what it heard, speaks the reply, and listens again.            |
+| Dictate    | A conversation: listens, sends what it heard, speaks the reply, and listens again.            |
 
-A Speed menu sets the pace of both the voice and the captions. The reader's choices are kept in the browser for their next visit, except Talk: the microphone is only ever turned on by a press in the current visit.
+A Speed menu sets the pace of both the voice and the captions. The reader's choices are kept in the browser for their next visit, except Dictate: the microphone is only ever turned on by a press in the current visit.
 
 ## Captions are a reading aid
 
@@ -53,7 +53,7 @@ Voice uses the Web Speech API, so it has no dependency and costs nothing to run:
 | :--------- | :------------------ | :----------------------- |
 | Captions   | None                | Every browser            |
 | Read aloud | `speechSynthesis`   | Every current browser    |
-| Talk       | `SpeechRecognition` | Chrome, Edge, and Safari |
+| Dictate    | `SpeechRecognition` | Chrome, Edge, and Safari |
 
 A control whose API is missing is not shown.
 
@@ -68,7 +68,7 @@ The browser's voices are free and instant, and they sound like a browser. `voice
 <chat-composer data-bascik-prop-app="books" />
 ```
 
-Pressing Voice call connects, turns on the microphone, and the reader talks. The model's voice plays, a caption line follows it, and what each side says appears in the thread. Typing in the composer during a call says the message to the model, so a call also works with no microphone.
+Pressing Voice call connects, turns on the microphone, and the reader talks. The model's voice plays, a caption line follows it, and what each side says appears in the thread. Typing in the composer during a call says the message to the model, so a call also works with no microphone. While a call is on, the button reads End call, a label names the provider on the line, and the Reading aids step aside: a call has its own voice and captions. When a call ends because the relay or the provider hung up, the reason is shown beside the button.
 
 ### What goes direct and what goes through your server
 
@@ -142,6 +142,8 @@ Azure opens a Voice Live connection with the resource's key or a Microsoft Entra
 - It passes on only what a call needs: microphone audio, a typed message, a tool's result, and asking for or stopping a reply. A new session setup from the browser is dropped, and a typed message is always the reader's.
 
 The cost is that the audio passes through your server, and that the relay needs Node: it listens on a port (`relay.port`, any free one by default), so it does not run on an edge runtime. Behind a proxy, set `relay.publicUrl` to the `wss://` address the browser reaches it at.
+
+When the relay cannot connect to Azure, the call ends with "The voice provider refused the connection. Its key or token may have expired.", and the same line goes to the server's log.
 
 `token` takes a Microsoft Entra token for `https://ai.azure.com/.default`, or a function that returns a fresh one, so a server can run with a managed identity and no key at all. The model has to be one Voice Live offers in the resource's region. No model deployment is needed.
 

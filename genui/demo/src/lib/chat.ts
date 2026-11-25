@@ -331,16 +331,17 @@ function voiceProviders(): Promise<VoiceProvider[]> {
   return (voiceHolder.genuiVoices ??= (async () => {
     const providers: VoiceProvider[] = [];
     const env = process.env;
-    if (
-      (env.AZURE_VOICE_LIVE_ENDPOINT || env.AZURE_VOICE_LIVE_WS) &&
-      (env.AZURE_VOICE_LIVE_API_KEY || env.AZURE_VOICE_LIVE_TOKEN)
-    ) {
+    if (env.AZURE_VOICE_LIVE_ENDPOINT || env.AZURE_VOICE_LIVE_WS) {
       const { azureVoiceLiveVoice } =
         await import("@bascik/genui/azure-voice-live");
       providers.push(
         azureVoiceLiveVoice({
           model: env.AZURE_VOICE_LIVE_MODEL,
           voice: env.AZURE_VOICE_LIVE_VOICE,
+          // With no key and no token given, a developer's own Azure sign-in.
+          ...(env.AZURE_VOICE_LIVE_API_KEY || env.AZURE_VOICE_LIVE_TOKEN
+            ? {}
+            : { token: azureCliToken }),
           relay: { port: Number(env.AZURE_VOICE_LIVE_RELAY_PORT ?? 0) },
           // A test points this at a stand-in for the provider.
           wsBase: env.AZURE_VOICE_LIVE_WS,
@@ -360,6 +361,38 @@ function voiceProviders(): Promise<VoiceProvider[]> {
     }
     return providers;
   })());
+}
+
+/**
+ * A Microsoft Entra token from the Azure CLI (`az login`), kept until five
+ * minutes before it runs out. For a developer's machine: a deployed server
+ * uses a managed identity or a key.
+ */
+let cliToken: { value: string; until: number } | null = null;
+async function azureCliToken(): Promise<string> {
+  if (cliToken && cliToken.until > Date.now()) return cliToken.value;
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { stdout } = await promisify(execFile)(
+    "az",
+    [
+      "account",
+      "get-access-token",
+      "--scope",
+      "https://ai.azure.com/.default",
+      "--query",
+      "{value: accessToken, expires: expires_on}",
+      "-o",
+      "json",
+    ],
+    { timeout: 20_000 },
+  );
+  const { value, expires } = JSON.parse(stdout) as {
+    value: string;
+    expires: number;
+  };
+  cliToken = { value, until: expires * 1000 - 300_000 };
+  return value;
 }
 
 /** What a spoken conversation is told: the app's instructions, then how to speak and show. */

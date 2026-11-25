@@ -152,7 +152,7 @@ The package is shaped the way Bascik shares anything, and has two halves:
 
 - **Captions.** A line above the composer shows the reply a few words at a time, with the current word in bold. With the sound off it keeps a reading pace, so it is a reading aid on its own.
 - **Read aloud.** The browser's `speechSynthesis` speaks each sentence as soon as it is complete, and its word boundary events move the caption. A voice that sends none falls back to the reading pace.
-- **Talk.** `SpeechRecognition` hears the next message, the composer's own form sends it, the reply is spoken, and it listens again.
+- **Dictate.** `SpeechRecognition` hears the next message, the composer's own form sends it, the reply is spoken, and it listens again.
 
 It needed nothing from the server: the reply is already text in the page. A component is skipped unless an element in it has `data-say`, which `book-card` binds to its title, so three cards are spoken as three titles and not as ratings and button labels.
 
@@ -195,6 +195,8 @@ What it did not test:
 - **Real word times.** With an Azure voice the service sends `response.audio_timestamp.delta` for every word. Captions use them when they are there and fall back to the audio clock when they are not. Three details: the times count from the start of one response's audio and a turn can be several responses; the times arrive before the audio they describe; and a full stop arrives as a word of its own. An OpenAI voice on Azure sends no times.
 - **Wait for `response.done` before asking for more.** Sending a tool's result and `response.create` at once is refused ("Conversation already has an active response"). The result is sent when it is ready, and the next reply is asked for after the current one is done.
 - **Models are per region.** West US 3 refused `gpt-realtime` and offered only text models with Azure speech around them. East US 2 offered `gpt-realtime`, `gpt-realtime-mini`, `gpt-realtime-1.5`, and `gpt-realtime-2`. No model deployment was needed.
+
+The demo needs no key and no token on a developer's machine: with only `AZURE_VOICE_LIVE_ENDPOINT` set, it asks the Azure CLI (`az login`) for a Microsoft Entra token and renews it before it runs out. The first try by hand used a token exported into the shell, which stopped working after an hour with nothing on the page to say why.
 
 Not tested with Azure: a real microphone, interruption, the service's echo cancellation and noise suppression (they are turned on, and nothing was said into them), a session that reaches its time limit on the real service, and a key in place of the token.
 
