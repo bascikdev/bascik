@@ -25,8 +25,9 @@ const vars: Record<string, string> = {
 if (process.env.DEMO_MODEL_DELAY_MS) {
   vars.DEMO_MODEL_DELAY_MS = process.env.DEMO_MODEL_DELAY_MS;
 }
-if (process.env.GENUI_IP_SENDS)
-  vars.GENUI_IP_SENDS = process.env.GENUI_IP_SENDS;
+for (const name of ["GENUI_IP_SENDS", "GENUI_IP_READERS"]) {
+  if (process.env[name]) vars[name] = process.env[name];
+}
 
 const args = [
   "wrangler",

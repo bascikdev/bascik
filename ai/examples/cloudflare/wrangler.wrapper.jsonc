@@ -46,10 +46,21 @@
       "new_sqlite_classes": ["ReaderData", "ConversationLive", "Budget"],
     },
   ],
+  // Requests per address (an IPv6 address by its /64) per minute, to
+  // anything that reaches worker.ts. namespace_id is any number unique to
+  // the account's rate limiters.
+  "ratelimits": [
+    {
+      "name": "REQUESTS",
+      "namespace_id": "1001",
+      "simple": { "limit": 120, "period": 60 },
+    },
+  ],
   "vars": {
     "GENUI_DAILY_READERS": "2000",
     "GENUI_IP_SENDS": "30",
     "GENUI_IP_UPLOADS": "10",
+    "GENUI_IP_READERS": "5",
     "DEMO_MODEL_DELAY_MS": "20",
   },
   // Secrets, set with `wrangler secret put` (see README.md): IP_SALT

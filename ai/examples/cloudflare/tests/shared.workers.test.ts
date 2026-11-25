@@ -254,6 +254,24 @@ describe("ConversationLive on Workers", () => {
     await lease!.release();
   });
 
+  it("after a real restart says gap to a reader who joins after the writer published again", async () => {
+    const live = shared();
+    const key = keys.reply(conversation, "restarted-late");
+    await live.publish(key, { type: "data", data: "before" });
+    await sleep(300);
+    await evictDurableObject(objectFor(key));
+    // The writer goes on first: its publish makes the channel anew.
+    await live.publish(key, { type: "data", data: "after" });
+    await sleep(300);
+    const reading = drain(live, key);
+    await live.publish(key, { type: "end" });
+    expect(await reading).toEqual([
+      { type: "gap" },
+      { type: "data", data: "after" },
+      { type: "end" },
+    ]);
+  });
+
   it("the alarm drops an expired lease and keeps what is still live", async () => {
     const live = liveShared(bindings.LIVE, { route: () => "partly-expired" });
     await live.claim("short", 100);

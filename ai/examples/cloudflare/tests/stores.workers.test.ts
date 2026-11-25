@@ -143,6 +143,35 @@ describe("ReaderData", () => {
     expect(listed.at(-1)!.id).toBe("m3");
   });
 
+  it("a Budget call that fails once does not refuse the reader's later writes", async () => {
+    const object = objectOf("budget-fails:");
+    await runInDurableObject(object, (instance) => {
+      let calls = 0;
+      const real = bindings.BUDGET;
+      // The day's Budget object throws on its first charge, then answers.
+      (instance as unknown as { env: Env }).env = {
+        ...bindings,
+        BUDGET: {
+          idFromName: (name: string) => real.idFromName(name),
+          get: (id: DurableObjectId) => ({
+            charge: async (...args: [string, number, number]) => {
+              if (++calls === 1) throw new Error("Budget is overloaded");
+              return real.get(id).charge(...args);
+            },
+          }),
+        } as unknown as Env["BUDGET"],
+      };
+    });
+    const memory = { id: "m1", text: "tea", created: 1 };
+    const failed = await object.addMemory(memory).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(String(failed)).toMatch(/overloaded/);
+    await object.addMemory(memory);
+    expect((await object.listMemories()).map((m) => m.id)).toEqual(["m1"]);
+  });
+
   it("is typed as the class the binding names", () => {
     const stub: DurableObjectStub<ReaderData> = objectOf("types:");
     expect(typeof stub.load).toBe("function");

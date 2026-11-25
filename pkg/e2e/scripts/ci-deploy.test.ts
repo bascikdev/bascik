@@ -1396,6 +1396,17 @@ describe("CI stages and the deploy stage", () => {
       "run: yarn ai:cf:unit",
       "run: yarn ai:cf:e2e",
     ]);
+    // Vitest and wrangler strip types without checking them: the stage 1
+    // typecheck job's `typecheck:all` checks the example's.
+    const rootScripts = JSON.parse(
+      readFileSync(join(repoDir, "package.json"), "utf8"),
+    ).scripts as Record<string, string>;
+    expect(rootScripts["typecheck:all"].split(" && ")).toContain(
+      "yarn ai:cf:typecheck",
+    );
+    expect(jobs.get("typecheck")!.body.map((line) => line.trim())).toContain(
+      "run: yarn typecheck:all",
+    );
     // wrangler dev only: never an upload, a preview or a deploy.
     expect(job!.body.join("\n")).not.toMatch(
       /wrangler (?:deploy|versions|preview)|CLOUDFLARE_API_TOKEN/,

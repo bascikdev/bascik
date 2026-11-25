@@ -20,6 +20,14 @@ export interface Env {
   GENUI_IP_SENDS?: string;
   /** The most messages with files one address may send in ten minutes. */
   GENUI_IP_UPLOADS?: string;
+  /** The most new readers (sends without a visitor cookie) one address may start in a UTC day. */
+  GENUI_IP_READERS?: string;
+  /**
+   * Requests per address per minute to anything that reaches the Worker:
+   * the Workers Rate Limiting binding, which costs no Durable Object
+   * request to check. Absent where the config declares none.
+   */
+  REQUESTS?: RateLimit;
   /** How long the scripted model waits between pieces of a reply, in ms. */
   DEMO_MODEL_DELAY_MS?: string;
   /** "1" in local development: a shared key of an unknown shape throws. */

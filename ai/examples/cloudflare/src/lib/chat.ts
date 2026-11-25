@@ -15,6 +15,7 @@ import {
   cookieSessions,
   createChat,
   type Chat,
+  type ChatSessions,
   type HostContext,
 } from "@bascik/ai/app";
 import { savedMemory } from "@bascik/ai/memory";
@@ -27,6 +28,7 @@ import { booksApp } from "../../../../demo/src/lib/books-app.ts";
 import { CATALOG_ENTRIES } from "./catalog.generated.ts";
 import { liveShared, readerStores } from "./cf-stores.ts";
 import { DEMO_FULL, numberVar, type Env, type RequestContext } from "./env.ts";
+import { refusal, type Handler } from "./limits.ts";
 
 /** The app's id: its cookie, its forms' `app` field, and its shared keys. */
 export const APP_ID = "books";
@@ -114,12 +116,18 @@ function toolView(part: ToolPart): SafeHtml | null {
   }
 }
 
-function makeChat(env: Env): Chat {
+function makeChat(env: Env): { chat: Chat; sessions: ChatSessions } {
   const app = booksApp({
     delayMs: numberVar(env.DEMO_MODEL_DELAY_MS, DELAY_MS),
   });
   const stores = readerStores(env.READER);
-  return createChat({
+  const sessions = cookieSessions(APP_ID, {
+    // The data is kept 24 hours, so the visitor cookie is too.
+    maxAgeSeconds: 86_400,
+    secure: env.GENUI_SECURE_COOKIES !== "0",
+    ...(env.SESSION_SECRET ? { secret: env.SESSION_SECRET } : {}),
+  });
+  const chat = createChat({
     id: APP_ID,
     store: stores.conversations,
     memory: stores.memories,
@@ -144,12 +152,7 @@ function makeChat(env: Env): Chat {
       fences: { [SANDBOX_LANGUAGE]: sandbox },
       view: toolView,
     },
-    sessions: cookieSessions(APP_ID, {
-      // The data is kept 24 hours, so the visitor cookie is too.
-      maxAgeSeconds: 86_400,
-      secure: env.GENUI_SECURE_COOKIES !== "0",
-      ...(env.SESSION_SECRET ? { secret: env.SESSION_SECRET } : {}),
-    }),
+    sessions,
     maxConversations: 20,
     maxConversationBytes: 256 * 1024,
     // A reply has to fit in the time the platform keeps a request's work
@@ -158,14 +161,31 @@ function makeChat(env: Env): Chat {
     maxRounds: 4,
     page: app.path,
   });
+  return { chat, sessions };
 }
 
-let made: { env: Env; chat: Chat } | undefined;
+let made: { env: Env; chat: Chat; sessions: ChatSessions } | undefined;
+
+function madeFor(env: Env): { chat: Chat; sessions: ChatSessions } {
+  if (made?.env !== env) made = { env, ...makeChat(env) };
+  return made;
+}
 
 /** The chat for this deployment's bindings: one per isolate. */
 export function chatFor(env: Env): Chat {
-  if (made?.env !== env) made = { env, chat: makeChat(env) };
-  return made.chat;
+  return madeFor(env).chat;
+}
+
+/**
+ * Whether the request carries a visitor cookie this server issued (signed
+ * with SESSION_SECRET when one is set). Without one, `identify` makes up a
+ * new random reader on every call, so two calls disagree.
+ */
+export function knownReader(env: Env, request: Request): boolean {
+  const { sessions } = madeFor(env);
+  return (
+    sessions.identify(request).reader === sessions.identify(request).reader
+  );
 }
 
 /** The bindings in a request's context. Throws off Cloudflare. */
@@ -193,13 +213,22 @@ export function chatOf(context: RequestContext | undefined): {
   return { chat: chatFor(envOf(context)), host: hostOf(context) };
 }
 
-type Handler =
-  "send" | "approve" | "answer" | "forget" | "stop" | "open" | "file";
-
-/** A route for one of the chat's handlers: `export const POST = route("send");` */
+/**
+ * A route for one of the chat's handlers: `export const POST = route("send");`.
+ * The limits in src/lib/limits.ts come first, here in the route, so they
+ * hold for every path Bascik routes to it.
+ */
 export const route =
   (handler: Handler) =>
   async (request: Request, context?: RequestContext): Promise<Response> => {
+    const env = envOf(context);
+    const refused = await refusal(
+      handler,
+      request,
+      env,
+      knownReader(env, request),
+    );
+    if (refused) return refused;
     const { chat, host } = chatOf(context);
     try {
       return await chat[handler](request, host);

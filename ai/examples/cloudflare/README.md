@@ -19,7 +19,7 @@ Left out on purpose: voice, the model picker and real models, and the demo's dat
 
 ```text
 ai/examples/cloudflare/
-  worker.ts                the Worker that deploys: guards, then the Worker Bascik generates; exports the DO classes
+  worker.ts                the Worker that deploys: a per-address request cap, then the Worker Bascik generates; exports the DO classes
   wrangler.wrapper.jsonc   the config that deploys (main = worker.ts)
   wrangler.jsonc           what `bascik --build --target cloudflare` reads for its generated config
   do/reader-data.ts        ReaderData: one SQLite object per reader (conversations, memories, files)
@@ -28,7 +28,8 @@ ai/examples/cloudflare/
   src/lib/chat.ts          createChat over those objects; followLocally: false; waitUntil from the platform
   src/lib/cf-stores.ts     ConversationStore, MemoryStore, FileStore and Shared over the objects
   src/lib/shared-keys.ts   which ConversationLive object a shared key belongs to
-  src/lib/guards.ts        411, 413, 405 and 429 for /api/*
+  src/lib/guards.ts        411, 413, 405 and 429 answers, and the address key (an IPv6 address by its /64)
+  src/lib/limits.ts        the per-address counters every chat route checks before the chat reads the request
   src/api/*.ts             the chat's routes; src/pages and src/components the page
   scripts/gen-catalog.ts   writes the catalog at build time (a Worker has no component folder to read)
 ```
@@ -59,7 +60,7 @@ yarn ai:cf:unit       # build, then Vitest: plain Node tests and the objects in 
 yarn ai:cf:e2e        # Playwright against wrangler dev on port 9879 (stop `ai:cf:dev` first), with a fresh data folder
 ```
 
-`yarn ai:cf:unit` runs the `@bascik/ai` contract suites (conversation, memory and file stores, and `Shared`) against the Durable Objects with `@cloudflare/vitest-plugin`. One `Shared` case is left out, and the test file says why. It also runs the wrapper Worker's guards against a stand-in for the generated Worker, and checks the built bundle and the configs.
+`yarn ai:cf:unit` runs the `@bascik/ai` contract suites (conversation, memory and file stores, and `Shared`) against the Durable Objects with `@cloudflare/vitest-plugin`. One `Shared` case is left out, and the test file says why. It also runs the chat's routes through the generated Worker (every spelling of a path Bascik routes to send is counted the same, and a reply a page starts is handed to `waitUntil`), the wrapper Worker's rate limit against a stand-in for the generated Worker, and checks the built bundle and the configs.
 
 CI runs `ai:cf:build`, `ai:cf:unit` and `ai:cf:e2e` in the stage 4 job `ai-cf` whenever `ai/`, `adapters/cloudflare/` or a shared build file changes. The job only uses local workerd; it deploys nothing.
 
@@ -87,26 +88,28 @@ An agent never runs these. They need a Cloudflare account and change what is liv
    The first deploy creates the three Durable Object classes (migration `v1`). The Worker is then on `bascik-ai-example.<subdomain>.workers.dev`.
 
 5. **Add a hostname**, if you want one, as `routes` in `wrangler.wrapper.jsonc` (for example `{ "pattern": "try.ai.bascik.dev", "custom_domain": true }`), then deploy again. `tests/config.node.test.ts` checks that no route is committed, so change that test in the same commit.
-6. **Add a WAF rate-limiting rule** on the zone, for `POST /api/send`, of about 20 requests a minute per IP. The Worker's own per-address count (below) is a second line, not a replacement: it costs a Durable Object request to refuse.
+6. **Add a WAF rate-limiting rule** on the zone, for `POST /api/send`, of about 20 requests a minute per IP, if the zone has one to spare. The Worker's own caps (below) are a second line: the request cap is checked by the Workers Rate Limiting binding, which is counted per Cloudflare location, and the exact counters cost a Durable Object request to refuse.
 7. **Watch it** in the dashboard: Workers Logs are on with a 10% sample (`observability`), and the Durable Objects page shows storage per class.
 
 To change a limit, edit `vars` in both `wrangler.jsonc` and `wrangler.wrapper.jsonc` (the config test checks they match), rebuild, and deploy. To take the example down, delete the Worker in the dashboard; its Durable Objects go with it.
 
 ## Abuse limits
 
-| What                            | Limit                                                            | Where                                          |
-| ------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------- |
-| Messages per address            | 30 per 10 minutes, then 429 with `Retry-After`                   | `GENUI_IP_SENDS`, Budget `ip:<hash>:<window>`  |
-| Messages with files per address | 10 per 10 minutes                                                | `GENUI_IP_UPLOADS`                             |
-| New readers who keep data       | 2000 per UTC day, then "The demo is full for today" (503)        | `GENUI_DAILY_READERS`, Budget `day:<date>`     |
-| Request body on `/api/*`        | 2.3 MB (413); a POST without `Content-Length` gets 411           | `src/lib/guards.ts`                            |
-| Methods on `/api/*`             | GET, HEAD and POST; anything else gets 405                       | `src/lib/guards.ts`                            |
-| Files                           | 2 a message, 1 MB each, 2 MB together; 3 MB kept per reader      | `FILE_LIMITS` in `src/lib/chat.ts`, ReaderData |
-| Conversations                   | 20 per reader, 256 KB each (the oldest is deleted for a new one) | `src/lib/chat.ts`                              |
-| Memories                        | 50 per reader (the oldest goes)                                  | ReaderData                                     |
-| One reply                       | 25 seconds and 4 model rounds                                    | `src/lib/chat.ts`                              |
+| What                            | Limit                                                                                                               | Where                                             |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Requests per address            | 120 a minute to anything the Worker serves, then 429                                                                | `ratelimits` (`REQUESTS`) in the config           |
+| Messages per address            | 30 per 10 minutes, then 429 with `Retry-After`; Approve, Deny and a tool's result count too, as each starts a reply | `GENUI_IP_SENDS`, Budget `ip:<hash>:<window>`     |
+| Messages with files per address | 10 per 10 minutes                                                                                                   | `GENUI_IP_UPLOADS`                                |
+| New readers per address         | 5 per UTC day (a send with no visitor cookie is a new reader), then 429                                             | `GENUI_IP_READERS`, Budget `ip:<hash>:day:<date>` |
+| New readers who keep data       | 2000 per UTC day, then "The demo is full for today" (503)                                                           | `GENUI_DAILY_READERS`, Budget `day:<date>`        |
+| Request body on `/api/*`        | 2.3 MB (413); a POST without `Content-Length` gets 411                                                              | `src/lib/guards.ts`                               |
+| Methods on `/api/*`             | GET, HEAD and POST; anything else gets 405                                                                          | `src/lib/guards.ts`                               |
+| Files                           | 2 a message, 1 MB each, 2 MB together; 3 MB kept per reader                                                         | `FILE_LIMITS` in `src/lib/chat.ts`, ReaderData    |
+| Conversations                   | 20 per reader, 256 KB each (the oldest is deleted for a new one)                                                    | `src/lib/chat.ts`                                 |
+| Memories                        | 50 per reader (the oldest goes)                                                                                     | ReaderData                                        |
+| One reply                       | 25 seconds and 4 model rounds                                                                                       | `src/lib/chat.ts`                                 |
 
-An address is never stored: counters are named by a salted SHA-256 hash of it (`IP_SALT`), and each Budget object deletes itself once its window is over. The worst case for storage is about 2000 readers a day times their caps (roughly 8 MB each), for one day; real use is far less.
+The counters run in the chat's routes (`src/lib/limits.ts`), on the route Bascik matched, so `/api/send/`, `/api/%73end` and `//api//send` are counted as `/api/send` is. `/api/file` and `/api/stop` answer 404 before any Durable Object is asked when the request has no visitor cookie. A client is its IPv4 address, or its IPv6 /64, since one IPv6 client usually holds a whole /64. An address is never stored: counters are named by a salted SHA-256 hash of it (`IP_SALT`), and each Budget object deletes itself once its window is over. The worst case for storage is about 2000 readers a day times their caps (roughly 8 MB each), for one day; real use is far less.
 
 ## Retention: 24 hours
 
@@ -116,7 +119,7 @@ ConversationLive objects hold a reply only while it is being written and for two
 
 ## What local runs do not prove
 
-- How long Cloudflare keeps a reply going with `waitUntil` after the reader leaves. Local workerd does not report a closed tab, so the 25-second cap is set from Cloudflare's documented 30 seconds; check it on a deployment by closing a tab mid-reply and reloading.
+- How long Cloudflare keeps a reply going with `waitUntil` after the reader leaves. Local workerd does not report a closed tab, so the browser test of a closed tab passes with or without `waitUntil`; `tests/routes.workers.test.ts` checks that the reply is handed to it. The 25-second cap is set from Cloudflare's documented 30 seconds; check it on a deployment by closing a tab mid-reply and reloading.
 - Production's 2 MB limit per SQLite value. Files are stored in 512 KB pieces and conversations are capped at 256 KB, so nothing comes near it.
 - CPU time per request on the Free plan, which only the dashboard shows.
-- A ConversationLive object that restarts mid-reply loses the reply's pieces in memory. A page that joins then shows a note that the start is missing, and the whole reply once it is stored; `tests/shared.workers.test.ts` checks this.
+- A ConversationLive object that restarts mid-reply loses the reply's pieces in memory. A page that joins after that, before or after the writer's next piece, shows a note that the start is missing, and the whole reply once it is stored; `tests/shared.workers.test.ts` checks both orders.

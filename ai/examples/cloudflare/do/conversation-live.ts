@@ -57,6 +57,11 @@ interface Channel {
   bytes: number;
   /** When the last event came. */
   touched: number;
+  /**
+   * The object restarted while this channel was open, so the events before
+   * its first one here are gone: every reader is told `gap` first.
+   */
+  lostHead: boolean;
   waiting: Set<() => void>;
 }
 
@@ -135,8 +140,18 @@ export class ConversationLive extends DurableObject<Env> {
 
   /* ---- Channels ---- */
 
-  private channelFor(key: string): Channel {
+  /**
+   * The channel for `key`, made when this instance has none. A new one in an
+   * object whose durable marker is still current belongs to a reply that
+   * was open before a restart: its start is gone, whichever comes first
+   * after the restart, the writer's next publish or a reader.
+   */
+  private async channelFor(key: string): Promise<Channel> {
     this.forgetQuiet();
+    const existing = this.channels.get(key);
+    if (existing) return existing;
+    const marker = (await this.ctx.storage.get<number>(MARKER + key)) ?? 0;
+    // Another call may have made it while storage answered.
     let channel = this.channels.get(key);
     if (!channel) {
       channel = {
@@ -146,6 +161,7 @@ export class ConversationLive extends DurableObject<Env> {
         firstSeq: 0,
         bytes: 0,
         touched: Date.now(),
+        lostHead: marker > Date.now(),
         waiting: new Set(),
       };
       this.channels.set(key, channel);
@@ -172,7 +188,7 @@ export class ConversationLive extends DurableObject<Env> {
     bounds: ReplayBounds = {},
   ): Promise<void> {
     if (events.length === 0) return;
-    const channel = this.channelFor(key);
+    const channel = await this.channelFor(key);
     channel.replayEvents = Math.max(
       1,
       Math.min(bounds.replayEvents ?? REPLAY_EVENTS, REPLAY_EVENTS),
@@ -210,10 +226,7 @@ export class ConversationLive extends DurableObject<Env> {
     if (url.pathname !== "/subscribe" || !key) {
       return new Response("Not found", { status: 404 });
     }
-    const restarted =
-      !this.channels.has(key) &&
-      ((await this.ctx.storage.get<number>(MARKER + key)) ?? 0) > Date.now();
-    const channel = this.channelFor(key);
+    const channel = await this.channelFor(key);
     const encoder = new TextEncoder();
     const { readable, writable } = new TransformStream<
       Uint8Array,
@@ -230,7 +243,7 @@ export class ConversationLive extends DurableObject<Env> {
     });
     const pump = async (): Promise<void> => {
       let next = channel.firstSeq;
-      if (restarted || channel.firstSeq > 0) {
+      if (channel.lostHead || channel.firstSeq > 0) {
         await send({ type: "gap" });
         next = channel.firstSeq;
       }

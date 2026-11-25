@@ -187,7 +187,7 @@
     "format": "prettier --write .",
     "check:format": "prettier --check .",
     "check:all": "yarn check:format && yarn check:spelling && yarn check:standards",
-    "typecheck:all": "yarn pkg:typecheck && yarn create:typecheck && yarn docs:typecheck && yarn ext:typecheck && yarn adapter:cf:typecheck && yarn adapter:nf:typecheck && yarn lsp:typecheck && yarn skills:typecheck && yarn ai:typecheck && yarn shop:typecheck",
+    "typecheck:all": "yarn pkg:typecheck && yarn create:typecheck && yarn docs:typecheck && yarn ext:typecheck && yarn adapter:cf:typecheck && yarn adapter:nf:typecheck && yarn lsp:typecheck && yarn skills:typecheck && yarn ai:typecheck && yarn ai:cf:typecheck && yarn shop:typecheck",
     "unit:all": "yarn pkg:unit && yarn create:unit && yarn docs:unit && yarn ext:unit && yarn adapter:cf:unit && yarn adapter:nf:unit && yarn lsp:unit && yarn skills:unit && yarn ai:unit && yarn shop:unit",
     "integration:all": "yarn pkg:integration && yarn docs:integration && yarn skills:integration && yarn ai:integration && yarn shop:integration",
     "linear-time:all": "yarn pkg:linear-time && yarn lsp:linear-time && yarn skills:linear-time",

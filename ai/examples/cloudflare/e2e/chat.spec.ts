@@ -181,7 +181,10 @@ test("a second tab follows the live reply, and its Stop ends it", async ({
   ).toHaveCount(0);
 });
 
-test("a tab closed mid-reply finds the whole reply when it opens again", async ({
+// Local workerd does not report a closed tab, so the writer's request runs
+// on here with or without waitUntil: this checks what a reader sees, and
+// tests/routes.workers.test.ts checks that the reply is handed to waitUntil.
+test("a tab closed mid-reply, opened again, shows the whole reply", async ({
   page,
   context,
 }) => {
@@ -189,7 +192,6 @@ test("a tab closed mid-reply finds the whole reply when it opens again", async (
   await expect(page.getByTestId("turn-live")).toContainText(
     "Three picks from the catalog",
   );
-  // The writer's request has lost its reader; the turn goes on without it.
   await page.close();
   const again = await context.newPage();
   await again.goto("/", { waitUntil: "commit" });
@@ -270,7 +272,7 @@ test("a visitor with no cookie can read every page without anything being stored
   ).toEqual([]);
 });
 
-test("the wrapper refuses a method /api/ does not take, and a body with no length", async ({
+test("the API refuses a method it does not take, and a body with no length", async ({
   request,
 }) => {
   expect((await request.put("/api/send", { data: "x" })).status()).toBe(405);

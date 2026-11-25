@@ -3,6 +3,7 @@ import {
   MAX_BODY_BYTES,
   SEND_WINDOW_MS,
   addressHash,
+  addressKey,
   carriesFiles,
   checkRequest,
   sendWindow,
@@ -88,6 +89,49 @@ describe("guards", () => {
         }),
       ),
     ).toBe(false);
+  });
+
+  it("reads the multipart media type in any case, as formData() does", () => {
+    for (const type of [
+      "Multipart/Form-Data; boundary=x",
+      "MULTIPART/FORM-DATA; boundary=x",
+      " multipart/form-data;boundary=x",
+    ]) {
+      expect(
+        carriesFiles(
+          post({ "content-type": type, "content-length": String(40 * 1024) }),
+        ),
+        type,
+      ).toBe(true);
+    }
+  });
+
+  it("keys an IPv4 address whole and an IPv6 address by its /64", () => {
+    expect(addressKey("203.0.113.9")).toBe("203.0.113.9");
+    expect(addressKey("203.0.113.10")).not.toBe(addressKey("203.0.113.9"));
+    // Two addresses in one /64: one client.
+    expect(addressKey("2001:db8:1:2::1")).toBe("2001:db8:1:2::/64");
+    expect(addressKey("2001:db8:1:2:aaaa:bbbb:cccc:dddd")).toBe(
+      "2001:db8:1:2::/64",
+    );
+    expect(addressKey("2001:0DB8:0001:0002:0:0:0:9")).toBe("2001:db8:1:2::/64");
+    expect(addressKey("2001:db8:1:3::1")).toBe("2001:db8:1:3::/64");
+    expect(addressKey("2001:db8::")).toBe("2001:db8:0:0::/64");
+    expect(addressKey("::1")).toBe("0:0:0:0::/64");
+    expect(addressKey("fe80::1%eth0")).toBe("fe80:0:0:0::/64");
+    // An IPv4 address written as IPv6 is that IPv4 address.
+    expect(addressKey("::ffff:203.0.113.9")).toBe("203.0.113.9");
+    expect(addressKey("::ffff:cb00:7109")).toBe("203.0.113.9");
+    // Not an address: used as it is.
+    expect(addressKey("unknown")).toBe("unknown");
+    expect(addressKey("1:2:3")).toBe("1:2:3");
+    expect(addressKey("1::2::3")).toBe("1::2::3");
+  });
+
+  it("hashes two addresses of one IPv6 /64 the same, and another /64 apart", async () => {
+    const one = await addressHash("2001:db8:1:2::1", "salt");
+    expect(await addressHash("2001:db8:1:2:ffff::7", "salt")).toBe(one);
+    expect(await addressHash("2001:db8:1:3::1", "salt")).not.toBe(one);
   });
 
   it("hashes an address with the salt, so a counter's name holds no address", async () => {

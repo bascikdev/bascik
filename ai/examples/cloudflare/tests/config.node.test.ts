@@ -53,6 +53,14 @@ describe("configs", () => {
     expect(tests.durable_objects).toEqual(wrapper.durable_objects);
   });
 
+  it("caps requests per address with the rate limiter the tests run against", () => {
+    expect(wrapper.ratelimits).toEqual([
+      expect.objectContaining({ name: "REQUESTS" }),
+    ]);
+    const tests = read(join(root, "tests", "wrangler.test.jsonc"));
+    expect(tests.ratelimits).toEqual(wrapper.ratelimits);
+  });
+
   it("sends the build's own list of paths to the Worker first", () => {
     const generatedPath = join(generatedDir, "wrangler.jsonc");
     expect(existsSync(generatedPath), "run `yarn build` first").toBe(true);

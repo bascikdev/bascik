@@ -7,3 +7,12 @@ declare module "bascik-worker" {
   };
   export default worker;
 }
+
+// The same Worker, as tests/routes.workers.test.ts imports it (an alias in
+// vite.config.ts, beside the stand-in that `bascik-worker` is in tests).
+declare module "bascik-worker-built" {
+  const worker: {
+    fetch(request: Request, env: unknown, ctx: unknown): Promise<Response>;
+  };
+  export default worker;
+}

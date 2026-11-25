@@ -49,8 +49,9 @@ export default defineConfig({
       PERSIST_DIR,
       // Slow enough that Stop, a reload and a second tab land mid-reply.
       DEMO_MODEL_DELAY_MS: "60",
-      // Every spec sends from 127.0.0.1.
+      // Every spec sends from 127.0.0.1, and each is a new reader.
       GENUI_IP_SENDS: "10000",
+      GENUI_IP_READERS: "10000",
     },
   },
 });

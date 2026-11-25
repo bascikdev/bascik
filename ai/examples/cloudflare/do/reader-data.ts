@@ -129,11 +129,13 @@ export class ReaderData extends DurableObject<Env> {
       );
       const limit = numberVar(this.env.GENUI_DAILY_READERS, DAILY_READERS);
       if (!(await budget.charge("readers", limit, 2 * RETENTION_MS))) {
-        // Refused: the next write asks again.
-        this.admitting = null;
         throw new Error(DEMO_FULL);
       }
-    })();
+    })().catch((error: unknown) => {
+      // Refused, or the Budget call failed: the next write asks again.
+      this.admitting = null;
+      throw error;
+    });
     await this.admitting;
   }
 

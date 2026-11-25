@@ -13,6 +13,7 @@
     "GENUI_DAILY_READERS": "2000",
     "GENUI_IP_SENDS": "30",
     "GENUI_IP_UPLOADS": "10",
+    "GENUI_IP_READERS": "5",
     "DEMO_MODEL_DELAY_MS": "20",
   },
 }

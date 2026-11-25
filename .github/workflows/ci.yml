@@ -1473,8 +1473,9 @@ jobs:
       - name: Build the example Worker
         run: yarn ai:cf:build
 
-      # The Durable Objects and their clients inside local workerd (@cloudflare/vitest-plugin), the wrapper's guards,
-      # the key parser, and the configs against the generated one.
+      # The Durable Objects and their clients inside local workerd (@cloudflare/vitest-plugin), the routes' limits through
+      # the generated Worker, the wrapper's rate limit, the key parser, and the configs against the generated one.
+      # (The stage 1 typecheck job checks the example's types: typecheck:all runs ai:cf:typecheck.)
       - name: Run the example's unit tests
         run: yarn ai:cf:unit
         env:

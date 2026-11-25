@@ -17,9 +17,14 @@ export default defineConfig({
           }),
         ],
         // worker.ts imports the generated Worker as `bascik-worker`; the
-        // wrapper's tests put a stand-in there.
+        // wrapper's tests put a stand-in there. The route tests import the
+        // real one, as `bascik-worker-built` (`yarn build` writes it).
         resolve: {
           alias: {
+            "bascik-worker-built": fileURLToPath(
+              new URL("./dist/.bascik/cloudflare/worker.js", import.meta.url)
+                .href,
+            ),
             "bascik-worker": fileURLToPath(
               new URL("./tests/fake-bascik-worker.ts", import.meta.url).href,
             ),

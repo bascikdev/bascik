@@ -18,6 +18,13 @@
       "new_sqlite_classes": ["ReaderData", "ConversationLive", "Budget"],
     },
   ],
+  "ratelimits": [
+    {
+      "name": "REQUESTS",
+      "namespace_id": "1001",
+      "simple": { "limit": 120, "period": 60 },
+    },
+  ],
   // IP_SALT is a secret in production; the wrapper's tests need one.
   "vars": { "GENUI_DAILY_READERS": "400", "IP_SALT": "tests-only" },
 }
