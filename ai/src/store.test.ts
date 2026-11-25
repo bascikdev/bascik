@@ -4,6 +4,7 @@ import {
   readdir,
   readFile,
   rm,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,6 +12,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   fileStore,
+  MAX_SCANNED,
   memoryStore,
   newConversation,
   type Conversation,
@@ -173,6 +175,31 @@ describe("fileStore", () => {
     ]);
     expect(await store.load(READER, "broken")).toBeNull();
     expect(await store.load(READER, "other")).toBeNull();
+  });
+
+  it("reads only the newest MAX_SCANNED files, by when each was saved", async () => {
+    const directory = await folder();
+    const own = join(directory, READER);
+    await mkdir(own, { recursive: true });
+    const total = MAX_SCANNED + 25;
+    const saved = Array.from({ length: total }, (_, n) => at(n + 1));
+    // Written in a shuffled order, so the folder's order is not the answer.
+    const shuffled = saved.map((_, n) => saved[(n * 37) % total]!);
+    expect(new Set(shuffled).size).toBe(total);
+    for (const entry of shuffled) {
+      const file = join(own, `${entry.id}.json`);
+      await writeFile(file, JSON.stringify(entry));
+      const seconds = 1_700_000_000 + entry.updatedAt;
+      await utimes(file, seconds, seconds);
+    }
+    const listed = await fileStore(directory).list(READER);
+    expect(listed).toHaveLength(MAX_SCANNED);
+    expect(listed.map((entry) => entry.updatedAt)).toEqual(
+      saved
+        .slice(-MAX_SCANNED)
+        .map((entry) => entry.updatedAt)
+        .reverse(),
+    );
   });
 
   it("leaves no partial file behind", async () => {

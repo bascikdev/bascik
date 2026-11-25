@@ -8,6 +8,19 @@ The optional client runtime. Without it every form in the chat is a page load, a
   let stop: AbortController | null = null;
   let next: { form: HTMLFormElement; submitter: HTMLElement | null } | null =
     null;
+  /*
+   * A form's controls are also its properties, by name, and they win over the
+   * form's own: `<input name="method">` makes `form.method` that input. The
+   * model names the fields of the forms it writes, so a form is read only
+   * through the prototype here, never by its own property names.
+   */
+  const formGet = <K extends keyof HTMLFormElement>(
+    form: HTMLFormElement,
+    key: K,
+  ): HTMLFormElement[K] =>
+    Reflect.get(HTMLFormElement.prototype, key, form) as HTMLFormElement[K];
+  const resubmit = (form: HTMLFormElement, submitter: HTMLElement | null) =>
+    HTMLFormElement.prototype.requestSubmit.call(form, submitter);
 
   /**
    * Copies a document that is still being parsed into the page, a little
@@ -93,16 +106,19 @@ The optional client runtime. Without it every form in the chat is a page load, a
     );
     const shown = (): void => {
       echo(thread, typeof text === "string" ? text.trim() : "");
-      if (form.dataset.testid === "chat-composer") form.reset();
+      if (formGet(form, "dataset").testid === "chat-composer") {
+        HTMLFormElement.prototype.reset.call(form);
+      }
     };
     // Style on it: the request is in flight and nothing has come back yet.
-    form.dataset.pending = "";
+    const data = formGet(form, "dataset");
+    data.pending = "";
     const arrived = (): void => {
-      delete form.dataset.pending;
+      delete data.pending;
     };
     if (!withFiles) shown();
 
-    const response = await fetch(form.action, {
+    const response = await fetch(formGet(form, "action"), {
       method: "POST",
       body,
       signal: stop.signal,
@@ -173,9 +189,9 @@ The optional client runtime. Without it every form in the chat is a page load, a
     const form = event.target as HTMLFormElement;
     if (
       event.defaultPrevented ||
-      form.method !== "post" ||
-      !form.closest("main") ||
-      form.dataset.genui === "native"
+      formGet(form, "method") !== "post" ||
+      !Element.prototype.closest.call(form, "main") ||
+      formGet(form, "dataset").genui === "native"
     ) {
       return;
     }
@@ -197,18 +213,18 @@ The optional client runtime. Without it every form in the chat is a page load, a
           return;
         }
         // Anything else: send the form the ordinary way.
-        form.dataset.genui = "native";
-        form.requestSubmit(submitter);
+        formGet(form, "dataset").genui = "native";
+        resubmit(form, submitter);
       })
       .finally(() => {
-        delete form.dataset.pending;
+        delete formGet(form, "dataset").pending;
         stop = null;
         const queued = next;
         next = null;
-        if (queued?.form.isConnected) {
+        if (queued && Reflect.get(Node.prototype, "isConnected", queued.form)) {
           // Still "streaming" to anything that watches: one reply, two requests.
           state.genui = "idle";
-          queued.form.requestSubmit(queued.submitter);
+          resubmit(queued.form, queued.submitter);
           return;
         }
         state.genui = "idle";
