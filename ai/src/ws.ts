@@ -21,8 +21,14 @@ const MAX_UNSENT_BYTES = 1_000_000;
  * one frame; the cap counts empty frames, which add nothing to the size.
  */
 const MAX_PIECES = 1024;
-/** Room set aside for a payload before its bytes arrive; it grows as they do. */
-const FIRST_ROOM_BYTES = 65_536;
+/**
+ * The least room a payload gets once its first bytes arrive; it then
+ * doubles as more arrive. Nothing is set aside before that, so a header
+ * that declares a large frame and sends nothing more costs its 14 bytes.
+ */
+const FIRST_ROOM_BYTES = 4096;
+/** The room of a frame none of whose payload has arrived yet. */
+const NO_ROOM = Buffer.alloc(0);
 const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 export interface ServerSocket {
@@ -134,7 +140,7 @@ export function acceptWebSocket(
    * Reading copies bytes as they arrive, into a header of at most 14 bytes
    * and then into the frame's payload. No read is kept past its own event,
    * so what a connection holds is the bytes of its message, however small
-   * the reads are.
+   * the reads are, and a payload's room is made only as its bytes arrive.
    */
   const header = Buffer.alloc(14);
   let headerHave = 0;
@@ -213,9 +219,9 @@ export function acceptWebSocket(
       final,
       mask: Buffer.from(header.subarray(at, at + 4)),
       length,
-      // Room grows with what arrives, so a declared length alone sets
+      // Room is made only as bytes arrive, so a declared length alone sets
       // nothing aside.
-      payload: Buffer.allocUnsafe(Math.min(length, FIRST_ROOM_BYTES)),
+      payload: NO_ROOM,
       have: 0,
     };
     headerHave = 0;
@@ -272,11 +278,16 @@ export function acceptWebSocket(
           chunk.length - offset,
         );
         if (current.have + count > current.payload.length) {
-          // Doubling keeps the copies linear in the frame's length.
+          // Doubling keeps the copies linear in the frame's length, and the
+          // first room is small, so what is held tracks what has arrived.
           const room = Buffer.allocUnsafe(
             Math.min(
               current.length,
-              Math.max(current.have + count, current.payload.length * 2),
+              Math.max(
+                current.have + count,
+                current.payload.length * 2,
+                FIRST_ROOM_BYTES,
+              ),
             ),
           );
           current.payload.copy(room, 0, 0, current.have);

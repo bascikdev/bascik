@@ -247,6 +247,43 @@ describe("acceptWebSocket", () => {
     expect(allocated()).toBeLessThan(100_000);
   });
 
+  it("sets nothing aside for a declared length until its bytes arrive, and little for the first few", () => {
+    const { socket, messages } = open();
+    const header = Buffer.alloc(14);
+    header[0] = 0x81;
+    header[1] = 0xff;
+    header.writeBigUInt64BE(4_000_000n, 2);
+    const unsafe = vi.spyOn(Buffer, "allocUnsafe");
+    const unsafeSlow = vi.spyOn(Buffer, "allocUnsafeSlow");
+    const zeroed = vi.spyOn(Buffer, "alloc");
+    const allocated = (): number =>
+      [unsafe, unsafeSlow, zeroed].reduce(
+        (sum, spy) =>
+          sum +
+          spy.mock.calls.reduce((total, [size]) => total + Number(size), 0),
+        0,
+      );
+    // A header on its own: 14 bytes on the wire must not hold kilobytes.
+    socket.emit("data", header);
+    expect(allocated()).toBeLessThan(64);
+    // One byte of payload sets aside a small first room, not 64 KB.
+    socket.emit("data", Buffer.from([0x41]));
+    expect(allocated()).toBeLessThanOrEqual(4096 + 64);
+    vi.restoreAllMocks();
+    expect(messages).toEqual([]);
+  });
+
+  it("still reads small and large frames whole after the room grows from nothing", () => {
+    const { socket, messages } = open();
+    socket.emit("data", clientFrame(Buffer.alloc(0)));
+    socket.emit("data", clientFrame(Buffer.from("z")));
+    const big = clientFrame(Buffer.alloc(70_000, 0x42));
+    for (let at = 0; at < big.length; at += 3) {
+      socket.emit("data", big.subarray(at, at + 3));
+    }
+    expect(messages).toEqual(["", "z", "B".repeat(70_000)]);
+  });
+
   it("closes a message split into too many pieces, empty ones counted", () => {
     for (const piece of [Buffer.alloc(0), Buffer.from("a")]) {
       const { socket, ended, connection } = open();
