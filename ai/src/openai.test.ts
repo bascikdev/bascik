@@ -169,47 +169,90 @@ describe("openAiCompatibleModel", () => {
     stop("tool_calls"),
   ];
 
-  it("takes a tool call with a huge index without walking a sparse array", async () => {
+  /** A model whose one round streams these tool-call pieces. */
+  const streaming = (pieces: object[]): Model => {
     const stream = [
-      {
-        choices: [
-          {
-            delta: {
-              tool_calls: [
-                {
-                  index: 4294967294,
-                  id: "far",
-                  function: { name: "find_book", arguments: '{"title":"B"}' },
-                },
-                {
-                  index: 2,
-                  id: "near",
-                  function: { name: "find_book", arguments: '{"title":"A"}' },
-                },
-              ],
-            },
-          },
-        ],
-      },
+      ...pieces.map((piece) => ({
+        choices: [{ delta: { tool_calls: [piece] } }],
+      })),
       stop("tool_calls"),
     ];
     const fake: typeof fetch = async () =>
       new Response(
         `${stream.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`,
       );
-    const model = openAiCompatibleModel({
+    return openAiCompatibleModel({
       baseUrl: "http://x/v1",
       model: "m",
       fetch: fake,
     });
-    const started = performance.now();
+  };
+  const roundOf = async (model: Model): Promise<ModelEvent[]> => {
     const events: ModelEvent[] = [];
     for await (const event of model({ ...ask, tools: [lookup] })) {
       events.push(event);
     }
-    expect(performance.now() - started).toBeLessThan(1000);
-    // Still in index order, as the server numbered them.
+    return events;
+  };
+
+  it("yields tool calls in the order the server numbered them", async () => {
+    const events = await roundOf(
+      streaming([
+        {
+          index: 7,
+          id: "far",
+          function: { name: "find_book", arguments: '{"title":"B"}' },
+        },
+        {
+          index: 2,
+          id: "near",
+          function: { name: "find_book", arguments: '{"title":"A"}' },
+        },
+      ]),
+    );
     expect(events).toMatchObject([{ id: "near" }, { id: "far" }]);
+  });
+
+  it("keeps calls numbered with decimal strings apart", async () => {
+    const events = await roundOf(
+      streaming([
+        { index: "1", id: "a", function: { name: "f" } },
+        { index: "2", id: "b", function: { name: "f" } },
+        { index: "1", function: { arguments: "{}" } },
+        { index: "2", function: { arguments: "{}" } },
+      ]),
+    );
+    expect(events).toEqual([
+      { type: "tool-call", id: "a", name: "f", input: {} },
+      { type: "tool-call", id: "b", name: "f", input: {} },
+    ]);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["null", null],
+    ["negative", -1],
+    ["a fraction", 1.5],
+    ["huge", 4294967294],
+    ["past the bound", 256],
+    ["a huge string", "4294967294"],
+    ["an exponent string", "1e3"],
+    ["a hex string", "0x1"],
+    ["a padded string", " 1"],
+    ["an empty string", ""],
+    ["a boolean", true],
+    ["an object", { n: 1 }],
+  ])("refuses a tool call whose index is %s", async (_name, index) => {
+    const model = streaming([
+      {
+        ...(index === undefined ? {} : { index }),
+        id: "x",
+        function: { name: "find_book", arguments: '{"title":"A"}' },
+      },
+    ]);
+    const started = performance.now();
+    await expect(roundOf(model)).rejects.toThrow(/tool call index/);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 
   it("yields a tool call that arrived in pieces, and continues with its result", async () => {
