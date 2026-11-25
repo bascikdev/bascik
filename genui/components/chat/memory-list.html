@@ -33,7 +33,9 @@ What the assistant remembers about the reader: a heading, one line that says wha
     border-radius: var(--radius);
     color: var(--muted);
   }
-  /* Shown when no memory-item was put inside. */
+  /* Shown when no memory-item was put inside. The items are slotted in, so
+     their element name is not one of this component's to rename. */
+  /* bascik-ignore css-is-element-names */
   .memory:not(:has(li)) .empty {
     display: block;
   }
