@@ -70,6 +70,10 @@ export interface AzureVoiceLiveProvider extends VoiceProvider {
   close(): Promise<void>;
 }
 
+/** How often a refused connection to the provider is tried again, and after how long. */
+const RETRIES = 1;
+const RETRY_AFTER_MS = 600;
+
 const isAzureVoice = (name: string): boolean =>
   /^[a-z]{2,3}-[A-Z]{2}-/.test(name);
 
@@ -236,51 +240,73 @@ export function azureVoiceLiveVoice(
       if (early) early.push(message);
       else if (upstream?.readyState === WebSocket.OPEN) upstream.send(message);
     };
-    try {
-      upstream = new (WebSocket as unknown as HeaderSocket)(upstreamUrl(), {
-        headers: await credential(),
-      });
-    } catch {
-      end("The voice provider could not be reached.");
-      return;
-    }
-    if (!browser.open) {
-      upstream.close();
-      return;
-    }
-    let reached = false;
-    upstream.onopen = () => {
-      reached = true;
-    };
-    /** Why the provider's side ended, for the reader and for the server's log. */
-    const lost = (said: string): void => {
-      const reason =
-        said ||
-        (reached
-          ? "The voice provider hung up."
-          : "The voice provider refused the connection. Its key or token may have expired.");
-      if (browser.open) console.error(`[azure-voice-live] ${reason}`);
-      end(reason);
-    };
-    upstream.onmessage = (event: MessageEvent) => {
-      const raw = String(event.data);
-      // Only the kind of message is read here; the rest passes as it came.
-      const type = /"type"\s*:\s*"([^"]+)"/.exec(raw.slice(0, 200))?.[1];
-      if (type === "session.created") {
-        upstream!.send(
-          JSON.stringify({ type: "session.update", session: ticket.session }),
-        );
-      } else if (type === "session.updated") {
-        // The setup holds the app's instructions: the browser is only told it is on.
-        browser.send(JSON.stringify({ type: "session.updated" }));
-        for (const message of early ?? []) upstream!.send(message);
-        early = null;
-      } else {
-        browser.send(raw);
+    /**
+     * Connect to the provider. A refusal before the connection opens is
+     * tried once more after a moment: the provider sometimes turns a new
+     * session away and takes the next one.
+     */
+    const dial = async (attempt: number): Promise<void> => {
+      let socket: WebSocket;
+      try {
+        socket = new (WebSocket as unknown as HeaderSocket)(upstreamUrl(), {
+          headers: await credential(),
+        });
+      } catch {
+        end("The voice provider could not be reached.");
+        return;
       }
+      if (!browser.open) {
+        socket.close();
+        return;
+      }
+      upstream = socket;
+      let reached = false;
+      let over = false;
+      socket.onopen = () => {
+        reached = true;
+      };
+      /** Why the provider's side ended, for the reader and for the server's log. */
+      const lost = (said: string): void => {
+        if (over) return;
+        over = true;
+        if (!reached && attempt < RETRIES && browser.open) {
+          setTimeout(() => void dial(attempt + 1), RETRY_AFTER_MS);
+          return;
+        }
+        const reason =
+          said ||
+          (reached
+            ? "The voice provider hung up."
+            : "The voice provider refused the connection. Its key or token may have expired.");
+        if (browser.open) console.error(`[azure-voice-live] ${reason}`);
+        end(reason);
+      };
+      socket.onmessage = (event: MessageEvent) => {
+        const raw = String(event.data);
+        // Only the kind of message is read here; the rest passes as it came.
+        const type = /"type"\s*:\s*"([^"]+)"/.exec(raw.slice(0, 200))?.[1];
+        if (type === "session.created") {
+          socket.send(
+            JSON.stringify({ type: "session.update", session: ticket.session }),
+          );
+        } else if (type === "session.updated") {
+          // The setup holds the app's instructions: the browser is only told it is on.
+          browser.send(JSON.stringify({ type: "session.updated" }));
+          for (const message of early ?? []) socket.send(message);
+          early = null;
+        } else {
+          browser.send(raw);
+        }
+      };
+      socket.onclose = (event: CloseEvent) => lost(event.reason.slice(0, 100));
+      socket.onerror = (event: Event) => {
+        // The reason goes to the server's log only: it can name the resource.
+        const detail = (event as { message?: string }).message;
+        if (detail) console.error(`[azure-voice-live] ${detail}`);
+        lost("");
+      };
     };
-    upstream.onclose = (event: CloseEvent) => lost(event.reason.slice(0, 100));
-    upstream.onerror = () => lost("");
+    await dial(0);
   }
 
   const listen = (): Promise<Server> =>

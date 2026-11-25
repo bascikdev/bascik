@@ -1,6 +1,6 @@
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   azureVoiceLiveSession,
   azureVoiceLiveVoice,
@@ -315,6 +315,67 @@ describe("azureVoiceLiveVoice", () => {
     await until(() => open.messages.length > 0);
     await provider.close();
     await open.closed;
+  });
+
+  it("tries a refused connection once more, then says the provider refused", async () => {
+    // A provider that turns connections away for a moment, then takes them.
+    // (Counted by time, not by request: the runtime may ask more than once
+    // for one connection.)
+    let seen = 0;
+    let firstAt = 0;
+    const flaky = createServer();
+    flaky.on("upgrade", (request, socket) => {
+      socket.on("error", () => {});
+      seen++;
+      firstAt ||= Date.now();
+      if (Date.now() - firstAt < 300) {
+        socket.end(
+          "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n",
+        );
+        return;
+      }
+      const accepted = acceptWebSocket(request, socket)!;
+      accepted.onMessage = (text) => {
+        if (JSON.parse(text).type === "session.update") {
+          accepted.send(JSON.stringify({ type: "session.updated" }));
+        }
+      };
+      accepted.send(JSON.stringify({ type: "session.created" }));
+    });
+    await new Promise<void>((resolve) => flaky.listen(0, "127.0.0.1", resolve));
+    upstream = {
+      base: `ws://127.0.0.1:${(flaky.address() as AddressInfo).port}`,
+      server: flaky,
+      connections: [],
+    };
+    provider = azureVoiceLiveVoice({ apiKey: "k", wsBase: upstream.base });
+    const call = browser((await provider.createSession(config)).url);
+    await until(() => call.messages.length > 0);
+    expect(call.messages).toEqual([{ type: "session.updated" }]);
+    expect(seen).toBeGreaterThan(1);
+
+    // One that never takes it: tried twice, then the reader is told.
+    await provider.close();
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      provider = azureVoiceLiveVoice({ apiKey: "k", wsBase: upstream.base });
+      flaky.removeAllListeners("upgrade");
+      let refused = 0;
+      flaky.on("upgrade", (_request, socket) => {
+        refused++;
+        socket.end("HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n");
+      });
+      const turned = browser((await provider.createSession(config)).url);
+      const ended = (await turned.closed) as CloseEvent;
+      expect(ended.reason).toContain("refused the connection");
+      // Asked again after the first refusal, and not for ever.
+      expect(refused).toBeGreaterThan(1);
+      const settled = refused;
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      expect(refused).toBe(settled);
+    } finally {
+      logged.mockRestore();
+    }
   });
 
   it("says what is missing before it gives a ticket", async () => {
