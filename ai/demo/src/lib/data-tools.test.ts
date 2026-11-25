@@ -1,5 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { databaseProcessId, dataTools, runSql } from "./data-tools.ts";
+import {
+  databaseProcessId,
+  dataTools,
+  MAX_REPLY_BYTES,
+  MAX_VALUE_CHARS,
+  runSql,
+} from "./data-tools.ts";
+
+const runTool = (sql: string) =>
+  dataTools.find((candidate) => candidate.name === "run_sql")!.run!(
+    { sql },
+    {},
+  );
+
+/** Run `work` while a 10 ms timer ticks, and return the longest gap between ticks. */
+async function longestLoopGap(work: () => Promise<unknown>): Promise<number> {
+  let last = performance.now();
+  let longest = 0;
+  const ticker = setInterval(() => {
+    const now = performance.now();
+    longest = Math.max(longest, now - last);
+    last = now;
+  }, 10);
+  try {
+    await work().catch(() => undefined);
+    const now = performance.now();
+    return Math.max(longest, now - last);
+  } finally {
+    clearInterval(ticker);
+  }
+}
 
 function isRunning(pid: number): boolean {
   try {
@@ -100,6 +130,120 @@ describe("runSql", () => {
       columns: ["one"],
       rows: [[1]],
       truncated: false,
+    });
+  });
+
+  describe("keeps the reply small", () => {
+    // The probe from the security review: SQLite answers at once, and the
+    // cost lands on whoever copies and serializes the reply.
+    it.each([
+      "SELECT zeroblob(4000000) FROM orders LIMIT 200",
+      "SELECT zeroblob(2000000) FROM orders LIMIT 200",
+      "SELECT zeroblob(150000) FROM orders LIMIT 200",
+      "SELECT zeroblob(900000) AS a, zeroblob(900000) AS b FROM orders LIMIT 200",
+      "SELECT printf('%.*c', 900000, 'x') FROM orders LIMIT 200",
+      "SELECT randomblob(500000), * FROM orders LIMIT 200",
+    ])("does not block the server's event loop: %s", async (sql) => {
+      let output = "";
+      const gap = await longestLoopGap(async () => {
+        output = await runTool(sql);
+      });
+      expect(gap).toBeLessThan(500);
+      expect(output.length).toBeLessThanOrEqual(MAX_REPLY_BYTES);
+      // The server keeps answering afterwards.
+      expect((await runSql("SELECT COUNT(*) FROM books")).rows).toEqual([[40]]);
+    });
+
+    it("replaces a blob with a short placeholder", async () => {
+      const result = await runSql("SELECT zeroblob(150000) AS b, x'abcd' AS h");
+      expect(result.rows).toEqual([
+        ["[blob, 150000 bytes, not shown]", "[blob, 2 bytes, not shown]"],
+      ]);
+    });
+
+    it("cuts a long text value and says so", async () => {
+      const result = await runSql("SELECT printf('%.*c', 50000, 'x') AS t");
+      const value = result.rows[0]![0] as string;
+      expect(value.startsWith("x".repeat(MAX_VALUE_CHARS))).toBe(true);
+      expect(value.slice(MAX_VALUE_CHARS)).toBe(
+        " [cut, 50000 characters in all]",
+      );
+      expect(result.truncated).toBe(true);
+    });
+
+    it("cuts a long column name", async () => {
+      const name = "n".repeat(5000);
+      const result = await runSql(`SELECT 1 AS "${name}"`);
+      expect(result.columns[0]!.length).toBeLessThan(MAX_VALUE_CHARS + 100);
+    });
+
+    it("stops adding rows at the byte budget and says so", async () => {
+      const result = await runSql(
+        `SELECT printf('%.*c', ${MAX_VALUE_CHARS}, 'x') FROM orders LIMIT 200`,
+      );
+      expect(result.rows.length).toBeGreaterThan(0);
+      expect(result.rows.length).toBeLessThan(200);
+      expect(result.truncated).toBe(true);
+      expect(JSON.stringify(result).length).toBeLessThanOrEqual(
+        MAX_REPLY_BYTES,
+      );
+    });
+
+    it("refuses one value too big to build", async () => {
+      await expect(
+        runSql("SELECT zeroblob(4000000), printf('%.*c', 4000000, 'x')"),
+      ).rejects.toThrow(/too big/);
+    });
+
+    describe("cuts a long error message", () => {
+      const long = "x' || hex(zeroblob(499000))";
+      // SQLite repeats what it was given in some error messages: a bad JSON
+      // path, an unknown column, a token it cannot parse.
+      it.each([
+        ["a bad json_extract path", `SELECT json_extract('{}', '${long})`],
+        ["a bad json_set path", `SELECT json_set('{}', '${long}, 1)`],
+        ["a bad jsonb_extract path", `SELECT jsonb_extract('{}', '${long})`],
+        ["a bad json_each path", `SELECT * FROM json_each('{}', '${long})`],
+        ["an unknown column", `SELECT "${"n".repeat(200_000)}" FROM books`],
+        [
+          "an unknown function",
+          `SELECT 1 FROM books WHERE ${"q".repeat(200_000)}(1)`,
+        ],
+        ["an unterminated string", `SELECT '${"t".repeat(200_000)}`],
+      ])("%s", async (_label, sql) => {
+        let message = "";
+        const gap = await longestLoopGap(async () => {
+          try {
+            await runTool(sql);
+          } catch (error) {
+            message = (error as Error).message;
+          }
+        });
+        expect(gap).toBeLessThan(500);
+        expect(message.length).toBeGreaterThan(0);
+        expect(message.length).toBeLessThanOrEqual(MAX_VALUE_CHARS + 100);
+        expect(message).toMatch(/\[cut, \d+ characters in all\]$/);
+        expect((await runSql("SELECT COUNT(*) FROM books")).rows).toEqual([
+          [40],
+        ]);
+      });
+
+      it("leaves a short error message alone", async () => {
+        await expect(runSql("SELECT nope FROM books")).rejects.toThrow(
+          /^no such column: nope$/,
+        );
+      });
+    });
+
+    it("leaves numbers and short text alone", async () => {
+      const result = await runSql(
+        "SELECT 1.5 AS n, NULL AS z, 'short' AS s, 9007199254740991 AS big",
+      );
+      expect(result).toEqual({
+        columns: ["n", "z", "s", "big"],
+        rows: [[1.5, null, "short", 9007199254740991]],
+        truncated: false,
+      });
     });
   });
 });
