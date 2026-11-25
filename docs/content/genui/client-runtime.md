@@ -18,6 +18,7 @@ With it, a `method="post"` form inside `<main>` is sent with `fetch` and the pag
 
 - The message is shown at once, before the server answers.
 - The page is not reloaded, so scroll position, focus, and anything typed elsewhere are kept.
+- While the request is on its way, the form has a `data-pending` attribute and the reply has a placeholder (`data-testid="turn-pending"`, `aria-busy="true"`) with the typing caret, until the first part of the answer arrives. Style on either.
 - A Stop button ends the reply.
 - Scripts in components that arrive in the stream are started.
 

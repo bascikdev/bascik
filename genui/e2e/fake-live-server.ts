@@ -9,6 +9,8 @@ import { createServer } from "node:http";
 import { acceptWebSocket, refuseUpgrade } from "../src/ws.ts";
 
 const PORT = Number(process.argv[2] ?? 4480);
+/** How long the model thinks before it answers what it heard from the microphone. */
+const THINKING_MS = 2200;
 const SILENCE = Buffer.alloc(24_000).toString("base64"); // half a second at 24 kHz
 
 const BOOKS = [
@@ -173,7 +175,8 @@ server.on("upgrade", (request, socket) => {
       heardAudio = true;
       send({ serverContent: { inputTranscription: { text: "Recommend " } } });
       send({ serverContent: { inputTranscription: { text: "a book" } } });
-      answer("Recommend a book");
+      // The model takes a moment to start: the reader waits, and sees that.
+      setTimeout(() => answer("Recommend a book"), THINKING_MS);
     } else if (message.clientContent) {
       answer(message.clientContent.turns.at(-1)?.parts[0]?.text ?? "");
     } else if (message.toolResponse) {

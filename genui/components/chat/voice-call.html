@@ -24,7 +24,9 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     font-size: 0.8125rem;
   }
   /* Nothing to say: no line. */
-  .strip:not(:has(:not(:empty))) {
+  .strip:not(
+    :has(.status:not(:empty), .provider:not(:empty), .caption:not(:empty))
+  ) {
     display: none;
   }
   .status {
@@ -35,6 +37,42 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
   .provider:empty,
   .caption:empty {
     display: none;
+  }
+  /* The microphone's level, as a few bars. It keeps its room from the moment
+     a call starts, so showing it moves nothing. */
+  .meter {
+    display: inline-flex;
+    gap: 0.15rem;
+    align-items: center;
+    inline-size: 1.5rem;
+    block-size: 1rem;
+    color: var(--muted);
+    visibility: hidden;
+  }
+  .meter[hidden] {
+    display: none;
+  }
+  .meter[data-on] {
+    visibility: visible;
+  }
+  .meter[data-speaking] {
+    color: var(--accent);
+  }
+  .bar {
+    flex: 1;
+    block-size: 100%;
+    border-radius: 999px;
+    background: currentColor;
+    transform: scaleY(0.12);
+    transition: transform 90ms linear;
+  }
+  /* A view on its way: a block where it will go. */
+  .skeleton {
+    min-block-size: 6rem;
+    margin-block: 0.5rem;
+    border-radius: var(--radius);
+    background: var(--bg);
+    animation: pulse-block 1.4s ease-in-out infinite;
   }
   /* Which speech model is on the line, so it is not taken for the browser's voice. */
   .provider {
@@ -113,14 +151,46 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
   .toggle[aria-pressed="true"] .live {
     display: block;
   }
+  /* From the press until the call is on, a ring turns in place of the light. */
+  .spinner {
+    display: none;
+    inline-size: 1rem;
+    block-size: 1rem;
+    flex: none;
+    border: 2px solid currentColor;
+    border-inline-end-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .toggle[aria-busy="true"] .spinner {
+    display: block;
+  }
+  .toggle[aria-busy="true"] .live {
+    display: none;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes pulse-block {
+    50% {
+      opacity: 0.5;
+    }
+  }
   @keyframes pulse {
     50% {
       opacity: 0.35;
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .live {
+    .live,
+    .spinner,
+    .skeleton {
       animation: none;
+    }
+    .bar {
+      transition: none;
     }
   }
 </style>
@@ -133,6 +203,21 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       role="status"
       data-testid="voice-call-status"
     ></p>
+    <!-- Decoration: the status above says what is happening. -->
+    <span
+      id="meter"
+      class="meter"
+      hidden
+      aria-hidden="true"
+      data-level="0.00"
+      data-testid="voice-call-meter"
+    >
+      <span class="bar"></span>
+      <span class="bar"></span>
+      <span class="bar"></span>
+      <span class="bar"></span>
+      <span class="bar"></span>
+    </span>
     <!-- The same words as the voice, so it is hidden from a screen reader. -->
     <p
       id="caption"
@@ -162,6 +247,11 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       <path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" />
     </svg>
     <span class="live" aria-hidden="true"></span>
+    <span
+      class="spinner"
+      aria-hidden="true"
+      data-testid="voice-call-connecting"
+    ></span>
     <span id="label" class="label">Voice call</span>
   </button>
   <input id="app" type="hidden" data-bascik-attr-value="app" />
@@ -172,6 +262,8 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     const toggle = document.getElementById("toggle")!;
     const label = document.getElementById("label")!;
     const provider = document.getElementById("provider")!;
+    const meter = document.getElementById("meter")!;
+    const bars = [...meter.children] as HTMLElement[];
     /** The speech models a ticket can name, as the reader is told. */
     const PROVIDERS: Record<string, string> = {
       "azure-voice-live": "Azure Voice Live",
@@ -182,7 +274,10 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       toggle.setAttribute("aria-pressed", String(on));
       label.textContent = on ? "End call" : "Voice call";
       toggle.title = on ? "End call" : "Voice call";
-      if (!on) provider.textContent = "";
+      if (!on) {
+        provider.textContent = "";
+        toggle.removeAttribute("aria-busy");
+      }
     };
     const app = (document.getElementById("app") as HTMLInputElement).value;
 
@@ -199,9 +294,24 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       /** Calls that wait for the reader's answer, by id. */
       waiting: Map<string, (decision: string) => void>;
       wire: Wire;
+      /** What the status line says when nothing more urgent is going on. */
+      base: string;
+      /** The reader is speaking. */
+      hearing: boolean;
+      /** The reader has finished, and the model has not yet answered. */
+      thinking: boolean;
+      /** Tool calls and forms on their way to the server. */
+      working: number;
+      /** The microphone's level, 0 to 1, and whether it counts as speech. */
+      level: number;
+      speaking: boolean;
+      /** When the level last fell quiet, while still counted as speech. */
+      quietAt: number;
     }
     /** One provider's protocol: what to send, and what its messages mean. */
     interface Wire {
+      /** True when only the microphone's level tells that the reader speaks. */
+      readonly byMeter: boolean;
       /** The first message, when the provider wants one from the browser. */
       begin(): void;
       /** A piece of microphone audio: 16 kHz, 16-bit, base64. */
@@ -211,6 +321,54 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       receive(message: any): Promise<void>;
     }
     let call: Call | null = null;
+
+    /* ---- The status line: one thing at a time, the most pressing first ---- */
+
+    /** Approval waits, then work, then thinking, then hearing, then listening. */
+    function refresh(): void {
+      if (!call) return;
+      status.textContent = call.waiting.size
+        ? "Waiting for your answer on screen."
+        : call.working > 0
+          ? "Working…"
+          : call.thinking
+            ? "Thinking…"
+            : call.hearing
+              ? "Hearing you…"
+              : call.base;
+    }
+    let thinkingStamp = 0;
+    function mark(
+      patch: Partial<Pick<Call, "base" | "hearing" | "thinking">>,
+      current: Call | null = call,
+    ): void {
+      if (!current) return;
+      Object.assign(current, patch);
+      if (patch.thinking) {
+        // A sound that is not speech never gets an answer: do not wait for one for ever.
+        const stamp = ++thinkingStamp;
+        setTimeout(() => {
+          if (stamp === thinkingStamp) mark({ thinking: false }, current);
+        }, 20_000);
+      }
+      if (current === call) refresh();
+    }
+    /** A job that takes time: the status says so until it is done. */
+    async function busy<T>(current: Call | null, job: () => Promise<T>): Promise<T> {
+      if (current) {
+        current.thinking = false;
+        current.working++;
+        if (current === call) refresh();
+      }
+      try {
+        return await job();
+      } finally {
+        if (current) {
+          current.working--;
+          if (current === call) refresh();
+        }
+      }
+    }
 
     /** The turn being spoken: its words, its audio, and where it is drawn. */
     let reader = "";
@@ -328,6 +486,25 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
      * again here, because a script that was parsed elsewhere does not run.
      */
     async function showView(id: string): Promise<void> {
+      // Where the view will go, until it comes.
+      const target = showReply();
+      const placeholder = document.createElement("div");
+      placeholder.dataset.view = id;
+      placeholder.className = "skeleton";
+      placeholder.dataset.testid = "voice-call-loading";
+      placeholder.setAttribute("aria-busy", "true");
+      const earlier = target.querySelector(`[data-view="${CSS.escape(id)}"]`);
+      if (earlier) earlier.replaceWith(placeholder);
+      else target.append(placeholder);
+      try {
+        await fillView(id, placeholder);
+      } finally {
+        // A view that did not come leaves nothing behind.
+        placeholder.remove();
+      }
+    }
+
+    async function fillView(id: string, placeholder: HTMLElement): Promise<void> {
       const response = await fetch(
         `/voice-view?app=${encodeURIComponent(app)}&call=${encodeURIComponent(id)}`,
       );
@@ -346,10 +523,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         script.textContent = parsed.textContent;
         parsed.replaceWith(script);
       }
-      const target = showReply();
-      const earlier = target.querySelector(`[data-view="${CSS.escape(id)}"]`);
-      if (earlier) earlier.replaceWith(holder);
-      else target.append(holder);
+      placeholder.replaceWith(holder);
     }
 
     /* ---- Tool calls: the model asks here, the server runs them ---- */
@@ -362,19 +536,23 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
 
     async function runTool(tool: { id: string; name: string; args: unknown }): Promise<string> {
       const fields = { id: tool.id, name: tool.name, input: JSON.stringify(tool.args ?? {}) };
-      let answer = (await (await post("/api/voice-tool", fields)).json()) as ToolAnswer;
-      if (answer.view) await showView(tool.id);
+      const current = call;
+      const run = (extra: Record<string, string>): Promise<ToolAnswer> =>
+        busy(current, async () => {
+          const answer = (await (
+            await post("/api/voice-tool", { ...fields, ...extra })
+          ).json()) as ToolAnswer;
+          if (answer.view) await showView(tool.id);
+          return answer;
+        });
+      let answer = await run({});
       if (answer.state === "approval-requested" && call) {
-        status.textContent = "Waiting for your answer on screen.";
-        const decision = await new Promise<string>((resolve) =>
-          call!.waiting.set(tool.id, resolve),
-        );
+        const decision = await new Promise<string>((resolve) => {
+          call!.waiting.set(tool.id, resolve);
+          refresh();
+        });
         call?.waiting.delete(tool.id);
-        answer = (await (
-          await post("/api/voice-tool", { ...fields, decision })
-        ).json()) as ToolAnswer;
-        if (answer.view) await showView(tool.id);
-        if (call) status.textContent = call.microphone ? "Listening." : "";
+        answer = await run({ decision });
       }
       return answer.output ?? "";
     }
@@ -393,6 +571,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       source.connect(call.playback.destination);
       const now = call.playback.currentTime;
       if (call.nextAt < now) call.nextAt = now + 0.05;
+      mark({ thinking: false });
       const turn = voicing();
       if (turn.seconds === 0) turn.start = call.nextAt;
       if (responseAt === null) {
@@ -475,6 +654,53 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       }
     });`;
 
+    /** Above this the reader counts as speaking; below the lower one, as quiet. */
+    const SPEECH_ON = 0.15;
+    const SPEECH_OFF = 0.08;
+    /** How long it must stay quiet before speech is over, in milliseconds. */
+    const QUIET_FOR = 500;
+    const BAR_SHAPE = [0.55, 0.8, 1, 0.8, 0.55];
+
+    /** True while the model's voice is playing, when the microphone hears it back. */
+    const playing = (current: Call): boolean => current.playback.currentTime < current.nextAt;
+
+    /** One block of microphone sound: smooth its level, and tell when speech starts and ends. */
+    function measure(current: Call, rms: number): void {
+      // A voice is far quieter than a full-scale tone: this puts speech near the top.
+      const target = Math.min(1, rms * 8);
+      current.level += (target - current.level) * (target > current.level ? 0.5 : 0.06);
+      const now = performance.now();
+      if (!current.speaking && current.level > SPEECH_ON) {
+        current.speaking = true;
+        current.quietAt = 0;
+      } else if (current.speaking && current.level < SPEECH_OFF) {
+        current.quietAt ||= now;
+        if (now - current.quietAt > QUIET_FOR) current.speaking = false;
+      } else if (current.speaking) {
+        current.quietAt = 0;
+      }
+      if (!current.wire.byMeter || current !== call) return;
+      const hearing = current.speaking && !playing(current);
+      if (hearing === current.hearing) return;
+      // Speaking again is not waiting for an answer; stopping is, if words were heard.
+      const waits = !hearing && reader.trim() !== "" && !said.trim();
+      mark(hearing ? { hearing, thinking: false } : { hearing, thinking: waits || current.thinking });
+    }
+
+    /** Draw the level, a frame at a time, for as long as the call is on. */
+    function drawMeter(current: Call): void {
+      if (current !== call || !current.microphone) return;
+      const shown = current.level.toFixed(2);
+      if (meter.dataset.level !== shown) {
+        meter.dataset.level = shown;
+        bars.forEach((bar, at) => {
+          bar.style.transform = `scaleY(${Math.max(0.12, current.level * BAR_SHAPE[at]!).toFixed(2)})`;
+        });
+      }
+      meter.toggleAttribute("data-speaking", current.speaking);
+      requestAnimationFrame(() => drawMeter(current));
+    }
+
     async function listen(current: Call): Promise<void> {
       const microphone = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
@@ -489,10 +715,15 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       const node = new AudioWorkletNode(capture, "mic");
       capture.createMediaStreamSource(microphone).connect(node);
       let pending: number[] = [];
+      meter.dataset.on = "";
+      requestAnimationFrame(() => drawMeter(current));
       node.port.onmessage = ({ data }: MessageEvent<Float32Array>) => {
+        let squares = 0;
         for (const sample of data) {
+          squares += sample * sample;
           pending.push(Math.max(-1, Math.min(1, sample)) * 32_767);
         }
+        measure(current, Math.sqrt(squares / (data.length || 1)));
         // A tenth of a second at a time.
         if (pending.length < 1600 || current.socket.readyState !== WebSocket.OPEN) return;
         const bytes = new Uint8Array(Int16Array.from(pending).buffer);
@@ -512,6 +743,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       }
       reader = said = "";
       readerBubble = reply = saidText = null;
+      mark({ thinking: false });
       // The next thing said starts a new caption; this one plays out.
       voiced.open = false;
     }
@@ -519,13 +751,14 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     /** The call is on. The microphone joins when the reader allows it;
      * without one the call still works, and the reader types. */
     function connected(current: Call): void {
-      status.textContent = "Connected. Type to talk.";
+      toggle.removeAttribute("aria-busy");
+      mark({ base: "Connected. Type to talk." }, current);
       listen(current).then(
+        () => mark({ base: "Listening." }, current),
         () => {
-          if (current === call) status.textContent = "Listening.";
-        },
-        () => {
-          if (current === call) status.textContent = "No microphone: type to talk.";
+          // The reader declined: there is no level to show.
+          meter.hidden = true;
+          mark({ base: "No microphone: type to talk." }, current);
         },
       );
     }
@@ -533,6 +766,8 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     function heard(text: string, whole = false): void {
       reader = whole ? text : reader + text;
       showReader();
+      // Words that arrive after the reader stopped are an answer being waited for.
+      if (call?.wire.byMeter && !call.speaking && !said.trim()) mark({ thinking: true });
     }
 
     function spoke(text: string): void {
@@ -542,10 +777,12 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       saidText!.data = said;
     }
 
-    const answerTool = (tool: { id: string; name: string; args: unknown }): Promise<string> =>
-      (tool.name === "fill_form" ? fillForm(tool.args) : runTool(tool)).catch(
+    const answerTool = (tool: { id: string; name: string; args: unknown }): Promise<string> => {
+      mark({ thinking: false });
+      return (tool.name === "fill_form" ? fillForm(tool.args) : runTool(tool)).catch(
         () => "Error: the tool could not be run.",
       );
+    };
 
     /* ---- Forms on screen: the reader presses them, or says the answer ---- */
 
@@ -577,15 +814,34 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       form: HTMLFormElement,
       submitter: HTMLElement | null,
     ): Promise<{ say: string; hidden: boolean } | null> {
+      // Read before the controls are disabled: a disabled control is not sent.
       const body = new FormData(form, submitter);
       body.set("voice", "1");
-      const response = await fetch(form.action, { method: "POST", body });
-      const answer = response.ok
-        ? ((await response.json().catch(() => null)) as {
-            say?: unknown;
-            hidden?: unknown;
-          } | null)
-        : null;
+      const locked = [...form.elements].filter(
+        (control): control is HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement =>
+          "disabled" in control && !control.disabled,
+      );
+      form.setAttribute("aria-busy", "true");
+      // A form is not part of this component's template, so it is dimmed here.
+      form.style.cssText += ";opacity:0.7;cursor:progress";
+      for (const control of locked) control.disabled = true;
+      let answer: { say?: unknown; hidden?: unknown } | null = null;
+      try {
+        answer = await busy(call, async () => {
+          const response = await fetch(form.action, { method: "POST", body });
+          return response.ok
+            ? ((await response.json().catch(() => null)) as {
+                say?: unknown;
+                hidden?: unknown;
+              } | null)
+            : null;
+        });
+      } finally {
+        form.removeAttribute("aria-busy");
+        form.style.opacity = "";
+        form.style.cursor = "";
+        for (const control of locked) control.disabled = false;
+      }
       if (typeof answer?.say !== "string" || !answer.say.trim()) return null;
       // Sent once: it stays on screen as it was answered, and says so.
       form.dataset.sent = "";
@@ -668,6 +924,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         }
       };
       return {
+        byMeter: true,
         begin: () => send(setup),
         audio: (data) =>
           send({ realtimeInput: { audio: { data, mimeType: "audio/pcm;rate=16000" } } }),
@@ -687,6 +944,8 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
               functionResponses.push({ id: tool.id, name: tool.name, response: { result } });
             }
             send({ toolResponse: { functionResponses } });
+            // The model goes on with what the tools said.
+            mark({ thinking: true }, current);
             return;
           }
           const content = message.serverContent;
@@ -718,6 +977,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       /** The tool calls of the reply being made. */
       let tools: Promise<void>[] = [];
       return {
+        byMeter: false,
         begin: () => {},
         audio: (audio) => send({ type: "input_audio_buffer.append", audio }),
         text(text) {
@@ -737,6 +997,15 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
               // The reader cut in, or began a new turn.
               quiet();
               if (said.trim()) endTurn();
+              mark({ hearing: true, thinking: false });
+              break;
+            case "input_audio_buffer.speech_stopped":
+              // The reader is done: the model has not answered yet.
+              mark({ hearing: false, thinking: true });
+              break;
+            case "conversation.item.input_audio_transcription.delta":
+              // The words so far; the completed text that follows replaces them.
+              if (message.delta) heard(message.delta);
               break;
             case "conversation.item.input_audio_transcription.completed":
               if (message.transcript) heard(message.transcript, true);
@@ -782,7 +1051,10 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
               if (called.length && message.response?.status !== "cancelled") {
                 // The model hears the results once its reply is over, and goes on.
                 await Promise.all(called);
-                if (current === call) send({ type: "response.create" });
+                if (current === call) {
+                  mark({ thinking: true });
+                  send({ type: "response.create" });
+                }
               } else {
                 endTurn();
               }
@@ -813,19 +1085,29 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       void ending.playback.close();
       caption.replaceChildren();
       status.textContent = why;
+      meter.hidden = true;
+      delete meter.dataset.on;
+      meter.dataset.level = "0.00";
+      meter.removeAttribute("data-speaking");
+      for (const bar of bars) bar.style.transform = "";
       pressed(false);
       delete document.documentElement.dataset.genuiCall;
     }
 
     async function start(): Promise<void> {
       pressed(true);
+      // Busy from the press until the call is on.
+      toggle.setAttribute("aria-busy", "true");
       status.textContent = "Connecting…";
+      // Its room is kept now, so that it can show later without moving anything.
+      meter.hidden = false;
       // Made in the click, so the browser lets it play.
       const playback = new AudioContext({ sampleRate: 24_000 });
       const response = await post("/api/voice-session", {});
       if (!response.ok) {
         void playback.close();
         pressed(false);
+        meter.hidden = true;
         status.textContent =
           response.status === 404
             ? "Voice is not set up on this server."
@@ -844,6 +1126,13 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         sources: new Set(),
         nextAt: 0,
         waiting: new Map(),
+        base: "Connecting…",
+        hearing: false,
+        thinking: false,
+        working: 0,
+        level: 0,
+        speaking: false,
+        quietAt: 0,
       } as Call;
       current.wire =
         ticket.protocol === "azure-voice-live"
@@ -885,6 +1174,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         reader = text;
         showReader();
         call.wire.text(text);
+        mark({ thinking: true });
         form.reset();
       },
       true,
@@ -909,6 +1199,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
             showReader();
           }
           current.wire.text(sent.say);
+          mark({ thinking: true }, current);
         });
       },
       true,
