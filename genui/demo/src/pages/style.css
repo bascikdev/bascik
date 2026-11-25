@@ -228,6 +228,29 @@ body {
   }
 }
 
+/* A reply that was asked for and has not started (the client runtime's
+   placeholder, aria-busy) shows a small dot instead of the caret. It pulses
+   unless the reader prefers less motion. */
+.live[data-testid="turn-pending"][aria-busy="true"]::after {
+  inline-size: 0.6em;
+  block-size: 0.6em;
+  border-radius: 50%;
+  vertical-align: baseline;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .live[data-testid="turn-pending"][aria-busy="true"]::after {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+    transform: scale(0.7);
+  }
+}
+
 /* Shown only while there is a reply: the stream's first chunk is an empty
    .writing marker. Without one the element holds only source whitespace. */
 .live:not(:has(.writing)) {

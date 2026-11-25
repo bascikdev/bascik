@@ -482,8 +482,16 @@ test("with the client runtime a message shows that a reply is on its way", async
   const pending = page.getByTestId("turn-pending");
   await expect(pending).toBeVisible();
   await expect(pending).toHaveAttribute("aria-busy", "true");
-  // The message is already shown, before the server has answered.
+  // The message is already shown, before the server has answered, with the
+  // same test id as the stored message that replaces it.
+  await expect(page.getByTestId("turn-user")).toHaveText("Recommend a book");
   await expect(page.locator(".turn-user")).toHaveText("Recommend a book");
+  // The demo's style: a round dot, where a finished reply's caret is square.
+  expect(
+    await page.evaluate(
+      `getComputedStyle(document.querySelector('[data-testid="turn-pending"]'), "::after").borderTopLeftRadius`,
+    ),
+  ).toBe("50%");
 
   release();
   await settled(page);
@@ -861,6 +869,15 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
     });
 
     /**
+     * The stand-in servers pause on purpose (the model "thinks" for a couple
+     * of seconds, the reader's sentence takes a moment to say, a second tool
+     * call comes late), so an assertion that waits across a pause gets room
+     * for a slow runner: the default five seconds is barely more than the
+     * pauses add up to. This only lengthens the wait; it asserts nothing new.
+     */
+    const PAUSED = { timeout: 30_000 };
+
+    /**
      * A microphone that needs no device and no permission: a tone from the
      * page's own audio engine, handed out where the browser would hand out the
      * real one. The component still captures it, converts it, and sends it.
@@ -904,21 +921,29 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
       // The microphone's sound reached the provider, which heard a sentence.
       await expect(page.getByTestId("turn-user")).toHaveText(
         "Recommend a book",
+        PAUSED,
       );
       const reply = page.getByTestId("turn-voice");
-      await expect(reply).toContainText("Here are two books from the shelf.");
+      await expect(reply).toContainText(
+        "Here are two books from the shelf.",
+        PAUSED,
+      );
       // What the model showed went to the server, through the catalog, and
       // came back as components with their styles.
       const cards = reply.getByTestId("book-card");
-      await expect(cards).toHaveCount(2);
+      await expect(cards).toHaveCount(2, PAUSED);
       await expect(cards.first().getByTestId("book-card-title")).toHaveText(
         "Refactoring the Monolith",
+        PAUSED,
       );
       await expect(cards.first()).toHaveCSS("border-top-style", "solid");
       await expect(reply.getByTestId("ask-button")).toHaveCount(1);
       // The caption followed the voice, a word at a time.
       await expect
-        .poll(() => page.evaluate("[...new Set(window.__bold)].join(' ')"))
+        .poll(
+          () => page.evaluate("[...new Set(window.__bold)].join(' ')"),
+          PAUSED,
+        )
         .toContain("Here are two");
       await expect(page.getByTestId("voice-call-caption")).toHaveAttribute(
         "data-timing",
@@ -927,7 +952,10 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
       if (provider === "azure-voice-live") {
         // Each word was in bold at its own time, and a full stop stayed with its word.
         await expect
-          .poll(() => page.evaluate("[...new Set(window.__bold)].join(' ')"))
+          .poll(
+            () => page.evaluate("[...new Set(window.__bold)].join(' ')"),
+            PAUSED,
+          )
           .toBe("Here are two books from the shelf.");
       }
       // No page load happened, and the composer was not used.
@@ -985,8 +1013,9 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
       // The tool ran on the server, and the model was told its result.
       await expect(reply).toContainText(
         "The shop says: A copy of The Quiet Network is held",
+        PAUSED,
       );
-      await expect(reply).toContainText("Hold number H-");
+      await expect(reply).toContainText("Hold number H-", PAUSED);
       await page.getByTestId("voice-call-toggle").click();
 
       await page.reload();
@@ -1075,8 +1104,11 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
       await expect(card).toHaveCount(1);
       await expect(reply).not.toContainText("Hold number");
       await card.getByTestId("tool-approval-deny").click();
-      await expect(reply).toContainText("Blocked. Error:");
-      await expect(reply).toContainText("The reader declined this action");
+      await expect(reply).toContainText("Blocked. Error:", PAUSED);
+      await expect(reply).toContainText(
+        "The reader declined this action",
+        PAUSED,
+      );
       await expect(reply).not.toContainText("Hold number");
       await page.getByTestId("voice-call-toggle").click();
     });
@@ -1117,8 +1149,11 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
       await page.getByTestId("voice-call-toggle").click();
 
       // The reader speaks: the status says so, and the words arrive as they are said.
-      await expect(status).toHaveText("Hearing you…");
-      await expect(page.getByTestId("turn-user")).toContainText("Recommend");
+      await expect(status).toHaveText("Hearing you…", PAUSED);
+      await expect(page.getByTestId("turn-user")).toContainText(
+        "Recommend",
+        PAUSED,
+      );
       // The level is the microphone's own, and the meter is decoration.
       await expect(meter).toBeVisible();
       await expect(meter).toHaveAttribute("aria-hidden", "true");
@@ -1130,21 +1165,26 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
 
       // The reader stops: the model has not answered yet.
       await page.evaluate("window.__micGain.gain.value = 0");
-      await expect(status).toHaveText("Thinking…");
-      await expect(meter).not.toHaveAttribute("data-speaking");
+      await expect(status).toHaveText("Thinking…", PAUSED);
+      await expect(meter).not.toHaveAttribute("data-speaking", PAUSED);
       await expect
-        .poll(async () => Number(await meter.getAttribute("data-level")))
+        .poll(
+          async () => Number(await meter.getAttribute("data-level")),
+          PAUSED,
+        )
         .toBeLessThan(0.1);
       // The words that were said stand as they were completed, not twice.
       await expect(page.getByTestId("turn-user")).toHaveText(
         "Recommend a book",
+        PAUSED,
       );
 
       // The model's first sound ends the wait.
       await expect(page.getByTestId("turn-voice")).toContainText(
         "Here are two books",
+        PAUSED,
       );
-      await expect(status).not.toHaveText("Thinking…");
+      await expect(status).not.toHaveText("Thinking…", PAUSED);
       await page.getByTestId("voice-call-toggle").click();
       await expect(meter).toBeHidden();
     });
@@ -1183,6 +1223,108 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
       );
       await expect(toggle).not.toHaveAttribute("aria-busy");
       await toggle.click();
+    });
+
+    /** Remembers every audio engine and socket the page makes, and whether it was let go. */
+    const countResources = `
+    window.__audio = [];
+    window.__sockets = [];
+    const BaseAudio = window.AudioContext;
+    window.AudioContext = class extends BaseAudio {
+      constructor(options) { super(options); window.__audio.push(this); }
+    };
+    const BaseSocket = window.WebSocket;
+    window.WebSocket = class extends BaseSocket {
+      constructor(...args) { super(...args); window.__sockets.push(this); }
+    };
+  `;
+    const sessionRequests = (page: Page): string[] => {
+      const seen: string[] = [];
+      page.on("request", (request) => {
+        if (request.url().includes("/api/voice-session"))
+          seen.push(request.url());
+      });
+      return seen;
+    };
+    /** Holds the session request until the test lets it go; a cancelled request is not an error. */
+    const holdSession = async (
+      page: Page,
+      session: ReturnType<typeof gate>,
+    ) => {
+      await page.route("**/api/voice-session*", async (route) => {
+        await session.opened;
+        await route.fallback().catch(() => {});
+      });
+    };
+
+    test("starts one call from one press, even while the session is on its way", async ({
+      page,
+    }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(noMicrophone);
+      await page.addInitScript(countResources);
+      await page.reload();
+      const requests = sessionRequests(page);
+      const session = gate();
+      await holdSession(page, session);
+      const toggle = page.getByTestId("voice-call-toggle");
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-busy", "true");
+      session.open();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "No microphone: type to talk.",
+        { timeout: 15_000 },
+      );
+      expect(requests).toHaveLength(1);
+      expect(await page.evaluate("window.__sockets.length")).toBe(1);
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    });
+
+    test("cancels a call that is still connecting when the button is pressed again", async ({
+      page,
+    }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(noMicrophone);
+      await page.addInitScript(countResources);
+      await page.reload();
+      const requests = sessionRequests(page);
+      const session = gate();
+      await holdSession(page, session);
+      const toggle = page.getByTestId("voice-call-toggle");
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-pressed", "true");
+      // A second press while the session request is pending is a cancel.
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-pressed", "false");
+      await expect(toggle).not.toHaveAttribute("aria-busy");
+      await expect(page.getByTestId("voice-call-meter")).toBeHidden();
+      session.open();
+
+      // Nothing was left behind: one request, no socket, and every audio engine closed.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              "window.__audio.every((context) => context.state === 'closed')",
+            ),
+          { timeout: 15_000 },
+        )
+        .toBe(true);
+      expect(requests).toHaveLength(1);
+      expect(await page.evaluate("window.__sockets.length")).toBe(0);
+      await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+      // The button still works afterwards: a new press starts one call.
+      await toggle.click();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "No microphone: type to talk.",
+        { timeout: 15_000 },
+      );
+      expect(requests).toHaveLength(2);
+      expect(await page.evaluate("window.__sockets.length")).toBe(1);
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-pressed", "false");
     });
 
     test("shows work in progress, and a view on its way", async ({ page }) => {

@@ -105,7 +105,7 @@ All jobs enforce least-privilege with `permissions: contents: read`. The two dep
 
 ## Release Workflow
 
-The release workflow (`.github/workflows/release.yml`) triggers on version tags. The five npm packages it publishes are **independently versioned and released**; pushing a tag only publishes the package that tag belongs to. The VS Code extension is published to the Marketplace by the same workflow. For the step-by-step publish order, see `RELEASING.md` in the repository root.
+The release workflow (`.github/workflows/release.yml`) triggers on version tags. The six npm packages it publishes are **independently versioned and released**; pushing a tag only publishes the package that tag belongs to. The VS Code extension is published to the Marketplace by the same workflow. For the step-by-step publish order, see `RELEASING.md` in the repository root.
 
 | Package                                | Tag format                                                | Example                     |
 | -------------------------------------- | --------------------------------------------------------- | --------------------------- |
@@ -113,6 +113,7 @@ The release workflow (`.github/workflows/release.yml`) triggers on version tags.
 | `create-bascik`                        | `create-v<semver>`                                        | `create-v1.0.3`             |
 | `@bascik/adapter-cloudflare`           | `adapter-cloudflare-v<semver>`                            | `adapter-cloudflare-v1.0.0` |
 | `@bascik/adapter-netlify`              | `adapter-netlify-v<semver>`                               | `adapter-netlify-v1.0.0`    |
+| `@bascik/genui`                        | `genui-v<semver>`                                         | `genui-v0.1.0`              |
 | `@bascik/language-server`              | `lsp-v<semver>`                                           | `lsp-v1.0.0`                |
 | Bascik VS Code extension (Marketplace) | `ext-v<semver>`, or `ext-pre-v<semver>` for a pre-release | `ext-v1.0.0`                |
 
@@ -136,6 +137,10 @@ jobs:
     if: startsWith(github.ref_name, 'adapter-netlify-v')
     # publishes @bascik/adapter-netlify
 
+  release-genui:
+    if: startsWith(github.ref_name, 'genui-v')
+    # publishes @bascik/genui (packed with yarn pack, see Publishing to npm)
+
   release-language-server:
     if: startsWith(github.ref_name, 'lsp-v')
     # publishes @bascik/language-server
@@ -151,7 +156,7 @@ All jobs follow the same steps: check out the full history, check that the tagge
 
 ## Publishing to npm
 
-The five npm packages publish to npmjs.com using GitHub Actions OIDC trusted publishing, without an npm token. Configure a trusted publisher separately for each package with organization `bascikdev`, repository `bascik`, workflow filename `release.yml`, no environment, and permission to run `npm publish`. Every job calls `.github/scripts/publish-npm.sh <tag-prefix>` from the package directory:
+The six npm packages publish to npmjs.com using GitHub Actions OIDC trusted publishing, without an npm token. Configure a trusted publisher separately for each package with organization `bascikdev`, repository `bascik`, workflow filename `release.yml`, no environment, and permission to run `npm publish`. Every job calls `.github/scripts/publish-npm.sh <tag-prefix>` from the package directory:
 
 ```yaml
 - name: Publish to npm
@@ -165,9 +170,11 @@ The script fails unless the git tag equals the prefix plus the `version` in the 
 - `--provenance`: generates a signed attestation on npmjs.com that links the published package to the exact GitHub Actions run that built it. This requires `id-token: write` permission on the job and a `repository.url` in `package.json` that matches the GitHub repository.
 - `--tag`: `latest` for stable versions. A prerelease such as `1.1.0-rc.1` publishes under the identifier before the first dot (`rc`), so `npm install <pkg>` never picks it up by default.
 
+npm ignores `publishConfig.exports` and `publishConfig.types`, which Yarn applies when it packs. `@bascik/genui` relies on both (its `exports` point at `src/` inside the monorepo and at `dist/` once published), so for a package whose `publishConfig` sets either, the script runs `yarn pack --out <temporary file>.tgz` and publishes that tarball with the same flags. The other packages publish from their directory. `pkg/e2e/scripts/publish-npm.test.ts` runs the script with fake `npm` and `yarn` programs to prove both paths.
+
 ## Tagging a Release
 
-After merging version bumps into `main`, run `yarn release` from the repository root. `.github/scripts/release.mjs` reads versions from fetched `origin/main` and pushes tags in three stages: language server and Bascik, then scaffold and both adapters (Cloudflare and Netlify), then the extension. It waits for successful Actions runs and npm registry availability between stages, stops on failures, and refuses existing tags. Use `yarn release pkg lsp` to select packages or `yarn release --dry-run` to print commands without pushing. The examples below are the manual alternative.
+After merging version bumps into `main`, run `yarn release` from the repository root. `.github/scripts/release.mjs` reads versions from fetched `origin/main` and pushes tags in three stages: language server and Bascik, then scaffold, both adapters (Cloudflare and Netlify) and `@bascik/genui`, then the extension. It waits for successful Actions runs and npm registry availability between stages, stops on failures, and refuses existing tags. Use `yarn release pkg lsp` to select packages or `yarn release --dry-run` to print commands without pushing. The examples below are the manual alternative.
 
 ### `@bascik/bascik`
 
@@ -191,7 +198,7 @@ git tag create-v1.0.3 origin/main
 git push origin create-v1.0.3
 ```
 
-### The adapters and `@bascik/language-server`
+### The adapters, `@bascik/genui` and `@bascik/language-server`
 
 ```sh
 # Bump the version in lsp/package.json and merge it into main through a pull request, then:
@@ -205,13 +212,16 @@ git push origin adapter-cloudflare-v1.0.0
 # The same for adapters/netlify/package.json:
 git tag adapter-netlify-v1.0.0 origin/main
 git push origin adapter-netlify-v1.0.0
+# After @bascik/bascik is on npm, the same for genui/package.json:
+git tag genui-v0.1.0 origin/main
+git push origin genui-v0.1.0
 ```
 
 Push each tag by name, never with `git push --tags`, which pushes every local tag (stale ones from a dry run included) and can start a publish job out of the order in `RELEASING.md`.
 
 ### Release candidates
 
-Use a prerelease version and the matching tag, for example `1.1.0-rc.1` with `v1.1.0-rc.1`. Publish `@bascik/language-server` and `@bascik/bascik` first, then the packages that depend on them (`create-bascik`, `@bascik/adapter-cloudflare` and `@bascik/adapter-netlify`). Install with `npm install @bascik/bascik@rc`. Dependents pin a range that includes the prerelease (for example `^1.1.0-rc.1`), which also accepts the final `1.1.0`. A prerelease never moves the `latest` dist-tag, so `npm create bascik` and a plain `npm install @bascik/bascik` keep installing the current stable release.
+Use a prerelease version and the matching tag, for example `1.1.0-rc.1` with `v1.1.0-rc.1`. Publish `@bascik/language-server` and `@bascik/bascik` first, then the packages that depend on them (`create-bascik`, `@bascik/adapter-cloudflare`, `@bascik/adapter-netlify` and `@bascik/genui`). Install with `npm install @bascik/bascik@rc`. Dependents pin a range that includes the prerelease (for example `^1.1.0-rc.1`), which also accepts the final `1.1.0`. A prerelease never moves the `latest` dist-tag, so `npm create bascik` and a plain `npm install @bascik/bascik` keep installing the current stable release.
 
 The release workflow picks up the tag, runs tests, builds `dist/` (which is not committed to git), and publishes to npm.
 

@@ -432,11 +432,15 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       }
     }
 
-    const post = (path: string, fields: Record<string, string>): Promise<Response> => {
+    const post = (
+      path: string,
+      fields: Record<string, string>,
+      signal?: AbortSignal,
+    ): Promise<Response> => {
       const body = new FormData();
       body.set("app", app);
       for (const [name, value] of Object.entries(fields)) body.set(name, value);
-      return fetch(path, { method: "POST", body });
+      return fetch(path, { method: "POST", body, signal });
     };
 
     /* ---- The thread: what was said and shown, as it happens ---- */
@@ -705,6 +709,11 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       const microphone = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
       });
+      // The call ended while the browser was asking: nothing may keep the microphone.
+      if (current !== call) {
+        microphone.getTracks().forEach((track) => track.stop());
+        return;
+      }
       // Asking for 16 kHz here means the browser resamples, not this script.
       const capture = new AudioContext({ sampleRate: 16_000 });
       current.microphone = microphone;
@@ -712,6 +721,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       await capture.audioWorklet.addModule(
         URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })),
       );
+      if (current !== call) return;
       const node = new AudioWorkletNode(capture, "mic");
       capture.createMediaStreamSource(microphone).connect(node);
       let pending: number[] = [];
@@ -1094,68 +1104,98 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       delete document.documentElement.dataset.genuiCall;
     }
 
+    /** The call that is being started: its session is asked for, and not yet answered. */
+    let starting: AbortController | null = null;
+
+    /** Give up on a call that is not on yet, and say why when there is something to say. */
+    function cancelStart(why = ""): void {
+      starting?.abort();
+      starting = null;
+      meter.hidden = true;
+      status.textContent = why;
+      pressed(false);
+    }
+
     async function start(): Promise<void> {
+      const attempt = new AbortController();
+      starting = attempt;
       pressed(true);
       // Busy from the press until the call is on.
       toggle.setAttribute("aria-busy", "true");
       status.textContent = "Connecting…";
       // Its room is kept now, so that it can show later without moving anything.
       meter.hidden = false;
-      // Made in the click, so the browser lets it play.
-      const playback = new AudioContext({ sampleRate: 24_000 });
-      const response = await post("/api/voice-session", {});
-      if (!response.ok) {
-        void playback.close();
-        pressed(false);
-        meter.hidden = true;
-        status.textContent =
-          response.status === 404
-            ? "Voice is not set up on this server."
-            : "The voice service did not answer.";
-        return;
+      // Whatever this attempt holds is closed unless the call takes it over.
+      let playback: AudioContext | null = null;
+      try {
+        // Made in the click, so the browser lets it play.
+        playback = new AudioContext({ sampleRate: 24_000 });
+        const response = await post("/api/voice-session", {}, attempt.signal);
+        if (!response.ok) {
+          cancelStart(
+            response.status === 404
+              ? "Voice is not set up on this server."
+              : "The voice service did not answer.",
+          );
+          return;
+        }
+        const ticket = (await response.json()) as {
+          protocol: string;
+          url: string;
+          setup: unknown;
+          label?: string;
+        };
+        // The reader pressed the button again while the session was on its way.
+        if (attempt.signal.aborted) return;
+        const current = {
+          socket: new WebSocket(ticket.url),
+          playback,
+          sources: new Set(),
+          nextAt: 0,
+          waiting: new Map(),
+          base: "Connecting…",
+          hearing: false,
+          thinking: false,
+          working: 0,
+          level: 0,
+          speaking: false,
+          quietAt: 0,
+        } as Call;
+        current.wire =
+          ticket.protocol === "azure-voice-live"
+            ? azureVoiceLive(current)
+            : geminiLive(current, ticket.setup);
+        newResponse();
+        call = current;
+        // The call has its own audio now, and the attempt is over.
+        playback = null;
+        starting = null;
+        provider.textContent = ticket.label ?? PROVIDERS[ticket.protocol] ?? "";
+        // Other voices on the page stay quiet while a call is on.
+        document.documentElement.dataset.genuiCall = "on";
+        if (current.socket.readyState === WebSocket.OPEN) current.wire.begin();
+        else current.socket.onopen = () => current.wire.begin();
+        current.socket.onmessage = (event) => void onMessage(current, event);
+        current.socket.onclose = (event) => {
+          // A relay or a provider can say why it hung up.
+          if (current === call) hangUp(event.reason.slice(0, 160) || "The call ended.");
+        };
+        requestAnimationFrame(captions);
+      } catch {
+        // A press that cancelled this attempt has already said what there is to say.
+        if (attempt.signal.aborted) return;
+        if (call) hangUp("The call could not start.");
+        else cancelStart("The call could not start.");
+      } finally {
+        void playback?.close();
       }
-      const ticket = (await response.json()) as {
-        protocol: string;
-        url: string;
-        setup: unknown;
-        label?: string;
-      };
-      const current = {
-        socket: new WebSocket(ticket.url),
-        playback,
-        sources: new Set(),
-        nextAt: 0,
-        waiting: new Map(),
-        base: "Connecting…",
-        hearing: false,
-        thinking: false,
-        working: 0,
-        level: 0,
-        speaking: false,
-        quietAt: 0,
-      } as Call;
-      current.wire =
-        ticket.protocol === "azure-voice-live"
-          ? azureVoiceLive(current)
-          : geminiLive(current, ticket.setup);
-      newResponse();
-      call = current;
-      provider.textContent = ticket.label ?? PROVIDERS[ticket.protocol] ?? "";
-      // Other voices on the page stay quiet while a call is on.
-      document.documentElement.dataset.genuiCall = "on";
-      if (current.socket.readyState === WebSocket.OPEN) current.wire.begin();
-      else current.socket.onopen = () => current.wire.begin();
-      current.socket.onmessage = (event) => void onMessage(current, event);
-      current.socket.onclose = (event) => {
-        // A relay or a provider can say why it hung up.
-        if (current === call) hangUp(event.reason.slice(0, 160) || "The call ended.");
-      };
-      requestAnimationFrame(captions);
     }
 
     toggle.addEventListener("click", () => {
       if (call) hangUp();
-      else void start().catch(() => hangUp("The call could not start."));
+      // Pressed while connecting: this is a cancel, not a second call.
+      else if (starting) cancelStart();
+      else void start();
     });
 
     // During a call, a typed message is said to the model, not posted.

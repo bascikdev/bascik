@@ -11,7 +11,7 @@ npm install @bascik/genui
 npx bascik add @bascik/genui
 ```
 
-> **Not on npm yet.** Until the package is published, build it from the Bascik repository: `yarn workspace @bascik/genui pack` writes a tarball you can install with `npm install ./package.tgz`.
+`@bascik/genui` is an experimental 0.x package, so a minor version may change the API; pin the version you tested. It needs `@bascik/bascik` in the same project, and the optional peers `@anthropic-ai/sdk` (for the Claude adapter) and `beautiful-mermaid` (for diagrams) only when you use them.
 
 [`bascik add`](/how-to/sharing-components) copies the package's components into `src/components/`, where they are your files to read and change:
 

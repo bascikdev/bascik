@@ -399,19 +399,31 @@ export function createChat(options: ChatOptions): Chat {
     const messages = conversation.messages;
     const carriedOn = messages.at(-1)!.role === "assistant";
     const write = async (): Promise<void> => {
-      const model = await options.model(request);
-      const turn = runTurn({
-        model,
-        system: await promptFor(false),
-        messages,
-        tools,
-        signal: AbortSignal.any([
-          stop.signal,
-          AbortSignal.timeout(turnLimitMs),
-        ]),
-      });
-      const { message } = turn;
+      // What is stored if the turn cannot even start (a model that cannot be
+      // made, a catalog that does not load): the reply being carried on, or a
+      // new empty one. Either way the turn is finished, so a reload does not
+      // start it again.
+      const last = messages.at(-1)!;
+      let message: ChatMessage = carriedOn
+        ? {
+            ...last,
+            parts: last.parts?.map((part) => ({ ...part })) ?? [],
+          }
+        : { role: "assistant", content: "", parts: [] };
+      delete message.awaiting;
       try {
+        const model = await options.model(request);
+        const turn = runTurn({
+          model,
+          system: await promptFor(false),
+          messages,
+          tools,
+          signal: AbortSignal.any([
+            stop.signal,
+            AbortSignal.timeout(turnLimitMs),
+          ]),
+        });
+        message = turn.message;
         for await (const chunk of renderTurn(
           turn.events,
           await catalog(),
