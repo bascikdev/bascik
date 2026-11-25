@@ -275,14 +275,20 @@ function reply(text: string): string | ModelEvent[] {
   ].join("\n");
 }
 
-export const demoModel: Model = scriptedModel(
-  (request) => {
-    const last = request.messages.at(-1);
-    const files = last?.role === "user" ? filesOf(last) : [];
-    if (files.length) return acknowledge(files, last?.content ?? "");
-    return last?.role === "assistant"
-      ? afterTool(last)
-      : reply(last?.content ?? "");
-  },
-  { chunkSize: 6, delayMs: Number(process.env.DEMO_MODEL_DELAY_MS ?? 14) },
-);
+/**
+ * The bookshop's offline model. `delayMs` is the pause between chunks; the
+ * caller reads it from wherever it runs (the Node demo reads
+ * `DEMO_MODEL_DELAY_MS` in apps.ts), so this module reads no environment.
+ */
+export const demoModel = ({ delayMs }: { delayMs: number }): Model =>
+  scriptedModel(
+    (request) => {
+      const last = request.messages.at(-1);
+      const files = last?.role === "user" ? filesOf(last) : [];
+      if (files.length) return acknowledge(files, last?.content ?? "");
+      return last?.role === "assistant"
+        ? afterTool(last)
+        : reply(last?.content ?? "");
+    },
+    { chunkSize: 6, delayMs },
+  );
