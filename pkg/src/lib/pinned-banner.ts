@@ -5,20 +5,22 @@
  * It uses a terminal scroll region (DECSTBM): rows 2 to the bottom scroll, row 1 never does. Writing to row
  * 1 once is not enough, because the first screenful of output would scroll it away.
  *
- * Everything already on screen stays where the user can see it. One blank line is inserted at the top, which moves
- * the screen down a row, and the banner goes into that line. Only a completely full screen loses a line, exactly
- * one, to make room.
+ * The banner is followed by this run's output and nothing else. What was on screen when the server started, an
+ * earlier run's log for example, would otherwise sit under the banner and read as part of this run. So the screen is
+ * scrolled until the line above the cursor, normally the command that was just typed, is the top row. What scrolls
+ * off goes into the terminal's scrollback, where it can still be read. Then one blank line is inserted at the top,
+ * and the banner goes into it.
  *
  * VS Code's integrated terminal needs one more step. With shell integration on, it draws the command line of
  * whichever command owns the top visible row as a sticky overlay across that row, as soon as that command's line
  * has scrolled out of view. Any scrollback above the screen belongs to earlier commands, so their lines would be
  * drawn over the banner. The overlay stays hidden only while nothing above the screen can own the top row, so in
- * that terminal the scrollback is erased (`ESC [ 3 J`, the part of `clear` that matters). What is on screen is kept.
- * Other terminals keep their scrollback.
+ * that terminal the scrollback is erased (`ESC [ 3 J`, the part of `clear` that matters), so what was scrolled off
+ * is gone there. The command's line is still on screen. Other terminals keep their scrollback.
  *
- * The terminal is asked where the cursor is (`ESC [ 6 n`) so the cursor can be put back on the same line, now one
- * row lower, and so a full screen is told from one with room. A terminal that does not answer within a moment is
- * treated as full, which is always safe: it costs one scrolled line and puts the cursor on the last row.
+ * The terminal is asked where the cursor is (`ESC [ 6 n`), which says how far to scroll. A terminal that does not
+ * answer within a moment is treated as having the cursor on the last row, which is always safe: the whole screen
+ * but its last line is scrolled into the scrollback.
  *
  * A scroll region left behind by a run that was killed changes what a newline does, so it is reset first.
  *
@@ -187,8 +189,9 @@ export interface PinnedBanner {
 
 /**
  * Pins `Server running at <url>` to row 1 and returns a handle that releases it, or `undefined` when the
- * terminal cannot take it. Whatever was on screen moves down one row and stays visible. In VS Code's terminal the
- * scrollback is erased too, see the top of this file.
+ * terminal cannot take it. What was on screen above the command's line is scrolled into the scrollback, so the
+ * banner is followed only by this run's output. In VS Code's terminal the scrollback is erased too, see the top of
+ * this file.
  */
 export const pinServerUrl = async (
   url: string,
@@ -204,28 +207,30 @@ export const pinServerUrl = async (
     `${ESC}[1;1H${CLEAR_LINE}${formatBanner(url, stream.columns ?? 80)}${ESC}[2;${rows()}r`;
 
   // This must be asked BEFORE the region is reset: setting or resetting a region moves the cursor to the top left,
-  // so asking afterwards always answers "row 1". Unknown means the screen is full, which is always safe.
+  // so asking afterwards always answers "row 1". Unknown means the last row, which is always safe.
   const position = await readCursorPosition(stream, input);
   const total = rows();
   const cursorRow = Math.min(Math.max(position?.row ?? total, 1), total);
   const cursorColumn = Math.max(position?.column ?? 1, 1);
-  const full = cursorRow >= total;
+  // Keep the line above the cursor, normally the command that started the server, and the cursor's own line.
+  const keptAbove = Math.min(cursorRow - 1, 1);
+  const scrolled = cursorRow - 1 - keptAbove;
   const emptyScrollback = needsEmptyScrollback(env);
 
   // 1. Forget any region a previous run left behind, and origin mode with it, so a newline scrolls the whole
   //    screen and a row number means the same as it does on the glass.
-  // 2. A full screen has no row to spare, so scroll exactly one line away. The cursor line moves up one row and
-  //    the last row is empty. A screen with room needs nothing here.
-  // 3. In VS Code's terminal, erase the scrollback. This comes AFTER the scroll in step 2, so the line that
-  //    scroll pushed up goes with the rest and nothing is left above the screen to own the top row.
-  // 4. Insert a blank line at the top. Everything moves down one row, the empty row at the bottom is the one that
-  //    falls off, and the command's line is still on screen.
+  // 2. Scroll what was on screen before this run into the scrollback: a newline on the last row moves every line
+  //    up one, and the top line off the screen. Afterwards the kept line is the top row and the rows below the
+  //    cursor's line are empty. A cursor already on row 1 or 2 has nothing above it to scroll.
+  // 3. In VS Code's terminal, erase the scrollback. This comes AFTER the scroll in step 2, so the lines that
+  //    scroll pushed up go with the rest and nothing is left above the screen to own the top row.
+  // 4. Insert a blank line at the top. Everything moves down one row, and the row that falls off the bottom is an
+  //    empty one.
   // 5. Draw the banner on the new top row and set the region below it. Setting the region homes the cursor.
-  // 6. Put the cursor back on the line it was on, which is one row lower, or still the last row when the screen
-  //    was full, in the column it was in.
-  const resumeRow = full ? total : cursorRow + 1;
+  // 6. Put the cursor back on the line it was on, in the column it was in.
+  const resumeRow = keptAbove + 2;
   stream.write(
-    `${RESET_SCROLL_REGION}${RESET_ORIGIN_MODE}${full ? `${ESC}[${total};1H\n` : ""}${emptyScrollback ? ERASE_SCROLLBACK : ""}` +
+    `${RESET_SCROLL_REGION}${RESET_ORIGIN_MODE}${scrolled > 0 ? `${ESC}[${total};1H${"\n".repeat(scrolled)}` : ""}${emptyScrollback ? ERASE_SCROLLBACK : ""}` +
       `${ESC}[1;1H${INSERT_LINE}${drawBanner()}${ESC}[${resumeRow};${cursorColumn}H`,
   );
 

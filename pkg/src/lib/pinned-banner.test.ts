@@ -324,7 +324,7 @@ describe("pinned-banner", () => {
       expect(writes[1].startsWith(`${ESC}[r${ESC}[?6l`)).toBe(true);
     });
 
-    it("moves the screen down one row to make room, without scrolling anything into the scrollback", async () => {
+    it("scrolls what was on screen before the command into the scrollback, so the banner is followed by this run alone", async () => {
       const { stream, writes } = makeStream({ rows: 40 });
       const { input, answer } = makeInput({ reply: `${ESC}[7;5R` });
       answer(stream);
@@ -339,15 +339,36 @@ describe("pinned-banner", () => {
       const setup = writes[1];
       expect(setup).toBe(
         `${ESC}[r${ESC}[?6l` +
-          // A blank line at the top moves everything down. The command's line stays on screen, which is what keeps
+          // The cursor was on row 7. Five newlines on the last row scroll rows 1 to 5 away, which leaves the
+          // command's line (row 6) on the top row and the cursor's line under it.
+          `${ESC}[40;1H\n\n\n\n\n` +
+          // A blank line at the top moves both down. The command's line stays on screen, which is what keeps
           // VS Code's sticky scroll overlay from covering the banner.
           `${ESC}[1;1H${ESC}[L` +
           `${ESC}[1;1H${ESC}[2KServer running at http://localhost:8080 ${ESC}[2;40r` +
-          // The cursor was on row 7, column 5. That line is now on row 8, and the cursor goes back to it.
-          `${ESC}[8;5H`,
+          // The cursor goes back to its line, now row 3, in the column it was in.
+          `${ESC}[3;5H`,
       );
-      // Nothing scrolls: no newline is written.
-      expect(setup).not.toContain("\n");
+    });
+
+    it("scrolls nothing when the cursor has at most one line above it", async () => {
+      for (const [row, resume] of [
+        [1, "2;4"],
+        [2, "3;4"],
+      ] as const) {
+        const { stream, writes } = makeStream({ rows: 24 });
+        const { input, answer } = makeInput({ reply: `${ESC}[${row};4R` });
+        answer(stream);
+        const banner = await pinServerUrl(
+          "http://localhost:8080",
+          stream,
+          {},
+          input,
+        );
+        banner?.release();
+        expect(writes[1]).not.toContain("\n");
+        expect(writes[1].endsWith(`${ESC}[2;24r${ESC}[${resume}H`)).toBe(true);
+      }
     });
 
     it("leaves the scrollback alone outside VS Code's terminal", async () => {
@@ -379,14 +400,14 @@ describe("pinned-banner", () => {
         );
         banner?.release();
         expect(writes[1]).toBe(
-          `${ESC}[r${ESC}[?6l${ESC}[3J` +
+          `${ESC}[r${ESC}[?6l${ESC}[40;1H\n\n\n\n\n${ESC}[3J` +
             `${ESC}[1;1H${ESC}[L` +
             `${ESC}[1;1H${ESC}[2KServer running at http://localhost:8080 ${ESC}[2;40r` +
-            `${ESC}[8;5H`,
+            `${ESC}[3;5H`,
         );
       });
 
-      it("erases it AFTER scrolling a full screen, so the line that scroll pushed up goes too", async () => {
+      it("erases it AFTER scrolling, so the lines that scroll pushed up go too", async () => {
         const { stream, writes } = makeStream({ rows: 24 });
         const { input, answer } = makeInput({ reply: `${ESC}[24;1R` });
         answer(stream);
@@ -400,7 +421,7 @@ describe("pinned-banner", () => {
         const setup = writes[1];
         expect(
           setup.startsWith(
-            `${ESC}[r${ESC}[?6l${ESC}[24;1H\n${ESC}[3J${ESC}[1;1H${ESC}[L`,
+            `${ESC}[r${ESC}[?6l${ESC}[24;1H${"\n".repeat(22)}${ESC}[3J${ESC}[1;1H${ESC}[L`,
           ),
         ).toBe(true);
       });
@@ -423,7 +444,7 @@ describe("pinned-banner", () => {
       });
     });
 
-    it("scrolls exactly one line away when the screen is full, and puts the cursor back where it was", async () => {
+    it("scrolls all but the command's line and the cursor's line away when the screen is full", async () => {
       const { stream, writes } = makeStream({ rows: 24 });
       const { input, answer } = makeInput({ reply: `${ESC}[24;1R` });
       answer(stream);
@@ -436,13 +457,15 @@ describe("pinned-banner", () => {
       banner?.release();
       const setup = writes[1];
       expect(
-        setup.startsWith(`${ESC}[r${ESC}[?6l${ESC}[24;1H\n${ESC}[1;1H${ESC}[L`),
+        setup.startsWith(
+          `${ESC}[r${ESC}[?6l${ESC}[24;1H${"\n".repeat(22)}${ESC}[1;1H${ESC}[L`,
+        ),
       ).toBe(true);
-      expect(setup.split("\n")).toHaveLength(2);
-      expect(setup.endsWith(`${ESC}[2;24r${ESC}[24;1H`)).toBe(true);
+      expect(setup.split("\n")).toHaveLength(23);
+      expect(setup.endsWith(`${ESC}[2;24r${ESC}[3;1H`)).toBe(true);
     });
 
-    it("treats a terminal that does not answer as a full screen, which is always safe", async () => {
+    it("treats a terminal that does not answer as having the cursor on the last row, which is always safe", async () => {
       vi.useFakeTimers();
       try {
         const { stream, writes } = makeStream({ rows: 24 });
@@ -459,10 +482,10 @@ describe("pinned-banner", () => {
         banner?.release();
         expect(
           writes[1].startsWith(
-            `${ESC}[r${ESC}[?6l${ESC}[24;1H\n${ESC}[1;1H${ESC}[L`,
+            `${ESC}[r${ESC}[?6l${ESC}[24;1H${"\n".repeat(22)}${ESC}[1;1H${ESC}[L`,
           ),
         ).toBe(true);
-        expect(writes[1].endsWith(`${ESC}[24;1H`)).toBe(true);
+        expect(writes[1].endsWith(`${ESC}[3;1H`)).toBe(true);
       } finally {
         vi.useRealTimers();
       }
@@ -470,7 +493,7 @@ describe("pinned-banner", () => {
 
     it("keeps the cursor on the screen, whatever the terminal claims", async () => {
       for (const [claimed, resume] of [
-        [999, "24;1"],
+        [999, "3;1"],
         [0, "2;1"],
       ] as const) {
         const { stream, writes } = makeStream({ rows: 24 });
@@ -599,6 +622,67 @@ describe("pinned-banner", () => {
         "Server running at http://localhost:8080 on-number-1.svg",
       );
       expect(/https?:\/\/\S+/.exec(topLine)?.[0]).toBe("http://localhost:8080");
+    });
+
+    it("shows the banner, the command, and this run's output, with the earlier run in the scrollback", async () => {
+      const rows = 12;
+      const terminal = new Terminal({
+        cols: columns,
+        rows,
+        allowProposedApi: true,
+      });
+      let written: Promise<void> = Promise.resolve();
+      const write = (chunk: string) => {
+        written = written.then(
+          () => new Promise<void>((done) => terminal.write(chunk, done)),
+        );
+        return true;
+      };
+      // An earlier run's output, a prompt, and the command, as a shell leaves them.
+      for (let line = 1; line <= 6; line++)
+        write(`earlier run line ${line}\r\n`);
+      write("$ bascik\r\n");
+      await written;
+      const stream: PinnedBannerStream = {
+        isTTY: true,
+        rows,
+        columns,
+        write,
+        on: () => stream,
+        off: () => stream,
+      };
+      // The terminal answers the cursor query with the row after the command: 8.
+      const { input, answer } = makeInput({ reply: `${ESC}[8;1R` });
+      answer(stream);
+      const banner = await pinServerUrl(
+        "http://localhost:8080",
+        stream,
+        {},
+        input,
+      );
+      stream.write("Starting transpiling...\r\n");
+      await written;
+      const buffer = terminal.buffer.active;
+      const screen = Array.from({ length: rows }, (_, row) =>
+        buffer.getLine(buffer.baseY + row)!.translateToString(true),
+      );
+      expect(screen.slice(0, 4)).toEqual([
+        "Server running at http://localhost:8080 ",
+        "$ bascik",
+        "Starting transpiling...",
+        "",
+      ]);
+      expect(screen.join("")).not.toContain("earlier run");
+      // The earlier run was scrolled away, not erased: it is all in the scrollback, in order.
+      expect(buffer.baseY).toBe(6);
+      expect(
+        Array.from({ length: 6 }, (_, row) =>
+          buffer.getLine(row)!.translateToString(true),
+        ),
+      ).toEqual([1, 2, 3, 4, 5, 6].map((line) => `earlier run line ${line}`));
+      banner?.release();
+      await written;
+      terminal.dispose();
     });
 
     it("reads the banner alone when a whole log line sits under it", async () => {

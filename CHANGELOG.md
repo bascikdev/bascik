@@ -17,6 +17,7 @@ it is not `@bascik/bascik`.
 
 ### Fixed
 
+- The dev server's pinned `Server running at` line is now followed only by the command and that run's output. In a terminal that already had output on screen, such as an earlier run, the address was drawn on the top row and the old output stayed under it, so it read as part of the new run. The old output is now scrolled up into the terminal's scrollback. `--no-pin` still turns pinning off. See [What you see in the terminal](https://bascik.dev/developer-experience#what-you-see-in-the-terminal).
 - `@bascik/bascik` 1.0.2: component tags returned by a server or stream script render in time proportional to the output when one component holds many others, such as a grid whose slot holds a few hundred cards. Each card used to copy and search the whole grid again, so 990 cards in one grid took over a second of blocked event loop where the same cards spread over many grids took a tenth of that. Named-slot content that holds many component usages (`data-bascik-slot="..."` wrappers around or inside them) had a second pass of the same kind, which also slowed builds of such pages. Output is unchanged; see [`scripts.renderLimits`](https://bascik.dev/configuration#scriptsrenderlimits) for the limits on one output.
 
 ## [create-bascik 1.1.1] - 2026-11-22
