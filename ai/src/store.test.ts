@@ -20,8 +20,11 @@ import {
   limitConversations,
   MAX_CONVERSATION_BYTES,
   MAX_CONVERSATIONS,
+  MAX_LISTED_BYTES,
+  MAX_SEARCHED_BYTES,
   memoryStore,
   newConversation,
+  searchConversations,
   type Conversation,
   type ConversationStore,
 } from "./store.ts";
@@ -299,7 +302,7 @@ describe("fileStore", () => {
     ]);
   });
 
-  it("answers every one of many lists at once, a few at a time", async () => {
+  it("answers every one of many lists at once", async () => {
     const store = fileStore(await folder());
     const saved = Array.from({ length: 40 }, (_, n) => at(n + 1));
     for (const entry of saved) await store.save(READER, entry);
@@ -307,6 +310,31 @@ describe("fileStore", () => {
       Array.from({ length: 12 }, () => store.list(READER)),
     );
     for (const listed of lists) expect(listed).toHaveLength(40);
+  });
+
+  it("never makes one reader's list wait for another reader's", async () => {
+    const store = fileStore(await folder());
+    const attacker = "22222222-2222-4222-8222-222222222222";
+    const theirs = Array.from({ length: 150 }, (_, n) =>
+      at(n + 1, "x".repeat(2000)),
+    );
+    for (const entry of theirs) await store.save(attacker, entry);
+    const mine = at(1);
+    await store.save(READER, mine);
+    let done = 0;
+    const theirLists = Array.from({ length: 30 }, () =>
+      store.list(attacker).then((listed) => {
+        done += 1;
+        return listed;
+      }),
+    );
+    const listed = await store.list(READER);
+    const doneBeforeMine = done;
+    expect(listed.map((entry) => entry.id)).toEqual([mine.id]);
+    for (const their of await Promise.all(theirLists)) {
+      expect(their).toHaveLength(150);
+    }
+    expect(doneBeforeMine).toBeLessThan(10);
   });
 
   it("leaves no partial file behind", async () => {
@@ -482,19 +510,199 @@ describe("limitConversations", () => {
     expect(await shared.list(READER)).toHaveLength(5);
   });
 
-  it("still saves a new conversation when the count cannot be read", async () => {
+  it("counts with list when summaries fails, so the cap still holds", async () => {
     const inner = memoryStore();
-    const { summaries: _summaries, ...rest } = inner;
-    const broken: ConversationStore = {
-      ...rest,
-      list: async () => {
-        throw new Error("the database is down");
+    const store = limitConversations(
+      {
+        ...inner,
+        summaries: async () => {
+          throw new Error("the count query fails");
+        },
       },
+      3,
+    );
+    for (let n = 0; n < 10; n += 1) await store.save(READER, at(n + 1));
+    expect(await inner.list(READER)).toHaveLength(3);
+  });
+
+  it("refuses a new conversation, and saves one the reader has, when nothing can count", async () => {
+    const inner = memoryStore();
+    const down = async (): Promise<never> => {
+      throw new Error("the database is down");
     };
-    const store = limitConversations(broken, 2);
-    const fresh = at(1);
-    await store.save(READER, fresh);
-    expect(await inner.load(READER, fresh.id)).not.toBeNull();
+    const store = limitConversations(
+      { ...inner, summaries: down, list: down },
+      3,
+    );
+    const had = at(1);
+    await inner.save(READER, had);
+    for (let n = 0; n < 10; n += 1) {
+      await expect(store.save(READER, at(n + 2))).rejects.toThrow(
+        /could not count/,
+      );
+    }
+    expect(await inner.summaries!(READER)).toHaveLength(1);
+    await store.save(READER, { ...had, title: "Renamed" });
+    expect((await inner.load(READER, had.id))!.title).toBe("Renamed");
+  });
+
+  it("holds the cap across two file stores over one folder", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "genui-shared-"));
+    folders.push(directory);
+    const [a, b] = [
+      limitConversations(fileStore(directory), 5),
+      limitConversations(fileStore(directory), 5),
+    ];
+    await Promise.all(
+      Array.from({ length: 20 }, (_, n) =>
+        (n % 2 ? a : b).save(READER, at(n + 1)),
+      ),
+    );
+    expect(await readdir(join(directory, READER))).toHaveLength(5);
+    // A wrapper over a wrapper of the same folder still finishes its saves.
+    const nested = limitConversations(
+      limitConversations(fileStore(directory), 5),
+      5,
+    );
+    await Promise.all(
+      Array.from({ length: 6 }, (_, n) => nested.save(READER, at(n + 100))),
+    );
+    expect(await readdir(join(directory, READER))).toHaveLength(5);
+  });
+
+  describe("how much a list or a search reads", () => {
+    const bytes = (value: unknown): number =>
+      Buffer.byteLength(JSON.stringify(value));
+    /**
+     * One message of eight text parts of 63,990 CJK characters: under the
+     * voice turn's character cap, and about 1.5 MiB as UTF-8, so it is kept
+     * whole however small `maxBytes` is.
+     */
+    const wide = (updatedAt: number): Conversation => {
+      const text = "書".repeat(63_990);
+      return {
+        ...newConversation(),
+        updatedAt,
+        messages: [
+          {
+            role: "assistant",
+            content: text,
+            parts: Array.from({ length: 8 }, () => ({
+              type: "text" as const,
+              text,
+            })),
+          },
+        ],
+      };
+    };
+    /** A store that counts what it reads, and how many loads run at once. */
+    const watched = (inner: ConversationStore) => {
+      const seen = { loaded: 0, loads: 0, atOnce: 0, most: 0, lists: 0 };
+      const store: ConversationStore = {
+        ...inner,
+        load: async (reader, id) => {
+          seen.loads += 1;
+          seen.atOnce += 1;
+          seen.most = Math.max(seen.most, seen.atOnce);
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          const found = await inner.load(reader, id);
+          seen.atOnce -= 1;
+          if (found) seen.loaded += bytes(found);
+          return found;
+        },
+        list: async (reader) => {
+          seen.lists += 1;
+          return inner.list(reader);
+        },
+      };
+      return { store, seen };
+    };
+
+    it("lists every conversation, reading whole only the newest MAX_LISTED_BYTES, counted in bytes", async () => {
+      const inner = memoryStore();
+      const saved = Array.from({ length: 12 }, (_, n) => wide(n + 1));
+      for (const entry of saved) await inner.save(READER, entry);
+      const one = bytes(saved[0]);
+      expect(one).toBeGreaterThan(1.4 * MAX_CONVERSATION_BYTES);
+      const { store: seen, seen: counts } = watched(inner);
+      const store = limitConversations(seen);
+      const listed = await store.list(READER);
+      expect(listed.map((entry) => entry.id)).toEqual(
+        [...saved].reverse().map((entry) => entry.id),
+      );
+      const whole = listed.filter((entry) => entry.messages.length > 0);
+      expect(whole.length).toBeGreaterThan(0);
+      // The whole ones are the newest.
+      expect(listed.slice(0, whole.length)).toEqual(whole);
+      expect(whole.reduce((sum, entry) => sum + bytes(entry), 0)).toBeLessThan(
+        MAX_LISTED_BYTES + one,
+      );
+      expect(counts.loaded).toBeLessThan(MAX_LISTED_BYTES + one);
+      expect(counts.most).toBe(1);
+      expect(counts.lists).toBe(0);
+    });
+
+    it("searches one conversation at a time, and at most MAX_SEARCHED_BYTES", async () => {
+      const inner = memoryStore();
+      const saved = Array.from({ length: 12 }, (_, n) => wide(n + 1));
+      for (const entry of saved) await inner.save(READER, entry);
+      const one = bytes(saved[0]);
+      const { store: seen, seen: counts } = watched(inner);
+      const found = await searchConversations(
+        limitConversations(seen),
+        READER,
+        "書書",
+      );
+      expect(found.length).toBeGreaterThan(0);
+      expect(found[0]!.id).toBe(saved.at(-1)!.id);
+      expect(counts.loaded).toBeLessThan(MAX_SEARCHED_BYTES + one);
+      expect(counts.most).toBe(1);
+      expect(counts.lists).toBe(0);
+    });
+
+    it("keeps the chat's sidebar and search within those through a file store", async () => {
+      const directory = await mkdtemp(join(tmpdir(), "genui-sidebar-"));
+      folders.push(directory);
+      let calls = 0;
+      const chat = createChat({
+        id: "t",
+        store: fileStore(directory),
+        catalog: new Map(),
+        model: () => {
+          calls += 1;
+          return scriptedModel(() => "never");
+        },
+        system: "You help.",
+        onError: () => {},
+      });
+      const said = "y".repeat(8000);
+      for (let c = 0; c < 10; c += 1) {
+        const conversation = { ...newConversation(), updatedAt: c + 1 };
+        for (let n = 0; n < 70; n += 1) {
+          conversation.messages.push(
+            { role: "user", content: said },
+            { role: "assistant", content: said },
+          );
+        }
+        await chat.store.save(READER, conversation);
+      }
+      const session = { reader: READER, conversationId: undefined };
+      const listed = await chat.list(session);
+      expect(listed).toHaveLength(10);
+      const whole = listed.filter((entry) => entry.messages.length > 0);
+      expect(whole.length).toBeLessThan(listed.length);
+      expect(whole.reduce((sum, entry) => sum + bytes(entry), 0)).toBeLessThan(
+        MAX_LISTED_BYTES + MAX_CONVERSATION_BYTES,
+      );
+      const { matches } = await chat.search(
+        new Request("http://localhost/?q=yy", {
+          headers: { cookie: `visitor=${READER}` },
+        }),
+      );
+      expect(matches.length).toBeGreaterThan(0);
+      expect(matches.length).toBeLessThan(10);
+      expect(calls).toBe(0);
+    });
   });
 
   describe("how long one conversation grows", () => {

@@ -33,7 +33,9 @@ export interface ConversationStore {
   /**
    * Every one of the reader's conversations, newest first by `updatedAt`.
    * It has to be all of them, not a page: without `summaries`, the chat
-   * counts a reader's conversations with it.
+   * counts a reader's conversations with it, and lists and searches them
+   * with it too. With `summaries`, the chat reads whole conversations only
+   * through `load`, one at a time, and never calls this.
    */
   list(reader: string): Promise<Conversation[]>;
   /**
@@ -208,8 +210,7 @@ export function fileStore(directory: string): ConversationStore {
     }
     return batches;
   };
-  const listing = turns(LISTS_AT_ONCE);
-  return {
+  const store: ConversationStore = {
     load: read,
     async save(reader, conversation) {
       assertSafe(reader, conversation.id);
@@ -227,25 +228,19 @@ export function fileStore(directory: string): ConversationStore {
       await fs.rename(partial, file);
     },
     async list(reader) {
-      // Every conversation is read: the chat keeps a reader to
-      // `maxConversations` of at most `MAX_CONVERSATION_BYTES` each, so
-      // that is all there is to read. Only `LISTS_AT_ONCE` lists read at a
-      // time, so many page loads at once wait their turn instead of all
-      // holding a reader's conversations half read.
-      await listing.acquire();
-      try {
-        const all: Conversation[] = [];
-        for (const batch of await batchesOf(reader)) {
-          for (const entry of await Promise.all(
-            batch.map((id) => read(reader, id)),
-          )) {
-            if (entry !== null) all.push(entry);
-          }
+      // Every conversation, read whole. The chat does not call this: through
+      // `limitConversations` its sidebar and its search start from
+      // `summaries`, and read whole only as many as `MAX_LISTED_BYTES` and
+      // `MAX_SEARCHED_BYTES` allow, one at a time.
+      const all: Conversation[] = [];
+      for (const batch of await batchesOf(reader)) {
+        for (const entry of await Promise.all(
+          batch.map((id) => read(reader, id)),
+        )) {
+          if (entry !== null) all.push(entry);
         }
-        return all.sort(newestFirst);
-      } finally {
-        listing.release();
       }
+      return all.sort(newestFirst);
     },
     async summaries(reader) {
       const [fs] = await modules;
@@ -285,37 +280,25 @@ export function fileStore(directory: string): ConversationStore {
       await fs.rm(await fileOf(reader, id), { force: true });
     },
   };
+  // Two file stores over one folder are one store: their saves take turns.
+  sharedKeys.set(
+    store,
+    modules.then(([, path]) => `file:${path.resolve(directory)}`),
+  );
+  return store;
 }
 
 /** How many of a reader's files `fileStore` opens at once. */
 const OPEN_AT_ONCE = 32;
 /** How much of a file `fileStore.summaries` reads to find its summary. */
 const HEAD_BYTES = 4096;
-/** How many `fileStore.list` calls read at once; the rest wait. */
-const LISTS_AT_ONCE = 2;
 
-/** At most `limit` holders at once; the others wait, first come first served. */
-function turns(limit: number): {
-  acquire(): Promise<void>;
-  release(): void;
-} {
-  let held = 0;
-  const waiting: Array<() => void> = [];
-  return {
-    acquire() {
-      if (held < limit) {
-        held += 1;
-        return Promise.resolve();
-      }
-      return new Promise((resolve) => waiting.push(resolve));
-    },
-    release() {
-      const next = waiting.shift();
-      if (next) next();
-      else held -= 1;
-    },
-  };
-}
+/**
+ * What a store keeps its conversations in, when two store objects can share
+ * it: `fileStore` names its folder. Saves take turns by this, so two stores
+ * over one folder hold one reader's cap together.
+ */
+const sharedKeys = new WeakMap<ConversationStore, Promise<string>>();
 
 const JSON_STRING = String.raw`"(?:[^"\\]|\\.)*"`;
 const JSON_NUMBER = String.raw`-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?`;
@@ -346,23 +329,51 @@ export const MAX_CONVERSATIONS = 200;
 
 /**
  * The most one conversation holds, as UTF-8 bytes of its JSON. A longer one
- * loses its oldest messages when it is saved. With `MAX_CONVERSATIONS`, it
- * bounds what one reader's `list` reads, whatever they send.
+ * loses its oldest messages when it is saved. The newest message is always
+ * kept, so one conversation can be longer by that message alone: the chat
+ * caps a voice turn at `MAX_VOICE_TURN_CHARS` characters, up to three bytes
+ * each, about 1.5 MiB.
  */
 export const MAX_CONVERSATION_BYTES = 1024 * 1024;
+
+/**
+ * How much of a reader's conversations the chat's `list` reads whole, as
+ * UTF-8 bytes of their JSON, newest first. Older ones are listed from
+ * `summaries`, with no messages: load one to read it. One list therefore
+ * holds this much and one conversation more, whatever a reader has stored.
+ */
+export const MAX_LISTED_BYTES = 4 * 1024 * 1024;
 
 const encoder = new TextEncoder();
 const bytesOf = (value: unknown): number =>
   encoder.encode(JSON.stringify(value)).byteLength;
 
 /**
- * Each store's saves in progress, by reader. It is kept by store, not by
- * `limitConversations` call, so two chats over one store take turns too.
+ * Each store's saves in progress, by reader. It is kept by what the store
+ * keeps its conversations in (its `sharedKeys` name) when it has one, and by
+ * the store object when not, so two chats over one store, or over two file
+ * stores of one folder, take turns too.
  */
 const savingByStore = new WeakMap<
   ConversationStore,
   Map<string, Promise<unknown>>
 >();
+const savingByName = new Map<string, Map<string, Promise<unknown>>>();
+
+async function savingOf(
+  store: ConversationStore,
+): Promise<Map<string, Promise<unknown>>> {
+  const named = sharedKeys.get(store);
+  if (named) {
+    const name = await named;
+    let saving = savingByName.get(name);
+    if (!saving) savingByName.set(name, (saving = new Map()));
+    return saving;
+  }
+  let saving = savingByStore.get(store);
+  if (!saving) savingByStore.set(store, (saving = new Map()));
+  return saving;
+}
 
 function wholeNumber(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value < 1) {
@@ -379,15 +390,20 @@ function wholeNumber(value: number, name: string): void {
  * never stuck and never holds more. A store without `delete` refuses that
  * save with an error instead. Saving one the store already has never deletes
  * anything. The count comes from the store's `summaries` when it has one,
- * and from `list` when not, so either has to return every conversation. When
- * the count cannot be read, the save goes ahead, and the next new
- * conversation brings the reader back to the cap.
+ * and from `list` when not (or when `summaries` fails), so either has to
+ * return every conversation. When neither answers, a new conversation is
+ * refused with an error, and one the reader already has is still saved.
  *
  * A conversation over `maxBytes` is saved without its oldest messages: as
  * few as it takes, and it starts at something the reader said when it can.
  * When the newest message alone is over, only it is kept: the chat caps
  * what one message holds (a voice turn, `MAX_VOICE_TURN_CHARS`), so that
  * stays bounded too, and a reader is never refused their latest turn.
+ *
+ * With `summaries`, its `list` reads whole only the newest conversations,
+ * up to `MAX_LISTED_BYTES`, one at a time; the rest come from `summaries`
+ * with no messages. A page that lists a reader's conversations then reads a
+ * bounded amount, however many large ones they have.
  *
  * A reader's saves to one store take turns, so two new conversations at once
  * cannot both see room for one. That holds within one server; across
@@ -400,10 +416,11 @@ export function limitConversations(
 ): ConversationStore {
   wholeNumber(max, "maxConversations");
   wholeNumber(maxBytes, "maxBytes");
-  let saving = savingByStore.get(store);
-  if (!saving) savingByStore.set(store, (saving = new Map()));
-  const queue = saving;
-  const inTurn = (reader: string, step: () => Promise<void>): Promise<void> => {
+  const inTurn = async (
+    reader: string,
+    step: () => Promise<void>,
+  ): Promise<void> => {
+    const queue = await savingOf(store);
     const run = (queue.get(reader) ?? Promise.resolve()).then(step);
     const settled = run.then(
       () => {},
@@ -415,14 +432,33 @@ export function limitConversations(
     });
     return run;
   };
-  const counted = async (reader: string): Promise<ConversationSummary[]> =>
-    store.summaries ? store.summaries(reader) : store.list(reader);
-  const makeRoom = async (reader: string, id: string): Promise<void> => {
-    let entries: ConversationSummary[];
+  /** Every conversation the reader has, or null when neither way of counting answers. */
+  const counted = async (
+    reader: string,
+  ): Promise<ConversationSummary[] | null> => {
+    if (store.summaries) {
+      try {
+        return await store.summaries(reader);
+      } catch {
+        // Count with `list` instead.
+      }
+    }
     try {
-      entries = await counted(reader);
+      return await store.list(reader);
     } catch {
-      return;
+      return null;
+    }
+  };
+  const makeRoom = async (reader: string, id: string): Promise<void> => {
+    const entries = await counted(reader);
+    if (entries === null) {
+      // Without a count, only a conversation the reader already has is safe
+      // to save: a new one could take them past the cap.
+      const existing = await store.load(reader, id).catch(() => null);
+      if (existing) return;
+      throw new Error(
+        "The store could not count this reader's conversations, so the chat did not start a new one.",
+      );
     }
     if (entries.some((entry) => entry.id === id)) return;
     const over = entries.length - (max - 1);
@@ -464,9 +500,26 @@ export function limitConversations(
       messages: messages.slice(said === -1 ? fits : said),
     };
   };
+  const { summaries, search, delete: remove } = store;
   const limited: ConversationStore = {
     load: (reader, id) => store.load(reader, id),
-    list: (reader) => store.list(reader),
+    list: summaries
+      ? async (reader) => {
+          const listed: Conversation[] = [];
+          let left = MAX_LISTED_BYTES;
+          for (const summary of await summaries.call(store, reader)) {
+            if (left <= 0) {
+              listed.push({ ...summary, messages: [] });
+              continue;
+            }
+            const whole = await store.load(reader, summary.id);
+            if (whole === null) continue;
+            left -= bytesOf(whole);
+            listed.push(whole);
+          }
+          return listed.sort(newestFirst);
+        }
+      : (reader) => store.list(reader),
     save: async (reader, conversation) => {
       const kept = fitted(conversation);
       await inTurn(reader, async () => {
@@ -475,7 +528,6 @@ export function limitConversations(
       });
     },
   };
-  const { summaries, search, delete: remove } = store;
   if (summaries) limited.summaries = (...args) => summaries.apply(store, args);
   if (search) limited.search = (...args) => search.apply(store, args);
   if (remove) limited.delete = (...args) => remove.apply(store, args);
@@ -504,6 +556,14 @@ export const MAX_QUERY = 200;
 const MAX_WORDS = 8;
 /** The fallback reads at most this many conversations, the newest. */
 export const MAX_SCANNED = 200;
+/**
+ * The fallback reads at most this much, as UTF-8 bytes of the conversations'
+ * JSON, newest first, and one conversation at a time. It is what bounds one
+ * search, however many large conversations a reader has.
+ */
+export const MAX_SEARCHED_BYTES = 8 * 1024 * 1024;
+/** How much the fallback reads before it lets other requests run. */
+const SEARCHED_BETWEEN_BREATHS = 256 * 1024;
 /** The most matches one search returns. */
 export const MAX_MATCHES = 50;
 /** How long a snippet is, more or less. */
@@ -517,10 +577,21 @@ const LEAD = 50;
  * the original.
  */
 const lower = (text: string): string =>
-  Array.from(text, (char) => {
-    const small = char.toLowerCase();
-    return small.length === char.length ? small : char;
-  }).join("");
+  // Plain ASCII keeps its length as a whole; other text goes a character at
+  // a time.
+  /^[\0-\x7f]*$/.test(text)
+    ? text.toLowerCase()
+    : Array.from(text, (char) => {
+        const small = char.toLowerCase();
+        return small.length === char.length ? small : char;
+      }).join("");
+
+/** Let other requests run: a long search is many short steps, not one long one. */
+const breathe = (): Promise<void> =>
+  new Promise((resolve) => {
+    if (typeof setImmediate === "function") setImmediate(resolve);
+    else setTimeout(resolve, 0);
+  });
 
 /** The words of a query: lowercase, without repeats, at most `MAX_WORDS`. */
 function wordsOf(query: string): string[] {
@@ -616,7 +687,9 @@ function matchOf(
 /**
  * The reader's conversations that match a query, best first. It uses the
  * store's own `search` when it has one. Otherwise it reads the reader's
- * newest `MAX_SCANNED` conversations and matches words: case does not matter,
+ * newest conversations one at a time (found through `summaries` when the
+ * store has it, else `list`), at most `MAX_SCANNED` of them and
+ * `MAX_SEARCHED_BYTES` in all, and matches words: case does not matter,
  * every word has to appear somewhere in the conversation, and more
  * appearances rank higher, then the more recent conversation. A query shorter
  * than `MIN_QUERY` finds nothing, and `limit` is held to `MAX_MATCHES`.
@@ -636,17 +709,32 @@ export async function searchConversations(
     return (await store.search(reader, asked, wanted)).slice(0, wanted);
   }
   const words = wordsOf(asked);
-  const listed = (await store.list(reader)).slice(0, MAX_SCANNED);
-  const found = await Promise.all(
-    listed.map(async (entry) => {
-      // A list may hold only what a sidebar needs: read the rest when it does.
-      const conversation =
-        entry.messages.length > 0 ? entry : await store.load(reader, entry.id);
-      return conversation ? matchOf(conversation, words) : null;
-    }),
-  );
+  const newest: Array<ConversationSummary | Conversation> = (
+    store.summaries ? await store.summaries(reader) : await store.list(reader)
+  ).slice(0, MAX_SCANNED);
+  const found: Array<NonNullable<ReturnType<typeof matchOf>>> = [];
+  let read = 0;
+  let sinceBreath = 0;
+  for (const entry of newest) {
+    if (read >= MAX_SEARCHED_BYTES) break;
+    // A summary, or a list that holds only what a sidebar needs: read the
+    // conversation now, and let it go before the next one.
+    const conversation =
+      "messages" in entry && entry.messages.length > 0
+        ? entry
+        : await store.load(reader, entry.id);
+    if (!conversation) continue;
+    const size = bytesOf(conversation);
+    read += size;
+    sinceBreath += size;
+    const match = matchOf(conversation, words);
+    if (match) found.push(match);
+    if (sinceBreath >= SEARCHED_BETWEEN_BREATHS) {
+      sinceBreath = 0;
+      await breathe();
+    }
+  }
   return found
-    .filter((entry) => entry !== null)
     .sort((a, b) => b.count - a.count || b.match.updatedAt - a.match.updatedAt)
     .slice(0, wanted)
     .map((entry) => entry.match);
