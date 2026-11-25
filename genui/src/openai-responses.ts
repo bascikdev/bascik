@@ -8,6 +8,11 @@
  * sends the whole conversation, as every adapter here does.
  */
 import {
+  readAttachments,
+  userPieces,
+  type Attachments,
+} from "./attachments.ts";
+import {
   partsOf,
   roundsOf,
   toolResult,
@@ -31,6 +36,13 @@ export interface OpenAiResponsesOptions {
 
 type InputItem =
   | { role: "user" | "assistant"; content: string }
+  | {
+      role: "user";
+      content: (
+        | { type: "input_text"; text: string }
+        | { type: "input_image"; image_url: string }
+      )[];
+    }
   | { type: "function_call"; call_id: string; name: string; arguments: string }
   | { type: "function_call_output"; call_id: string; output: string };
 
@@ -38,9 +50,35 @@ type InputItem =
  * The conversation as the API's input items: each round of an assistant
  * message as its text, then each call it made followed by what it came to.
  */
-export function toResponsesInput(messages: ChatMessage[]): InputItem[] {
+export function toResponsesInput(
+  messages: ChatMessage[],
+  attachments: Attachments = new Map(),
+): InputItem[] {
   const input: InputItem[] = [];
   for (const message of messages) {
+    // Images are `input_image` data URLs. A PDF is not sent: this adapter
+    // has no `input_file` convention yet, so the model is told its name.
+    const pieces =
+      message.role === "user"
+        ? userPieces(message, attachments, { image: true, pdf: false })
+        : null;
+    if (pieces) {
+      input.push({
+        role: "user",
+        content: pieces.map((piece) =>
+          piece.kind === "image"
+            ? {
+                type: "input_image" as const,
+                image_url: `data:${piece.mediaType};base64,${piece.data}`,
+              }
+            : {
+                type: "input_text" as const,
+                text: piece.kind === "text" ? piece.text : "",
+              },
+        ),
+      });
+      continue;
+    }
     if (message.role === "user" || !message.parts) {
       input.push({ role: message.role, content: message.content });
       continue;
@@ -80,7 +118,8 @@ export function openAiResponsesModel(options: OpenAiResponsesOptions): Model {
   const send = options.fetch ?? fetch;
   const endpoint = `${options.baseUrl.replace(/\/+$/, "")}/responses`;
 
-  return async function* ({ system, messages, tools = [], signal }) {
+  return async function* ({ system, messages, tools = [], signal, readFile }) {
+    const attachments = await readAttachments(messages, readFile);
     const response = await send(endpoint, {
       method: "POST",
       signal,
@@ -94,7 +133,7 @@ export function openAiResponsesModel(options: OpenAiResponsesOptions): Model {
         stream: true,
         store: false,
         instructions: system,
-        input: toResponsesInput(messages),
+        input: toResponsesInput(messages, attachments),
         ...(tools.length > 0
           ? {
               tools: tools.map((tool) => ({

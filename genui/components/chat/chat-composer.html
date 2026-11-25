@@ -1,7 +1,115 @@
 <!-- @bascik
-The message box. A plain form that posts to /api/send, so sending works with no JavaScript. Anything put inside the tag joins the row before the Send button, which is where chat-voice and voice-call go.
+The message box. A plain form that posts to /api/send, so sending works with no JavaScript. Anything put inside the tag joins the row before the Send button, which is where chat-voice and voice-call go. Set data-bascik-prop-enctype="multipart/form-data" to take attachments: the form then sends files, and an Attach button (a label for a file input, so it works with no JavaScript) appears. With scripts on, chosen files show as removable chips with a preview, are checked against the limits before sending, and can also be pasted or dropped. Limits are read from data-bascik-prop-max-bytes, max-files, max-total and types (comma-separated media types) when set; they default to the server's own defaults, and the server enforces them either way.
 -->
 <style>
+  /* Shown only on a form that sends files. */
+  .attach {
+    position: relative;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    border-radius: var(--radius);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .composer[enctype] .attach {
+    display: inline-flex;
+  }
+  .attach:hover,
+  .attach:has(.picker:focus-visible) {
+    background: var(--bg);
+    color: var(--accent);
+  }
+  .attach:has(.picker:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* The paperclip is drawn here, so the label's text is its name alone. */
+  .attach::before {
+    content: "+";
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+  .name,
+  .picker {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .composer[data-dragging] {
+    border-color: var(--accent);
+    border-style: dashed;
+  }
+  .notice {
+    order: -2;
+    flex: 0 0 100%;
+    margin: 0;
+    padding: 0.15rem 0.4rem;
+    color: light-dark(#b3261e, #f2b8b5);
+    font-size: 0.875rem;
+  }
+  .notice[hidden] {
+    display: none;
+  }
+  .chips {
+    order: -2;
+    flex: 0 0 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .chips:empty {
+    display: none;
+  }
+  .chip {
+    display: inline-flex;
+    gap: 0.4rem;
+    align-items: center;
+    max-inline-size: 100%;
+    padding: 0.2rem 0.3rem 0.2rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    font-size: 0.8125rem;
+  }
+  .preview {
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    border-radius: 4px;
+    object-fit: cover;
+  }
+  .chip-name {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chip-size {
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .chip-remove {
+    padding: 0 0.4rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+  }
+  .chip-remove:hover,
+  .chip-remove:focus-visible {
+    color: var(--accent);
+  }
+
   .composer {
     display: flex;
     /* A component in the row can add a line of its own above the box. */
@@ -45,12 +153,52 @@ The message box. A plain form that posts to /api/send, so sending works with no 
   }
 </style>
 <form
+  id="composer"
   class="composer"
   method="post"
   action="/api/send"
+  data-bascik-attr-enctype="enctype"
+  data-bascik-attr-data-max-bytes="max-bytes"
+  data-bascik-attr-data-max-files="max-files"
+  data-bascik-attr-data-max-total="max-total"
+  data-bascik-attr-data-types="types"
   data-testid="chat-composer"
 >
   <input type="hidden" name="app" data-bascik-attr-value="app" />
+  <p
+    id="notice"
+    class="notice"
+    role="alert"
+    hidden
+    data-testid="chat-composer-notice"
+  ></p>
+  <ul id="chips" class="chips" data-testid="chat-composer-files"></ul>
+  <template id="chip">
+    <li class="chip" data-testid="chat-composer-file">
+      <img class="preview" alt="" hidden />
+      <span class="chip-name"></span>
+      <span class="chip-size"></span>
+      <button
+        class="chip-remove"
+        type="button"
+        data-testid="chat-composer-file-remove"
+      >
+        &times;
+      </button>
+    </li>
+  </template>
+  <label class="attach" for="files" data-testid="chat-composer-attach">
+    <span class="name">Attach files</span>
+    <input
+      id="files"
+      class="picker"
+      type="file"
+      name="files"
+      multiple
+      accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/markdown,text/csv"
+      data-testid="chat-composer-files-input"
+    />
+  </label>
   <textarea
     id="input"
     class="input"
@@ -77,6 +225,182 @@ The message box. A plain form that posts to /api/send, so sending works with no 
         event.preventDefault();
         input.form.requestSubmit();
       }
+    });
+  </script>
+  <!-- Attachments, also optional: without it the file input still sends
+       whatever it holds, and the server checks every file. -->
+  <script type="text/typescript">
+    const form = document.getElementById("composer") as HTMLFormElement;
+    const picker = document.getElementById("files") as HTMLInputElement;
+    const chips = document.getElementById("chips") as HTMLElement;
+    const notice = document.getElementById("notice") as HTMLElement;
+    const chipTemplate = document.getElementById("chip") as HTMLTemplateElement;
+    const input = document.getElementById("input") as HTMLTextAreaElement;
+    const MB = 1024 * 1024;
+    const KNOWN: Record<string, string> = {
+      "image/png": "PNG",
+      "image/jpeg": "JPEG",
+      "image/webp": "WebP",
+      "image/gif": "GIF",
+      "application/pdf": "PDF",
+      "text/plain": "plain text",
+      "text/markdown": "Markdown",
+      "text/csv": "CSV",
+    };
+    const BY_EXTENSION: Record<string, string> = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      webp: "image/webp",
+      gif: "image/gif",
+      pdf: "application/pdf",
+      txt: "text/plain",
+      md: "text/markdown",
+      markdown: "text/markdown",
+      csv: "text/csv",
+    };
+    const number = (value: string | undefined, fallback: number): number => {
+      const parsed = Number(value);
+      return value && Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+    const maxBytes = number(form.dataset.maxBytes, 5 * MB);
+    const maxFiles = number(form.dataset.maxFiles, 4);
+    const maxTotal = number(form.dataset.maxTotal, 10 * MB);
+    const types = form.dataset.types
+      ? form.dataset.types.split(",").map((type) => type.trim())
+      : Object.keys(KNOWN);
+    if (form.dataset.types) picker.accept = types.join(",");
+
+    const size = (bytes: number): string =>
+      bytes >= MB
+        ? `${Number((bytes / MB).toFixed(1))} MB`
+        : bytes >= 1024
+          ? `${Number((bytes / 1024).toFixed(1))} KB`
+          : `${bytes} B`;
+
+    /** The type a file claims: what the browser said, or its extension. */
+    const claimed = (file: File): string =>
+      file.type.split(";")[0]!.toLowerCase() ||
+      BY_EXTENSION[file.name.split(".").pop()!.toLowerCase()] ||
+      "";
+
+    let chosen: File[] = [];
+    const previews = new Map<File, string>();
+
+    /** The same words the server says (see `refusals` in files.ts), for what can be known before sending. */
+    function problem(file: File): string | null {
+      const name = file.name.split(/[\\/]/).pop() || "file";
+      if (chosen.length >= maxFiles) {
+        return `You can attach up to ${maxFiles} file${maxFiles === 1 ? "" : "s"} to one message.`;
+      }
+      const type = claimed(file);
+      if (
+        /^(text\/html|application\/xhtml\+xml|image\/svg\+xml|text\/xml|application\/xml)$/.test(type) ||
+        /\.(html?|xhtml|svg|svgz|xml)$/i.test(file.name)
+      ) {
+        return `"${name}" cannot be attached: HTML and SVG files are not allowed.`;
+      }
+      if (!types.includes(type)) {
+        return `"${name}" cannot be attached: that type of file is not allowed. Allowed types: ${types.map((one) => KNOWN[one] ?? one).join(", ")}.`;
+      }
+      if (file.size === 0) return `"${name}" is empty.`;
+      if (file.size > maxBytes) {
+        return `"${name}" is too large (${size(file.size)}). Each file can be up to ${size(maxBytes)}.`;
+      }
+      const total = chosen.reduce((sum, one) => sum + one.size, file.size);
+      if (total > maxTotal) {
+        return `These files are too large together (${size(total)}). One message can carry up to ${size(maxTotal)}.`;
+      }
+      return null;
+    }
+
+    function say(message: string): void {
+      notice.textContent = message;
+      notice.hidden = !message;
+    }
+
+    /** Make the file input hold exactly the chosen files, and draw them. */
+    function show(): void {
+      const held = new DataTransfer();
+      for (const file of chosen) held.items.add(file);
+      picker.files = held.files;
+      for (const [file, url] of previews) {
+        if (!chosen.includes(file)) {
+          URL.revokeObjectURL(url);
+          previews.delete(file);
+        }
+      }
+      chips.replaceChildren(
+        ...chosen.map((file) => {
+          const chip = (chipTemplate.content.cloneNode(true) as DocumentFragment)
+            .firstElementChild as HTMLElement;
+          chip.querySelector<HTMLElement>(".chip-name")!.textContent = file.name;
+          chip.querySelector<HTMLElement>(".chip-size")!.textContent = size(file.size);
+          if (claimed(file).startsWith("image/")) {
+            let url = previews.get(file);
+            if (!url) previews.set(file, (url = URL.createObjectURL(file)));
+            const preview = chip.querySelector<HTMLImageElement>(".preview")!;
+            preview.src = url;
+            preview.hidden = false;
+          }
+          const remove = chip.querySelector<HTMLButtonElement>(".chip-remove")!;
+          remove.setAttribute("aria-label", `Remove ${file.name}`);
+          remove.addEventListener("click", () => {
+            chosen = chosen.filter((one) => one !== file);
+            say("");
+            show();
+            input.focus();
+          });
+          return chip;
+        }),
+      );
+    }
+
+    function add(files: Iterable<File>): void {
+      let refused = "";
+      for (const file of files) {
+        const why = problem(file);
+        if (why) refused ||= why;
+        else chosen.push(file);
+      }
+      say(refused);
+      show();
+    }
+
+    // A chosen file replaces the input's own list; keep what was chosen before.
+    picker.addEventListener("change", () => {
+      const fresh = [...(picker.files ?? [])].filter((file) => !chosen.includes(file));
+      picker.files = new DataTransfer().files;
+      add(fresh);
+    });
+    input.addEventListener("paste", (event) => {
+      const pasted = [...(event.clipboardData?.files ?? [])];
+      if (form.hasAttribute("enctype") && pasted.length) {
+        event.preventDefault();
+        add(pasted);
+      }
+    });
+    form.addEventListener("dragover", (event) => {
+      if (form.hasAttribute("enctype") && event.dataTransfer?.types.includes("Files")) {
+        event.preventDefault();
+        form.dataset.dragging = "";
+      }
+    });
+    form.addEventListener("dragleave", () => {
+      delete form.dataset.dragging;
+    });
+    form.addEventListener("drop", (event) => {
+      delete form.dataset.dragging;
+      if (form.hasAttribute("enctype") && event.dataTransfer?.files.length) {
+        event.preventDefault();
+        add(event.dataTransfer.files);
+      }
+    });
+    // Sent (or reset): the files are gone from the form, and their previews with them.
+    form.addEventListener("reset", () => {
+      chosen = [];
+      say("");
+      show();
     });
   </script>
 </form>

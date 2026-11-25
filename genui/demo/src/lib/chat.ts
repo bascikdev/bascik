@@ -20,6 +20,7 @@ import {
   type Chat,
 } from "@bascik/genui/app";
 import { savedMemory } from "@bascik/genui/memory";
+import { diskFiles } from "@bascik/genui/files";
 import { MERMAID_PROMPT, mermaidFence } from "@bascik/genui/mermaid";
 import { APPS, type ChatApp } from "./apps.ts";
 import { listModels, modelFor, pickModel, requestedModel } from "./models.ts";
@@ -211,6 +212,10 @@ export function chatFor(app: ChatApp): Chat {
     chat = createChat({
       id: app.id,
       store: fileStore(join(DATA_DIR, app.id)),
+      // Attachments are on for the books app only.
+      ...(app.id === "books"
+        ? { files: diskFiles(join(DATA_DIR, `${app.id}-files`)) }
+        : {}),
       catalog: loadCatalog,
       model: (request) => loadModel(app, request),
       tools: app.tools,
@@ -244,6 +249,7 @@ type FormHandler =
   | "forget"
   | "stop"
   | "open"
+  | "file"
   | "voiceSession"
   | "voiceTool"
   | "voiceTurn";

@@ -1,0 +1,80 @@
+<!-- @bascik
+One file a reader attached, as a link to the file. An image shows as a thumbnail that opens the full image; anything else is a labelled link with its name and size, which downloads. Props: href (where the file is served), name, size (text such as "12 KB"), and thumb (the image's address, only for an image). Names are text, never markup.
+-->
+<style>
+  .attachment {
+    display: inline-flex;
+    gap: 0.5rem;
+    align-items: center;
+    max-inline-size: 100%;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: inherit;
+    font-size: 0.875rem;
+    text-decoration: none;
+  }
+  .attachment:hover,
+  .attachment:focus-visible {
+    border-color: var(--accent);
+  }
+  .thumb {
+    inline-size: 8rem;
+    max-inline-size: 100%;
+    block-size: 6rem;
+    border-radius: 6px;
+    object-fit: cover;
+  }
+  /* A file that is not an image has no thumbnail. */
+  .thumb:not([src]) {
+    display: none;
+  }
+  /* An image is named by its alt text, so its label is not repeated. */
+  .attachment:has(.thumb[src]) {
+    padding: 0.25rem;
+  }
+  .attachment:has(.thumb[src]) .label {
+    display: none;
+  }
+  .label {
+    display: inline-flex;
+    gap: 0.5rem;
+    min-inline-size: 0;
+  }
+  .file-name {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .file-size {
+    color: var(--muted);
+    white-space: nowrap;
+  }
+</style>
+<a
+  class="attachment"
+  data-bascik-attr-href="href"
+  data-testid="chat-attachment"
+>
+  <img
+    class="thumb"
+    loading="lazy"
+    data-bascik-attr-src="thumb"
+    data-bascik-attr-alt="name"
+    data-testid="chat-attachment-image"
+  />
+  <span class="label">
+    <span
+      class="file-name"
+      data-bascik-prop-name
+      data-testid="chat-attachment-name"
+    ></span>
+    <span
+      class="file-size"
+      data-bascik-prop-size
+      data-testid="chat-attachment-size"
+    ></span>
+  </span>
+</a>

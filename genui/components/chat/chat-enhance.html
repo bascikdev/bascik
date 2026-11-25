@@ -86,13 +86,21 @@ The optional client runtime. Without it every form in the chat is a page load, a
     const text = body.get("text");
     stop = new AbortController();
     state.genui = "streaming";
-    echo(thread, typeof text === "string" ? text.trim() : "");
+    // A message with files is shown only once the server has taken it: it may
+    // refuse a file, and then the reader's words and files must still be there.
+    const withFiles = [...body.values()].some(
+      (value) => typeof value !== "string" && value.size > 0,
+    );
+    const shown = (): void => {
+      echo(thread, typeof text === "string" ? text.trim() : "");
+      if (form.dataset.testid === "chat-composer") form.reset();
+    };
     // Style on it: the request is in flight and nothing has come back yet.
     form.dataset.pending = "";
     const arrived = (): void => {
       delete form.dataset.pending;
     };
-    if (form.dataset.testid === "chat-composer") form.reset();
+    if (!withFiles) shown();
 
     const response = await fetch(form.action, {
       method: "POST",
@@ -100,7 +108,24 @@ The optional client runtime. Without it every form in the chat is a page load, a
       signal: stop.signal,
       headers: { accept: "text/html" },
     });
+    if (withFiles && response.status === 422) {
+      // Refused: the answer is a page naming the reason. Show it in the
+      // composer, which still holds the text and the files.
+      const page = new DOMParser().parseFromString(
+        await response.text(),
+        "text/html",
+      );
+      const notice = byTestId(document, "chat-composer-notice");
+      const why = byTestId(page.documentElement, "attach-refused")?.textContent;
+      if (notice && why) {
+        notice.textContent = why;
+        notice.hidden = false;
+        return;
+      }
+      throw new Error("refused");
+    }
     if (!response.ok || !response.body) throw new Error("not a page");
+    if (withFiles) shown();
     if (new URL(response.url).pathname !== location.pathname) {
       history.replaceState(null, "", response.url);
     }

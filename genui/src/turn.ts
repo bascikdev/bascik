@@ -11,6 +11,7 @@ import {
   type ChatMessage,
   type MessagePart,
   type Model,
+  type ModelRequest,
   type Tool,
   type ToolCall,
   type ToolPart,
@@ -33,6 +34,8 @@ export interface TurnOptions {
   signal?: AbortSignal;
   /** How many times one turn may ask the model (default 8). */
   maxRounds?: number;
+  /** Passed to the model with every request: how it reads an attached file. */
+  readFile?: ModelRequest["readFile"];
 }
 
 export interface Turn {
@@ -159,6 +162,7 @@ export function runTurn(options: TurnOptions): Turn {
           messages: parts.length ? [...history, message] : history,
           tools,
           signal,
+          ...(options.readFile ? { readFile: options.readFile } : {}),
         });
         for await (const event of asked) {
           if (typeof event === "string") yield* write(event);
