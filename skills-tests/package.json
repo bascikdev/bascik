@@ -21,7 +21,7 @@
     "@playwright/test": "^1.65.0",
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.1.0",
-    "marked": "^18.2.0",
+    "marked": "^18.2.1",
     "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
