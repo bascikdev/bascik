@@ -139,139 +139,187 @@ function boundaryFor(text: string): string {
   return token;
 }
 
-/** Letters from other scripts drawn like the Latin letters of the markers. */
-const LOOK_ALIKES: Record<string, string> = {
-  е: "e", // Cyrillic small ie
-  Е: "E", // Cyrillic capital ie
-  і: "i", // Cyrillic small byelorussian-ukrainian i
-  І: "I", // Cyrillic capital byelorussian-ukrainian i
-  ԁ: "d", // Cyrillic small komi de
-  ɡ: "g", // Latin small script g
-  ı: "i", // Latin small dotless i
-  ι: "i", // Greek small iota
-  Β: "B", // Greek capital beta
-  Ε: "E", // Greek capital epsilon
-  Ι: "I", // Greek capital iota
-  Ν: "N", // Greek capital nu
-};
-const LOOK_ALIKE = new RegExp(`[${Object.keys(LOOK_ALIKES).join("")}]`, "gu");
-
 /**
- * One character as a reader sees it: a compatibility form (fullwidth, bold
- * and script math letters, ligatures) as its plain letters, an accent or a
- * zero-width or invisible character as nothing, and a common look-alike
- * letter from another script as the Latin one. Folding one character at a
- * time keeps every line break where it was, so a folded text has the same
- * lines as the original.
+ * Characters from other scripts, and symbols, drawn like the Latin letters
+ * of the markers and left alone by compatibility folding: small capitals,
+ * Lisu, Cherokee, Coptic, Canadian syllabics, Armenian, Cyrillic and Greek.
+ * Each one is a single character that stands for a single letter, so the
+ * folded text keeps every offset of the unmapped one. Strokes drawn like `l`
+ * or `I` are not here; `STROKE` lists them, since a stroke may also be a gap
+ * between the words.
  */
-const foldChar = (char: string): string =>
-  char
-    .normalize("NFKD")
-    .replace(/[\p{M}\p{Cf}ᅟᅠㅤﾠ]/gu, "")
-    .replace(LOOK_ALIKE, (letter) => LOOK_ALIKES[letter]!);
+const LOOK_ALIKE_LETTERS: Record<string, string> = {
+  b: "ВΒʙꓐⲂᏴᏼ♭",
+  e: "еЕҽΕᴇꓰᎬꭼ℮∊€",
+  g: "ɡɢꓖԌᏀꮐց",
+  i: "іІıιΙɪꞮꓲ¡",
+  n: "ΝɴꓠⲚո∩⋂",
+  d: "ԁᴅꓓᎠꭰᗪᑯ∂",
+  f: "Ϝꜰꓝᖴ",
+  l: "ӀӏʟꓡᏞꮮᒪⳐ",
+};
+const LOOK_ALIKES = new Map<string, string>(
+  Object.entries(LOOK_ALIKE_LETTERS).flatMap(([letter, shapes]) =>
+    [...shapes].map((shape): [string, string] => [shape, letter]),
+  ),
+);
+const LOOK_ALIKE = new RegExp(`[${[...LOOK_ALIKES.keys()].join("")}]`, "gu");
+
+/** Strokes drawn like `l` or `I`, in any script and as symbols or digits. */
+const STROKES = "1|¦│┃╎╏┆┇┊┋∣⏐।׀ǀⵏᛁ١۱߁";
+const STROKE = new RegExp(`[${STROKES}]`, "gu");
 
 /**
- * A marker word where each letter is the Latin one, in either case, or any
- * letter outside ASCII: no fixed table can list every script's look-alikes
- * (small capitals, Lisu, Cherokee, palochka), so any of them may stand in.
+ * One character as a reader sees it, before look-alikes are mapped: a
+ * compatibility form (fullwidth, bold and script math letters, ligatures,
+ * superscripts) as its plain letters, and an accent or a zero-width or
+ * invisible character as nothing. Folding one character at a time keeps
+ * every line break where it was, and lets a match map back to the original.
+ */
+const baseOf = (char: string): string =>
+  char.normalize("NFKD").replace(/[\p{M}\p{Cf}ᅟᅠㅤﾠ]/gu, "");
+
+/**
+ * A marker word: each letter is the Latin one in either case, a look-alike
+ * mapped to it, any letter or digit outside ASCII standing in for it, or, for
+ * `i` and `l`, any stroke.
  */
 const markerWord = (word: string): string =>
-  [...word].map((letter) => `(?:${letter}|[^\\P{L}\\x00-\\x7F])`).join("");
+  [...word]
+    .map(
+      (letter) =>
+        `(?:${letter === "i" || letter === "l" ? `[il${STROKES}]` : letter}|(?![\\x00-\\x7F])[\\p{L}\\p{N}])`,
+    )
+    .join("");
 
 /** A marker's shape. The gap between its words may span line breaks. */
 const MARKER = new RegExp(
-  `(?<![A-Za-z0-9_])(${markerWord("begin")}|${markerWord("end")})([^\\p{L}\\p{N}]*)(${markerWord("file")})`,
+  `(${markerWord("begin")}|${markerWord("end")})([^\\p{L}\\p{N}]*)(${markerWord("file")})`,
   "giu",
 );
-const LATIN_WORD = /^(?:begin|end)$/i;
-const LATIN_FILE = /^file$/i;
+const ASCII_WORD = /^[\x00-\x7F]+$/;
 const ASCII_LETTER = /[a-z]/i;
+const ASCII_WORD_CHAR = /[A-Za-z0-9_]/;
 const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
-const MARK = /[\p{P}\p{S}]/gu;
+/** A token like the real boundary after the words: eight or more hex digits. */
+const HEX_AFTER = /[^\p{L}\p{N}]*[0-9a-f]{8,}(?![\p{L}\p{N}])/iuy;
+
+const codePointAt = (text: string, offset: number): string =>
+  offset < 0 || offset >= text.length
+    ? " "
+    : String.fromCodePoint(text.codePointAt(offset)!);
+const codePointBefore = (text: string, offset: number): string => {
+  if (offset <= 0) return " ";
+  const low = text.charCodeAt(offset - 1);
+  const pair = low >= 0xdc00 && low <= 0xdfff && offset >= 2;
+  return codePointAt(text, offset - (pair ? 2 : 1));
+};
 
 /**
- * Whether a match of `MARKER` at `offset` in `text` reads as a marker. The
- * Latin words always do. Once another script stands in, the match must end
- * its word and either keep a Latin letter in each word (`end fiӏe`), or be
- * drawn wholly in other letters at the start of a line set off the way the
- * real markers are, after two or more dashes or other marks
- * (`----- ꓰꓠꓓ ꓝꓲꓡꓰ`). So ordinary Cyrillic or Greek prose, where any
- * three-letter word and four-letter word fit the shape, is left alone.
+ * Whether a match of `MARKER` reads as a marker. `base` is the folded text
+ * before look-alikes are mapped, `mapped` the same text with them mapped;
+ * both have the same offsets. One of three rules must hold:
+ *
+ * - Every letter is Latin once look-alikes are mapped (`ᴇɴᴅ ꜰɪʟᴇ`,
+ *   `ꓰꓠꓓ ꓝꓲꓡꓰ`, `end fi1e`), and no ASCII letter or digit comes right
+ *   before it.
+ * - Some other letter or digit stands in, but each word keeps a Latin letter
+ *   of its own (`end fiӏe`, `end fi١e`), and the match is a whole word.
+ * - The words are drawn wholly in other letters, set apart from what is
+ *   around them, and followed by a token like the real boundary
+ *   (`ꔀꔁꔂ ꔃꔄꔅꔆ 0123456789abcdef`).
+ *
+ * So ordinary text in other scripts, where any three- or five-letter word and
+ * four-letter word fit the shape, is left alone.
  */
 function readsAsMarker(
-  match: string,
-  word: string,
-  file: string,
-  offset: number,
-  text: string,
+  found: RegExpExecArray,
+  base: string,
+  mapped: string,
 ): boolean {
-  if (LATIN_WORD.test(word) && LATIN_FILE.test(file)) return true;
-  const next = String.fromCodePoint(
-    text.codePointAt(offset + match.length) ?? 32,
-  );
-  if (LETTER_OR_DIGIT.test(next)) return false;
-  if (ASCII_LETTER.test(word) && ASCII_LETTER.test(file)) return true;
-  // A marker line is set off by a short run of marks, so only the last 64
-  // characters are read: a long line costs no more than a short one.
-  const from = Math.max(0, offset - 64);
-  const window = text.slice(from, offset);
-  const lineStart = window.lastIndexOf("\n");
-  if (lineStart < 0 && from > 0 && text[from - 1] !== "\n") return false;
-  const lead = window.slice(lineStart + 1);
-  return !LETTER_OR_DIGIT.test(lead) && (lead.match(MARK)?.length ?? 0) >= 2;
+  const [match, word, gap, file] = found as unknown as [
+    string,
+    string,
+    string,
+    string,
+  ];
+  const start = found.index;
+  const end = start + match.length;
+  const before = codePointBefore(base, start);
+  const plain = (text: string) => ASCII_WORD.test(text.replace(STROKE, "l"));
+  if (plain(word) && plain(file)) return !ASCII_WORD_CHAR.test(before);
+  if (LETTER_OR_DIGIT.test(before)) return false;
+  if (LETTER_OR_DIGIT.test(codePointAt(base, end))) return false;
+  const baseWord = base.slice(start, start + word.length);
+  const baseFile = base.slice(end - file.length, end);
+  if (ASCII_LETTER.test(baseWord) && ASCII_LETTER.test(baseFile)) return true;
+  if (gap.length === 0) return false;
+  HEX_AFTER.lastIndex = end;
+  return HEX_AFTER.test(mapped);
 }
-
-const rewrite = (text: string): string =>
-  text.replace(
-    MARKER,
-    (match: string, word: string, _gap: string, file: string, at: number) =>
-      readsAsMarker(match, word, file, at, text) ? `${word}-of-${file}` : match,
-  );
 
 /**
  * Anything in the file that looks like a marker, in any case, spacing,
  * punctuation, width or script, even split across lines, is changed so it
  * reads as data (`end-of-file`). The random boundary is what makes the real
  * markers unforgeable; this keeps a near miss from looking like one. The
- * check reads the file folded (see `foldChar`). The lines a marker touches
- * are shown folded, so the change is visible in them too; every other line
- * is shown as it was.
+ * check reads the file folded (see `baseOf` and `LOOK_ALIKES`). Only the
+ * marker itself is shown folded; every other character is shown as it was.
  */
 function neutralize(text: string): string {
-  const folded = Array.from(text, foldChar).join("");
-  const lines = text.split("\n");
-  const foldedLines = folded.split("\n");
-  // Matches come in order, so the line count only moves forward: one pass.
-  let counted = 0;
-  let lineCount = 0;
-  const lineAt = (offset: number): number => {
-    for (; counted < offset; counted++) {
-      if (folded.charCodeAt(counted) === 10) lineCount++;
-    }
-    return lineCount;
-  };
-  const touched = new Set<number>();
-  for (const found of folded.matchAll(MARKER)) {
-    const [match, word, , file] = found;
-    if (!readsAsMarker(match, word!, file!, found.index, folded)) continue;
-    const first = lineAt(found.index);
-    const last = lineAt(found.index + match.length);
-    for (let line = first; line <= last; line++) {
-      touched.add(line);
-    }
+  const chars = Array.from(text);
+  // `at[i]` is where character i starts in the folded text.
+  const at: number[] = [0];
+  const baseParts: string[] = [];
+  for (const char of chars) {
+    const part = baseOf(char);
+    baseParts.push(part);
+    at.push(at.at(-1)! + part.length);
   }
-  const shown: string[] = [];
-  for (let line = 0; line < lines.length; line++) {
-    let last = line;
-    if (touched.has(line)) {
-      while (touched.has(last + 1)) last++;
-      shown.push(rewrite(foldedLines.slice(line, last + 1).join("\n")));
+  const base = baseParts.join("");
+  const mapped = base.replace(LOOK_ALIKE, (shape) => LOOK_ALIKES.get(shape)!);
+
+  const spans: { start: number; end: number; shown: string }[] = [];
+  MARKER.lastIndex = 0;
+  for (let found = MARKER.exec(mapped); found; found = MARKER.exec(mapped)) {
+    if (readsAsMarker(found, base, mapped)) {
+      const [match, word, , file] = found;
+      spans.push({
+        start: found.index,
+        end: found.index + match.length,
+        shown: `${word}-of-${file}`,
+      });
     } else {
-      shown.push(rewrite(lines[line]!));
+      // A rejected match may hide a marker that starts inside it.
+      MARKER.lastIndex =
+        found.index + (mapped.codePointAt(found.index)! > 0xffff ? 2 : 1);
     }
-    line = last;
   }
-  return shown.join("\n");
+  if (spans.length === 0) return text;
+
+  // Each span is shown folded, widened to the whole characters it touches;
+  // spans that share a character are shown together.
+  const shown: string[] = [];
+  let char = 0;
+  let span = 0;
+  while (span < spans.length) {
+    while (at[char + 1]! <= spans[span]!.start) shown.push(chars[char++]!);
+    const from = at[char]!;
+    let last = char;
+    let folded = "";
+    let cursor = from;
+    while (span < spans.length && spans[span]!.start < at[last + 1]!) {
+      const { start, end, shown: marker } = spans[span++]!;
+      folded += mapped.slice(cursor, start) + marker;
+      cursor = end;
+      while (at[last + 1]! < end) last++;
+    }
+    folded += mapped.slice(cursor, at[last + 1]!);
+    shown.push(folded);
+    char = last + 1;
+  }
+  shown.push(...chars.slice(char));
+  return shown.join("");
 }
 
 /** A name as the model reads it: one line, and no quote to end it early. */
