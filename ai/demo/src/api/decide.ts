@@ -12,7 +12,7 @@
 // the answer is { "say": "...", "hidden": true }: the reviewer's message, for
 // the call to say to the speech model. It is a record in a fixed shape and
 // not something the reviewer wrote, so the call does not show it as theirs.
-import { newConversation } from "@bascik/ai/app";
+import { ConversationFullError, newConversation } from "@bascik/ai/app";
 import { appFor, chatFor } from "../lib/chat.ts";
 import {
   decisionFrom,
@@ -40,11 +40,18 @@ export const POST = async (request: Request): Promise<Response> => {
       { headers: { "cache-control": "no-store" } },
     );
   }
-  const conversation = await chat.addMessage(
-    session,
-    decisionMessage(decision),
-    { title: `Review: ${decision.item}` },
-  );
+  let conversation;
+  try {
+    conversation = await chat.addMessage(session, decisionMessage(decision), {
+      title: `Review: ${decision.item}`,
+    });
+  } catch (error) {
+    // A full conversation is the reader's to start again, not a server error.
+    if (error instanceof ConversationFullError) {
+      return new Response(error.message, { status: 413 });
+    }
+    throw error;
+  }
   await recordDecision(session.reader, conversation.id, decision);
   return chat.redirect(session, conversation.id);
 };
