@@ -189,33 +189,80 @@ describe("cookieSessions", () => {
     ]);
   });
 
-  it("leaves Secure off only for plain http on this machine", () => {
-    const local = (url: string, options = {}) => {
+  it("adds Secure whatever the request's URL says, unless told secure: false", () => {
+    const secured = (url: string, options = {}) => {
       const own = cookieSessions("books", options);
       return own
         .remember(own.identify(new Request(url)), CONVERSATION)
         .getSetCookie()
         .map((line) => line.endsWith("; Secure"));
     };
+    // A request's URL comes from its Host header: behind a proxy that
+    // forwards to http://127.0.0.1, a public https site looks local.
     for (const url of [
       "http://localhost:4321/",
-      "http://127.0.0.1/",
+      "http://127.0.0.1:3000/api/send",
       "http://[::1]:8080/",
       "http://app.localhost/",
-    ]) {
-      expect(local(url)).toEqual([false, false]);
-      expect(local(url, { secure: true })).toEqual([true, true]);
-    }
-    for (const url of [
       "https://localhost/",
       "https://chat.example/",
       "http://chat.example/",
       "http://192.168.1.5/",
-      "http://localhost.evil.example/",
     ]) {
-      expect(local(url)).toEqual([true, true]);
-      expect(local(url, { secure: false })).toEqual([false, false]);
+      expect(secured(url), url).toEqual([true, true]);
+      expect(secured(url, { secure: true }), url).toEqual([true, true]);
+      expect(secured(url, { secure: false }), url).toEqual([false, false]);
     }
+  });
+
+  describe("with hostPrefix", () => {
+    const prefixed = cookieSessions("books", { hostPrefix: true });
+
+    it("names both cookies __Host-, Secure, Path=/ and no Domain", () => {
+      const lines = prefixed
+        .remember({ reader: READER, conversationId: undefined }, CONVERSATION)
+        .getSetCookie();
+      expect(lines).toEqual([
+        `__Host-chat_books=${CONVERSATION}; Path=/; HttpOnly; SameSite=Lax; Secure`,
+        `__Host-visitor=${READER}; Max-Age=31536000; Path=/; HttpOnly; SameSite=Lax; Secure`,
+      ]);
+      for (const line of lines) expect(line).not.toMatch(/domain=/i);
+    });
+
+    it("reads only the __Host- cookies, so a plain cookie planted beside them is ignored", () => {
+      const asking = (cookie: string) =>
+        prefixed.identify(new Request("https://x/", { headers: { cookie } }));
+      expect(
+        asking(`__Host-visitor=${READER}; __Host-chat_books=${CONVERSATION}`),
+      ).toEqual({ reader: READER, conversationId: CONVERSATION });
+      const planted = asking(`visitor=${OTHER}; chat_books=${CONVERSATION}`);
+      expect(planted.reader).not.toBe(OTHER);
+      expect(planted.conversationId).toBeUndefined();
+    });
+
+    it("signs the reader too, when given a secret", () => {
+      const both = cookieSessions("books", {
+        hostPrefix: true,
+        secret: "s3cret-for-tests",
+      });
+      const line = both
+        .remember({ reader: READER, conversationId: undefined }, CONVERSATION)
+        .getSetCookie()[1]!;
+      const value = /^__Host-visitor=([^;]+)/.exec(line)![1]!;
+      expect(value.startsWith(`${READER}.`)).toBe(true);
+      const again = both.identify(
+        new Request("https://x/", {
+          headers: { cookie: `__Host-visitor=${value}` },
+        }),
+      );
+      expect(again.reader).toBe(READER);
+    });
+
+    it("refuses secure: false, which a browser would answer by dropping the cookies", () => {
+      expect(() =>
+        cookieSessions("books", { hostPrefix: true, secure: false }),
+      ).toThrow(/hostPrefix/);
+    });
   });
 
   it("refuses an id shaped like one that no server issued", () => {
@@ -321,6 +368,96 @@ describe("conversation writes", () => {
     expect(contents).toContain("more");
     expect(contents).toContain("Hello there");
     expect(contents[0]).toBe("hi");
+  });
+
+  /** A chat on a slow store, with a tool call waiting for the reader. */
+  async function waiting(name: string) {
+    const chat = setup({
+      store: slowStore(),
+      tools: [hold, localTime],
+      voice: {
+        protocol: "fake",
+        createSession: async () => ({ protocol: "fake", url: "", setup: null }),
+      },
+    });
+    await seed(chat, [
+      { role: "user", content: "Hold Dune" },
+      waitingFor(
+        name,
+        name === "local_time" ? "client-requested" : "approval-requested",
+      ),
+    ]);
+    return chat;
+  }
+  const contentsOf = async (chat: Chat) =>
+    (await stored(chat, CONVERSATION)).messages.map(
+      (message) => message.content,
+    );
+  const session = { reader: READER, conversationId: CONVERSATION };
+
+  // Every handler that changes a conversation, raced against a message sent
+  // at the same moment, in both orders: neither change may be lost.
+  const handlers: [string, string, (chat: Chat) => Promise<Response>][] = [
+    [
+      "approve",
+      "place_hold",
+      (chat) =>
+        chat.approve(
+          posted({ call: "call_1", verdict: "approve" }, CONVERSATION),
+        ),
+    ],
+    [
+      "answer",
+      "local_time",
+      (chat) =>
+        chat.answer(posted({ call: "call_1", output: "noon" }, CONVERSATION)),
+    ],
+    [
+      "voiceTurn",
+      "place_hold",
+      (chat) =>
+        chat.voiceTurn(
+          posted({ reader: "Spoken", model: "Said back" }, CONVERSATION),
+        ),
+    ],
+  ];
+  for (const [handler, tool, act] of handlers) {
+    it(`keeps a message sent while ${handler} changes the conversation`, async () => {
+      const chat = await waiting(tool);
+      await Promise.all([chat.addMessage(session, "extra message"), act(chat)]);
+      expect(await contentsOf(chat)).toContain("extra message");
+
+      const again = await waiting(tool);
+      // The handler first: the message arrives while it is reading.
+      const [response] = await Promise.all([
+        act(again),
+        new Promise((resolve) => setTimeout(resolve, 2)).then(() =>
+          again.addMessage(session, "extra message"),
+        ),
+      ]);
+      expect(response.status).toBeLessThan(400);
+      const contents = await contentsOf(again);
+      expect(contents).toContain("extra message");
+      if (handler === "voiceTurn") expect(contents).toContain("Spoken");
+      else {
+        const part = (await stored(again, CONVERSATION)).messages[1]!
+          .parts![0] as ToolPart;
+        // The reader's answer was recorded, not lost to the message's write.
+        expect(part.state).not.toMatch(/requested$/);
+      }
+    });
+  }
+
+  it("keeps both of two spoken turns stored at once", async () => {
+    const chat = await waiting("place_hold");
+    await Promise.all(
+      ["One", "Two"].map((said) =>
+        chat.voiceTurn(posted({ reader: said, model: "ok" }, CONVERSATION)),
+      ),
+    );
+    const contents = await contentsOf(chat);
+    expect(contents).toContain("One");
+    expect(contents).toContain("Two");
   });
 });
 
@@ -1472,6 +1609,50 @@ describe("memory", () => {
           "https://chat.example",
         );
       }
+    });
+
+    it("never sends the reader to another site once dot segments are taken out", async () => {
+      const { chat } = await withMemory();
+      // Each of these is a path on the site as written, and resolves to
+      // //host (another site) once its dot segments are removed.
+      const heads = [
+        "/.",
+        "/./.",
+        "/a/..",
+        "/a/b/../..",
+        "/%2e",
+        "/%2E",
+        "/.%2e/x/..",
+        "/%2e%2e",
+        "/a/%2e%2e",
+        "/a/.%2E",
+      ];
+      const tails = [
+        "//evil.example/login",
+        "/\\evil.example",
+        "\\/evil.example",
+        "\\\\evil.example",
+        "//evil.example?x=1#y",
+      ];
+      for (const head of heads) {
+        for (const tail of tails) {
+          const back = `${head}${tail}`;
+          const response = await chat.forget(posted({ id: "a", back }));
+          const location = response.headers.get("location")!;
+          expect(location, back).not.toMatch(/^\/[/\\]/);
+          // As the browser resolves it, and once more for good measure.
+          const once = new URL(location, "https://chat.example/");
+          expect(once.origin, back).toBe("https://chat.example");
+          expect(new URL(once.pathname, once).origin, back).toBe(
+            "https://chat.example",
+          );
+        }
+      }
+      // A local path with dot segments still goes where it says.
+      const fine = await chat.forget(
+        posted({ id: "b", back: "/a/../memory?app=t" }),
+      );
+      expect(fine.headers.get("location")).toBe("/memory?app=t");
     });
 
     it("answers 400 for a body that is not a form, a missing id, or a chat with no memory", async () => {

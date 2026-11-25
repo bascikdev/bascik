@@ -176,7 +176,7 @@ export interface ChatSessions {
 
 ```ts
 import { cookieSessions } from "@bascik/ai/app";
-const sessions = cookieSessions("library", { secure: true });
+const sessions = cookieSessions("library");
 ```
 
 It sets two cookies:
@@ -184,20 +184,30 @@ It sets two cookies:
 - `chat_<id>`: the open conversation.
 - `visitor`: the anonymous reader.
 
-Both get `Path=/; HttpOnly; SameSite=Lax`. The `visitor` cookie also gets `Max-Age=31536000`. Both get `Secure` by default, unless the request is plain `http:` to `localhost`, `127.0.0.1`, or `[::1]`, so local development keeps working. Pass `secure: true` to always add it, or `secure: false` to never add it (for example, when testing over plain http from another device on your network).
+Both get `Path=/; HttpOnly; SameSite=Lax; Secure`. The `visitor` cookie also gets `Max-Age=31536000`. `Secure` is on for every response, whatever the request's URL says: behind a proxy, requests to a public https site can arrive as plain http to `127.0.0.1`, so the server never guesses. Chrome and Firefox keep Secure cookies on `http://localhost` and `http://127.0.0.1`, so local development works with the default. Pass `secure: false` only to develop on a browser that drops them there, or over plain http from another device on your network.
 
-Pass `secret` (or `sessionSecret` to `createChat`) to sign the reader id with an HMAC. The `visitor` cookie then holds the id and its signature, and a cookie the server did not sign is refused: the request gets a new reader. Without a secret, any cookie shaped like an id is taken as the reader. Whoever can set a cookie on your site (a sibling subdomain, or a network attacker on plain http) can then choose the reader id a visitor uses, and later read what that visitor stores. Set a secret in production. Turning it on starts every existing reader over, because their unsigned cookies are refused.
+Pass `secret` (or `sessionSecret` to `createChat`) to sign the reader id with an HMAC. The `visitor` cookie then holds the id and its signature, and a cookie the server did not sign is refused: the request gets a new reader. Turning it on starts every existing reader over, because their unsigned cookies are refused.
+
+Pass `hostPrefix: true` to name the cookies `__Host-visitor` and `__Host-chat_<id>`, and read only those. A browser accepts a `__Host-` cookie only from an https response with `Secure`, `Path=/`, and no `Domain`, so a sibling subdomain or a plain-http response cannot set one. It needs `secure` left on (`cookieSessions` throws otherwise), and turning it on starts every existing reader over.
 
 ```ts
 import { cookieSessions } from "@bascik/ai/app";
 const sessions = cookieSessions("library", {
   secret: process.env.CHAT_SECRET,
+  hostPrefix: true,
 });
 ```
 
-The cookies do not use the `__Host-` prefix. Renaming `visitor` would start every existing reader over, and a `__Host-` cookie needs `Secure`, which plain http on localhost cannot always keep.
+Pass it as `sessions` to `createChat`; `sessionSecret` alone does not set `hostPrefix`.
 
-`identify` reads `visitor` and `chat_<id>`. It accepts a cookie value only when it is an id shaped as `randomUUID` writes it, and, with a secret, signed by this server. `remember` writes the open conversation and the reader back.
+What these do and do not prevent:
+
+- Without a secret, any cookie shaped like an id is taken as the reader. Whoever can set a cookie on your site can choose the reader id a visitor uses, and later read what that visitor stores.
+- `secret` stops ids the server never issued. It does not stop an id the server did issue: anyone can visit, get a signed id, and plant that same value in someone else's browser. Both then share one reader.
+- `hostPrefix` stops that planting from a sibling subdomain or from a network attacker who answers a plain-http request. It does not stop script running on your own origin, or anyone with access to the browser.
+- Neither ties a reader to a person. When conversations hold anything private, put the chat behind your own sign-in and implement `ChatSessions` with the signed-in user as the reader.
+
+`identify` reads `visitor` and `chat_<id>` (with their `__Host-` names when `hostPrefix` is on). It accepts a cookie value only when it is an id shaped as `randomUUID` writes it, and, with a secret, signed by this server. `remember` writes the open conversation and the reader back.
 
 To replace it, implement `ChatSessions`. `identify` answers from the request. `remember` returns the headers that make the next request say the same. Pass the result as `sessions` to `createChat`.
 
