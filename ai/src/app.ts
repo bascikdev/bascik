@@ -13,7 +13,7 @@
  * live, who the reader is, which model answers, and which voice provider is
  * offered are all passed in, and a client never chooses any of them.
  */
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { catalogPrompt, type Catalog } from "./catalog.ts";
 import { createBroadcast, type Broadcast } from "./broadcast.ts";
 import {
@@ -105,45 +105,109 @@ export interface ChatSessions {
   remember(session: Session, conversationId: string): Headers;
 }
 
-const COOKIE_ID = /^[0-9a-f-]{36}$/;
+/** An id as `randomUUID` writes it. */
+const COOKIE_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function cookieValue(request: Request, name: string): string | undefined {
   for (const pair of (request.headers.get("cookie") ?? "").split(";")) {
     const at = pair.indexOf("=");
     if (at > 0 && pair.slice(0, at).trim() === name) {
-      const value = pair.slice(at + 1).trim();
-      return COOKIE_ID.test(value) ? value : undefined;
+      return pair.slice(at + 1).trim();
     }
   }
   return undefined;
+}
+
+const cookieId = (value: string | undefined): string | undefined =>
+  value !== undefined && COOKIE_ID.test(value) ? value : undefined;
+
+/** Plain http to this machine: the one place a browser may not keep a Secure cookie. */
+function plainLocal(request: Request): boolean {
+  try {
+    const { protocol, hostname } = new URL(request.url);
+    return (
+      protocol === "http:" &&
+      (hostname === "localhost" ||
+        hostname.endsWith(".localhost") ||
+        hostname === "127.0.0.1" ||
+        hostname === "[::1]")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export interface CookieSessionOptions {
+  /**
+   * True always adds Secure to both cookies, false never does. Default: Secure,
+   * unless the request that identified the reader is plain `http:` to
+   * localhost, 127.0.0.1, or [::1], so local development keeps working.
+   */
+  secure?: boolean;
+  /**
+   * Signs the reader id this server issues with an HMAC, and refuses a
+   * `visitor` cookie it did not sign (a new reader is made instead). Without
+   * it, any cookie shaped like an id is taken as the reader, so whoever can
+   * set a cookie on the site can choose a reader id for a visitor.
+   */
+  secret?: string;
 }
 
 /**
  * The default sessions: an anonymous reader and an open conversation, each in
  * an HttpOnly cookie (`visitor`, and `chat_<id>` so apps on one site keep
  * their own). Readers never see each other's conversations, and a reader who
- * clears cookies starts over. `secure` adds the Secure attribute: set it when
- * the site is served over HTTPS.
+ * clears cookies starts over. See `CookieSessionOptions` for Secure and for
+ * signing the reader id.
  */
 export function cookieSessions(
   id = "chat",
-  options: { secure?: boolean } = {},
+  options: CookieSessionOptions = {},
 ): ChatSessions {
-  const attributes = `Path=/; HttpOnly; SameSite=Lax${options.secure ? "; Secure" : ""}`;
+  const { secret } = options;
+  if (secret === "") throw new Error("cookieSessions: the secret is empty.");
+  const attributes = "Path=/; HttpOnly; SameSite=Lax";
+  // Sessions this object identified from plain http to this machine.
+  const local = new WeakSet<Session>();
+  const sign = (reader: string): string =>
+    createHmac("sha256", secret!)
+      .update(`visitor:${reader}`)
+      .digest("base64url");
+  const readerOf = (value: string | undefined): string | undefined => {
+    if (secret === undefined) return cookieId(value);
+    const dot = value?.indexOf(".") ?? -1;
+    const reader = cookieId(value?.slice(0, dot));
+    if (dot < 0 || reader === undefined) return undefined;
+    const given = Buffer.from(value!.slice(dot + 1));
+    const expected = Buffer.from(sign(reader));
+    return given.length === expected.length && timingSafeEqual(given, expected)
+      ? reader
+      : undefined;
+  };
   return {
-    identify: (request) => ({
-      reader: cookieValue(request, "visitor") ?? randomUUID(),
-      conversationId: cookieValue(request, `chat_${id}`),
-    }),
+    identify(request) {
+      const session: Session = {
+        reader: readerOf(cookieValue(request, "visitor")) ?? randomUUID(),
+        conversationId: cookieId(cookieValue(request, `chat_${id}`)),
+      };
+      if (options.secure === undefined && plainLocal(request)) {
+        local.add(session);
+      }
+      return session;
+    },
     remember(session, conversationId) {
+      const secure = options.secure ?? !local.has(session);
+      const tail = `${attributes}${secure ? "; Secure" : ""}`;
+      const visitor =
+        secret === undefined
+          ? session.reader
+          : `${session.reader}.${sign(session.reader)}`;
       const headers = new Headers();
+      headers.append("set-cookie", `chat_${id}=${conversationId}; ${tail}`);
       headers.append(
         "set-cookie",
-        `chat_${id}=${conversationId}; ${attributes}`,
-      );
-      headers.append(
-        "set-cookie",
-        `visitor=${session.reader}; Max-Age=31536000; ${attributes}`,
+        `visitor=${visitor}; Max-Age=31536000; ${tail}`,
       );
       return headers;
     },
@@ -242,8 +306,21 @@ export interface ChatOptions {
   files?: FileStore;
   /** What is let in: sizes, count, types. Defaults in `@bascik/ai/files`. */
   fileLimits?: FileLimits;
-  /** Who the reader is and which conversation is open. Default `cookieSessions(id)`. */
+  /** Who the reader is and which conversation is open. Default `cookieSessions(id, { secret: sessionSecret })`. */
   sessions?: ChatSessions;
+  /**
+   * The secret the default sessions sign reader ids with (see
+   * `cookieSessions`). Recommended: without it, a cookie planted on the site
+   * can choose a visitor's reader id. Ignored when `sessions` is given.
+   */
+  sessionSecret?: string;
+  /**
+   * The most bytes a form handler reads of a request body; past it, the
+   * handler answers 413 (`send` with `files` answers its refused page)
+   * without reading the rest. Default: `fileLimits.maxTotalBytes` plus 256 KB
+   * when `files` is set, else 256 KB.
+   */
+  maxBodyBytes?: number;
   /** The page the form handlers send the reader back to. Default `/`. */
   page?: string;
   /** The longest one reply may take, tools included. Default two minutes. */
@@ -368,8 +445,22 @@ const MAX_SPEECH = 8000;
 /** A voice tool call's input, as sent. */
 const MAX_TOOL_INPUT = 64_000;
 const NO_STORE = { "cache-control": "no-store" };
-/** A path on this site: one slash first, never `//host` or `/\host`, no line breaks. */
-const LOCAL_PATH = /^\/(?![/\\])[^\r\n]*$/;
+/**
+ * A path on this site: one slash first, never `//host` or `/\host`, and no
+ * control characters (a URL parser drops a tab, so `/\t/host` is `//host`).
+ */
+const LOCAL_PATH = /^\/(?![/\\])[^\u0000-\u001f\u007f]*$/;
+/** Where a `back` field sends the reader: its path on this site, or undefined. */
+function localPath(back: string | undefined): string | undefined {
+  if (back === undefined || !LOCAL_PATH.test(back)) return undefined;
+  // Resolved the way a browser resolves Location, then kept only when it
+  // stays on the same origin.
+  const base = "http://this.invalid";
+  const url = new URL(back, base);
+  return url.origin === base
+    ? `${url.pathname}${url.search}${url.hash}`
+    : undefined;
+}
 /** What a multipart body may carry besides its files: the text and the field framing. */
 const MULTIPART_ROOM = 256 * 1024;
 
@@ -404,12 +495,40 @@ function messageFrom(form: FormData): string {
 const badRequest = (message: string): Response =>
   new Response(message, { status: 400 });
 
-/** The request's form, or null when it is not one. */
-async function readForm(request: Request): Promise<FormData | null> {
+/**
+ * The request's form, or why there is none: it is not a form, or it is longer
+ * than `limit` bytes. The body is counted as it streams, so a body with no
+ * Content-Length (or a false one) is cut off at the limit, never read whole.
+ */
+async function readForm(
+  request: Request,
+  limit: number,
+): Promise<FormData | "not a form" | "too large"> {
+  const declared = request.headers.get("content-length");
+  if (declared !== null && Number(declared) > limit) return "too large";
+  let over = false;
+  let seen = 0;
+  const body =
+    request.body?.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          seen += chunk.byteLength;
+          if (seen > limit) {
+            over = true;
+            controller.error(new RangeError("The body is too large."));
+          } else {
+            controller.enqueue(chunk);
+          }
+        },
+      }),
+    ) ?? null;
+  const type = request.headers.get("content-type");
   try {
-    return await request.formData();
+    return await new Response(body, {
+      headers: type === null ? {} : { "content-type": type },
+    }).formData();
   } catch {
-    return null;
+    return over ? "too large" : "not a form";
   }
 }
 
@@ -487,7 +606,14 @@ export function createChat(options: ChatOptions): Chat {
     page = "/",
     turnLimitMs = 120_000,
   } = options;
-  const sessions = options.sessions ?? cookieSessions(id);
+  const sessions =
+    options.sessions ??
+    cookieSessions(
+      id,
+      options.sessionSecret === undefined
+        ? {}
+        : { secret: options.sessionSecret },
+    );
   const onError =
     options.onError ??
     ((error: unknown, what: string) =>
@@ -579,7 +705,37 @@ export function createChat(options: ChatOptions): Chat {
     headers.set("location", page);
     return new Response(null, { status: 303, headers });
   };
-  const addMessage: Chat["addMessage"] = async (session, text, titled) => {
+  /**
+   * Changes to one conversation, one at a time: each reads the conversation
+   * afresh and stores it before the next reads, so two writes at once (two
+   * tabs sending, a message sent as a reply is stored) never lose one. This
+   * holds within one server; across several, the store has to arbitrate.
+   */
+  const writing = new Map<string, Promise<unknown>>();
+  function serialized<T>(
+    session: Session,
+    conversationId: string,
+    change: () => Promise<T>,
+  ): Promise<T> {
+    const key = `${session.reader}\n${conversationId}`;
+    const run = (writing.get(key) ?? Promise.resolve()).then(change);
+    const settled = run.then(
+      () => {},
+      () => {},
+    );
+    writing.set(key, settled);
+    void settled.then(() => {
+      if (writing.get(key) === settled) writing.delete(key);
+    });
+    return run;
+  }
+  const addMessage: Chat["addMessage"] = async (session, text, titled) =>
+    session.conversationId === undefined
+      ? appendMessage(session, text, titled)
+      : serialized(session, session.conversationId, () =>
+          appendMessage(session, text, titled),
+        );
+  const appendMessage: Chat["addMessage"] = async (session, text, titled) => {
     const conversation = (await load(session)) ?? newConversation();
     const attached = titled?.files ?? [];
     if (conversation.messages.length === 0) {
@@ -607,6 +763,24 @@ export function createChat(options: ChatOptions): Chat {
 
   const fileStore = options.files;
   const fileLimits = resolveLimits(options.fileLimits);
+  const maxBodyBytes =
+    options.maxBodyBytes ??
+    (fileStore ? fileLimits.maxTotalBytes + MULTIPART_ROOM : MULTIPART_ROOM);
+  /** A form handler's form, or its answer when there is none. */
+  const formOf = async (
+    request: Request,
+    notAForm: string,
+  ): Promise<FormData | Response> => {
+    const form = await readForm(request, maxBodyBytes);
+    if (form === "not a form") return badRequest(notAForm);
+    if (form === "too large") {
+      return new Response("The request is too large.", {
+        status: 413,
+        headers: NO_STORE,
+      });
+    }
+    return form;
+  };
   const readFileFor = (session: Session) =>
     fileStore
       ? async (part: FilePart): Promise<Uint8Array | null> =>
@@ -803,12 +977,17 @@ export function createChat(options: ChatOptions): Chat {
             delete message.parts;
             message.content = "(no reply)";
           }
-          // Read the conversation again: the reader may have sent something
-          // else while this was being written, and that must not be lost.
-          const latest = (await load(session, conversation.id)) ?? conversation;
-          const at = messages.length - (carriedOn ? 1 : 0);
-          latest.messages.splice(at, carriedOn ? 1 : 0, message);
-          await save(session, latest);
+          // Read the conversation again, in turn with its other writes: the
+          // reader may have sent something else while this was being
+          // written, and that must not be lost.
+          const reply = message;
+          await serialized(session, conversation.id, async () => {
+            const latest =
+              (await load(session, conversation.id)) ?? conversation;
+            const at = messages.length - (carriedOn ? 1 : 0);
+            latest.messages.splice(at, carriedOn ? 1 : 0, reply);
+            await save(session, latest);
+          });
         }
       }
     };
@@ -1108,17 +1287,22 @@ export function createChat(options: ChatOptions): Chat {
   /* Handlers */
 
   const send: Chat["send"] = async (request) => {
-    // A body far past the limits is turned away before it is read.
-    const declared = Number(request.headers.get("content-length"));
-    if (fileStore && declared > fileLimits.maxTotalBytes + MULTIPART_ROOM) {
-      return refusedPage(
-        refusals.total(declared, fileLimits.maxTotalBytes),
-        "",
-        page,
-      );
+    // A body past the limit is turned away; past it, nothing more is read.
+    const form = await formOf(request, "Not a form.");
+    if (form instanceof Response) {
+      if (fileStore && form.status === 413) {
+        const declared = Number(request.headers.get("content-length"));
+        return refusedPage(
+          refusals.total(
+            declared > maxBodyBytes ? declared : maxBodyBytes + 1,
+            fileLimits.maxTotalBytes,
+          ),
+          "",
+          page,
+        );
+      }
+      return form;
     }
-    const form = await readForm(request);
-    if (!form) return badRequest("Not a form.");
     const session = sessions.identify(request);
     const text = messageFrom(form).slice(0, MAX_MESSAGE);
     if (form.get("voice") === "1") {
@@ -1155,8 +1339,8 @@ export function createChat(options: ChatOptions): Chat {
   };
 
   const approve: Chat["approve"] = async (request) => {
-    const form = await readForm(request);
-    if (!form) return badRequest("Not a form.");
+    const form = await formOf(request, "Not a form.");
+    if (form instanceof Response) return form;
     const session = sessions.identify(request);
     const call = field(form, "call");
     const verdict = form.get("verdict");
@@ -1174,8 +1358,8 @@ export function createChat(options: ChatOptions): Chat {
   };
 
   const answer: Chat["answer"] = async (request) => {
-    const form = await readForm(request);
-    if (!form) return badRequest("Not a form.");
+    const form = await formOf(request, "Not a form.");
+    if (form instanceof Response) return form;
     const session = sessions.identify(request);
     const call = field(form, "call");
     const output = field(form, "output")?.trim();
@@ -1193,15 +1377,15 @@ export function createChat(options: ChatOptions): Chat {
   };
 
   const stop: Chat["stop"] = async (request) => {
-    const { conversationId } = sessions.identify(request);
-    const stopped =
-      conversationId !== undefined && (await stopTurn(conversationId));
+    // Only the reader's own conversation: its id in a cookie is not enough.
+    const conversation = await load(sessions.identify(request));
+    const stopped = conversation !== null && (await stopTurn(conversation.id));
     return new Response(null, { status: stopped ? 204 : 404 });
   };
 
   const open: Chat["open"] = async (request) => {
-    const form = await readForm(request);
-    if (!form) return badRequest("Not a form.");
+    const form = await formOf(request, "Not a form.");
+    if (form instanceof Response) return form;
     const session = sessions.identify(request);
     const conversation =
       (await load(session, field(form, "id") ?? "")) ?? newConversation();
@@ -1209,8 +1393,8 @@ export function createChat(options: ChatOptions): Chat {
   };
 
   const forget: Chat["forget"] = async (request) => {
-    const form = await readForm(request);
-    if (!form) return badRequest("Not a form.");
+    const form = await formOf(request, "Not a form.");
+    if (form instanceof Response) return form;
     const session = sessions.identify(request);
     const memoryId = field(form, "id");
     if (!memory || memoryId === undefined) {
@@ -1218,14 +1402,10 @@ export function createChat(options: ChatOptions): Chat {
     }
     await forgetMemory(memory, session.reader, memoryId);
     // Back to where the form was: a path on this site, never another one.
-    const back = field(form, "back");
     const headers = session.conversationId
       ? sessions.remember(session, session.conversationId)
       : new Headers();
-    headers.set(
-      "location",
-      back !== undefined && LOCAL_PATH.test(back) ? back : page,
-    );
+    headers.set("location", localPath(field(form, "back")) ?? page);
     return new Response(null, { status: 303, headers });
   };
 
@@ -1287,8 +1467,8 @@ export function createChat(options: ChatOptions): Chat {
   };
 
   const voiceTool: Chat["voiceTool"] = async (request) => {
-    const form = await readForm(request);
-    if (!form) return badRequest("Not a tool call.");
+    const form = await formOf(request, "Not a tool call.");
+    if (form instanceof Response) return form;
     const session = sessions.identify(request);
     const callId = field(form, "id");
     const name = field(form, "name");
@@ -1336,8 +1516,8 @@ export function createChat(options: ChatOptions): Chat {
   };
 
   const voiceTurn: Chat["voiceTurn"] = async (request) => {
-    const form = await readForm(request);
-    if (!form) return badRequest("Not a voice turn.");
+    const form = await formOf(request, "Not a voice turn.");
+    if (form instanceof Response) return form;
     const session = sessions.identify(request);
     const reader = field(form, "reader");
     const model = field(form, "model");
