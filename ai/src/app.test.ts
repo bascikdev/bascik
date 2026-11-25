@@ -173,17 +173,244 @@ describe("cookieSessions", () => {
     expect(sessions.identify(request).reader).not.toBe(OTHER);
   });
 
-  it("remembers both in HttpOnly cookies, Secure when asked", () => {
+  it("remembers both in HttpOnly cookies, Secure by default", () => {
     const session = { reader: READER, conversationId: undefined };
     expect(sessions.remember(session, CONVERSATION).getSetCookie()).toEqual([
+      `chat_books=${CONVERSATION}; Path=/; HttpOnly; SameSite=Lax; Secure`,
+      `visitor=${READER}; Max-Age=31536000; Path=/; HttpOnly; SameSite=Lax; Secure`,
+    ]);
+    expect(
+      cookieSessions("books", { secure: false })
+        .remember(session, CONVERSATION)
+        .getSetCookie(),
+    ).toEqual([
       `chat_books=${CONVERSATION}; Path=/; HttpOnly; SameSite=Lax`,
       `visitor=${READER}; Max-Age=31536000; Path=/; HttpOnly; SameSite=Lax`,
     ]);
-    expect(
-      cookieSessions("books", { secure: true })
-        .remember(session, CONVERSATION)
-        .getSetCookie()[0],
-    ).toMatch(/; Secure$/);
+  });
+
+  it("leaves Secure off only for plain http on this machine", () => {
+    const local = (url: string, options = {}) => {
+      const own = cookieSessions("books", options);
+      return own
+        .remember(own.identify(new Request(url)), CONVERSATION)
+        .getSetCookie()
+        .map((line) => line.endsWith("; Secure"));
+    };
+    for (const url of [
+      "http://localhost:4321/",
+      "http://127.0.0.1/",
+      "http://[::1]:8080/",
+      "http://app.localhost/",
+    ]) {
+      expect(local(url)).toEqual([false, false]);
+      expect(local(url, { secure: true })).toEqual([true, true]);
+    }
+    for (const url of [
+      "https://localhost/",
+      "https://chat.example/",
+      "http://chat.example/",
+      "http://192.168.1.5/",
+      "http://localhost.evil.example/",
+    ]) {
+      expect(local(url)).toEqual([true, true]);
+      expect(local(url, { secure: false })).toEqual([false, false]);
+    }
+  });
+
+  it("refuses an id shaped like one that no server issued", () => {
+    for (const bad of ["-".repeat(36), "g".repeat(36), "0".repeat(36)]) {
+      const request = new Request("http://x/", {
+        headers: { cookie: `visitor=${bad}; chat_books=${bad}` },
+      });
+      expect(sessions.identify(request).reader).not.toBe(bad);
+      expect(sessions.identify(request).conversationId).toBeUndefined();
+    }
+  });
+
+  describe("with a secret", () => {
+    const signed = cookieSessions("books", { secret: "s3cret-for-tests" });
+    const visitorOf = (headers: Headers): string =>
+      /^visitor=([^;]+)/.exec(headers.getSetCookie()[1]!)![1]!;
+    const asking = (visitor: string) =>
+      new Request("https://chat.example/", {
+        headers: { cookie: `visitor=${visitor}; chat_books=${CONVERSATION}` },
+      });
+
+    it("signs the reader it issues and knows it again", () => {
+      const first = signed.identify(new Request("https://chat.example/"));
+      const value = visitorOf(signed.remember(first, CONVERSATION));
+      expect(value.startsWith(`${first.reader}.`)).toBe(true);
+      expect(signed.identify(asking(value))).toEqual({
+        reader: first.reader,
+        conversationId: CONVERSATION,
+      });
+    });
+
+    it("refuses an unsigned id, a changed signature, and another secret's id", () => {
+      const other = cookieSessions("books", { secret: "another-secret" });
+      const theirs = visitorOf(
+        other.remember({ reader: READER, conversationId: undefined }, "x"),
+      );
+      const ours = visitorOf(
+        signed.remember({ reader: READER, conversationId: undefined }, "x"),
+      );
+      for (const planted of [
+        READER,
+        theirs,
+        `${ours.slice(0, -1)}${ours.endsWith("A") ? "B" : "A"}`,
+        `${OTHER}.${ours.split(".")[1]}`,
+        `${READER}.`,
+      ]) {
+        const reader = signed.identify(asking(planted)).reader;
+        expect(reader).not.toBe(READER);
+        expect(reader).not.toBe(OTHER);
+      }
+    });
+
+    it("is what createChat uses when given sessionSecret", async () => {
+      const chat = setup({ sessionSecret: "s3cret-for-tests" });
+      const response = await chat.send(posted({ text: "hi" }));
+      const value = /visitor=([^;]+)/.exec(
+        response.headers.getSetCookie()[1]!,
+      )![1]!;
+      // The planted, unsigned id was refused: this is a new, signed reader.
+      expect(value.startsWith(`${READER}.`)).toBe(false);
+      expect(value).toMatch(/^[0-9a-f-]{36}\.[\w-]+$/);
+    });
+  });
+});
+
+describe("conversation writes", () => {
+  /** A store whose reads take a moment, as a disk or a database's do. */
+  function slowStore() {
+    const inner = memoryStore();
+    return {
+      ...inner,
+      async load(reader: string, id: string) {
+        const found = await inner.load(reader, id);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return found;
+      },
+    };
+  }
+
+  it("keeps both of two messages sent at once to one conversation", async () => {
+    const chat = setup({ store: slowStore() });
+    await seed(chat, []);
+    const session = { reader: READER, conversationId: CONVERSATION };
+    await Promise.all([
+      chat.addMessage(session, "A"),
+      chat.addMessage(session, "B"),
+    ]);
+    const contents = (await stored(chat, CONVERSATION)).messages.map(
+      (message) => message.content,
+    );
+    expect(contents.sort()).toEqual(["A", "B"]);
+  });
+
+  it("keeps a message sent while the reply is being stored", async () => {
+    const chat = setup({ store: slowStore() });
+    await seed(chat, [{ role: "user", content: "hi" }]);
+    const { turn } = await chat.thread(page());
+    const session = { reader: READER, conversationId: CONVERSATION };
+    await Promise.all([turn!.over, chat.addMessage(session, "more")]);
+    const contents = (await stored(chat, CONVERSATION)).messages.map(
+      (message) => message.content,
+    );
+    expect(contents).toContain("more");
+    expect(contents).toContain("Hello there");
+    expect(contents[0]).toBe("hi");
+  });
+});
+
+describe("form bodies have a limit", () => {
+  /**
+   * A form body with no Content-Length, sent in chunks until `total` bytes:
+   * `pulled` says how much of it the handler read.
+   */
+  function chunked(total: number, reader = READER) {
+    const chunk = new TextEncoder().encode(`text=${"a".repeat(65_531)}`);
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled >= total) {
+          controller.close();
+          return;
+        }
+        pulled += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+    });
+    const request = new Request("http://localhost/api/x", {
+      method: "POST",
+      headers: {
+        cookie: cookie(reader, CONVERSATION),
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body,
+      duplex: "half",
+    } as RequestInit);
+    return { request, pulled: () => pulled };
+  }
+
+  it("stops reading a body with no length once it passes the limit, in every form handler", async () => {
+    const chat = setup({ memory: inMemoryMemories() });
+    for (const handler of [
+      chat.send,
+      chat.approve,
+      chat.answer,
+      chat.open,
+      chat.forget,
+      chat.voiceTool,
+      chat.voiceTurn,
+    ]) {
+      const { request, pulled } = chunked(64 * 1024 * 1024);
+      const response = await handler(request);
+      expect(response.status).toBe(413);
+      expect(pulled()).toBeLessThan(2 * 1024 * 1024);
+    }
+  });
+
+  it("turns away a body whose declared length is past the limit", async () => {
+    const chat = setup({ maxBodyBytes: 1000 });
+    const request = new Request("http://localhost/api/x", {
+      method: "POST",
+      headers: {
+        cookie: cookie(),
+        "content-type": "application/x-www-form-urlencoded",
+        "content-length": "5000",
+      },
+      body: "text=hi",
+    });
+    expect((await chat.send(request)).status).toBe(413);
+  });
+
+  it("takes maxBodyBytes, and lets a form under it through", async () => {
+    const chat = setup({ maxBodyBytes: 1000 });
+    expect((await chat.send(posted({ text: "a".repeat(900) }))).status).toBe(
+      303,
+    );
+    expect((await chat.send(posted({ text: "a".repeat(1100) }))).status).toBe(
+      413,
+    );
+  });
+
+  it("allows a voice tool call's longest input by default", async () => {
+    const chat = setup();
+    // The voice call posts FormData: 64,000 characters of three bytes each.
+    const body = new FormData();
+    body.set("id", "c");
+    body.set("name", "nope");
+    body.set("input", "€".repeat(64_000));
+    const response = await chat.voiceTool(
+      new Request("http://localhost/api/x", {
+        method: "POST",
+        headers: { cookie: cookie() },
+        body,
+      }),
+    );
+    expect(response.status).toBe(400);
   });
 });
 
@@ -636,6 +863,19 @@ describe("stop", () => {
     const { messages } = await stored(chat, CONVERSATION);
     expect(messages).toHaveLength(2);
     expect(messages[1]!.content.length).toBeLessThan(2500);
+  });
+
+  it("does not stop another reader's reply, even given its id", async () => {
+    const chat = setup({
+      model: () =>
+        scriptedModel(() => "word ".repeat(500), { delayMs: 10, chunkSize: 5 }),
+    });
+    await seed(chat, [{ role: "user", content: "hi" }]);
+    const { turn } = await chat.thread(page());
+    const response = await chat.stop(posted({}, CONVERSATION, OTHER));
+    expect(response.status).toBe(404);
+    expect(turn!.stop.signal.aborted).toBe(false);
+    expect((await chat.stop(posted({}, CONVERSATION))).status).toBe(204);
   });
 
   it("answers 404 when nothing is being written, or no conversation is open", async () => {
@@ -1219,9 +1459,18 @@ describe("memory", () => {
         "https://evil.example",
         "evil",
         "/a\r\nx-injected: 1",
+        "/\t/evil.example/login",
+        "/\n/evil.example",
+        "/\u0000/evil.example",
+        "/\u001f/evil.example",
+        "/\t\\evil.example",
       ]) {
         const response = await chat.forget(posted({ id: "a", back }));
         expect(response.headers.get("location")).toBe("/books");
+        const location = response.headers.get("location")!;
+        expect(new URL(location, "https://chat.example/").origin).toBe(
+          "https://chat.example",
+        );
       }
     });
 
