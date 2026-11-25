@@ -8,6 +8,7 @@ import {
   type AzureVoiceLiveProvider,
 } from "./azure-voice-live.ts";
 import type { Tool } from "./model.ts";
+import { inProcessShared } from "./shared.ts";
 import { voiceTools } from "./voice.ts";
 import { acceptWebSocket, type ServerSocket } from "./ws.ts";
 
@@ -296,6 +297,49 @@ describe("azureVoiceLiveVoice", () => {
     const late = browser((await provider.createSession(config)).url);
     await late.closed;
     expect(upstream.connections).toHaveLength(1);
+  });
+
+  it("honors a ticket made on another server once, when the tickets are shared", async () => {
+    upstream = await startUpstream();
+    const tickets = inProcessShared();
+    const one = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      shared: tickets,
+    });
+    const two = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      shared: tickets,
+    });
+    try {
+      // The second server listens from its start, as a deployment would arrange.
+      await two.listen();
+      const made = await one.createSession(config);
+      const query = /\?ticket=[0-9a-f-]{36}$/.exec(made.url)![0];
+      const ownBase = (await two.createSession(config)).url.replace(
+        /\?ticket=.*/,
+        "",
+      );
+      expect(ownBase).not.toBe(made.url.replace(/\?ticket=.*/, ""));
+
+      const call = browser(`${ownBase}${query}`);
+      await until(() => call.messages.length > 0);
+      expect(upstream.connections).toHaveLength(1);
+      expect(upstream.connections[0]!.received[0]).toMatchObject({
+        type: "session.update",
+        session: { instructions: config.system },
+      });
+      // Once: neither server honors it a second time.
+      const again = browser(`${ownBase}${query}`);
+      await again.closed;
+      const first = browser(made.url);
+      await first.closed;
+      expect(upstream.connections).toHaveLength(1);
+    } finally {
+      await one.close();
+      await two.close();
+    }
   });
 
   it("ends a call at its time limit, and when the relay closes", async () => {

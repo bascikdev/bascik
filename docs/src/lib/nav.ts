@@ -173,6 +173,7 @@ export const NAV: NavSection[] = [
       { href: "/genui/voice", label: "Voice & Captions" },
       { href: "/genui/conversation-search", label: "Conversation Search" },
       { href: "/genui/attachments", label: "Attachments" },
+      { href: "/genui/scaling", label: "Running on Several Servers" },
       { href: "/genui/design-principles", label: "Design Principles" },
     ],
   },

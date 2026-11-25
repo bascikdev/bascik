@@ -13,11 +13,17 @@
  * The cost is that the audio passes through this server, which Gemini Live
  * avoids. The relay needs Node (it listens on a port), so it does not run on
  * an edge runtime.
+ *
+ * With several servers, the audio connection is one process's: it stays on
+ * the server the browser reached. Only the ticket has to be known to all of
+ * them, so give the provider a `shared` store (`@bascik/genui/shared`) and
+ * start the relay on every server (`listen()`).
  */
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Tool } from "./model.ts";
+import { inProcessShared, type Shared } from "./shared.ts";
 import type {
   VoiceProvider,
   VoiceSessionConfig,
@@ -57,6 +63,13 @@ export interface AzureVoiceLiveOptions {
      */
     publicUrl?: string;
   };
+  /**
+   * Where one-use tickets are kept. Default: this process's memory, which is
+   * right for one server. With several, pass the store they share, so a
+   * ticket made on one server is honored once on another. A ticket holds the
+   * session's instructions: keep the store private.
+   */
+  shared?: Pick<Shared, "set" | "take" | "delete">;
   /** How long a ticket may be used to start a session, in seconds (default 60). */
   startWithinSeconds?: number;
   /** How long a session may last, in seconds (default 900). */
@@ -66,6 +79,12 @@ export interface AzureVoiceLiveOptions {
 }
 
 export interface AzureVoiceLiveProvider extends VoiceProvider {
+  /**
+   * Start the relay now, without making a ticket. With tickets in a shared
+   * store, every server calls this when it starts: a ticket made on one
+   * server may be used on another, which has to be listening already.
+   */
+  listen(): Promise<void>;
   /** Stop the relay and end every call on it. */
   close(): Promise<void>;
 }
@@ -174,7 +193,6 @@ export function relayedClientEvent(
 
 interface Ticket {
   session: Record<string, unknown>;
-  expires: number;
 }
 
 type HeaderSocket = new (
@@ -193,7 +211,10 @@ export function azureVoiceLiveVoice(
     sessionSeconds = 900,
     relay = {},
   } = options;
-  const tickets = new Map<string, Ticket>();
+  const tickets = options.shared ?? inProcessShared();
+  const ticketKey = (id: string): string => `azure-voice-live:ticket:${id}`;
+  /** The tickets this provider made and when each lapses, so `close` can withdraw them. */
+  const issued = new Map<string, number>();
   const calls = new Set<() => void>();
   let listening: Promise<Server> | null = null;
 
@@ -320,15 +341,23 @@ export function azureVoiceLiveVoice(
         const id = new URL(request.url ?? "/", "http://relay").searchParams.get(
           "ticket",
         );
-        const ticket = id ? tickets.get(id) : undefined;
-        // A ticket starts one call, once.
-        if (id) tickets.delete(id);
-        if (!ticket || ticket.expires < Date.now()) {
-          refuseUpgrade(socket, 401);
-          return;
-        }
-        const browser = acceptWebSocket(request, socket);
-        if (browser) void connect(browser, ticket);
+        void (async () => {
+          // A ticket starts one call, once, on whichever server it is used.
+          let ticket: Ticket | undefined;
+          try {
+            const raw = id ? await tickets.take(ticketKey(id)) : undefined;
+            ticket =
+              raw === undefined ? undefined : (JSON.parse(raw) as Ticket);
+          } catch (error) {
+            console.error("[azure-voice-live] the ticket store failed:", error);
+          }
+          if (!ticket) {
+            refuseUpgrade(socket, 401);
+            return;
+          }
+          const browser = acceptWebSocket(request, socket);
+          if (browser) void connect(browser, ticket);
+        })();
       });
       server.once("error", reject);
       server.listen(relay.port ?? 0, relay.host ?? "127.0.0.1", () => {
@@ -346,14 +375,19 @@ export function azureVoiceLiveVoice(
       await credential();
       const server = await listen();
       const now = Date.now();
-      for (const [id, ticket] of tickets) {
-        if (ticket.expires < now) tickets.delete(id);
+      for (const [id, lapses] of issued) {
+        if (lapses < now) issued.delete(id);
       }
       const id = randomUUID();
-      tickets.set(id, {
+      const ticket: Ticket = {
         session: azureVoiceLiveSession(config, { voice }),
-        expires: now + startWithinSeconds * 1000,
-      });
+      };
+      await tickets.set(
+        ticketKey(id),
+        JSON.stringify(ticket),
+        startWithinSeconds * 1000,
+      );
+      issued.set(id, now + startWithinSeconds * 1000);
       const { port } = server.address() as AddressInfo;
       const base =
         relay.publicUrl ?? `ws://${relay.host ?? "127.0.0.1"}:${port}`;
@@ -365,8 +399,14 @@ export function azureVoiceLiveVoice(
         label: `Azure Voice Live · ${model}`,
       };
     },
+    async listen(): Promise<void> {
+      await listen();
+    },
     async close(): Promise<void> {
-      tickets.clear();
+      await Promise.all(
+        [...issued.keys()].map((id) => tickets.delete(ticketKey(id))),
+      ).catch(() => {});
+      issued.clear();
       for (const hangUp of [...calls]) hangUp();
       const server = await listening?.catch(() => null);
       listening = null;

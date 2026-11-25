@@ -149,6 +149,8 @@ Azure opens a Voice Live connection with the resource's key or a Microsoft Entra
 
 The cost is that the audio passes through your server, and that the relay needs Node: it listens on a port (`relay.port`, any free one by default), so it does not run on an edge runtime. Behind a proxy, set `relay.publicUrl` to the `wss://` address the browser reaches it at.
 
+With several servers, the audio stays on the server the browser reached, and the ticket works on any of them once the provider is given a shared store: see [Running on Several Servers](/genui/scaling#the-azure-relay).
+
 When the relay cannot connect to Azure, the call ends with "The voice provider refused the connection. Its key or token may have expired.", and the same line goes to the server's log.
 
 `token` takes a Microsoft Entra token for `https://ai.azure.com/.default`, or a function that returns a fresh one, so a server can run with a managed identity and no key at all. The model has to be one Voice Live offers in the resource's region. No model deployment is needed.
