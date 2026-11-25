@@ -92,6 +92,17 @@ export interface AzureVoiceLiveProvider extends VoiceProvider {
 /** How often a refused connection to the provider is tried again, and after how long. */
 const RETRIES = 1;
 const RETRY_AFTER_MS = 600;
+/**
+ * How much the browser may say before the provider is ready for it. A
+ * reader's microphone sends about 43 KB a second (16 kHz PCM, as base64), so
+ * this is half a minute of it, many times what a connection takes.
+ */
+const MAX_EARLY_BYTES = 1_500_000;
+/**
+ * How much may wait to be sent to the provider. More means the browser sends
+ * faster than real time, or the provider has stopped reading: the call ends.
+ */
+const MAX_UPSTREAM_BUFFERED_BYTES = 4_000_000;
 
 const isAzureVoice = (name: string): boolean =>
   /^[a-z]{2,3}-[A-Z]{2}-/.test(name);
@@ -241,6 +252,7 @@ export function azureVoiceLiveVoice(
     let upstream: WebSocket | null = null;
     /** What the browser said before the provider was ready for it. */
     let early: string[] | null = [];
+    let earlyBytes = 0;
     const end = (reason: string): void => {
       clearTimeout(limit);
       calls.delete(hangUp);
@@ -258,8 +270,21 @@ export function azureVoiceLiveVoice(
       const event = relayedClientEvent(raw);
       if (!event) return;
       const message = JSON.stringify(event);
-      if (early) early.push(message);
-      else if (upstream?.readyState === WebSocket.OPEN) upstream.send(message);
+      if (early) {
+        earlyBytes += message.length;
+        if (earlyBytes > MAX_EARLY_BYTES) {
+          early = [];
+          end("Too much was sent before the call started.");
+          return;
+        }
+        early.push(message);
+      } else if (upstream?.readyState === WebSocket.OPEN) {
+        if (upstream.bufferedAmount > MAX_UPSTREAM_BUFFERED_BYTES) {
+          end("The voice provider is not keeping up with the call.");
+          return;
+        }
+        upstream.send(message);
+      }
     };
     /**
      * Connect to the provider. A refusal before the connection opens is

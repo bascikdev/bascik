@@ -11,6 +11,11 @@ import type { Duplex } from "node:stream";
 
 /** Messages a relay passes are audio in pieces; nothing honest is larger than this. */
 const MAX_MESSAGE_BYTES = 4_000_000;
+/**
+ * How much the server may have written that the other side has not taken
+ * before it stops reading from that side, until the backlog drains.
+ */
+const MAX_UNSENT_BYTES = 1_000_000;
 const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 export interface ServerSocket {
@@ -105,25 +110,74 @@ export function acceptWebSocket(
     },
   };
 
-  let buffered: Buffer = Buffer.alloc(0);
+  /**
+   * What has arrived and is not yet read, as the pieces it came in. They are
+   * joined only once a whole frame is there, so reading a frame costs the
+   * same however small the pieces are.
+   */
+  let received: Buffer[] = [];
+  let receivedBytes = 0;
+  /** The first `count` bytes received, or fewer when fewer have arrived. */
+  const head = (count: number): Buffer => {
+    const first = received[0];
+    if (!first || first.length >= count) return first ?? Buffer.alloc(0);
+    const parts: Buffer[] = [];
+    let have = 0;
+    for (const piece of received) {
+      if (have >= count) break;
+      parts.push(piece);
+      have += piece.length;
+    }
+    return Buffer.concat(parts, Math.min(have, count));
+  };
+  /** Take the first `count` bytes received out of the queue. */
+  const take = (count: number): Buffer => {
+    let used = 0;
+    let have = 0;
+    while (have < count) have += received[used++]!.length;
+    const parts = received.slice(0, used);
+    const over = have - count;
+    const rest = received.slice(used);
+    if (over > 0) {
+      const last = parts[parts.length - 1]!;
+      parts[parts.length - 1] = last.subarray(0, last.length - over);
+      rest.unshift(last.subarray(last.length - over));
+    }
+    received = rest;
+    receivedBytes -= count;
+    return parts.length === 1 ? parts[0]! : Buffer.concat(parts, count);
+  };
+
+  /** Stop reading while the other side is not taking what is sent to it. */
+  const keepUp = (): void => {
+    if (!open || socket.isPaused()) return;
+    if (socket.writableLength <= MAX_UNSENT_BYTES) return;
+    socket.pause();
+    socket.once("drain", () => {
+      if (open) socket.resume();
+    });
+  };
+
   let pieces: Buffer[] = [];
   let size = 0;
   socket.on("data", (chunk: Buffer) => {
-    buffered = buffered.length ? Buffer.concat([buffered, chunk]) : chunk;
+    received.push(chunk);
+    receivedBytes += chunk.length;
     while (open) {
-      if (buffered.length < 2) return;
-      const opcode = buffered[0]! & 0x0f;
-      const final = (buffered[0]! & 0x80) !== 0;
-      const masked = (buffered[1]! & 0x80) !== 0;
-      let length = buffered[1]! & 0x7f;
+      if (receivedBytes < 2) break;
+      const header = head(14);
+      const opcode = header[0]! & 0x0f;
+      const final = (header[0]! & 0x80) !== 0;
+      const masked = (header[1]! & 0x80) !== 0;
+      let length = header[1]! & 0x7f;
       let at = 2;
       if (length === 126) {
-        if (buffered.length < 4) return;
-        length = buffered.readUInt16BE(2);
+        if (header.length < 4) break;
+        length = header.readUInt16BE(2);
         at = 4;
       } else if (length === 127) {
-        if (buffered.length < 10) return;
-        const long = buffered.readBigUInt64BE(2);
+        if (header.length < 10) break;
+        const long = header.readBigUInt64BE(2);
         if (long > BigInt(MAX_MESSAGE_BYTES)) {
           connection.close(1009, "Message too big");
           return;
@@ -136,17 +190,22 @@ export function acceptWebSocket(
         connection.close(1002, "Unmasked frame");
         return;
       }
+      // A control frame is short and whole (RFC 6455, section 5.5).
+      if (opcode >= 0x8 && (length > 125 || !final)) {
+        connection.close(1002, "Bad control frame");
+        return;
+      }
       if (size + length > MAX_MESSAGE_BYTES) {
         connection.close(1009, "Message too big");
         return;
       }
-      if (buffered.length < at + 4 + length) return;
-      const mask = buffered.subarray(at, at + 4);
-      const payload = Buffer.from(buffered.subarray(at + 4, at + 4 + length));
+      if (receivedBytes < at + 4 + length) break;
+      const frame = take(at + 4 + length);
+      const mask = frame.subarray(at, at + 4);
+      const payload = Buffer.from(frame.subarray(at + 4));
       for (let index = 0; index < payload.length; index++) {
         payload[index]! ^= mask[index % 4]!;
       }
-      buffered = buffered.subarray(at + 4 + length);
       if (opcode === 0x8) {
         socket.end(encodeFrame(payload.subarray(0, 2), 0x8));
         shut();
@@ -163,6 +222,7 @@ export function acceptWebSocket(
         connection.onMessage(text);
       }
     }
+    keepUp();
   });
   socket.on("close", shut);
   socket.on("error", shut);
