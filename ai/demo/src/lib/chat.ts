@@ -17,6 +17,11 @@ import { createChat, fileMemories, fileStore, type Chat } from "@bascik/ai/app";
 import { savedMemory } from "@bascik/ai/memory";
 import { diskFiles } from "@bascik/ai/files";
 import { MERMAID_PROMPT, mermaidFence } from "@bascik/ai/mermaid";
+import {
+  SANDBOX_LANGUAGE,
+  SANDBOX_PROMPT,
+  sandboxFence,
+} from "@bascik/ai/sandbox";
 import { APPS, type ChatApp } from "./apps.ts";
 import { listModels, modelFor, pickModel, requestedModel } from "./models.ts";
 
@@ -126,6 +131,8 @@ let catalog: Promise<Catalog> | undefined;
 
 /** One renderer for every reply, so a diagram is drawn once and remembered. */
 const mermaid = mermaidFence();
+/** Whole pages the model writes, for the apps that allow them, each in a sandboxed frame. */
+const sandbox = sandboxFence();
 
 /** `place_hold` as "Place hold": what a tool call is called on the page. */
 const actionName = (part: ToolPart): string => {
@@ -217,12 +224,19 @@ export function chatFor(app: ChatApp): Chat {
       // What each reader told this app, kept apart from its conversations.
       memory: fileMemories(join(DATA_DIR, "memory", app.id)),
       system: app.instructions,
-      fencePrompts: { mermaid: MERMAID_PROMPT },
+      fencePrompts: {
+        mermaid: MERMAID_PROMPT,
+        ...(app.openEnded ? { [SANDBOX_LANGUAGE]: SANDBOX_PROMPT } : {}),
+      },
       // How replies are drawn, live and from history: the HTML elements the
-      // app may pass through, ```mermaid fences as diagrams, and its tool calls.
+      // app may pass through, ```mermaid fences as diagrams (and, when the app
+      // is open-ended, ```html-app fences as sandboxed pages), and its tool calls.
       render: {
         elements: app.elements,
-        fences: { mermaid },
+        fences: {
+          mermaid,
+          ...(app.openEnded ? { [SANDBOX_LANGUAGE]: sandbox } : {}),
+        },
         view: (part) => toolView(app, part),
       },
       voice: loadVoice,

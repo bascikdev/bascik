@@ -22,6 +22,8 @@ export interface ChatApp {
   elements: string[];
   /** Answers when no API key is set. Deterministic, so tests can rely on it. */
   offline: Model;
+  /** The model may also write whole pages in ```html-app fences, run in a sandboxed frame. */
+  openEnded?: boolean;
 }
 
 export function booksApp(options: { delayMs: number }): ChatApp {
@@ -47,6 +49,7 @@ export function booksApp(options: { delayMs: number }): ChatApp {
       "You are a reading assistant for a small bookshop. Be brief and concrete. Call list_books before recommending, and recommend only books the shop stocks. When the reader wants a copy kept for them, call place_hold; say first, in one sentence, what you are about to hold.",
     tools: bookTools,
     elements: [],
+    openEnded: true,
     offline: demoModel({ delayMs: options.delayMs }),
   };
 }

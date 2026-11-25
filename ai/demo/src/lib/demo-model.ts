@@ -97,6 +97,41 @@ function acknowledge(files: FilePart[], text: string): string {
   ].join("\n");
 }
 
+/** The page the offline model writes when asked for a reading timer. */
+const TIMER_PAGE = `<h1 style="font-size:1.1rem;margin:0 0 8px">Reading timer</h1>
+<p id="clock" style="font-size:2.5rem;margin:0" data-testid="timer-clock">25:00</p>
+<p>
+  <button id="start" data-testid="timer-start">Start</button>
+  <button id="log" data-testid="timer-log">Log my reading</button>
+</p>
+<script>
+  let left = 25 * 60;
+  let tick = null;
+  const clock = document.getElementById("clock");
+  const show = () => {
+    const m = String(Math.floor(left / 60)).padStart(2, "0");
+    const s = String(left % 60).padStart(2, "0");
+    clock.textContent = m + ":" + s;
+  };
+  document.getElementById("start").addEventListener("click", (event) => {
+    if (tick) {
+      clearInterval(tick);
+      tick = null;
+      event.target.textContent = "Start";
+      return;
+    }
+    event.target.textContent = "Pause";
+    tick = setInterval(() => {
+      left = Math.max(0, left - 1);
+      show();
+    }, 1000);
+  });
+  document.getElementById("log").addEventListener("click", () => {
+    const minutes = Math.max(1, Math.round((25 * 60 - left) / 60));
+    bascik.suggest("Log " + minutes + (minutes === 1 ? " minute" : " minutes") + " of reading");
+  });
+</script>`;
+
 /**
  * What a swipe deck of the shop's books sent: one "Title: yes" or "Title: no"
  * line per card. Null for any other message.
@@ -136,6 +171,16 @@ function reply(text: string): string | ModelEvent[] {
       grid(deck.kept),
       "",
       `<ask-button say="Tell me more about ${best.title}">Tell me about ${best.title}</ask-button>`,
+    ].join("\n");
+  }
+
+  if (/\btimer\b/.test(asked)) {
+    return [
+      "No component in the catalog is a timer, so this one is a small page of its own. It runs in a sandboxed frame: it cannot reach the network or this page, only put a message in your message box.",
+      "",
+      "```html-app",
+      TIMER_PAGE,
+      "```",
     ].join("\n");
   }
 

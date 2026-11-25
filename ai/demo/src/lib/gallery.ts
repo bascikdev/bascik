@@ -466,6 +466,46 @@ const SAMPLES: Record<string, string[]> = {
       "How a component declares props and a slot.",
     ),
   ],
+  "fact-card": [
+    tag(
+      "fact-swipe",
+      { item: "austen-facts", question: "Are these right?" },
+      tag(
+        "fact-card",
+        { fact: "emma-year", claim: "Emma was first published in 1815." },
+        quote("Edition notes", "First published in December 1815."),
+      ),
+      tag(
+        "fact-card",
+        { fact: "emma-author", claim: "Emma was written by Charlotte Brontë." },
+        quote(
+          "Title page",
+          "Emma: a novel, by the author of Pride and Prejudice.",
+        ),
+      ),
+    ),
+  ],
+  "fact-swipe": [
+    tag(
+      "fact-swipe",
+      { item: "dune-facts", question: "Is each fact about Dune right?" },
+      tag(
+        "fact-card",
+        { fact: "dune-author", claim: "Dune was written by Frank Herbert." },
+        quote("Title page", "Dune, by Frank Herbert."),
+      ),
+      tag(
+        "fact-card",
+        { fact: "dune-pages", claim: "The first edition has 412 pages." },
+        quote("Edition notes", "First edition, Chilton Books, 412 pages."),
+      ),
+      tag(
+        "fact-card",
+        { fact: "dune-sequel", claim: "Its first sequel is Children of Dune." },
+        quote("Series list", "Dune Messiah (1969), Children of Dune (1976)."),
+      ),
+    ),
+  ],
   "fact-check": [
     tag(
       "fact-check",

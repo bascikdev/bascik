@@ -161,6 +161,15 @@ body {
   block-size: auto;
 }
 
+/* A page the model wrote, in its sandboxed frame (@bascik/ai/sandbox). */
+.turn-assistant iframe[data-genui-sandbox] {
+  display: block;
+  margin: 0.75rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
 .turn-assistant table {
   inline-size: 100%;
   margin: 0.75rem 0;

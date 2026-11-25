@@ -38,6 +38,7 @@
     "./mermaid": "./src/mermaid.ts",
     "./openai": "./src/openai.ts",
     "./openai-responses": "./src/openai-responses.ts",
+    "./sandbox": "./src/sandbox.ts",
     "./shared": "./src/shared.ts",
     "./voice": "./src/voice.ts"
   },
@@ -84,6 +85,10 @@
       "./openai-responses": {
         "types": "./dist/openai-responses.d.ts",
         "default": "./dist/openai-responses.js"
+      },
+      "./sandbox": {
+        "types": "./dist/sandbox.d.ts",
+        "default": "./dist/sandbox.js"
       },
       "./shared": {
         "types": "./dist/shared.d.ts",

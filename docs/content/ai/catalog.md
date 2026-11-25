@@ -82,6 +82,38 @@ It needs the `beautiful-mermaid` package installed. It draws flowcharts, sequenc
 
 `fences` takes any language. A fence renderer is a function from the fence's text to HTML, or `null` to show the code.
 
+## Open-ended pages
+
+Some answers are not a set of components: a simulation, a custom chart, a small game, a calculator. With the `sandbox` fence renderer, a model may also write a whole small page, with its own HTML, style, and script, in a fenced block marked `html-app`. The page runs in a sandboxed frame inside the reply. It is opt-in: an app that does not add the renderer keeps the catalog as the only thing a model can write.
+
+```ts
+import {
+  SANDBOX_LANGUAGE,
+  SANDBOX_PROMPT,
+  sandboxFence,
+} from "@bascik/ai/sandbox";
+
+const fences = { [SANDBOX_LANGUAGE]: sandboxFence() };
+yield * renderStream(reply, catalog, { fences });
+// And tell the model: catalogPrompt(catalog, { fences: { [SANDBOX_LANGUAGE]: SANDBOX_PROMPT } })
+```
+
+With the server kit, pass the same two to `createChat` as `render.fences` and `fencePrompts`.
+
+The page is untrusted, and the frame keeps it apart from the chat:
+
+- `sandbox="allow-scripts"`, without `allow-same-origin`, gives the page an opaque origin. It cannot read the chat page, its cookies, or its storage, and it cannot send a form, open a window, show a dialog, or navigate the top page.
+- A Content-Security-Policy inside the frame starts from `default-src 'none'`. The page cannot fetch, load images or fonts from the web, or open a connection. To allow a script library, name its origin: `sandboxFence({ scripts: ["https://cdn.jsdelivr.net"] })`, and pass the same option to `sandboxPrompt` so the model is told.
+- The page can ask the chat for two things, through `window.bascik`: to size the frame to its content, and `bascik.suggest("text")` to put text in the reader's message box. The [client runtime](/ai/client-runtime) does both, only for a message from the frame's own page: each frame gets a random token from the server, and a message must repeat it. A suggestion needs a click or a key press in the frame, comes at most once a second, never replaces text the reader typed, and never takes the focus. The reader still presses Send.
+
+Know its limits before you turn it on:
+
+- **A page can still send data out by navigating its frame.** No sandbox flag and no policy directive stops a frame from loading another address, so a page can put text into a URL and go there. The client runtime removes a frame that navigates, but the request has already left. A model that reads untrusted text (a web page, a file, a search result) can be told to write such a page with parts of the conversation in it. Turn open-ended pages on only where that is acceptable, or where the model reads nothing untrusted.
+- A page Content-Security-Policy applies to the frame too, so a page policy without `'unsafe-inline'` for scripts stops the frame's scripts.
+- A script origin you allow receives every address the page asks it for.
+- An open-ended page runs again each time its conversation is opened, because history is drawn by the same renderer.
+- Without the client runtime the frame keeps its first height (`height`, 360 pixels by default) and nothing stops a frame that navigates. With scripts off in the browser it shows the page without its scripts.
+
 ## Interaction is forms
 
 A component that talks back is a `<form method="post">`. `ask-button` is a one-click suggestion, `choice-form` is a single-choice question, and `input-form` collects several values. Each posts to a route of yours that stores the message and redirects to the page, which streams the next reply. None needs a client script, and each is a form any browser, screen reader, or browsing agent already understands.

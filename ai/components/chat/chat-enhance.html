@@ -247,5 +247,79 @@ The optional client runtime. Without it every form in the chat is a page load, a
       })
       .catch(() => current.abort());
   });
+
+  /*
+   * A page the model wrote in a ```html-app fence runs in a sandboxed frame
+   * (see @bascik/ai/sandbox). It can ask two things of the chat: to be as tall
+   * as its content, and to put text in the composer. A message counts only
+   * when it comes from an opaque origin, from the frame's own window, and
+   * repeats the token the server gave that frame. The text is never sent for
+   * the reader, never replaces what they typed, and never takes the focus.
+   */
+  // bascik-ignore js-attribute-selector the frames are the renderer's output, not a component's
+  const SANDBOX_FRAMES = "iframe[data-genui-sandbox]";
+  const sandboxLoads = new WeakMap<HTMLIFrameElement, number>();
+  const lastSuggest = new WeakMap<HTMLIFrameElement, number>();
+  let suggested = "";
+
+  // A frame loads its page once. A second load is the page navigating the
+  // frame somewhere else: stop it there, and say so.
+  document.addEventListener(
+    "load",
+    (event) => {
+      const frame = event.target;
+      if (!(frame instanceof HTMLIFrameElement) || !frame.matches(SANDBOX_FRAMES)) {
+        return;
+      }
+      const loads = (sandboxLoads.get(frame) ?? 0) + 1;
+      sandboxLoads.set(frame, loads);
+      if (loads < 2) return;
+      const note = document.createElement("p");
+      note.dataset.testid = "sandbox-stopped";
+      note.textContent =
+        "This page tried to open another address, so it was stopped.";
+      frame.replaceWith(note);
+    },
+    true,
+  );
+
+  window.addEventListener("message", (event) => {
+    if (event.origin !== "null") return;
+    const data: unknown = event.data;
+    if (typeof data !== "object" || data === null) return;
+    const kind = Reflect.get(data, "bascikSandbox");
+    if (kind !== "height" && kind !== "suggest") return;
+    const token = Reflect.get(data, "token");
+    const frame = [...document.querySelectorAll<HTMLIFrameElement>(SANDBOX_FRAMES)].find(
+      (each) =>
+        each.contentWindow === event.source &&
+        typeof token === "string" &&
+        token !== "" &&
+        each.getAttribute("data-genui-sandbox") === token &&
+        (sandboxLoads.get(each) ?? 0) < 2,
+    );
+    if (!frame) return;
+    if (kind === "height") {
+      const height = Number(Reflect.get(data, "height"));
+      if (Number.isFinite(height)) {
+        frame.height = String(Math.round(Math.min(Math.max(height, 60), 2000)));
+      }
+      return;
+    }
+    const text = Reflect.get(data, "text");
+    const input = byTestId(document, "chat-composer-input");
+    if (typeof text !== "string" || !(input instanceof HTMLTextAreaElement)) {
+      return;
+    }
+    // One suggestion a second per frame, and only into an empty box or over
+    // the last suggestion: what the reader typed is theirs.
+    const now = performance.now();
+    if (now - (lastSuggest.get(frame) ?? -Infinity) < 1000) return;
+    if (input.value !== "" && input.value !== suggested) return;
+    lastSuggest.set(frame, now);
+    suggested = text.slice(0, 2000);
+    input.value = suggested;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   state.genui = "idle";
 </script>

@@ -79,6 +79,7 @@ const model = anthropicModel();
 | `@bascik/ai/gemini-live`      | A voice provider for Google's Gemini Live API.                                                |
 | `@bascik/ai/azure-voice-live` | A voice provider for Azure Voice Live, with a server relay that keeps the credential private. |
 | `@bascik/ai/mermaid`          | Mermaid diagrams drawn on the server, through `beautiful-mermaid` (an optional peer).         |
+| `@bascik/ai/sandbox`          | Opt-in open-ended pages: a model-written page in a sandboxed frame with no network.           |
 
 ## Learn more
 

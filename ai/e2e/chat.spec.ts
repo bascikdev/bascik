@@ -89,6 +89,92 @@ test("a swipe deck makes a shortlist of the shop's books", async ({ page }) => {
   await expect(live.getByTestId("book-card")).toHaveCount(2);
 });
 
+test("an open-ended page runs in a sandboxed frame and can only suggest a message", async ({
+  page,
+}) => {
+  await send(page, "Make me a reading timer");
+  const frame = page.getByTestId("turn-live").locator("iframe");
+  await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+  await expect(frame).toHaveAttribute("title", /written by the assistant/);
+  if (!withScripts()) return;
+
+  const inside = page.frameLocator("[data-testid=turn-live] iframe");
+  await expect(inside.getByTestId("timer-clock")).toHaveText("25:00");
+  // The page reports its height, and the chat sizes the frame to it.
+  await expect(frame).not.toHaveAttribute("height", "360");
+
+  // Its origin is opaque: no way into the chat page, its cookies, or the network.
+  const handle = await frame.elementHandle();
+  const child = (await handle!.contentFrame())!;
+  const reach = await child.evaluate(async () => {
+    const tries: Record<string, string> = {};
+    try {
+      tries.parent = String(window.parent.document.title);
+    } catch {
+      tries.parent = "blocked";
+    }
+    try {
+      tries.cookie = document.cookie;
+    } catch {
+      tries.cookie = "blocked";
+    }
+    try {
+      await fetch("/api/send", { method: "POST" });
+      tries.fetch = "sent";
+    } catch {
+      tries.fetch = "blocked";
+    }
+    return tries;
+  });
+  expect(reach).toEqual({
+    parent: "blocked",
+    cookie: "blocked",
+    fetch: "blocked",
+  });
+
+  // A script with no click behind it cannot fill the message box, and a
+  // message without the frame's token is ignored.
+  const composer = page.getByTestId("chat-composer-input");
+  // Playwright's evaluate counts as a gesture, which lasts about five
+  // seconds: the call is made after it has expired.
+  await child.evaluate(() => {
+    setTimeout(() => {
+      (
+        window as unknown as { bascik: { suggest(text: string): void } }
+      ).bascik.suggest("No click");
+    }, 5500);
+    parent.postMessage(
+      { bascikSandbox: "suggest", token: "forged-token-0000", text: "Forged" },
+      "*",
+    );
+    parent.postMessage({ bascikSandbox: "height", height: 1999 }, "*");
+  });
+  await page.waitForTimeout(6000);
+  await expect(composer).toHaveValue("");
+  await expect(frame).not.toHaveAttribute("height", "1999");
+
+  // Its answer goes to the message box, and nothing is sent until the reader sends it.
+  const before = await page.getByTestId("turn-user").count();
+  await inside.getByTestId("timer-log").click();
+  await expect(composer).toHaveValue("Log 1 minute of reading");
+  await expect(composer).not.toBeFocused();
+  await expect(page.getByTestId("turn-user")).toHaveCount(before);
+
+  // What the reader typed is theirs: a suggestion never replaces it.
+  await composer.fill("My own words");
+  await page.waitForTimeout(1100);
+  await inside.getByTestId("timer-log").click();
+  await page.waitForTimeout(300);
+  await expect(composer).toHaveValue("My own words");
+
+  // A page that navigates its frame is stopped there.
+  await child.evaluate(() => {
+    location.href = "http://127.0.0.1:4477/robots.txt";
+  });
+  await expect(page.getByTestId("sandbox-stopped")).toBeVisible();
+  await expect(page.getByTestId("turn-live").locator("iframe")).toHaveCount(0);
+});
+
 test("search finds a past conversation, marks the words, and opens it", async ({
   page,
 }) => {
