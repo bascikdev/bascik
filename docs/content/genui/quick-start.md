@@ -30,6 +30,7 @@ src/components/
     chat-enhance.html
     chat-voice.html
     voice-call.html
+    search-result.html
     tool-approval.html
     tool-status.html
 ```

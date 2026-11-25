@@ -64,6 +64,62 @@ test("a generated button sends the next message", async ({ page }) => {
   ).toHaveCount(3);
 });
 
+test("search finds a past conversation, marks the words, and opens it", async ({
+  page,
+}) => {
+  await send(page, "Recommend a book about lighthouses");
+  await page.getByTestId("chat-sidebar-new").click();
+  await send(page, "Help me choose a book");
+  await expect(page.getByTestId("chat-sidebar-item")).toHaveCount(2);
+
+  // A plain GET form: it works the same with the page's scripts on or off.
+  await page.getByTestId("chat-sidebar-search-input").fill("LIGHTHOUSES");
+  await page.getByTestId("chat-sidebar-search-go").click();
+  await expect(page).toHaveURL(/\?q=LIGHTHOUSES$/);
+  const results = page.getByTestId("search-result");
+  await expect(results).toHaveCount(1);
+  // The conversation list gives way to the results.
+  await expect(page.getByTestId("chat-sidebar-item")).toHaveCount(0);
+  await expect(results.getByTestId("search-result-title")).toHaveText(
+    "Recommend a book about lighthouses",
+  );
+  const marked = results.getByTestId("search-result-snippet").locator("mark");
+  await expect(marked).toHaveText("lighthouses");
+  // The search box keeps what was typed.
+  await expect(page.getByTestId("chat-sidebar-search-input")).toHaveValue(
+    "LIGHTHOUSES",
+  );
+
+  await results.getByTestId("search-result-open").click();
+  await expect(page.getByTestId("turn-user").first()).toHaveText(
+    "Recommend a book about lighthouses",
+  );
+  await expect(page.getByTestId("search-result")).toHaveCount(0);
+  await expect(page.getByTestId("chat-sidebar-item")).toHaveCount(2);
+
+  // Words in neither conversation: an empty state, not an empty box.
+  await page.getByTestId("chat-sidebar-search-input").fill("zeppelins");
+  await page.getByTestId("chat-sidebar-search-go").click();
+  await expect(page.getByTestId("chat-sidebar-search-empty")).toHaveText(
+    "No conversation mentions “zeppelins”.",
+  );
+  await expect(page.getByTestId("search-result")).toHaveCount(0);
+  await page.getByTestId("chat-sidebar-search-clear").click();
+  await expect(page.getByTestId("chat-sidebar-item")).toHaveCount(2);
+});
+
+test("a search is text: markup in a query is shown, never run", async ({
+  page,
+}) => {
+  await send(page, "Recommend a book about <b>bold</b> ships");
+  await page.getByTestId("chat-sidebar-search-input").fill("<b>bold</b>");
+  await page.getByTestId("chat-sidebar-search-go").click();
+  const snippet = page.getByTestId("search-result-snippet");
+  await expect(snippet).toContainText("<b>bold</b> ships");
+  await expect(snippet.locator("b")).toHaveCount(0);
+  await expect(snippet.locator("mark")).toHaveText(["<b>bold</b>"]);
+});
+
 test("a mermaid fence arrives as a drawn diagram, live and from history", async ({
   page,
 }) => {

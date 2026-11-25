@@ -5,7 +5,7 @@
  * JSON file per conversation.
  */
 import { randomUUID } from "node:crypto";
-import type { ChatMessage } from "./model.ts";
+import { partsOf, type ChatMessage } from "./model.ts";
 
 export interface Conversation {
   id: string;
@@ -32,6 +32,34 @@ export interface ConversationStore {
   save(reader: string, conversation: Conversation): Promise<void>;
   /** The reader's conversations, newest first by `updatedAt`. */
   list(reader: string): Promise<Conversation[]>;
+  /**
+   * Optional: the reader's conversations that match what they typed, best
+   * first, at most `limit`. A store over a database implements it with the
+   * database's own full-text search. Without it, `searchConversations` reads
+   * the conversations and matches words itself.
+   *
+   * The query is what the reader typed: use it as data (a bound parameter),
+   * never as part of a query's text. Match what was said, not tool inputs or
+   * outputs, and only the reader's own conversations.
+   */
+  search?(reader: string, query: string, limit: number): Promise<SearchMatch[]>;
+}
+
+/** One conversation that matched a search. */
+export interface SearchMatch {
+  /** The conversation's id. */
+  id: string;
+  title: string;
+  /** Milliseconds since the epoch, as `Conversation.updatedAt`. */
+  updatedAt: number;
+  /** A short piece of the text that matched. Plain text, never markup. */
+  snippet: string;
+  /**
+   * Where the matched words are in `snippet`, as `[start, end)` offsets in
+   * UTF-16 code units, in order and not overlapping. Empty when the store
+   * cannot say.
+   */
+  marks: Array<[start: number, end: number]>;
 }
 
 /** A conversation with nothing said yet. */
@@ -158,4 +186,162 @@ function isConversation(value: unknown): value is Conversation {
     typeof candidate.updatedAt === "number" &&
     Array.isArray(candidate.messages)
   );
+}
+
+/* ---- Search ---- */
+
+/** A query shorter than this (after trimming) finds nothing. */
+export const MIN_QUERY = 2;
+/** A query is cut to this many characters. */
+export const MAX_QUERY = 200;
+/** The most words of a query that are matched; the rest are ignored. */
+const MAX_WORDS = 8;
+/** The fallback reads at most this many conversations, the newest. */
+export const MAX_SCANNED = 200;
+/** The most matches one search returns. */
+export const MAX_MATCHES = 50;
+/** How long a snippet is, more or less. */
+const SNIPPET = 160;
+/** How much of the text before the first match a snippet keeps. */
+const LEAD = 50;
+
+/**
+ * Lowercase without changing the length: a character whose lowercase form is
+ * longer or shorter stays as it is, so an offset in the result is an offset in
+ * the original.
+ */
+const lower = (text: string): string =>
+  Array.from(text, (char) => {
+    const small = char.toLowerCase();
+    return small.length === char.length ? small : char;
+  }).join("");
+
+/** The words of a query: lowercase, without repeats, at most `MAX_WORDS`. */
+function wordsOf(query: string): string[] {
+  const words = lower(query.trim().slice(0, MAX_QUERY)).split(/\s+/);
+  return [...new Set(words.filter(Boolean))].slice(0, MAX_WORDS);
+}
+
+/** What was said in a conversation: the reader's words, and the model's. Never a tool call. */
+function saidIn(conversation: Conversation): string[] {
+  return conversation.messages.flatMap((message) =>
+    partsOf(message)
+      .flatMap((part) => (part.type === "text" ? [part.text] : []))
+      .map((text) => text.replace(/\s+/g, " ").trim())
+      .filter(Boolean),
+  );
+}
+
+/** Every `[start, end)` where one of the words is in the text, in order, merged. */
+function marksIn(text: string, words: string[]): SearchMatch["marks"] {
+  const small = lower(text);
+  const found: SearchMatch["marks"] = [];
+  for (const word of words) {
+    let at = small.indexOf(word);
+    while (at !== -1) {
+      found.push([at, at + word.length]);
+      at = small.indexOf(word, at + word.length);
+    }
+  }
+  found.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  const merged: SearchMatch["marks"] = [];
+  for (const mark of found) {
+    const last = merged.at(-1);
+    if (last && mark[0] <= last[1]) last[1] = Math.max(last[1], mark[1]);
+    else merged.push([mark[0], mark[1]]);
+  }
+  return merged;
+}
+
+/** Match one conversation: how many times the words appear, and the best place to show. */
+function matchOf(
+  conversation: Conversation,
+  words: string[],
+): { count: number; match: SearchMatch } | null {
+  const texts = saidIn(conversation).map((text) => ({
+    text,
+    marks: marksIn(text, words),
+  }));
+  // Every word has to be in the conversation, though not in one message.
+  const everything = lower(texts.map((entry) => entry.text).join("\n"));
+  if (!words.every((word) => everything.includes(word))) return null;
+  let count = 0;
+  let best: (typeof texts)[number] | undefined;
+  let bestWords = 0;
+  for (const entry of texts) {
+    count += entry.marks.length;
+    const small = lower(entry.text);
+    const distinct = words.filter((word) => small.includes(word)).length;
+    if (distinct > bestWords) {
+      best = entry;
+      bestWords = distinct;
+    }
+  }
+  if (!best || best.marks.length === 0) return null;
+  const text = best.text;
+  let start = Math.max(0, best.marks[0]![0] - LEAD);
+  let end = Math.min(text.length, start + SNIPPET);
+  // Never cut a surrogate pair in half.
+  const trail = (at: number): boolean => /[\uDC00-\uDFFF]/.test(text[at] ?? "");
+  if (start > 0 && trail(start)) start += 1;
+  if (end < text.length && trail(end)) end -= 1;
+  const head = start > 0 ? "…" : "";
+  const tail = end < text.length ? "…" : "";
+  const marks: SearchMatch["marks"] = [];
+  for (const [from, to] of best.marks) {
+    if (to <= start || from >= end) continue;
+    marks.push([
+      Math.max(from, start) - start + head.length,
+      Math.min(to, end) - start + head.length,
+    ]);
+  }
+  return {
+    count,
+    match: {
+      id: conversation.id,
+      title: conversation.title,
+      updatedAt: conversation.updatedAt,
+      snippet: head + text.slice(start, end) + tail,
+      marks,
+    },
+  };
+}
+
+/**
+ * The reader's conversations that match a query, best first. It uses the
+ * store's own `search` when it has one. Otherwise it reads the reader's
+ * newest `MAX_SCANNED` conversations and matches words: case does not matter,
+ * every word has to appear somewhere in the conversation, and more
+ * appearances rank higher, then the more recent conversation. A query shorter
+ * than `MIN_QUERY` finds nothing, and `limit` is held to `MAX_MATCHES`.
+ *
+ * Only what was said is searched, never what a tool was given or returned.
+ */
+export async function searchConversations(
+  store: ConversationStore,
+  reader: string,
+  query: string,
+  limit = 20,
+): Promise<SearchMatch[]> {
+  const asked = query.trim().slice(0, MAX_QUERY);
+  const wanted = Math.min(MAX_MATCHES, Math.max(0, Math.floor(limit) || 0));
+  if (asked.length < MIN_QUERY || wanted === 0) return [];
+  if (store.search) {
+    return (await store.search(reader, asked, wanted)).slice(0, wanted);
+  }
+  const words = wordsOf(asked);
+  const listed = (await store.list(reader)).slice(0, MAX_SCANNED);
+  const found = await Promise.all(
+    listed.map(async (entry) => {
+      // A list may hold only what a sidebar needs: read the rest when it does.
+      const conversation =
+        entry.messages.length > 0 ? entry : await store.load(reader, entry.id);
+      return conversation ? matchOf(conversation, words) : null;
+    }),
+  );
+  return found
+    .filter((entry) => entry !== null)
+    .sort((a, b) => b.count - a.count || b.match.updatedAt - a.match.updatedAt)
+    .slice(0, wanted)
+    .map((entry) => entry.match);
 }

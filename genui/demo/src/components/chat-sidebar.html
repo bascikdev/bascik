@@ -4,7 +4,7 @@ The conversation list. Its server script reads the stored conversations on every
 <style>
   .sidebar {
     display: grid;
-    grid-template-rows: auto auto 1fr auto;
+    grid-template-rows: auto auto auto 1fr auto;
     align-content: start;
     gap: 1rem;
     padding: 1rem;
@@ -125,6 +125,69 @@ The conversation list. Its server script reads the stored conversations on every
   .list button[aria-current="true"] {
     background: var(--bg);
   }
+  .search form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.3rem 0.4rem;
+  }
+  .search-label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .search-input,
+  .search-go {
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+  }
+  .search-input {
+    min-inline-size: 0;
+  }
+  .search-go {
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .search-input:focus-visible,
+  .search-go:focus-visible {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .search-go:hover {
+    border-color: var(--accent);
+  }
+  .found {
+    display: grid;
+    align-content: start;
+    gap: 0.4rem;
+  }
+  .found-note {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  .found-note a {
+    color: var(--accent);
+  }
+  .matches {
+    display: grid;
+    align-content: start;
+    gap: 0.15rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
   @media (max-width: 720px) {
     .sidebar {
       display: none;
@@ -134,9 +197,26 @@ The conversation list. Its server script reads the stored conversations on every
 <aside class="sidebar" data-testid="chat-sidebar">
   <script data-bascik-server type="text/typescript">
     import { html } from "@bascik/bascik/html";
+    import type { SearchMatch } from "@bascik/genui/app";
     import { APPS } from "@/lib/apps.ts";
     import { appFor, chatFor } from "@/lib/chat.ts";
     import { listModels, pickModel, requestedModel } from "@/lib/models.ts";
+
+    /**
+     * A snippet with its matched words in mark. The snippet is something a
+     * reader or a model said: it is only ever text here, and html escapes it.
+     */
+    const marked = (match: SearchMatch) => {
+      const pieces = [];
+      let at = 0;
+      for (const [from, to] of match.marks) {
+        pieces.push(match.snippet.slice(at, from));
+        pieces.push(html`<mark>${match.snippet.slice(from, to)}</mark>`);
+        at = to;
+      }
+      pieces.push(match.snippet.slice(at));
+      return pieces;
+    };
 
     export default async (request: Request) => {
       const app = appFor(request);
@@ -144,6 +224,8 @@ The conversation list. Its server script reads the stored conversations on every
       const session = chat.session(request);
       const current = session.conversationId;
       const conversations = await chat.list(session);
+      const found = await chat.search(request);
+      const searching = new URL(request.url).searchParams.has("q");
       const models = await listModels();
       const chosen = pickModel(models, requestedModel(request));
       const groups = [...new Set(models.map((model) => model.group))];
@@ -171,25 +253,76 @@ The conversation list. Its server script reads the stored conversations on every
           <input type="hidden" name="app" value="${app.id}" />
           <button class="new" data-testid="chat-sidebar-new">+ New chat</button>
         </form>
-        <nav class="list" aria-label="Conversations">
-          ${conversations
-            .filter((conversation) => conversation.messages.length > 0)
-            .map(
-              (conversation) =>
-                html`<form method="post" action="/api/open">
-                  <input type="hidden" name="app" value="${app.id}" />
-                  <input type="hidden" name="id" value="${conversation.id}" />
-                  <button
-                    data-testid="chat-sidebar-item"
-                    aria-current="${conversation.id === current
-                      ? "true"
-                      : "false"}"
-                  >
-                    ${conversation.title}
-                  </button>
-                </form>`,
-            )}
-        </nav>
+        <search class="search" data-testid="chat-sidebar-search">
+          <form method="get" action="${app.path}">
+            <label class="search-label" for="search-q"
+              >Search conversations</label
+            >
+            <input
+              id="search-q"
+              class="search-input"
+              type="search"
+              name="q"
+              value="${found.query}"
+              placeholder="Search conversations"
+              maxlength="200"
+              autocomplete="off"
+              data-testid="chat-sidebar-search-input"
+            />
+            <button class="search-go" data-testid="chat-sidebar-search-go">
+              Search
+            </button>
+          </form>
+        </search>
+        ${searching
+          ? html`<section class="found" aria-label="Search results">
+              <p class="found-note" data-testid="chat-sidebar-search-note">
+                ${found.tooShort
+                  ? "Type at least 2 characters."
+                  : found.matches.length === 0
+                    ? html`<span data-testid="chat-sidebar-search-empty"
+                        >No conversation mentions “${found.query}”.</span
+                      >`
+                    : `${found.matches.length} found`}
+                <a href="${app.path}" data-testid="chat-sidebar-search-clear"
+                  >Clear</a
+                >
+              </p>
+              <ol class="matches" data-testid="chat-sidebar-search-results">
+                ${found.matches.map(
+                  (match) =>
+                    html`<search-result
+                      data-bascik-prop-app="${app.id}"
+                      data-bascik-prop-conversation="${match.id}"
+                      data-bascik-prop-title="${match.title}"
+                      >${marked(match)}</search-result
+                    >`,
+                )}
+              </ol>
+            </section>`
+          : html`<nav class="list" aria-label="Conversations">
+              ${conversations
+                .filter((conversation) => conversation.messages.length > 0)
+                .map(
+                  (conversation) =>
+                    html`<form method="post" action="/api/open">
+                      <input type="hidden" name="app" value="${app.id}" />
+                      <input
+                        type="hidden"
+                        name="id"
+                        value="${conversation.id}"
+                      />
+                      <button
+                        data-testid="chat-sidebar-item"
+                        aria-current="${conversation.id === current
+                          ? "true"
+                          : "false"}"
+                      >
+                        ${conversation.title}
+                      </button>
+                    </form>`,
+                )}
+            </nav>`}
         <form
           class="model"
           method="post"

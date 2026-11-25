@@ -41,6 +41,7 @@ The reader gets the prose as it is written, then each component as finished mark
 | Turn loop      | Runs the tools a model calls, with states, approval, and tools the reader's browser answers                                      | [Tools & Approval](/genui/tools)                             |
 | Client runtime | An optional script that sends forms with `fetch` and streams the answer into the open page                                       | [Client Runtime](/genui/client-runtime)                      |
 | Voice          | Optional scripts that read replies aloud with word-by-word captions, or hold a spoken conversation with a speech-to-speech model | [Voice & Captions](/genui/voice)                             |
+| Search         | Finds words in a reader's past conversations with a plain form, and lets the model look there too                                | [Conversation Search](/genui/conversation-search)            |
 | Components     | A starter catalog and the chat's own pieces, copied into your project with `bascik add`                                          | [Quick Start](/genui/quick-start)                            |
 
 [Design Principles](/genui/design-principles) explains the choices behind these, and where they fit Bascik's own.

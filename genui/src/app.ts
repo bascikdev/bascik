@@ -32,10 +32,15 @@ import {
   runTurn,
   turnPending,
 } from "./turn.ts";
+import { historyTool } from "./history.ts";
 import {
+  MAX_QUERY,
+  MIN_QUERY,
   newConversation,
+  searchConversations,
   type Conversation,
   type ConversationStore,
+  type SearchMatch,
 } from "./store.ts";
 import {
   newVoiceTurn,
@@ -57,8 +62,10 @@ export {
   fileStore,
   memoryStore,
   newConversation,
+  searchConversations,
   type Conversation,
   type ConversationStore,
+  type SearchMatch,
 } from "./store.ts";
 
 /* ---- Who is asking, and about what ---- */
@@ -205,6 +212,12 @@ export interface ChatOptions {
     | ((
         protocol: string | null,
       ) => VoiceProvider | null | Promise<VoiceProvider | null>);
+  /**
+   * Give the model a `search_conversations` tool for the reader's own past
+   * conversations, in typed chat and in voice. Default false. What it finds
+   * is handed over as quoted data, never as instructions.
+   */
+  history?: boolean;
   /** Who the reader is and which conversation is open. Default `cookieSessions(id)`. */
   sessions?: ChatSessions;
   /** The page the form handlers send the reader back to. Default `/`. */
@@ -257,6 +270,12 @@ export interface Chat {
   memories(request: Request): Promise<Memory[]>;
   /** The HTML of what a voice tool call put on screen ("" when it put nothing). */
   voiceView(request: Request, call: string): Promise<string>;
+  /**
+   * The reader's past conversations that match the request's `?q=`: the
+   * search box is a plain GET form, so a page needs nothing else. Nothing
+   * matches an empty or too short query.
+   */
+  search(request: Request): Promise<SearchResults>;
   /** The loaded catalog. */
   catalog(): Promise<Catalog>;
   /** The options that render this chat's replies: `renderTurn`, `renderMessage`. */
@@ -291,6 +310,18 @@ export interface Chat {
   /** Stop the conversation's reply, and wait until what it wrote is stored. False when none is being written. */
   stopTurn(conversationId: string): Promise<boolean>;
 }
+
+/** What `chat.search` answers. */
+export interface SearchResults {
+  /** The query as it was used: trimmed and cut to `MAX_QUERY` characters. */
+  query: string;
+  /** True when the query is too short to search for. */
+  tooShort: boolean;
+  matches: SearchMatch[];
+}
+
+/** The most matches a search page shows. */
+const SEARCH_LIMIT = 20;
 
 /** A message the reader sends is kept to this many characters. */
 const MAX_MESSAGE = 4000;
@@ -372,15 +403,25 @@ export function createChat(options: ChatOptions): Chat {
   };
 
   /** The tools of one request: the app's, and its reader's memory. */
+  /**
+   * The tools one request's model gets: the chat's own, and the ones made for
+   * this reader. `tools` is read once; this runs at each place a model is
+   * given tools, so a tool can know whose memories and conversations it may
+   * look in.
+   */
   const toolsFor = (session: Session, conversationId?: string): Tool[] => {
-    if (!memory) return tools;
     const open = conversationId ?? session.conversationId;
     return [
       ...tools,
-      ...memoryTools(memory, session.reader, {
-        approval: memoryApproval,
-        ...(open ? { conversationId: open } : {}),
-      }),
+      ...(memory
+        ? memoryTools(memory, session.reader, {
+            approval: memoryApproval,
+            ...(open ? { conversationId: open } : {}),
+          })
+        : []),
+      ...(options.history
+        ? [historyTool(store, { ...session, conversationId: open })]
+        : []),
     ];
   };
 
@@ -681,6 +722,21 @@ export function createChat(options: ChatOptions): Chat {
   const memoryList: Chat["memoryList"] = async (request) =>
     Response.json({ memories: await memories(request) }, { headers: NO_STORE });
 
+  const search: Chat["search"] = async (request) => {
+    const session = sessions.identify(request);
+    const query = (new URL(request.url).searchParams.get("q") ?? "")
+      .trim()
+      .slice(0, MAX_QUERY);
+    const tooShort = query.length < MIN_QUERY;
+    return {
+      query,
+      tooShort,
+      matches: tooShort
+        ? []
+        : await searchConversations(store, session.reader, query, SEARCH_LIMIT),
+    };
+  };
+
   const voiceSession: Chat["voiceSession"] = async (request) => {
     const session = sessions.identify(request);
     const wanted = new URL(request.url).searchParams.get("provider");
@@ -798,6 +854,7 @@ export function createChat(options: ChatOptions): Chat {
     voiceTurn,
     thread,
     memories,
+    search,
     async voiceView(request, call) {
       const conversation = await load(sessions.identify(request));
       return (
