@@ -9,8 +9,9 @@
 // to the conversation as the reviewer's message, so the model sees it too.
 //
 // During a voice call (voice=1) the decision is recorded the same way, and
-// the answer is { "say": "..." }: the reviewer's message, for the call to say
-// to the speech model and store with its own turn.
+// the answer is { "say": "...", "hidden": true }: the reviewer's message, for
+// the call to say to the speech model. It is a record in a fixed shape and
+// not something the reviewer wrote, so the call does not show it as theirs.
 import {
   abandonApprovals,
   backToChat,
@@ -40,7 +41,7 @@ export const POST = async (request: Request): Promise<Response> => {
     await saveConversation(session, conversation);
     await recordDecision(session.visitor, conversation.id, decision);
     return Response.json(
-      { say: decisionMessage(decision) },
+      { say: decisionMessage(decision), hidden: true },
       { headers: { "cache-control": "no-store" } },
     );
   }

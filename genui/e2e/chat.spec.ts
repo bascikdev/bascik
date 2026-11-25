@@ -994,6 +994,9 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
         "Hold a copy of Shipping Small Changes",
       );
       await expect(shown).toHaveAttribute("data-sent", "");
+      await expect(shown.getByTestId("voice-call-answered")).toHaveText(
+        "Answered: Hold the short one",
+      );
       // No typed reply was started, and the page did not load again.
       await expect(page.getByTestId("turn-assistant")).toHaveCount(0);
       expect(await page.evaluate("window.kept === true")).toBe(true);

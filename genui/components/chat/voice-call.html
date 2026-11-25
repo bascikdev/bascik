@@ -576,18 +576,29 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     async function sendForm(
       form: HTMLFormElement,
       submitter: HTMLElement | null,
-    ): Promise<string | null> {
+    ): Promise<{ say: string; hidden: boolean } | null> {
       const body = new FormData(form, submitter);
       body.set("voice", "1");
       const response = await fetch(form.action, { method: "POST", body });
       const answer = response.ok
-        ? ((await response.json().catch(() => null)) as { say?: unknown } | null)
+        ? ((await response.json().catch(() => null)) as {
+            say?: unknown;
+            hidden?: unknown;
+          } | null)
         : null;
       if (typeof answer?.say !== "string" || !answer.say.trim()) return null;
-      // Sent once: it stays on screen as it was answered.
+      // Sent once: it stays on screen as it was answered, and says so.
       form.dataset.sent = "";
       form.inert = true;
-      return answer.say.trim();
+      form.style.opacity = "0.7";
+      const pressed = submitter?.textContent?.trim();
+      const note = document.createElement("p");
+      note.dataset.testid = "voice-call-answered";
+      note.style.cssText = "margin:0;font-size:0.8125rem;font-weight:600";
+      note.textContent = pressed ? `Answered: ${pressed}` : "Answered";
+      form.append(note);
+      // A record in a fixed shape is for the model; the reader's own words are theirs.
+      return { say: answer.say.trim(), hidden: answer.hidden === true };
     }
 
     /** The model fills in the newest form with what the reader said, and presses it. */
@@ -641,11 +652,11 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       }
       const button = match(buttons);
       if (!button) return `Error: no button or option says "${String(press)}". ${contents}`;
-      const say = await sendForm(form, button);
-      if (!say) return "Error: the form could not be sent.";
+      const sent = await sendForm(form, button);
+      if (!sent) return "Error: the form could not be sent.";
       // What was sent is the reader's answer, and is shown and stored as theirs.
-      heard(reader.trim() ? `\n${say}` : say);
-      return `Sent for the reader: ${say}`;
+      if (!sent.hidden) heard(reader.trim() ? `\n${sent.say}` : sent.say);
+      return `Sent for the reader: ${sent.say}\nThis is the reader's answer, sent and recorded. Nothing more will arrive for it: carry on now with what comes next.`;
     }
 
     /* ---- The providers ---- */
@@ -889,13 +900,15 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         event.preventDefault();
         event.stopImmediatePropagation();
         const current = call;
-        void sendForm(form, event.submitter).then((say) => {
-          if (!say || current !== call) return;
+        void sendForm(form, event.submitter).then((sent) => {
+          if (!sent || current !== call) return;
           quiet();
           if (reader.trim() || said.trim()) endTurn();
-          reader = say;
-          showReader();
-          current.wire.text(say);
+          if (!sent.hidden) {
+            reader = sent.say;
+            showReader();
+          }
+          current.wire.text(sent.say);
         });
       },
       true,
