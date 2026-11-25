@@ -116,3 +116,6 @@ outreach/
 
 # Scaffold written by `yarn create:test-site`
 /my-site/
+
+# Temporary checkouts made by coding agents
+.claude/worktrees/
