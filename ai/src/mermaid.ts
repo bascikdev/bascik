@@ -120,25 +120,49 @@ const refusedCss = (value: string): boolean => {
  * attribute but a `data-` one are read as CSS, and refused when they hold an
  * escape, a comment, an at-rule, or any fetching function other than
  * `url(#id)`.
+ *
+ * It must be one `<svg>` element, every tag closed in the order opened, with
+ * nothing around it. Inside an `<svg>` the browser reads a stylesheet's text
+ * with its character references decoded, as this check does; outside one, a
+ * `<style>` is HTML raw text, so `&#41;` would be checked as `)` and read as
+ * itself.
  */
 export function safeSvg(svg: string): string | null {
   let at = 0;
   let inStyle = false;
+  // The elements open at `at`, the root first.
+  const open: string[] = [];
+  let ended = false;
   while (at < svg.length) {
-    const open = svg.indexOf("<", at);
-    if (open < 0) break;
-    TAG.lastIndex = open;
+    const start = svg.indexOf("<", at);
+    // No text outside the root.
+    if (!open.length && svg.slice(at, start < 0 ? undefined : start).trim()) {
+      return null;
+    }
+    if (start < 0) break;
+    TAG.lastIndex = start;
     const tag = TAG.exec(svg);
     if (!tag) return null;
-    const [, closing, rawName, attributes] = tag;
+    const [, closing, rawName, attributes, selfClosing] = tag;
     const name = rawName!;
     if (!ELEMENTS.has(name)) return null;
+    // One root, and it is an <svg>.
+    if (ended || (!open.length && (closing || name !== "svg"))) return null;
     // A stylesheet is text up to its closing tag: no markup inside it.
     if (inStyle) {
       if (!closing || name !== "style") return null;
-      if (refusedCss(svg.slice(at, open))) return null;
+      if (refusedCss(svg.slice(at, start))) return null;
     }
     inStyle = name === "style" && !closing;
+    // Closed in the order opened, so the browser nests it as this reads it.
+    if (closing) {
+      if (open.pop() !== name) return null;
+      ended = !open.length;
+    } else if (!selfClosing) {
+      open.push(name);
+    } else if (!open.length) {
+      ended = true;
+    }
     for (const [, attribute, value] of attributes!.matchAll(ATTRIBUTE)) {
       const lower = attribute!.toLowerCase();
       if (lower.startsWith("on") || lower.endsWith("href")) return null;
@@ -147,7 +171,7 @@ export function safeSvg(svg: string): string | null {
     }
     at = TAG.lastIndex;
   }
-  return inStyle ? null : svg;
+  return ended ? svg : null;
 }
 
 /**

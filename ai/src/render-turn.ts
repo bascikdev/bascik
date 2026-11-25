@@ -97,15 +97,15 @@ export async function* renderTurn(
   // the stored message, so the reply shows the same components live and on
   // reload.
   const budget: ComponentBudget = { used: 0 };
-  // A tool part is sent again each time its state changes, but stored once,
-  // so the budget holds only what is still in view: a part's last sending,
-  // and no running one that a later finished part hides (the CSS above).
-  // Each sending is drawn from the budget as it stands now, less what the
-  // part's own earlier sending held. Calls that run side by side are sent
-  // running, then done; the first done one hides every running one, so each
-  // done one draws from what the ones before it left, as on reload. What is
-  // in view never goes past the limit, whatever order the sendings come in.
-  const charged = new Map<string, { cost: number; running: boolean }>();
+  // A tool part is sent again each time its state changes, and every sending
+  // stays on the page, so the budget holds every sending still in view. The
+  // CSS above hides only a running sending, and only once a part that is not
+  // running follows it, so that is the one charge ever given back: a sending
+  // that is not running stays charged, whatever is sent after it. In a real
+  // turn calls that run side by side are sent running, then each once as it
+  // ended; the first ended one hides every running one, so each ended one
+  // draws from what the ones before it left, as on reload.
+  let shownRunning = 0;
   let renderer = createRenderer(catalog, options, budget);
   for await (const event of events) {
     if (event.type === "text") {
@@ -118,18 +118,12 @@ export async function* renderTurn(
     renderer = createRenderer(catalog, options, budget);
     const running = event.part.state === "running";
     if (!running) {
-      for (const held of charged.values()) {
-        if (held.running) {
-          budget.used -= held.cost;
-          held.cost = 0;
-        }
-      }
+      budget.used -= shownRunning;
+      shownRunning = 0;
     }
-    const start = budget.used - (charged.get(event.part.id)?.cost ?? 0);
-    const sending: ComponentBudget = { used: start };
-    const html = renderToolPart(event.part, catalog, options, sending);
-    budget.used = sending.used;
-    charged.set(event.part.id, { cost: sending.used - start, running });
+    const before = budget.used;
+    const html = renderToolPart(event.part, catalog, options, budget);
+    if (running) shownRunning += budget.used - before;
     yield rest + html;
   }
   const rest = renderer.end();

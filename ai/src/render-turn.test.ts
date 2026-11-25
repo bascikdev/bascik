@@ -215,11 +215,11 @@ describe("renderMessage", () => {
     },
   );
 
-  it("charges a tool part's note once however often it is sent", async () => {
+  it("charges a part's running sending only until a finished part hides it", async () => {
     let html = "";
     const events: TurnEvent[] = [
       { type: "tool", part: part("running") },
-      { type: "tool", part: part("approval-requested") },
+      { type: "tool", part: part("running") },
       { type: "tool", part: part("done", { output: "x" }) },
       {
         type: "text",
@@ -235,6 +235,28 @@ describe("renderMessage", () => {
     expect(html).toContain("<tool-note>a</tool-note>");
     expect(html).toContain("<tool-note>b</tool-note>");
     expect(html).not.toContain("left out");
+  });
+
+  it("keeps charging a finished sending that a later one does not hide", async () => {
+    let html = "";
+    const events: TurnEvent[] = [
+      { type: "tool", part: part("approval-requested") },
+      { type: "tool", part: part("done", { output: "x" }) },
+      {
+        type: "text",
+        delta: "<tool-note>a</tool-note>\n<tool-note>b</tool-note>",
+      },
+    ];
+    for await (const chunk of renderTurn(play(events), catalog, {
+      tools,
+      maxComponents: 3,
+    })) {
+      html += chunk;
+    }
+    // Both sendings stay in view: the CSS hides only a running one.
+    expect(html).toContain("<tool-note>a</tool-note>");
+    expect(html).not.toContain("<tool-note>b</tool-note>");
+    expect(html).toContain("1 more item was left out");
   });
 
   describe("with calls running side by side", () => {
@@ -316,6 +338,91 @@ describe("renderMessage", () => {
             html.match(/<tool-note/g)!.length,
             order.join(""),
           ).toBeLessThanOrEqual(300);
+        }
+      },
+    );
+
+    /**
+     * How many components stay in view once the turn has streamed, read as
+     * the CSS rule reads the page: a running part is hidden when any part
+     * after it is not running, and nothing else is hidden. Each value
+     * `renderTurn` yields is text, then at most one part to its end.
+     */
+    const inView = async (events: TurnEvent[], options: TurnRenderOptions) => {
+      const pieces: { running: boolean | null; count: number }[] = [];
+      for await (const chunk of renderTurn(play(events), catalog, options)) {
+        const at = chunk.indexOf('<div class="part"');
+        const text = at < 0 ? chunk : chunk.slice(0, at);
+        pieces.push({
+          running: null,
+          count: text.split("<tool-note").length - 1,
+        });
+        if (at >= 0) {
+          const sent = chunk.slice(at);
+          pieces.push({
+            running: /^<div class="part"[^>]*data-state="running"/.test(sent),
+            count: sent.split("<tool-note").length - 1,
+          });
+        }
+      }
+      return pieces.reduce(
+        (sum, piece, index) =>
+          piece.running &&
+          pieces.slice(index + 1).some((later) => later.running === false)
+            ? sum
+            : sum + piece.count,
+        0,
+      );
+    };
+
+    it.each([
+      [["x:approval-requested", "y:done", "x:running", "x:done"]],
+      [["a:done", "b:done", "a:failed"]],
+      [["a:running", "a:running", "b:running"]],
+    ])(
+      "never shows more than the budget when a part is sent again, for %j",
+      async (order) => {
+        const events: TurnEvent[] = order.map((sent) => {
+          const [id, state] = sent.split(":") as [string, ToolPart["state"]];
+          return { type: "tool", part: part(state, { id }) };
+        });
+        events.push({ type: "text", delta: "<tool-note>y</tool-note>" });
+        expect(
+          await inView(events, { tools: wide, maxComponents: 300 }),
+        ).toBeLessThanOrEqual(300);
+      },
+    );
+
+    it.each(views)(
+      "never shows more than the budget, whatever a stream sends, with %s",
+      async (_, view) => {
+        const half: Tool[] = [
+          {
+            ...wide[0]!,
+            note: () => `<tool-note>x</tool-note>\n`.repeat(100),
+          },
+        ];
+        const options = { tools: half, view, maxComponents: 150 };
+        const steps: TurnEvent[] = [
+          { type: "text", delta: `<tool-note>t</tool-note>\n`.repeat(40) },
+          ...["a", "b"].flatMap((id) =>
+            (["running", "done", "approval-requested"] as const).map(
+              (state): TurnEvent => ({
+                type: "tool",
+                part: part(state, { id }),
+              }),
+            ),
+          ),
+        ];
+        // Every stream of four steps.
+        for (let n = 0; n < steps.length ** 4; n++) {
+          const events = [0, 1, 2, 3].map(
+            (digit) =>
+              steps[Math.floor(n / steps.length ** digit) % steps.length]!,
+          );
+          expect(await inView(events, options), String(n)).toBeLessThanOrEqual(
+            150,
+          );
         }
       },
     );

@@ -295,6 +295,29 @@ describe("safeSvg", () => {
     ["a closing bracket in an attribute", `<svg><g data-x="a > b"></g></svg>`],
     ["a tag it cannot read", `<svg><rect x=1 /></svg>`],
     ["a stray angle bracket", `<svg><text>a < b</text></svg>`],
+    // Outside an <svg>, a <style> is HTML raw text: the browser decodes no
+    // character reference in it, so the text it reads is not the text checked.
+    [
+      "a stylesheet with no svg root",
+      `<style>body{background:url(&#35;a&#41;//evil.example/x)}</style>`,
+    ],
+    [
+      "a stylesheet after the svg root",
+      `<svg></svg><style>body{background:url(&#35;a&#41;//evil.example/x)}</style>`,
+    ],
+    [
+      "a stylesheet after an svg closed early",
+      `<svg><g></svg><style>body{background:url(&#35;a&#41;//evil.example/x)}</style></g>`,
+    ],
+    [
+      "a stylesheet after a mismatched closing tag",
+      `<svg><g></rect><style>svg{fill:url(&#35;a&#41;//evil.example/x)}</style></g></svg>`,
+    ],
+    ["a second root", `<svg></svg><svg></svg>`],
+    ["text before the root", `a<svg></svg>`],
+    ["text after the root", `<svg></svg>a`],
+    ["an unclosed root", `<svg><g></g>`],
+    ["a root other than svg", `<g></g>`],
   ])("rejects %s", (_, svg) => {
     expect(safeSvg(svg)).toBeNull();
   });
