@@ -39,7 +39,7 @@ With scripts on, the composer adds:
 - a check before sending for what can be known without the bytes (the type, the size, the count), in the same words the server uses
 - paste and drag-and-drop of files onto the composer
 
-In the thread, an image is a thumbnail that opens the full image, and any other file is a labelled link with its name and size. The `chat-attachment` component draws one of these, and a file name is always shown as escaped text.
+In the thread, an image is a thumbnail that opens the full image, and any other file is a labeled link with its name and size. The `chat-attachment` component draws one of these, and a file name is always shown as escaped text.
 
 A refused upload does not lose what the reader typed. With scripts on, the message appears in the composer and the text and files stay where they are. With scripts off, the server answers with a short page that gives the reason, repeats the text so it can be copied, and links back to the chat.
 
@@ -65,7 +65,7 @@ The conversation keeps only this description. The bytes stay in the file store, 
 | `@bascik/ai/openai`           | `image_url` with a data URL      | a note naming the file             | inlined as text     |
 | `@bascik/ai/openai-responses` | `input_image` with a data URL    | a note naming the file             | inlined as text     |
 
-A text file is inlined as text, up to 20,000 characters, between begin and end markers and labelled as the reader's file content, with a line saying it is data and not instructions. A file a model cannot take, or one that is no longer in the store, is never dropped silently: the model gets a short note with the file's name and type.
+A text file is inlined as text, up to 20,000 characters, between begin and end markers and labeled as the reader's file content, with a line saying it is data and not instructions. A file a model cannot take, or one that is no longer in the store, is never dropped silently: the model gets a short note with the file's name and type.
 
 Your own model function receives the same `ModelRequest`. `userPieces(message, attachments, accepts)` and `readAttachments(messages, readFile)` from `@bascik/ai` make the same decisions the adapters make, so you can build the wire format of any other API from them.
 
