@@ -93,9 +93,19 @@ export async function* renderTurn(
   catalog: Catalog,
   options: TurnRenderOptions = {},
 ): AsyncGenerator<string, void, undefined> {
-  // One budget for the turn's text, as `renderMessage` has for the stored
-  // message, so the reply shows the same components live and on reload.
+  // One budget for the turn's text and tool notes, as `renderMessage` has for
+  // the stored message, so the reply shows the same components live and on
+  // reload.
   const budget: ComponentBudget = { used: 0 };
+  // A tool part is sent again each time its state changes, and every sending
+  // stays on the page, so the budget holds every sending still in view. The
+  // CSS above hides only a running sending, and only once a part that is not
+  // running follows it, so that is the one charge ever given back: a sending
+  // that is not running stays charged, whatever is sent after it. In a real
+  // turn calls that run side by side are sent running, then each once as it
+  // ended; the first ended one hides every running one, so each ended one
+  // draws from what the ones before it left, as on reload.
+  let shownRunning = 0;
   let renderer = createRenderer(catalog, options, budget);
   for await (const event of events) {
     if (event.type === "text") {
@@ -106,7 +116,15 @@ export async function* renderTurn(
     // A tool call ends the text before it: what follows is a new part.
     const rest = renderer.end();
     renderer = createRenderer(catalog, options, budget);
-    yield rest + renderToolPart(event.part, catalog, options);
+    const running = event.part.state === "running";
+    if (!running) {
+      budget.used -= shownRunning;
+      shownRunning = 0;
+    }
+    const before = budget.used;
+    const html = renderToolPart(event.part, catalog, options, budget);
+    if (running) shownRunning += budget.used - before;
+    yield rest + html;
   }
   const rest = renderer.end();
   if (rest) yield rest;

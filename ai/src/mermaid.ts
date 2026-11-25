@@ -35,8 +35,20 @@ const ELEMENTS: ReadonlySet<string> = new Set([
   "tspan",
 ]);
 
-const TAG = /<(\/?)([A-Za-z][\w:-]*)((?:\s+[\w:-]+="[^"]*")*)\s*(\/?)>/y;
-const ATTRIBUTE = /\s+([\w:-]+)="([^"]*)"/g;
+/*
+ * A tag as the HTML parser reads it. HTML ends a name only at one of these
+ * five spaces (tab, line feed, form feed, carriage return, space), `/`, or
+ * `>`; JavaScript's \s also matches U+00A0, \v, and other spaces, which HTML
+ * reads as part of a name, so it is never used here. A quoted value holds no
+ * `<` or `>`: beautiful-mermaid escapes both in every label, and refusing
+ * them means no value can read as markup if this and the browser disagree.
+ */
+const SPACE = "[ \\t\\n\\f\\r]";
+const TAG = new RegExp(
+  `<(\\/?)([A-Za-z][\\w:-]*)((?:${SPACE}+[\\w:-]+="[^"<>]*")*)${SPACE}*(\\/?)>`,
+  "y",
+);
+const ATTRIBUTE = new RegExp(`${SPACE}+([\\w:-]+)="([^"]*)"`, "g");
 
 const BASIC_REFERENCES: Readonly<Record<string, string>> = {
   amp: "&",
@@ -52,12 +64,12 @@ const codePoint = (value: number): string =>
     : "�";
 
 /**
- * The text a browser's CSS parser reads: character references decoded first
- * (an SVG attribute and stylesheet inside HTML both get them), then CSS
- * escapes and comments. Null when it holds a named character reference other
- * than the five basic ones, which this cannot decode and need not accept.
+ * The text after character references are decoded, as the browser's CSS
+ * parser receives it (an SVG attribute and a stylesheet inside HTML both get
+ * them decoded). Null when it holds a named character reference other than
+ * the five basic ones, which this cannot decode and need not accept.
  */
-function asCss(value: string): string | null {
+function decodeReferences(value: string): string | null {
   let unknown = false;
   const decoded = value.replace(
     /&(?:#[xX]([0-9a-fA-F]+)|#([0-9]+)|([A-Za-z][A-Za-z0-9]*));?/g,
@@ -69,63 +81,97 @@ function asCss(value: string): string | null {
       return known ?? "";
     },
   );
-  if (unknown) return null;
-  return decoded
-    .replace(
-      /\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\n\r\f])?|(\r\n|[\n\r\f])|([^]))/g,
-      (_, hex?: string, newline?: string, character?: string) =>
-        hex !== undefined
-          ? codePoint(parseInt(hex, 16))
-          : newline !== undefined
-            ? ""
-            : character!,
-    )
-    .replace(/\/\*[^]*?(?:\*\/|$)/g, () => "");
+  return unknown ? null : decoded;
 }
 
 /**
- * True when a `url()` in the value points anywhere but inside the document,
- * tested on the text after escapes are decoded, as the browser reads it.
+ * Text that could change how the rest of the CSS reads, so that a check by
+ * search would see something other than the browser: an escape, a comment
+ * (which a string can hide, or which can hide a string), and any at-rule.
+ * beautiful-mermaid writes none of them in what reaches `safeSvg`.
  */
-const leavesDocument = (value: string): boolean => {
-  const css = asCss(value);
-  return (
-    css === null ||
-    /url\(\s*(?!#)/i.test(css) ||
-    /@import|javascript:/i.test(css)
-  );
+const CHANGES_READING = /\\|\/\*|@|javascript:/i;
+
+/** Every CSS function that can fetch something, and `attr()`, which reads one. */
+const FETCHES =
+  /(?:url|image-set|-webkit-image-set|src|cross-fade|-webkit-cross-fade|image|element|attr)\(/gi;
+
+/** The one fetch a diagram may hold: a reference to an element in itself. */
+const LOCAL_URL = /^url\(#[\w-]+\)/i;
+
+/**
+ * True when CSS text (a stylesheet, a style attribute, or a presentation
+ * attribute) is refused. This does not parse CSS: it refuses anything that
+ * would need parsing to read safely, so a plain search is enough for the
+ * rest.
+ */
+const refusedCss = (value: string): boolean => {
+  const css = decodeReferences(value);
+  if (css === null || CHANGES_READING.test(css)) return true;
+  for (const fetch of css.matchAll(FETCHES)) {
+    if (!LOCAL_URL.test(css.slice(fetch.index))) return true;
+  }
+  return false;
 };
 
 /**
  * The SVG when it holds only drawing elements, no event handlers, and no
- * reference outside itself; null otherwise.
+ * reference outside itself; null otherwise. Its stylesheet and every
+ * attribute but a `data-` one are read as CSS, and refused when they hold an
+ * escape, a comment, an at-rule, or any fetching function other than
+ * `url(#id)`.
+ *
+ * It must be one `<svg>` element, every tag closed in the order opened, with
+ * nothing around it. Inside an `<svg>` the browser reads a stylesheet's text
+ * with its character references decoded, as this check does; outside one, a
+ * `<style>` is HTML raw text, so `&#41;` would be checked as `)` and read as
+ * itself.
  */
 export function safeSvg(svg: string): string | null {
   let at = 0;
   let inStyle = false;
+  // The elements open at `at`, the root first.
+  const open: string[] = [];
+  let ended = false;
   while (at < svg.length) {
-    const open = svg.indexOf("<", at);
-    if (open < 0) break;
-    TAG.lastIndex = open;
+    const start = svg.indexOf("<", at);
+    // No text outside the root.
+    if (!open.length && svg.slice(at, start < 0 ? undefined : start).trim()) {
+      return null;
+    }
+    if (start < 0) break;
+    TAG.lastIndex = start;
     const tag = TAG.exec(svg);
     if (!tag) return null;
-    const [, closing, rawName, attributes] = tag;
+    const [, closing, rawName, attributes, selfClosing] = tag;
     const name = rawName!;
     if (!ELEMENTS.has(name)) return null;
+    // One root, and it is an <svg>.
+    if (ended || (!open.length && (closing || name !== "svg"))) return null;
     // A stylesheet is text up to its closing tag: no markup inside it.
     if (inStyle) {
       if (!closing || name !== "style") return null;
-      if (leavesDocument(svg.slice(at, open))) return null;
+      if (refusedCss(svg.slice(at, start))) return null;
     }
     inStyle = name === "style" && !closing;
+    // Closed in the order opened, so the browser nests it as this reads it.
+    if (closing) {
+      if (open.pop() !== name) return null;
+      ended = !open.length;
+    } else if (!selfClosing) {
+      open.push(name);
+    } else if (!open.length) {
+      ended = true;
+    }
     for (const [, attribute, value] of attributes!.matchAll(ATTRIBUTE)) {
       const lower = attribute!.toLowerCase();
       if (lower.startsWith("on") || lower.endsWith("href")) return null;
-      if (leavesDocument(value!)) return null;
+      // A data attribute is never read as CSS; it holds the diagram's labels.
+      if (!lower.startsWith("data-") && refusedCss(value!)) return null;
     }
     at = TAG.lastIndex;
   }
-  return inStyle ? null : svg;
+  return ended ? svg : null;
 }
 
 /**
@@ -133,12 +179,16 @@ export function safeSvg(svg: string): string | null {
  * web font it imports, and the fixed colors on the root element. Without
  * them the text uses the page's font, and the diagram's colors come from the
  * custom properties it inherits (`--bg` and `--fg`, and optionally `--line`,
- * `--accent`, `--muted`, `--surface`, and `--border`).
+ * `--accent`, `--muted`, `--surface`, and `--border`). The comment lines in
+ * its stylesheet go too, since `safeSvg` refuses a comment.
  */
 const adopt = (svg: string): string =>
   svg
     .replace(/^\s*@import [^\n]*\n/gm, () => "")
     .replace(/^\s*text \{ font-family:[^\n]*\n/m, () => "")
+    .replace(/<style>[^<]*<\/style>/g, (sheet) =>
+      sheet.replace(/^[ \t]*\/\*[^\n]*?\*\/[ \t]*\n/gm, () => ""),
+    )
     .replace(/^(<svg\b[^>]*?) style="[^"]*"/, (_, start: string) => start);
 
 const PROTECTED = /("[^"]*"|\[[^\]]*\]|\{[^}]*\}|\([^)]*\)|\|[^|]*\|)/;

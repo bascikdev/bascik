@@ -32,6 +32,34 @@ describe("mermaidFence", () => {
     expect(fences.mermaid(source)).toMatch(/^<figure class="diagram"/);
   });
 
+  // Labels land in text and in data attributes, never in CSS, so characters
+  // that safeSvg refuses in CSS do not cost a diagram its drawing.
+  it.each([
+    ["flowchart", `flowchart TD\n  A["a@b /* c \\ url(d)"] -->|"e@f \\"| B`],
+    ["sequenceDiagram", "sequenceDiagram\n  Reader->>Shop: a@b /* c \\ url(d)"],
+    ["stateDiagram-v2", "stateDiagram-v2\n  [*] --> Reading : a@b \\ url(d)"],
+    ["classDiagram", "classDiagram\n  Book <|-- Novel : a@b \\ url(d)"],
+    ["erDiagram", `erDiagram\n  AUTHOR ||--o{ BOOK : "a@b \\ url(d)"`],
+    [
+      "xychart-beta",
+      `xychart-beta\n  x-axis ["a@b", "c \\ url(d)"]\n  bar [1, 5]`,
+    ],
+    [
+      "flowchart with spaces and brackets",
+      `flowchart TD\n  A["a b\vc > d < e"] -->|"f g > h"| B`,
+    ],
+  ])("draws a %s whose labels hold CSS characters", (_, source) => {
+    expect(fences.mermaid(source)).toMatch(/^<figure class="diagram"/);
+  });
+
+  it("draws a diagram with every kind of style a model can give it", () => {
+    expect(
+      fences.mermaid(
+        `${FLOW}\n  style A fill:#f00,stroke:#00f,stroke-width:2px,color:#fff\n  classDef k fill:#0f0\n  class B k\n  linkStyle 0 stroke:#f0f`,
+      ),
+    ).toMatch(/^<figure class="diagram"/);
+  });
+
   it("leaves the font and the colors to the page", () => {
     const html = fences.mermaid(FLOW)!;
     expect(html).not.toMatch(
@@ -114,6 +142,11 @@ describe("safeSvg", () => {
 
   it("accepts drawing elements that refer only to themselves", () => {
     expect(safeSvg(ok)).toBe(ok);
+    // Every space HTML ends a name at, and text holding any other.
+    const spaced = `<svg\tviewBox="0 0 1 1"\n\f\r><rect\r\nfill="red"\t/><text>a b\vc</text></svg>`;
+    expect(safeSvg(spaced)).toBe(spaced);
+    const local = `<svg><style>rect { fill: url(#g); }</style><rect fill="URL(#a-1)" data-label="a@b /* \\ url(x)" /></svg>`;
+    expect(safeSvg(local)).toBe(local);
   });
 
   it.each([
@@ -159,8 +192,132 @@ describe("safeSvg", () => {
       "an escaped stylesheet import",
       `<svg><style>@\\69mport "https://example.com/x.css";</style></svg>`,
     ],
+    // A comment opener in a string hides nothing from the browser.
+    [
+      "a url() after a comment opener in a stylesheet string",
+      `<svg><style>a{content:"/*"}svg{background:url(https://evil.example/x)}b{content:"*/"}</style></svg>`,
+    ],
+    [
+      "a url() after a comment opener in a style attribute string",
+      `<svg><rect style="--a:'/*';fill:url(https://evil.example/fill.svg#a);--b:'*/'"/></svg>`,
+    ],
+    [
+      "a mask url() after a comment opener in a string",
+      `<svg><rect style="--a:'/*';mask:url(https://evil.example/mask.svg#a);--b:'*/'"/></svg>`,
+    ],
+    [
+      "a url() after an escaped newline and a comment opener in a string",
+      `<svg><style>a{content:"\\\n/*"}html{background:url(https://evil.example/z)}b{content:"*/"}</style></svg>`,
+    ],
+    [
+      "an import after a comment opener in a string",
+      `<svg><style>a{content:"/*"}@import "https://evil.example/i.css";b{content:"*/"}</style></svg>`,
+    ],
+    [
+      "an image-set() in a stylesheet",
+      `<svg><style>body{background-image:image-set("https://evil.example/imageset" 1x)}</style></svg>`,
+    ],
+    [
+      "a -webkit-image-set() in a stylesheet",
+      `<svg><style>body{background-image:-webkit-image-set("https://evil.example/w" 1x)}</style></svg>`,
+    ],
+    [
+      "a src() in a stylesheet",
+      `<svg><style>body{background-image:src("https://evil.example/s")}</style></svg>`,
+    ],
+    [
+      "a cross-fade() in a style attribute",
+      `<svg><rect style="background:cross-fade(&quot;https://evil.example/c&quot;, red 50%)" /></svg>`,
+    ],
+    [
+      "an image() in a presentation attribute",
+      `<svg><rect fill="image(&quot;https://evil.example/i&quot;)" /></svg>`,
+    ],
+    [
+      "an element() in a stylesheet",
+      `<svg><style>svg{background:element(#a)}</style></svg>`,
+    ],
+    [
+      "an attr() in a stylesheet",
+      `<svg><style>svg{--a:attr(data-x)}</style></svg>`,
+    ],
+    [
+      "an image-set() written with a character reference",
+      `<svg><rect fill="&#105;mage-set(&quot;https://evil.example/r&quot; 1x)" /></svg>`,
+    ],
+    [
+      "a url() with anything but a local id",
+      `<svg><rect fill="url(#a) url(https://evil.example/x)" /></svg>`,
+    ],
+    ["a quoted local url()", `<svg><rect fill="url('#a')" /></svg>`],
+    ["any backslash", `<svg><rect fill="re\\64" /></svg>`],
+    [
+      "a backslash written as a character reference",
+      `<svg><rect fill="&#92;75rl(#a)" /></svg>`,
+    ],
+    ["any comment", `<svg><style>svg { /* note */ }</style></svg>`],
+    ["a comment in an attribute", `<svg><rect fill="red/**/" /></svg>`],
+    ["any at-rule", `<svg><style>@media print { svg { } }</style></svg>`],
+    [
+      "an at-rule written with a character reference",
+      `<svg><style>&#64;import "x.css";</style></svg>`,
+    ],
+    // HTML ends a tag name or an attribute only at a tab, a line feed, a form
+    // feed, a carriage return, a space, `/` or `>`; JavaScript's \s also
+    // matches the characters below, which HTML reads as part of a name.
+    ...[" ", "\v", " ", "﻿", "　"].flatMap((space): [string, string][] => [
+      [
+        `a tag name ended by U+${space.codePointAt(0)!.toString(16).padStart(4, "0")} hiding an external fill`,
+        `<svg><g${space}data-x="/><rect width=100 height=100 style=fill:url(https://evil.example/f.svg#a) />"></g></svg>`,
+      ],
+      [
+        `a tag name ended by U+${space.codePointAt(0)!.toString(16).padStart(4, "0")} hiding a stylesheet`,
+        `<svg><g${space}data-x="/><style>svg{background:url(https://evil.example/bg)}</style>"></g></svg>`,
+      ],
+      [
+        `a tag name ended by U+${space.codePointAt(0)!.toString(16).padStart(4, "0")} hiding an event handler`,
+        `<svg><g${space}x="/><image href=x onerror=fetch('https://evil.example/xss') />"></g></svg>`,
+      ],
+      [
+        `attributes separated by U+${space.codePointAt(0)!.toString(16).padStart(4, "0")}`,
+        `<svg><rect fill="red"${space}x="1" /></svg>`,
+      ],
+      [
+        `a tag closed after U+${space.codePointAt(0)!.toString(16).padStart(4, "0")}`,
+        `<svg><rect fill="red"${space}/></svg>`,
+      ],
+    ]),
+    // A label is written escaped, so markup in any attribute value is refused.
+    [
+      "markup in a data attribute",
+      `<svg><g data-x="<rect fill='url(https://evil.example/x)'/>"></g></svg>`,
+    ],
+    ["a closing bracket in an attribute", `<svg><g data-x="a > b"></g></svg>`],
     ["a tag it cannot read", `<svg><rect x=1 /></svg>`],
     ["a stray angle bracket", `<svg><text>a < b</text></svg>`],
+    // Outside an <svg>, a <style> is HTML raw text: the browser decodes no
+    // character reference in it, so the text it reads is not the text checked.
+    [
+      "a stylesheet with no svg root",
+      `<style>body{background:url(&#35;a&#41;//evil.example/x)}</style>`,
+    ],
+    [
+      "a stylesheet after the svg root",
+      `<svg></svg><style>body{background:url(&#35;a&#41;//evil.example/x)}</style>`,
+    ],
+    [
+      "a stylesheet after an svg closed early",
+      `<svg><g></svg><style>body{background:url(&#35;a&#41;//evil.example/x)}</style></g>`,
+    ],
+    [
+      "a stylesheet after a mismatched closing tag",
+      `<svg><g></rect><style>svg{fill:url(&#35;a&#41;//evil.example/x)}</style></g></svg>`,
+    ],
+    ["a second root", `<svg></svg><svg></svg>`],
+    ["text before the root", `a<svg></svg>`],
+    ["text after the root", `<svg></svg>a`],
+    ["an unclosed root", `<svg><g></g>`],
+    ["a root other than svg", `<g></g>`],
   ])("rejects %s", (_, svg) => {
     expect(safeSvg(svg)).toBeNull();
   });
