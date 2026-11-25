@@ -525,6 +525,104 @@ describe("conversation writes", () => {
     expect((await contentsOf(chat))[0]).toBe("Hold Emma");
   });
 
+  it("refuses to save when both writes changed earlier messages, even different ones", async () => {
+    const chat = await waiting("place_hold");
+    const mine = (await chat.load(session))!;
+    const theirs = (await chat.load(session))!;
+    theirs.messages[0]!.content = "Hold Emma";
+    await chat.save(session, theirs);
+    mine.messages[1]!.content = "Changed";
+    await expect(chat.save(session, mine)).rejects.toThrow(/changed/);
+    expect(await contentsOf(chat)).toEqual(["Hold Emma", ""]);
+    // The refusal leaves your conversation as you changed it.
+    expect(mine.messages.map((message) => message.content)).toEqual([
+      "Hold Dune",
+      "Changed",
+    ]);
+  });
+
+  /** A slow store whose next save throws once `failing` is set. */
+  function flakyStore() {
+    const inner = slowStore();
+    const control = { failing: false };
+    const store = {
+      ...inner,
+      async save(reader: string, conversation: Conversation) {
+        if (control.failing) {
+          control.failing = false;
+          throw new Error("transient");
+        }
+        await inner.save(reader, conversation);
+      },
+    };
+    return { store, control };
+  }
+
+  it("stores what was said once when a save is tried again after the store failed", async () => {
+    const { store, control } = flakyStore();
+    const chat = setup({
+      store,
+      voice: {
+        protocol: "fake",
+        createSession: async () => ({ protocol: "fake", url: "", setup: null }),
+      },
+    });
+    await seed(chat, [{ role: "user", content: "hi" }]);
+    const mine = (await chat.load(session))!;
+    await chat.voiceTurn(
+      posted({ reader: "Spoken", model: "Said" }, CONVERSATION),
+    );
+    mine.messages.push({ role: "user", content: "mine" });
+    mine.title = "Mine";
+    control.failing = true;
+    await expect(chat.save(session, mine)).rejects.toThrow("transient");
+    // A failed save leaves your conversation as you changed it.
+    expect(mine.messages.map((message) => message.content)).toEqual([
+      "hi",
+      "mine",
+    ]);
+    await chat.save(session, mine);
+    expect(await contentsOf(chat)).toEqual(["hi", "Spoken", "Said", "mine"]);
+    expect(mine).toEqual(await stored(chat, CONVERSATION));
+
+    // Tried again after a further spoken turn, both turns are kept once.
+    const again = (await chat.load(session))!;
+    await chat.voiceTurn(posted({ reader: "Two", model: "Too" }, CONVERSATION));
+    again.messages.push({ role: "user", content: "again" });
+    control.failing = true;
+    await expect(chat.save(session, again)).rejects.toThrow("transient");
+    await chat.voiceTurn(
+      posted({ reader: "Three", model: "Thrice" }, CONVERSATION),
+    );
+    await chat.save(session, again);
+    expect(await contentsOf(chat)).toEqual([
+      "hi",
+      "Spoken",
+      "Said",
+      "mine",
+      "Two",
+      "Too",
+      "Three",
+      "Thrice",
+      "again",
+    ]);
+  });
+
+  it("keeps what was stored since when you save the conversation change returned", async () => {
+    const chat = await waiting("place_hold");
+    const changed = await chat.change(session, () => {});
+    await chat.voiceTurn(
+      posted({ reader: "Spoken", model: "Said" }, CONVERSATION),
+    );
+    changed.title = "Mine";
+    await chat.save(session, changed);
+    const latest = await stored(chat, CONVERSATION);
+    expect(latest.title).toBe("Mine");
+    expect(latest.messages.map((message) => message.content)).toContain(
+      "Spoken",
+    );
+  });
+
   it("change reads the latest conversation and stores the change in turn", async () => {
     const chat = await waiting("place_hold");
     const [, changed] = await Promise.all([

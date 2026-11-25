@@ -170,7 +170,7 @@ await chat.change(session, (conversation) => {
 });
 ```
 
-`chat.load` and `chat.save` still work. When the conversation you save came from `chat.load` and another write stored it in between, such as a spoken turn during a call, `save` keeps both. Messages you added follow the ones stored since, and a field you changed replaces the stored one. When both writes changed the same earlier message, `save` throws and stores nothing. Load it again, or use `chat.change`.
+`chat.load` and `chat.save` still work. When the conversation you save came from `chat.load` and another write stored it in between, such as a spoken turn during a call, `save` keeps both. Messages you added follow the ones stored since, and a field you changed replaces the stored one. When both writes changed or removed messages that were there when you loaded it, even different ones, `save` throws and stores nothing. Load it again, or use `chat.change`. A `save` that fails, because of that or because the store failed, leaves your conversation as you changed it, so saving it again is safe. The conversation `chat.change` returns saves the same way.
 
 > **Caution:** Inside the function you pass to `chat.change`, do not call `chat.save`, `chat.change`, or `chat.addMessage` for the same conversation. Each waits for the change in progress, which never finishes. Writes straight to `chat.store` skip the line, and writes from another server are not in it either: with several servers, the store has to settle them.
 

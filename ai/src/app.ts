@@ -410,9 +410,11 @@ export interface Chat {
    * write to it. When it came from `load` and was stored again since (a
    * spoken turn, an approval, a reply), what you changed is applied over that:
    * messages you added follow the ones stored since, and a field you changed
-   * replaces it. Both writes changing the same earlier message is refused
-   * with an error, and nothing is stored. A conversation that did not come
-   * from `load` replaces what is stored. Prefer `change`.
+   * replaces it. When both writes changed or removed messages that were
+   * there when it was loaded, even different ones, `save` throws and stores
+   * nothing. A save that fails leaves the conversation as you changed it, so
+   * it can be saved again. One that came from neither `load` nor `change`
+   * replaces what is stored. Prefer `change`.
    */
   save(session: Session, conversation: Conversation): Promise<void>;
   /**
@@ -496,17 +498,19 @@ const startsWith = (list: unknown[], head: unknown[]): boolean =>
   list.length >= head.length && head.every((item, i) => same(item, list[i]));
 
 /**
- * Change `ours` (`base` as it was loaded, then changed by a caller) into
- * `latest` (what other writes stored since `base`) with the caller's changes
- * applied over it. Messages one side added after `base` follow the other
- * side's; a field the caller changed replaces the stored one. Both sides
- * changing an earlier message cannot be put together, and throws.
+ * `latest` (what other writes stored since `base`) with the changes in `ours`
+ * (`base` as it was loaded, then changed by a caller) applied over it, as a
+ * new conversation: `ours` is left as it is, so a save that fails can be
+ * tried again. Messages one side added after `base` follow the other side's;
+ * a field the caller changed replaces the stored one. When both sides
+ * changed or removed messages that `base` had, even different ones, they
+ * cannot be put together, and this throws.
  */
 function applyChanges(
   ours: Conversation,
   base: Conversation,
   latest: Conversation,
-): void {
+): Conversation {
   let messages = ours.messages;
   if (same(ours.messages, base.messages)) messages = latest.messages;
   else if (!same(latest.messages, base.messages)) {
@@ -526,7 +530,8 @@ function applyChanges(
       );
     }
   }
-  const fields = ours as unknown as Record<string, unknown>;
+  const merged = JSON.parse(JSON.stringify(ours)) as Conversation;
+  const fields = merged as unknown as Record<string, unknown>;
   const was = base as unknown as Record<string, unknown>;
   const now = latest as unknown as Record<string, unknown>;
   for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
@@ -535,7 +540,8 @@ function applyChanges(
     if (key in now) fields[key] = now[key];
     else delete fields[key];
   }
-  ours.messages = messages;
+  merged.messages = JSON.parse(JSON.stringify(messages)) as ChatMessage[];
+  return merged;
 }
 
 const field = (form: FormData, name: string): string | undefined => {
@@ -807,13 +813,27 @@ export function createChat(options: ChatOptions): Chat {
   const saveForCaller: Chat["save"] = (session, conversation) =>
     serialized(session, conversation.id, async () => {
       const base = loadedAs.get(conversation);
+      let merged = conversation;
       if (base !== undefined) {
         const latest = await load(session, conversation.id);
         if (latest && JSON.stringify(latest) !== base) {
-          applyChanges(conversation, JSON.parse(base) as Conversation, latest);
+          merged = applyChanges(
+            conversation,
+            JSON.parse(base) as Conversation,
+            latest,
+          );
         }
       }
-      await save(session, conversation);
+      await save(session, merged);
+      // Only a stored merge becomes the caller's: a failed save leaves their
+      // conversation, and what it was loaded as, for a retry to merge again.
+      if (merged !== conversation) {
+        const fields = conversation as unknown as Record<string, unknown>;
+        for (const key of Object.keys(fields)) {
+          if (!(key in merged)) delete fields[key];
+        }
+        Object.assign(conversation, merged);
+      }
       loadedAs.set(conversation, JSON.stringify(conversation));
     });
   const change: Chat["change"] = (session, edit, conversationId) => {
@@ -824,6 +844,8 @@ export function createChat(options: ChatOptions): Chat {
         newConversation();
       await edit(conversation);
       await save(session, conversation);
+      // What `change` returns saves like what `load` returns.
+      loadedAs.set(conversation, JSON.stringify(conversation));
       return conversation;
     };
     return wanted === undefined ? run() : serialized(session, wanted, run);
