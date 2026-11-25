@@ -1,0 +1,64 @@
+<!-- @bascik
+One match in a list of search results: the conversation's title, and what was found in it, which goes inside the tag (the matched words in mark). A plain form that posts the conversation's id to /api/open, the way a conversation list does, so it works with no JavaScript. Put it in an ol. Written by the app from stored text, never by a model.
+-->
+<style>
+  .result {
+    display: block;
+  }
+  .result form {
+    display: contents;
+  }
+  .open {
+    display: grid;
+    gap: 0.15rem;
+    inline-size: 100%;
+    padding: 0.45rem 0.6rem;
+    border: 0;
+    border-radius: calc(var(--radius) - 2px);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: start;
+    cursor: pointer;
+  }
+  .open:hover,
+  .open:focus-visible {
+    background: var(--bg);
+  }
+  .title {
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .snippet {
+    color: var(--muted);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+  .snippet mark {
+    padding: 0 0.1em;
+    border-radius: 2px;
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+</style>
+<li class="result" data-testid="search-result">
+  <form method="post" action="/api/open">
+    <input type="hidden" name="app" data-bascik-attr-value="app" />
+    <input type="hidden" name="id" data-bascik-attr-value="conversation" />
+    <button class="open" data-testid="search-result-open">
+      <span
+        class="title"
+        data-testid="search-result-title"
+        data-bascik-prop-title
+        >Conversation</span
+      >
+      <span class="snippet" data-testid="search-result-snippet"
+        ><span data-bascik-slot></span
+      ></span>
+    </button>
+  </form>
+</li>
