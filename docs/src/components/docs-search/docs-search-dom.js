@@ -31,6 +31,9 @@ var index = null;
 /** True once the entries have their text. Until then a search matches titles and headings only. */
 var hasText = false;
 var NO_RESULTS = empty.textContent;
+var SEARCHING_TEXT = "Searching page text…";
+var TEXT_FAILED =
+  "The page text could not be loaded. Keep typing to try again.";
 
 /**
  * Opens the search dialog. `deferIndex` leaves the index download to the caller, for /search, where the
@@ -136,6 +139,11 @@ function loadText() {
         // Let the next search try again.
         textRequest = null;
         console.error("[docs-search] loadText error:", e);
+        // Nothing is on its way any more: a query waiting for the text says so. Title and heading results stay.
+        if (!empty.hidden && empty.textContent === SEARCHING_TEXT) {
+          empty.textContent = TEXT_FAILED;
+          if (statusEl) statusEl.textContent = TEXT_FAILED;
+        }
       });
   }
   return textRequest;
@@ -181,7 +189,7 @@ function runSearch(query) {
 
   if (!top.length) {
     // No title or heading matches, and the text may still: say which it is.
-    empty.textContent = hasText ? NO_RESULTS : "Searching page text…";
+    empty.textContent = hasText ? NO_RESULTS : SEARCHING_TEXT;
     empty.hidden = false;
     if (statusEl)
       statusEl.textContent = hasText

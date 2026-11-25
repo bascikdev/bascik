@@ -236,7 +236,7 @@ __metadata:
     web-features: "npm:^3.45.0"
     webidl2: "npm:^24.5.0"
   peerDependencies:
-    "@bascik/language-server": ^1.1.0
+    "@bascik/language-server": ^1.1.1
   dependenciesMeta:
     chokidar:
       optional: true

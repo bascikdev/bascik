@@ -13,11 +13,12 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
-- `create-bascik` 1.1.2: new projects depend on `@bascik/bascik` `^1.0.2`, so they start with the request-time rendering fix below.
+- `create-bascik` 1.1.2: new projects depend on `@bascik/bascik` `^1.0.2` and `@bascik/language-server` `^1.1.1`, so they start with the fixes below.
 
 ### Fixed
 
 - The dev server's pinned `Server running at` line is now followed only by the command and that run's output. In a terminal that already had output on screen, such as an earlier run, the address was drawn on the top row and the old output stayed under it, so it read as part of the new run. The old output is now scrolled up into the terminal's scrollback. `--no-pin` still turns pinning off. See [What you see in the terminal](https://bascik.dev/developer-experience#what-you-see-in-the-terminal).
+- `@bascik/language-server` 1.1.1 and the VS Code extension 1.0.2: reading a component's `data-bascik-attr-*` bindings takes time proportional to the file. A file with a long run of attribute-name characters before a binding could stall diagnostics, completions and hovers. Update the extension, or run `npm install @bascik/language-server@latest` where the linter is installed.
 - `@bascik/bascik` 1.0.2: component tags returned by a server or stream script render in time proportional to the output when one component holds many others, such as a grid whose slot holds a few hundred cards. Each card used to copy and search the whole grid again, so 990 cards in one grid took over a second of blocked event loop where the same cards spread over many grids took a tenth of that. Named-slot content that holds many component usages (`data-bascik-slot="..."` wrappers around or inside them) had a second pass of the same kind, which also slowed builds of such pages. Output is unchanged; see [`scripts.renderLimits`](https://bascik.dev/configuration#scriptsrenderlimits) for the limits on one output.
 
 ## [create-bascik 1.1.1] - 2026-11-22

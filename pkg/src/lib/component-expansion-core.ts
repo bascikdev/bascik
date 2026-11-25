@@ -19,6 +19,7 @@ import {
 } from "./component-inheritance.ts";
 import {
   blankForeignCdata,
+  blankForeignCdataInForeignContent,
   maskBlankedHtml,
   maskRawTextContent,
   spliceRawTextMask,
@@ -206,6 +207,12 @@ export interface ExpandOptions {
    * chain as if the loop had expanded them in this page.
    */
   openAncestors?: ReadonlyArray<OpenAncestor>;
+  /**
+   * The text sits in SVG or MathML content opened outside it (an enclosing
+   * instance's template, or the output around the usage), so a CDATA
+   * section in it is text and a tag written there opens no component.
+   */
+  inForeignContent?: boolean;
 }
 
 /** An instance whose text is being expanded: its component and file. */
@@ -220,6 +227,8 @@ export interface InstanceExpansionContext {
   open: OpenAncestor[];
   /** The size the instance may grow to before the tripwire trips. */
   maxOutputBytes: number;
+  /** The usage sat in SVG or MathML content, so the instance does too. */
+  inForeignContent: boolean;
 }
 
 /** Thrown when `limits` trip. The build wraps it in a `PageProcessingError`. */
@@ -501,7 +510,10 @@ export const expandComponents = (
   // The page with its SVG and MathML CDATA sections blanked (the page
   // itself when it has none), which the mask is read from: a splice reads
   // tokens from it, so nothing inside a section opens a comment or element.
-  let maskSource = blankForeignCdata(transpiledHtmlBody);
+  const blankCdata = opts.inForeignContent
+    ? blankForeignCdataInForeignContent
+    : blankForeignCdata;
+  let maskSource = blankCdata(transpiledHtmlBody);
   let masked = maskBlankedHtml(maskSource);
   // Search cursor (prompt 63). Replacement happens at the FIRST unresolved
   // component, so the prefix before its start is fully resolved and cannot
@@ -625,7 +637,7 @@ export const expandComponents = (
       searchFrom = offsets.startIndex;
     } else {
       closeFacts = undefined;
-      maskSource = blankForeignCdata(transpiledHtmlBody);
+      maskSource = blankCdata(transpiledHtmlBody);
       masked = maskBlankedHtml(maskSource);
       chargeScan(transpiledHtmlBody.length);
       rescanFromStart = true;
@@ -1079,7 +1091,7 @@ export const expandComponents = (
           "",
           masked,
         );
-        maskSource = blankForeignCdata(transpiledHtmlBody);
+        maskSource = blankCdata(transpiledHtmlBody);
         masked = maskBlankedHtml(maskSource);
         chargeScan(transpiledHtmlBody.length);
         rescanFromStart = true;
@@ -1119,6 +1131,7 @@ export const expandComponents = (
         maxOutputBytes:
           opts.limits.maxOutputBytes -
           (transpiledHtmlBody.length - (endIndex - startIndex)),
+        inForeignContent: opts.inForeignContent === true,
       });
       spliceInstance(component, finished, true);
     }

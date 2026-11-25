@@ -1660,6 +1660,64 @@ describe.each([true, false])(
       },
     );
 
+    // A CDATA section in SVG or MathML content is text, so a tag written in
+    // it is not a usage. Whether `<![CDATA[` starts a section depends on the
+    // SVG or MathML open around it, which can be in an enclosing instance's
+    // template or in the output around the usage.
+    const ART: ComponentList = {
+      "art-wrap": {
+        fileName: "src/components/art-wrap.html",
+        fileContent: `<figure class="art"><svg><art-label></art-label></svg><art-label></art-label></figure>`,
+      },
+      "art-label": {
+        fileName: "src/components/art-label.html",
+        fileContent: `<text class="label"><![CDATA[see <b>this</b>: <art-dot></art-dot>]]></text>`,
+      },
+      "art-slot": {
+        fileName: "src/components/art-slot.html",
+        fileContent: `<g class="slot" data-bascik-slot></g>`,
+      },
+      "art-dot": {
+        fileName: "src/components/art-dot.html",
+        fileContent: `<circle class="dot"></circle>`,
+      },
+    };
+    it.each([
+      // The label in the SVG keeps its tag as text; the one after it is in
+      // HTML content, where `<![CDATA[` is a bogus comment up to the first
+      // `>`, so the tag after it is a usage.
+      ["an SVG in the enclosing template", `<art-wrap></art-wrap>`, 1],
+      [
+        "an SVG in the output around the usage",
+        `<svg><art-label></art-label></svg><art-label></art-label>`,
+        1,
+      ],
+      [
+        "an SVG two instances up, through a slot",
+        `<svg><art-slot><art-slot><art-label></art-label></art-slot></art-slot></svg>`,
+        0,
+      ],
+      ["MathML", `<math><art-label></art-label></math>`, 0],
+      [
+        "an integration point, which is HTML content again",
+        `<svg><foreignObject><art-label></art-label></foreignObject></svg>`,
+        1,
+      ],
+      [
+        "a section written in a slot inside an SVG",
+        `<svg><art-slot><![CDATA[<art-dot></art-dot>]]><art-dot></art-dot></art-slot></svg>`,
+        1,
+      ],
+    ])("a tag inside a CDATA section stays text: %s", (_name, html, dots) => {
+      const { whole, chunked } = bothWays(html, ART);
+      expect(chunked.out).toBe(whole.out);
+      expect(chunked.names).toEqual(whole.names);
+      expect(chunked.ids).toEqual(whole.ids);
+      expect(chunked.names.filter((name) => name === "art-dot")).toHaveLength(
+        dots,
+      );
+    });
+
     it("a template cycle reached inside an instance is the loop's cycle error", () => {
       const list: ComponentList = {
         "ring-a": {

@@ -156,7 +156,7 @@ export const PACKAGE_JSON = (
         devDependencies: {
           ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0" }),
           ...(netlify && { "@bascik/adapter-netlify": "^1.0.0" }),
-          "@bascik/language-server": "^1.1.0",
+          "@bascik/language-server": "^1.1.1",
           "@playwright/test": "^1.62.0",
           "@types/node": "^24.0.0",
           "@vitest/coverage-v8": "^5.0.3",
