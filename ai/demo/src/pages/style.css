@@ -317,3 +317,64 @@ body {
 .thread:has(.turn-user) .welcome {
   display: none;
 }
+
+/* The component gallery (/gallery): one page of every catalog component. It
+   has no sidebar, so the page takes the whole width. */
+body:has(> .gallery) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.gallery {
+  min-block-size: 0;
+  overflow-y: auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+.gallery > * {
+  max-inline-size: 52rem;
+  margin-inline: auto;
+}
+
+.gallery-head p {
+  color: var(--muted);
+}
+
+.gallery-group {
+  margin-block: 2.5rem 0.5rem;
+  padding-block-end: 0.5rem;
+  border-block-end: 1px solid var(--border);
+}
+
+.gallery-section {
+  padding-block: 1.25rem;
+  border-block-end: 1px solid var(--border);
+}
+
+.gallery-name {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.0625rem;
+}
+
+.gallery-lead {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.gallery-more {
+  margin-block-end: 0.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.gallery-more summary {
+  cursor: pointer;
+}
+
+.gallery-samples {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.gallery-missing {
+  color: var(--accent);
+}

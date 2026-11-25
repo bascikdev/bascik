@@ -1,0 +1,70 @@
+<!-- @bascik
+One card in a swipe-deck. title is the item's name and must be unique within the deck. The content is a short description of the item: a sentence or two, or a component such as a source quote. Never put a form or a button inside. Always used inside swipe-deck. Do not use the titles text, app or voice.
+-->
+<style>
+  .card {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    min-block-size: 11rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    touch-action: pan-y;
+    min-inline-size: 0;
+  }
+  .title {
+    font-weight: bold;
+    font-size: 1.125rem;
+    overflow-wrap: anywhere;
+  }
+  .body {
+    overflow-wrap: anywhere;
+  }
+  .answers {
+    display: flex;
+    gap: 0.75rem;
+  }
+  .answer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .answer:has(:checked) {
+    border-color: var(--accent);
+  }
+</style>
+<fieldset class="card" data-testid="swipe-card">
+  <legend class="title" data-bascik-prop-title></legend>
+  <div class="body">
+    <span data-bascik-slot></span>
+  </div>
+  <div class="answers">
+    <label class="answer" data-testid="swipe-card-no">
+      <input
+        type="radio"
+        required
+        value="no"
+        data-bascik-attr-name="title"
+        data-testid="swipe-card-no-input"
+      />
+      <span>No</span>
+    </label>
+    <label class="answer" data-testid="swipe-card-yes">
+      <input
+        type="radio"
+        required
+        value="yes"
+        data-bascik-attr-name="title"
+        data-testid="swipe-card-yes-input"
+      />
+      <span>Yes</span>
+    </label>
+  </div>
+</fieldset>

@@ -1,0 +1,78 @@
+<!-- @bascik
+A single-choice question with two prominent options. The question prop is the text shown above the two cards, for example "Which edition do you want?". Put exactly two pair-option components inside; each needs a title. Use it when the reader must pick one of two such as this edition or that one; if more or fewer are written they are all still shown as choices. Example: <choice-pair question="Which edition do you want?"><pair-option title="Hardcover">Sturdy, with a dust jacket.</pair-option><pair-option title="Paperback">Light and cheap.</pair-option></choice-pair>
+-->
+<style>
+  .form {
+    margin: 0.75rem 0;
+  }
+  .set {
+    margin: 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .question {
+    padding: 0 0.35rem;
+    font-weight: 600;
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  .send {
+    justify-self: start;
+    margin-top: 0.35rem;
+    padding: 0.45rem 1rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+</style>
+<form
+  id="form"
+  class="form"
+  method="post"
+  action="/api/send"
+  data-testid="choice-pair"
+>
+  <fieldset class="set">
+    <legend class="question" data-bascik-prop-question>Choose one</legend>
+    <div class="cards">
+      <span data-bascik-slot></span>
+    </div>
+    <button class="send" data-testid="choice-pair-submit">Choose</button>
+  </fieldset>
+  <script type="text/typescript">
+    const form = document.getElementById("form") as HTMLFormElement;
+    const button = form.querySelector(".send") as HTMLButtonElement;
+    button.hidden = true;
+    let movedByArrow = false;
+    form.addEventListener("keydown", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) || target.type !== "radio") return;
+      if (event.key.startsWith("Arrow")) {
+        movedByArrow = true;
+      } else if (event.key === "Enter" || (event.key === " " && target.checked)) {
+        event.preventDefault();
+        target.checked = true;
+        form.requestSubmit();
+      }
+    });
+    form.addEventListener("keyup", () => {
+      movedByArrow = false;
+    });
+    form.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) || target.type !== "radio") return;
+      if (movedByArrow) return;
+      form.requestSubmit();
+    });
+  </script>
+</form>
