@@ -1,5 +1,6 @@
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { Duplex } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   azureVoiceLiveSession,
@@ -421,6 +422,76 @@ describe("azureVoiceLiveVoice", () => {
       logged.mockRestore();
     }
   });
+
+  /**
+   * A stand-in provider that opens a session and then misbehaves:
+   * `"silent"` never confirms the setup, `"stalled"` confirms it and then
+   * stops reading.
+   */
+  const stuck: Duplex[] = [];
+  afterEach(() => {
+    for (const socket of stuck.splice(0)) socket.destroy();
+  });
+  async function startStuckUpstream(
+    mode: "silent" | "stalled",
+  ): Promise<Upstream> {
+    const server = createServer();
+    server.on("upgrade", (request, socket) => {
+      socket.on("error", () => {});
+      stuck.push(socket);
+      const accepted = acceptWebSocket(request, socket)!;
+      accepted.onMessage = (text) => {
+        if (mode === "stalled" && JSON.parse(text).type === "session.update") {
+          accepted.send(JSON.stringify({ type: "session.updated" }));
+          socket.pause();
+        }
+      };
+      accepted.send(JSON.stringify({ type: "session.created" }));
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    return { base: `ws://127.0.0.1:${port}`, server, connections: [] };
+  }
+
+  const append = JSON.stringify({
+    type: "input_audio_buffer.append",
+    audio: "A".repeat(390_000),
+  });
+
+  it("ends a call that sends too much before the provider is ready", async () => {
+    upstream = await startStuckUpstream("silent");
+    provider = azureVoiceLiveVoice({ apiKey: "k", wsBase: upstream.base });
+    const call = browser((await provider.createSession(config)).url);
+    await new Promise((resolve) => (call.socket.onopen = resolve));
+    // About 12 MB, far past a few seconds of 16 kHz microphone audio.
+    for (let count = 0; count < 30; count++) call.socket.send(append);
+    const ended = (await call.closed) as CloseEvent;
+    expect(ended.reason).toBe("Too much was sent before the call started.");
+  });
+
+  it("ends a call that sends faster than the provider takes it", async () => {
+    upstream = await startStuckUpstream("stalled");
+    provider = azureVoiceLiveVoice({ apiKey: "k", wsBase: upstream.base });
+    const call = browser((await provider.createSession(config)).url);
+    await until(() => call.messages.length > 0);
+    expect(call.messages).toEqual([{ type: "session.updated" }]);
+    const ended = new Promise<CloseEvent>((resolve) =>
+      call.closed.then((event) => resolve(event as CloseEvent)),
+    );
+    let sent = 0;
+    // Up to about 80 MB, sent while the provider reads none of it.
+    while (call.socket.readyState === WebSocket.OPEN && sent < 200) {
+      call.socket.send(append);
+      sent++;
+      if (sent % 10 === 0)
+        await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect((await ended).reason).toBe(
+      "The voice provider is not keeping up with the call.",
+    );
+  }, 20_000);
 
   it("says what is missing before it gives a ticket", async () => {
     const saved = { ...process.env };
