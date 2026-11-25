@@ -33,6 +33,23 @@ describe("the package", () => {
     expect(manifest.files).toContain("dist/");
   });
 
+  it("carries the metadata a published package needs", () => {
+    const full = manifest as unknown as Record<string, unknown> & {
+      publishConfig: { access: string; types: string };
+      engines: { node: string };
+    };
+    expect(full.name).toBe("@bascik/genui");
+    expect(full.license).toBe("MIT");
+    expect(full.sideEffects).toBe(false);
+    expect(full.engines.node).toBe(">=24.21.0");
+    expect(full.publishConfig.access).toBe("public");
+    expect(full.publishConfig.types).toBe("./dist/index.d.ts");
+    expect(full.repository).toMatchObject({ directory: "genui" });
+    // The lab notebook stays in the repository; npm gets the README.
+    expect(manifest.files).toContain("README.md");
+    expect(manifest.files).not.toContain("NOTES.md");
+  });
+
   it("publishes built JavaScript for every entry it has in source", () => {
     // Node does not strip types under node_modules, so what is published is
     // dist/, while this repository runs src/ as it is.
