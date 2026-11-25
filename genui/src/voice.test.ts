@@ -283,6 +283,50 @@ describe("voiceMessages", () => {
   });
 });
 
+describe("a view shown again", () => {
+  const show = (turn: ReturnType<typeof newVoiceTurn>, markup: string) =>
+    runVoiceTool(
+      turn,
+      {
+        id: `call_${Math.random()}`.replace(".", ""),
+        name: SHOW_TOOL,
+        input: { markup },
+      },
+      tools,
+      catalog,
+    );
+
+  it("tells the model when a view uses the same components as the one before it, across turns", async () => {
+    const turn = newVoiceTurn();
+    const first = await show(turn, `<book-card title="Dune">Sand.</book-card>`);
+    expect(first.output).toBe("Shown on the reader's screen.");
+    // The turn is stored; the next one starts, and what was on screen is remembered.
+    voiceMessages(turn, { reader: "Show me a book", model: "Here it is." });
+    const again = await show(
+      turn,
+      `<book-card title="Emma">Matchmaking.</book-card>`,
+    );
+    expect(again.output).toContain(
+      "same components as the one before it (book-card)",
+    );
+    expect(again.output).toContain(`call ${SHOW_TOOL} again`);
+    // A different kind of view is not remarked on.
+    const other = await show(turn, `<tool-note>Two books.</tool-note>`);
+    expect(other.output).toBe("Shown on the reader's screen.");
+  });
+
+  it("does not call plain text a repeated view", async () => {
+    const turn = newVoiceTurn();
+    await show(turn, "Two books, no components.");
+    const again = await show(turn, "Another line of text.");
+    expect(again.output).toBe("Shown on the reader's screen.");
+  });
+
+  it("teaches a speaking model to change the kind of view when asked to", () => {
+    expect(voicePrompt(catalog)).toContain("change the kind of view");
+  });
+});
+
 describe("fill_form", () => {
   it("is taught to a speaking model, and is never run on the server", async () => {
     expect(voicePrompt(catalog)).toContain(`call ${FILL_TOOL}`);

@@ -131,6 +131,7 @@ export function voicePrompt(
     "You are in a spoken conversation. The reader hears you and sees a screen beside the conversation.",
     "Everything you say is spoken aloud by a voice. Speak briefly and naturally: one to three sentences. Never say markup, tags, tables, or long lists.",
     `The reader answers a form on the screen by speaking, and you enter it: when they say their answer ("yes, that is correct", "the second one", "add a note that..."), call ${FILL_TOOL} with the button or option that matches what they said. That is the reader's own answer, sent by the form in whatever shape it uses, and it is the normal way a form is answered here. Never ask the reader to type, to press it themselves, or to say a message in a special format, and never refuse because their words are not in some format. Ask again only when you cannot tell which button they mean.`,
+    `When the reader asks to see something differently ("another way", "a different view", "can you change how that looks") without naming a component, change the kind of view, not the wording: pick other components from the catalog than the ones on screen. Cards can become a table, a table a chart, a list steps, a long answer a diagram. Keep the same content, and say in a few words what you changed it to. Showing the same components again is never the answer to that request.`,
     `The only way to put anything on the screen is the ${SHOW_TOOL} tool. Put every component you want shown, buttons included, in one ${SHOW_TOOL} call per turn. Its markup uses the format below. Say in a few words what you are showing, then let the screen carry the detail.`,
     "",
     "The format for markup:",
@@ -142,7 +143,22 @@ export function voicePrompt(
 /** A voice turn being recorded: what was called and shown since the last one was stored. */
 export interface VoiceTurn {
   parts: MessagePart[];
+  /**
+   * The components of the view shown last, kept from turn to turn, so a
+   * model that shows the same kind of view again can be told so.
+   */
+  lastView?: string[];
 }
+
+/** The component tags a piece of markup uses, each once, in order of name. */
+const componentsIn = (markup: string): string[] =>
+  [
+    ...new Set(
+      [...markup.matchAll(/<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)[\s/>]/g)].map(
+        (match) => match[1]!,
+      ),
+    ),
+  ].sort();
 
 export const newVoiceTurn = (): VoiceTurn => ({ parts: [] });
 
@@ -207,9 +223,17 @@ export async function runVoiceTool(
     }
     // Stored as text, so a reload renders it through the same catalog.
     turn.parts.push({ type: "text", text: markup });
+    // A reader who asks to "see it another way" often gets the same view
+    // back. The model is told when a view repeats, and decides what that means.
+    const view = componentsIn(markup);
+    const repeated =
+      view.length > 0 && view.join() === (turn.lastView ?? []).join();
+    turn.lastView = view;
     return {
       state: "done",
-      output: "Shown on the reader's screen.",
+      output: repeated
+        ? `Shown on the reader's screen. This view uses the same components as the one before it (${view.join(", ")}). If the reader asked to see it a different way, that was not a different way: call ${SHOW_TOOL} again now with other components from the catalog. If they asked for new content, carry on.`
+        : "Shown on the reader's screen.",
       html: renderText(markup, catalog, options),
     };
   }
