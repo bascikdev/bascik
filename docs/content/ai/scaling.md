@@ -50,7 +50,7 @@ export const chat = createChat({
 
 ## Hosts without shared memory
 
-Some hosts run many requests in one process but do not let one request touch another request's I/O. On Cloudflare Workers, a request that waits on a stream or a promise another request created is cancelled as hung. By default the kit does exactly that on one server: a reload reads the reply from the writing request's memory. On such a host, set `followLocally: false` and pass the host's context to `thread`:
+Some hosts run many requests in one process but do not let one request touch another request's I/O. On Cloudflare Workers, a request that waits on a stream or a promise another request created is canceled as hung. By default the kit does exactly that on one server: a reload reads the reply from the writing request's memory. On such a host, set `followLocally: false` and pass the host's context to `thread`:
 
 ```ts
 export const chat = createChat({
@@ -68,7 +68,7 @@ const { turn } = await chat.thread(request, context);
 
 With `followLocally: false`, each request that did not start the reply follows it through `shared.subscribe` and the turn record, as a second server would. While it waits for the next piece, it keeps a one-second timer of its own pending, so the host does not take it for hung. Stop goes through the shared store, and the kit does not queue writes to one conversation in memory, so the conversation store has to settle two writes at once. `context.waitUntil` keeps the reply running after the reader leaves; see [the host's context](/ai/server-kit#the-hosts-context).
 
-Two smaller things matter there too. Timers may be plain numbers, which the kit handles. And with the default, a reply whose writing request was cancelled is dropped from memory once it has gone quiet and its turn record is missing on two looks, so a later page starts it again instead of waiting on it forever. The dropped writer is told to stop, in case it was still running.
+Two smaller things matter there too. Timers may be plain numbers, which the kit handles. And with the default, a reply whose writing request was canceled is dropped from memory once it has gone quiet and its turn record is missing on two looks, so a later page starts it again instead of waiting on it forever. The dropped writer is told to stop, in case it was still running.
 
 ## Writing an adapter
 
