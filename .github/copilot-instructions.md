@@ -203,6 +203,7 @@ Root script prefixes map to workspaces:
 | `adapter:nf:` | `@bascik/adapter-netlify`    |
 | `lsp:`        | `@bascik/language-server`    |
 | `skills:`     | `bascik-skills-tests`        |
+| `genui:`      | `@bascik/genui`              |
 
 Aggregators (`unit:all`, `integration:all`, `linear-time:all`, `e2e:all`, `coverage:all`, `typecheck:all`, `check:all`, `test:all`) fan out across all workspaces.
 

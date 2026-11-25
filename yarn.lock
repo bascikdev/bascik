@@ -280,7 +280,7 @@ __metadata:
   resolution: "@bascik/genui@workspace:genui"
   dependencies:
     "@anthropic-ai/sdk": "npm:^1.9.0"
-    "@bascik/bascik": "workspace:*"
+    "@bascik/bascik": "npm:^1.0.2"
     "@playwright/test": "npm:^1.65.0"
     "@types/node": "npm:^24.19.1"
     beautiful-mermaid: "npm:^1.1.3"

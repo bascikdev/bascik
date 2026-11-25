@@ -1,6 +1,6 @@
 /**
- * Stress the demo server. Start it first (see stress/README in the package
- * README), then: node stress/load.ts [http://127.0.0.1:4477]
+ * Stress the demo server. Start it first (see "What the stress tests found"
+ * in the package's NOTES.md), then: node stress/load.ts [http://127.0.0.1:4477]
  *
  * It measures, against the offline models (so the numbers are Bascik and the
  * renderer, not a model API):
