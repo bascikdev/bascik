@@ -4,9 +4,11 @@
  * A text reply is a request and a growing page. A voice conversation is a
  * long two-way audio connection, so it has its own shape:
  *
- * - **Audio goes direct.** The reader's browser connects to the model's
- *   provider itself, with a short-lived ticket the server made. The API key
- *   never leaves the server, and no audio passes through it.
+ * - **The browser connects with a ticket.** A short-lived, one-use ticket
+ *   the server made, with the session's setup locked in. The API key never
+ *   leaves the server. Where the provider issues such a ticket itself
+ *   (Gemini Live), the audio goes direct; where it does not (Azure Voice
+ *   Live), the ticket is for a relay on the server.
  * - **Everything that runs or renders goes through the server.** When the
  *   model calls a tool, the browser asks the server to run it. When the
  *   model wants to show something, it calls the `show` tool with markup in
@@ -30,11 +32,11 @@ import { renderText } from "./render.ts";
 
 /** What a browser needs to open one voice session. It holds no API key. */
 export interface VoiceTicket {
-  /** Which wire protocol the browser speaks, for example `gemini-live`. */
+  /** Which wire protocol the browser speaks: `gemini-live` or `azure-voice-live`. */
   protocol: string;
   /** The WebSocket address, with a short-lived credential in it. */
   url: string;
-  /** The first message to send once connected. */
+  /** The first message to send once connected, or null when there is none. */
   setup: unknown;
 }
 

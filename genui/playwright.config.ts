@@ -3,6 +3,7 @@ import { defineConfig } from "@playwright/test";
 const PORT = 4477;
 const MODEL_PORT = 4479;
 const VOICE_PORT = 4480;
+const AZURE_VOICE_PORT = 4481;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -30,6 +31,12 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
+      // And one for Azure Voice Live, which the server's relay connects to.
+      command: `node e2e/fake-azure-server.ts ${AZURE_VOICE_PORT}`,
+      port: AZURE_VOICE_PORT,
+      reuseExistingServer: false,
+    },
+    {
       // A stand-in for a local model server, so the selector has one to list.
       command: `node e2e/fake-model-server.ts ${MODEL_PORT}`,
       url: `http://127.0.0.1:${MODEL_PORT}/v1/models`,
@@ -50,6 +57,8 @@ export default defineConfig({
         GEMINI_API_KEY: "not-a-key",
         GEMINI_LIVE_HTTP: `http://127.0.0.1:${VOICE_PORT}`,
         GEMINI_LIVE_WS: `ws://127.0.0.1:${VOICE_PORT}`,
+        AZURE_VOICE_LIVE_WS: `ws://127.0.0.1:${AZURE_VOICE_PORT}`,
+        AZURE_VOICE_LIVE_API_KEY: "not-a-key",
       },
     },
   ],

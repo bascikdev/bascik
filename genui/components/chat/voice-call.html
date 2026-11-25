@@ -1,5 +1,5 @@
 <!-- @bascik
-A spoken conversation with a speech-to-speech model: the reader talks, the model answers aloud, and what it shows arrives in the thread as components. Captions follow the voice a few words at a time, with the current word in bold. Optional and all script. It needs three routes of yours: /api/voice-session for a ticket, /api/voice-tool to run the model's tool calls, and /api/voice-turn to store what was said, and a /voice-view page that renders what a call shows. The app prop is sent to them. Put it next to the composer.
+A spoken conversation with a speech-to-speech model: the reader talks, the model answers aloud, and what it shows arrives in the thread as components. Captions follow the voice a few words at a time, with the current word in bold. It speaks two providers' protocols, named by the ticket: gemini-live and azure-voice-live. Optional and all script. It needs three routes of yours: /api/voice-session for a ticket, /api/voice-tool to run the model's tool calls, and /api/voice-turn to store what was said, and a /voice-view page that renders what a call shows. The app prop is sent to them. Put it next to the composer.
 -->
 <style>
   .call {
@@ -100,6 +100,17 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       capture?: AudioContext;
       /** Calls that wait for the reader's answer, by id. */
       waiting: Map<string, (decision: string) => void>;
+      wire: Wire;
+    }
+    /** One provider's protocol: what to send, and what its messages mean. */
+    interface Wire {
+      /** The first message, when the provider wants one from the browser. */
+      begin(): void;
+      /** A piece of microphone audio: 16 kHz, 16-bit, base64. */
+      audio(base64: string): void;
+      /** A typed message, said to the model. */
+      text(text: string): void;
+      receive(message: any): Promise<void>;
     }
     let call: Call | null = null;
 
@@ -114,11 +125,56 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
      * played. It is kept apart from the turn above, because a turn is over,
      * and stored, well before its audio has finished playing.
      */
-    let voiced = { text: "", start: 0, seconds: 0, open: false };
-    const voicing = (): typeof voiced => {
-      if (!voiced.open) voiced = { text: "", start: 0, seconds: 0, open: true };
+    interface TimedWord {
+      text: string;
+      /** Seconds from the start of the turn's audio. */
+      at: number;
+    }
+    interface Voiced {
+      text: string;
+      start: number;
+      seconds: number;
+      open: boolean;
+      /** The time of each word, when the provider says it. */
+      words: TimedWord[];
+    }
+    const silent = (open: boolean): Voiced => ({
+      text: "",
+      start: 0,
+      seconds: 0,
+      open,
+      words: [],
+    });
+    let voiced = silent(false);
+    const voicing = (): Voiced => {
+      if (!voiced.open) voiced = silent(true);
       return voiced;
     };
+    /**
+     * A provider times words from the start of one response's audio, and a
+     * turn can have more than one response. This is where the response being
+     * played starts in the turn's audio; null until its first audio arrives,
+     * and words that come before that wait in `early`.
+     */
+    let responseAt: number | null = null;
+    let early: { text: string; ms: number }[] = [];
+    const newResponse = (): void => {
+      responseAt = null;
+      early = [];
+    };
+    function timedWord(text: string, ms: number): void {
+      if (responseAt === null) {
+        early.push({ text, ms });
+        return;
+      }
+      const words = voicing().words;
+      // A full stop comes as a word of its own: it belongs to the word before.
+      if (/^[\p{P}\p{S}]+$/u.test(text) && words.length) {
+        words[words.length - 1]!.text += text;
+      } else {
+        words.push({ text, at: responseAt + ms / 1000 });
+      }
+    }
 
     const post = (path: string, fields: Record<string, string>): Promise<Response> => {
       const body = new FormData();
@@ -137,7 +193,9 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         readerBubble = document.createElement("p");
         readerBubble.className = "turn-user";
         readerBubble.dataset.testid = "turn-user";
-        thread()?.append(readerBubble);
+        // What the reader said can be written down after the answer has begun.
+        if (reply) reply.before(readerBubble);
+        else thread()?.append(readerBubble);
       }
       readerBubble.textContent = reader.trim();
     }
@@ -237,9 +295,14 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       if (call.nextAt < now) call.nextAt = now + 0.05;
       const turn = voicing();
       if (turn.seconds === 0) turn.start = call.nextAt;
+      if (responseAt === null) {
+        responseAt = call.nextAt - turn.start;
+        for (const word of early.splice(0)) timedWord(word.text, word.ms);
+      }
       source.start(call.nextAt);
       call.nextAt += buffer.duration;
-      turn.seconds += buffer.duration;
+      // Measured on the clock, so a pause between two responses is counted.
+      turn.seconds = call.nextAt - turn.start;
       call.sources.add(source);
       source.onended = () => call?.sources.delete(source);
     }
@@ -249,34 +312,46 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       for (const source of call?.sources ?? []) source.stop();
       call?.sources.clear();
       if (call) call.nextAt = 0;
-      voiced = { text: "", start: 0, seconds: 0, open: false };
+      voiced = silent(false);
+      newResponse();
     }
 
     /**
-     * The provider sends what the model says as text, with no time for each
-     * word. The text and the audio grow together, so the word being spoken
-     * is found by how far into the turn's audio the playback is.
+     * Which word is being spoken. A provider that sends the time of each
+     * word is followed exactly. One that sends only text is estimated: the
+     * text and the audio grow together, so the word is found by how far into
+     * the turn's audio the playback is.
      */
     const GROUP = 6;
     function captions(): void {
       if (!call) return;
+      const timed = voiced.words.length > 0;
       const text = voiced.text.trim();
-      const words = text.split(/\s+/).filter(Boolean);
+      const words = timed
+        ? voiced.words.map((word) => word.text)
+        : text.split(/\s+/).filter(Boolean);
       const elapsed = call.playback.currentTime - voiced.start;
       if (!words.length || voiced.seconds === 0 || elapsed > voiced.seconds + 0.4) {
         caption.replaceChildren();
         delete caption.dataset.key;
       } else {
-        const position = Math.max(0, elapsed / voiced.seconds) * text.length;
         let index = 0;
-        for (let at = 0, word = 0; word < words.length; word++) {
-          if (at <= position) index = word;
-          at += words[word]!.length + 1;
+        if (timed) {
+          voiced.words.forEach((word, at) => {
+            if (word.at <= elapsed) index = at;
+          });
+        } else {
+          const position = Math.max(0, elapsed / voiced.seconds) * text.length;
+          for (let at = 0, word = 0; word < words.length; word++) {
+            if (at <= position) index = word;
+            at += words[word]!.length + 1;
+          }
         }
         const start = Math.floor(index / GROUP) * GROUP;
         const key = `${start}:${index}:${words.length}`;
         if (caption.dataset.key !== key) {
           caption.dataset.key = key;
+          caption.dataset.timing = timed ? "words" : "estimate";
           caption.replaceChildren(
             ...words.slice(start, start + GROUP).flatMap((word, offset) => {
               if (offset + start !== index) return [`${word} `];
@@ -324,13 +399,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         pending = [];
         let binary = "";
         for (const byte of bytes) binary += String.fromCharCode(byte);
-        current.socket.send(
-          JSON.stringify({
-            realtimeInput: {
-              audio: { data: btoa(binary), mimeType: "audio/pcm;rate=16000" },
-            },
-          }),
-        );
+        current.wire.audio(btoa(binary));
       };
     }
 
@@ -347,53 +416,174 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       voiced.open = false;
     }
 
+    /** The call is on. The microphone joins when the reader allows it;
+     * without one the call still works, and the reader types. */
+    function connected(current: Call): void {
+      status.textContent = "Connected. Type to talk.";
+      listen(current).then(
+        () => {
+          if (current === call) status.textContent = "Listening.";
+        },
+        () => {
+          if (current === call) status.textContent = "No microphone: type to talk.";
+        },
+      );
+    }
+
+    function heard(text: string, whole = false): void {
+      reader = whole ? text : reader + text;
+      showReader();
+    }
+
+    function spoke(text: string): void {
+      said += text;
+      voicing().text += text;
+      showReply();
+      saidText!.data = said;
+    }
+
+    const answerTool = (tool: { id: string; name: string; args: unknown }): Promise<string> =>
+      runTool(tool).catch(() => "Error: the tool could not be run.");
+
+    /* ---- The providers ---- */
+
+    function geminiLive(current: Call, setup: unknown): Wire {
+      const send = (message: unknown): void => {
+        if (current.socket.readyState === WebSocket.OPEN) {
+          current.socket.send(JSON.stringify(message));
+        }
+      };
+      return {
+        begin: () => send(setup),
+        audio: (data) =>
+          send({ realtimeInput: { audio: { data, mimeType: "audio/pcm;rate=16000" } } }),
+        text: (text) =>
+          send({
+            clientContent: { turns: [{ role: "user", parts: [{ text }] }], turnComplete: true },
+          }),
+        async receive(message) {
+          if (message.setupComplete) {
+            connected(current);
+            return;
+          }
+          if (message.toolCall) {
+            const functionResponses = [];
+            for (const tool of message.toolCall.functionCalls ?? []) {
+              const result = await answerTool(tool);
+              functionResponses.push({ id: tool.id, name: tool.name, response: { result } });
+            }
+            send({ toolResponse: { functionResponses } });
+            return;
+          }
+          const content = message.serverContent;
+          if (!content) return;
+          if (content.interrupted) quiet();
+          if (content.inputTranscription?.text) heard(content.inputTranscription.text);
+          for (const part of content.modelTurn?.parts ?? []) {
+            if (part.inlineData?.data) play(part.inlineData.data);
+          }
+          if (content.outputTranscription?.text) spoke(content.outputTranscription.text);
+          // A turn that only called tools is not over: the model speaks next.
+          if (content.turnComplete && (said.trim() || !reply)) endTurn();
+        },
+      };
+    }
+
+    /**
+     * Azure Voice Live, through the server's relay. The relay sends the
+     * session's setup, so the first thing heard here is that it is on.
+     */
+    function azureVoiceLive(current: Call): Wire {
+      const send = (message: unknown): void => {
+        if (current.socket.readyState === WebSocket.OPEN) {
+          current.socket.send(JSON.stringify(message));
+        }
+      };
+      /** A reply is being made. */
+      let active = false;
+      /** The tool calls of the reply being made. */
+      let tools: Promise<void>[] = [];
+      return {
+        begin: () => {},
+        audio: (audio) => send({ type: "input_audio_buffer.append", audio }),
+        text(text) {
+          if (active) send({ type: "response.cancel" });
+          send({
+            type: "conversation.item.create",
+            item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
+          });
+          send({ type: "response.create" });
+        },
+        async receive(message) {
+          switch (message.type) {
+            case "session.updated":
+              connected(current);
+              break;
+            case "input_audio_buffer.speech_started":
+              // The reader cut in, or began a new turn.
+              quiet();
+              if (said.trim()) endTurn();
+              break;
+            case "conversation.item.input_audio_transcription.completed":
+              if (message.transcript) heard(message.transcript, true);
+              break;
+            case "response.created":
+              active = true;
+              newResponse();
+              // A turn can be more than one response: keep their words apart.
+              if (said && !/\s$/.test(said)) spoke(" ");
+              break;
+            case "response.audio.delta":
+              if (message.delta) play(message.delta);
+              break;
+            case "response.audio_transcript.delta":
+              if (message.delta) spoke(message.delta);
+              break;
+            case "response.audio_timestamp.delta":
+              if (message.text) timedWord(message.text, message.audio_offset_ms ?? 0);
+              break;
+            case "response.function_call_arguments.done": {
+              let args: unknown;
+              try {
+                args = JSON.parse(message.arguments || "{}");
+              } catch {
+                // Passed on as it is: the server refuses it, and the model is told.
+                args = message.arguments;
+              }
+              const tool = { id: message.call_id, name: message.name, args };
+              tools.push(
+                answerTool(tool).then((output) =>
+                  send({
+                    type: "conversation.item.create",
+                    item: { type: "function_call_output", call_id: tool.id, output },
+                  }),
+                ),
+              );
+              break;
+            }
+            case "response.done": {
+              active = false;
+              const called = tools;
+              tools = [];
+              if (called.length && message.response?.status !== "cancelled") {
+                // The model hears the results once its reply is over, and goes on.
+                await Promise.all(called);
+                if (current === call) send({ type: "response.create" });
+              } else {
+                endTurn();
+              }
+              break;
+            }
+          }
+        },
+      };
+    }
+
     async function onMessage(current: Call, event: MessageEvent): Promise<void> {
       const text = typeof event.data === "string" ? event.data : await (event.data as Blob).text();
       const message = JSON.parse(text);
       if (current !== call) return;
-      if (message.setupComplete) {
-        // The call is on. The microphone joins when the reader allows it;
-        // without one the call still works, and the reader types.
-        status.textContent = "Connected. Type to talk.";
-        listen(current).then(
-          () => {
-            if (current === call) status.textContent = "Listening.";
-          },
-          () => {
-            if (current === call) status.textContent = "No microphone: type to talk.";
-          },
-        );
-        return;
-      }
-      if (message.toolCall) {
-        const functionResponses = [];
-        for (const tool of message.toolCall.functionCalls ?? []) {
-          const result = await runTool(tool).catch(() => "Error: the tool could not be run.");
-          functionResponses.push({ id: tool.id, name: tool.name, response: { result } });
-        }
-        if (current.socket.readyState === WebSocket.OPEN) {
-          current.socket.send(JSON.stringify({ toolResponse: { functionResponses } }));
-        }
-        return;
-      }
-      const content = message.serverContent;
-      if (!content) return;
-      if (content.interrupted) quiet();
-      if (content.inputTranscription?.text) {
-        reader += content.inputTranscription.text;
-        showReader();
-      }
-      for (const part of content.modelTurn?.parts ?? []) {
-        if (part.inlineData?.data) play(part.inlineData.data);
-      }
-      if (content.outputTranscription?.text) {
-        said += content.outputTranscription.text;
-        voicing().text += content.outputTranscription.text;
-        showReply();
-        saidText!.data = said;
-      }
-      // A turn that only called tools is not over: the model speaks next.
-      if (content.turnComplete && (said.trim() || !reply)) endTurn();
+      await current.wire.receive(message);
     }
 
     function hangUp(why = ""): void {
@@ -428,20 +618,28 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
             : "The voice service did not answer.";
         return;
       }
-      const ticket = (await response.json()) as { url: string; setup: unknown };
-      const current: Call = {
+      const ticket = (await response.json()) as {
+        protocol: string;
+        url: string;
+        setup: unknown;
+      };
+      const current = {
         socket: new WebSocket(ticket.url),
         playback,
         sources: new Set(),
         nextAt: 0,
         waiting: new Map(),
-      };
+      } as Call;
+      current.wire =
+        ticket.protocol === "azure-voice-live"
+          ? azureVoiceLive(current)
+          : geminiLive(current, ticket.setup);
+      newResponse();
       call = current;
       // Other voices on the page stay quiet while a call is on.
       document.documentElement.dataset.genuiCall = "on";
-      const begin = (): void => current.socket.send(JSON.stringify(ticket.setup));
-      if (current.socket.readyState === WebSocket.OPEN) begin();
-      else current.socket.onopen = begin;
+      if (current.socket.readyState === WebSocket.OPEN) current.wire.begin();
+      else current.socket.onopen = () => current.wire.begin();
       current.socket.onmessage = (event) => void onMessage(current, event);
       current.socket.onclose = () => {
         if (current === call) hangUp("The call ended.");
@@ -469,14 +667,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         if (reader.trim() || said.trim()) endTurn();
         reader = text;
         showReader();
-        call.socket.send(
-          JSON.stringify({
-            clientContent: {
-              turns: [{ role: "user", parts: [{ text }] }],
-              turnComplete: true,
-            },
-          }),
-        );
+        call.wire.text(text);
         form.reset();
       },
       true,

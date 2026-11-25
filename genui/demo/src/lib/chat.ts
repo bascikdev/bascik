@@ -311,15 +311,55 @@ export function chatCookies(session: Session, id: string): Headers {
  * GEMINI_API_KEY set it is Gemini Live. The key stays here: a browser gets a
  * one-use ticket from /api/voice-session and connects to the provider itself.
  */
-export async function loadVoice(): Promise<VoiceProvider | null> {
-  if (!process.env.GEMINI_API_KEY) return null;
-  const { geminiLiveVoice } = await import("@bascik/genui/gemini-live");
-  return geminiLiveVoice({
-    model: process.env.GEMINI_LIVE_MODEL,
-    // A test points these at a stand-in for the provider.
-    httpBase: process.env.GEMINI_LIVE_HTTP,
-    wsBase: process.env.GEMINI_LIVE_WS,
-  });
+export async function loadVoice(
+  named?: string | null,
+): Promise<VoiceProvider | null> {
+  const providers = await voiceProviders();
+  return (
+    providers.find((provider) => provider.protocol === named) ??
+    providers[0] ??
+    null
+  );
+}
+
+/**
+ * The providers this server is set up for, Azure first. Made once: the Azure
+ * one runs a relay, which has to outlive a request.
+ */
+const voiceHolder = globalThis as { genuiVoices?: Promise<VoiceProvider[]> };
+function voiceProviders(): Promise<VoiceProvider[]> {
+  return (voiceHolder.genuiVoices ??= (async () => {
+    const providers: VoiceProvider[] = [];
+    const env = process.env;
+    if (
+      (env.AZURE_VOICE_LIVE_ENDPOINT || env.AZURE_VOICE_LIVE_WS) &&
+      (env.AZURE_VOICE_LIVE_API_KEY || env.AZURE_VOICE_LIVE_TOKEN)
+    ) {
+      const { azureVoiceLiveVoice } =
+        await import("@bascik/genui/azure-voice-live");
+      providers.push(
+        azureVoiceLiveVoice({
+          model: env.AZURE_VOICE_LIVE_MODEL,
+          voice: env.AZURE_VOICE_LIVE_VOICE,
+          relay: { port: Number(env.AZURE_VOICE_LIVE_RELAY_PORT ?? 0) },
+          // A test points this at a stand-in for the provider.
+          wsBase: env.AZURE_VOICE_LIVE_WS,
+        }),
+      );
+    }
+    if (env.GEMINI_API_KEY) {
+      const { geminiLiveVoice } = await import("@bascik/genui/gemini-live");
+      providers.push(
+        geminiLiveVoice({
+          model: env.GEMINI_LIVE_MODEL,
+          // A test points these at a stand-in for the provider.
+          httpBase: env.GEMINI_LIVE_HTTP,
+          wsBase: env.GEMINI_LIVE_WS,
+        }),
+      );
+    }
+    return providers;
+  })());
 }
 
 /** What a spoken conversation is told: the app's instructions, then how to speak and show. */

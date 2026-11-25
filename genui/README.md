@@ -164,7 +164,7 @@ What it showed, and did not:
 
 ## A voice call with a speech-to-speech model
 
-`components/chat/voice-call.html`, `src/voice.ts`, and `src/gemini-live.ts` are a spoken conversation with Gemini Live: the reader talks, the model answers aloud, and what it shows arrives in the thread as components.
+`components/chat/voice-call.html`, `src/voice.ts`, and `src/gemini-live.ts` are a spoken conversation with Gemini Live (Azure Voice Live came second, below): the reader talks, the model answers aloud, and what it shows arrives in the thread as components.
 
 The shape is different from a text reply, because a call is a long two-way audio connection:
 
@@ -184,7 +184,19 @@ What it did not test:
 
 - **A real microphone.** The browser tests give the component a synthetic tone as its microphone and a stand-in provider (`e2e/fake-live-server.ts`). The headless browser's own fake microphone hung on this machine. Nobody has spoken to it yet.
 - **Interruption, echo, and long sessions.** The code stops playback when the provider says the reader cut in. That path has only been read, not exercised.
-- **Any other provider.** Azure Voice Live and OpenAI Realtime would each be a `VoiceProvider` and a wire protocol in the component.
+- **OpenAI's own Realtime API.** It would be a third `VoiceProvider` and a wire protocol close to Azure's.
+
+### Azure Voice Live, and a relay
+
+`src/azure-voice-live.ts` is a second provider, and `voice-call` now speaks two protocols, chosen by the ticket.
+
+- **Azure has no browser token.** A Voice Live WebSocket is opened with the resource's key or a Microsoft Entra token. No endpoint for a one-use client token answered (`/voice-live/realtime/client_secrets` and its neighbors are 404), and either credential in a browser opens the whole resource. So the "audio goes direct" rule does not hold here: the provider runs a relay (`src/ws.ts` is the WebSocket server side, with no dependency). The ticket is a one-use address on the relay. The relay holds the credential, sends the session setup itself, and rebuilds the few client messages a call needs field by field. A browser's `session.update` is dropped.
+- **It works against the real service.** `stress/azure-voice-live.ts` ran `gpt-realtime-2` in East US 2 with a Microsoft Entra token and no key: it called `list_books`, then `show` with a valid `card-grid`, and spoke. First audio came 1.1 seconds after asking. The script also sends a `session.update` the way a hostile browser would, and the model kept its instructions. A headless browser on the demo, with a typed question, rendered two styled cards and stored the turn.
+- **Real word times.** With an Azure voice the service sends `response.audio_timestamp.delta` for every word. Captions use them when they are there and fall back to the audio clock when they are not. Three details: the times count from the start of one response's audio and a turn can be several responses; the times arrive before the audio they describe; and a full stop arrives as a word of its own. An OpenAI voice on Azure sends no times.
+- **Wait for `response.done` before asking for more.** Sending a tool's result and `response.create` at once is refused ("Conversation already has an active response"). The result is sent when it is ready, and the next reply is asked for after the current one is done.
+- **Models are per region.** West US 3 refused `gpt-realtime` and offered only text models with Azure speech around them. East US 2 offered `gpt-realtime`, `gpt-realtime-mini`, `gpt-realtime-1.5`, and `gpt-realtime-2`. No model deployment was needed.
+
+Not tested with Azure: a real microphone, interruption, the service's echo cancellation and noise suppression (they are turned on, and nothing was said into them), a session that reaches its time limit on the real service, and a key in place of the token.
 
 ## A UI layer without a client framework
 

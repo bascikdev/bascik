@@ -803,13 +803,28 @@ test.describe("voice", () => {
   });
 });
 
-test.describe("a voice call", () => {
-  /**
-   * A microphone that needs no device and no permission: a tone from the
-   * page's own audio engine, handed out where the browser would hand out the
-   * real one. The component still captures it, converts it, and sends it.
-   */
-  const toneMicrophone = `
+/**
+ * The server is set up for two speech-to-speech providers, each a stand-in.
+ * Gemini Live is reached by the browser itself with a one-use token; Azure
+ * Voice Live is reached through the server's relay. A call works the same
+ * with either, and only Azure says when each word is spoken.
+ */
+for (const provider of ["gemini-live", "azure-voice-live"]) {
+  test.describe(`a voice call (${provider})`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.route("**/api/voice-session", (route) =>
+        route.continue({
+          url: `${route.request().url()}?provider=${provider}`,
+        }),
+      );
+    });
+
+    /**
+     * A microphone that needs no device and no permission: a tone from the
+     * page's own audio engine, handed out where the browser would hand out the
+     * real one. The component still captures it, converts it, and sends it.
+     */
+    const toneMicrophone = `
     navigator.mediaDevices.getUserMedia = async () => {
       const context = new AudioContext();
       const tone = context.createOscillator();
@@ -820,20 +835,20 @@ test.describe("a voice call", () => {
     };
   `;
 
-  test("is not offered without scripts", async ({ page }) => {
-    test.skip(withScripts(), "this is the page with scripts off");
-    await expect(page.getByTestId("voice-call")).toBeHidden();
-  });
+    test("is not offered without scripts", async ({ page }) => {
+      test.skip(withScripts(), "this is the page with scripts off");
+      await expect(page.getByTestId("voice-call")).toBeHidden();
+    });
 
-  test("hears the reader, speaks, captions, and shows components from the server", async ({
-    page,
-  }) => {
-    test.skip(!withScripts(), "a voice call is a script");
-    await page.addInitScript(toneMicrophone);
-    await page.reload();
-    await page.evaluate("window.kept = true");
-    // Every word the caption puts in bold, as it happens.
-    await page.evaluate(`
+    test("hears the reader, speaks, captions, and shows components from the server", async ({
+      page,
+    }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      await page.addInitScript(toneMicrophone);
+      await page.reload();
+      await page.evaluate("window.kept = true");
+      // Every word the caption puts in bold, as it happens.
+      await page.evaluate(`
       window.__bold = [];
       const caption = document.querySelector('[data-testid="voice-call-caption"]');
       new MutationObserver(() => {
@@ -841,87 +856,102 @@ test.describe("a voice call", () => {
         if (bold) window.__bold.push(bold.textContent);
       }).observe(caption, { childList: true, subtree: true });
     `);
-    const toggle = page.getByTestId("voice-call-toggle");
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+      const toggle = page.getByTestId("voice-call-toggle");
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-pressed", "true");
 
-    // The microphone's sound reached the provider, which heard a sentence.
-    await expect(page.getByTestId("turn-user")).toHaveText("Recommend a book");
-    const reply = page.getByTestId("turn-voice");
-    await expect(reply).toContainText("Here are two books from the shelf.");
-    // What the model showed went to the server, through the catalog, and
-    // came back as components with their styles.
-    const cards = reply.getByTestId("book-card");
-    await expect(cards).toHaveCount(2);
-    await expect(cards.first().getByTestId("book-card-title")).toHaveText(
-      "Refactoring the Monolith",
-    );
-    await expect(cards.first()).toHaveCSS("border-top-style", "solid");
-    await expect(reply.getByTestId("ask-button")).toHaveCount(1);
-    // The caption followed the voice, a word at a time.
-    await expect
-      .poll(() => page.evaluate("[...new Set(window.__bold)].join(' ')"))
-      .toContain("Here are two");
-    // No page load happened, and the composer was not used.
-    expect(await page.evaluate("window.kept === true")).toBe(true);
+      // The microphone's sound reached the provider, which heard a sentence.
+      await expect(page.getByTestId("turn-user")).toHaveText(
+        "Recommend a book",
+      );
+      const reply = page.getByTestId("turn-voice");
+      await expect(reply).toContainText("Here are two books from the shelf.");
+      // What the model showed went to the server, through the catalog, and
+      // came back as components with their styles.
+      const cards = reply.getByTestId("book-card");
+      await expect(cards).toHaveCount(2);
+      await expect(cards.first().getByTestId("book-card-title")).toHaveText(
+        "Refactoring the Monolith",
+      );
+      await expect(cards.first()).toHaveCSS("border-top-style", "solid");
+      await expect(reply.getByTestId("ask-button")).toHaveCount(1);
+      // The caption followed the voice, a word at a time.
+      await expect
+        .poll(() => page.evaluate("[...new Set(window.__bold)].join(' ')"))
+        .toContain("Here are two");
+      await expect(page.getByTestId("voice-call-caption")).toHaveAttribute(
+        "data-timing",
+        provider === "azure-voice-live" ? "words" : "estimate",
+      );
+      if (provider === "azure-voice-live") {
+        // Each word was in bold at its own time, and a full stop stayed with its word.
+        await expect
+          .poll(() => page.evaluate("[...new Set(window.__bold)].join(' ')"))
+          .toBe("Here are two books from the shelf.");
+      }
+      // No page load happened, and the composer was not used.
+      expect(await page.evaluate("window.kept === true")).toBe(true);
 
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-pressed", "false");
 
-    // What was said and shown is stored: a reload has the same conversation.
-    await page.reload();
-    await expect(page.getByTestId("turn-user")).toHaveText("Recommend a book");
-    const stored = page.getByTestId("turn-assistant");
-    await expect(stored.locator(".spoken")).toHaveText(
-      "Here are two books from the shelf.",
-    );
-    await expect(stored.getByTestId("book-card")).toHaveCount(2);
+      // What was said and shown is stored: a reload has the same conversation.
+      await page.reload();
+      await expect(page.getByTestId("turn-user")).toHaveText(
+        "Recommend a book",
+      );
+      const stored = page.getByTestId("turn-assistant");
+      await expect(stored.locator(".spoken")).toHaveText(
+        "Here are two books from the shelf.",
+      );
+      await expect(stored.getByTestId("book-card")).toHaveCount(2);
+    });
+
+    test("takes a typed message, and waits for the reader before a tool that needs approval", async ({
+      page,
+    }) => {
+      test.skip(!withScripts(), "a voice call is a script");
+      // No microphone at all: the call still connects, and the reader types.
+      await page.addInitScript(
+        "navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('no', 'NotAllowedError'); };",
+      );
+      await page.reload();
+      await page.getByTestId("voice-call-toggle").click();
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "No microphone: type to talk.",
+      );
+
+      // Typed during a call, a message is said to the model, not posted.
+      await page
+        .getByTestId("chat-composer-input")
+        .fill("Please hold one for me");
+      await page.getByTestId("chat-composer-send").click();
+      await expect(page.getByTestId("turn-user")).toHaveText(
+        "Please hold one for me",
+      );
+      const reply = page.getByTestId("turn-voice");
+      const card = reply.getByTestId("tool-approval");
+      await expect(card).toContainText("The Quiet Network");
+      // The model is waiting on the line: nothing has been held.
+      await expect(reply).not.toContainText("Hold number");
+      await expect(page.getByTestId("voice-call-status")).toHaveText(
+        "Waiting for your answer on screen.",
+      );
+
+      await card.getByTestId("tool-approval-allow").click();
+      await expect(reply.getByTestId("tool-approval")).toHaveCount(0);
+      await expect(reply.locator('.part[data-state="done"]')).toHaveCount(1);
+      // The tool ran on the server, and the model was told its result.
+      await expect(reply).toContainText(
+        "The shop says: A copy of The Quiet Network is held",
+      );
+      await expect(reply).toContainText("Hold number H-");
+      await page.getByTestId("voice-call-toggle").click();
+
+      await page.reload();
+      await expect(
+        page.getByTestId("turn-assistant").locator('.part[data-state="done"]'),
+      ).toHaveCount(1);
+    });
   });
-
-  test("takes a typed message, and waits for the reader before a tool that needs approval", async ({
-    page,
-  }) => {
-    test.skip(!withScripts(), "a voice call is a script");
-    // No microphone at all: the call still connects, and the reader types.
-    await page.addInitScript(
-      "navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('no', 'NotAllowedError'); };",
-    );
-    await page.reload();
-    await page.getByTestId("voice-call-toggle").click();
-    await expect(page.getByTestId("voice-call-status")).toHaveText(
-      "No microphone: type to talk.",
-    );
-
-    // Typed during a call, a message is said to the model, not posted.
-    await page
-      .getByTestId("chat-composer-input")
-      .fill("Please hold one for me");
-    await page.getByTestId("chat-composer-send").click();
-    await expect(page.getByTestId("turn-user")).toHaveText(
-      "Please hold one for me",
-    );
-    const reply = page.getByTestId("turn-voice");
-    const card = reply.getByTestId("tool-approval");
-    await expect(card).toContainText("The Quiet Network");
-    // The model is waiting on the line: nothing has been held.
-    await expect(reply).not.toContainText("Hold number");
-    await expect(page.getByTestId("voice-call-status")).toHaveText(
-      "Waiting for your answer on screen.",
-    );
-
-    await card.getByTestId("tool-approval-allow").click();
-    await expect(reply.getByTestId("tool-approval")).toHaveCount(0);
-    await expect(reply.locator('.part[data-state="done"]')).toHaveCount(1);
-    // The tool ran on the server, and the model was told its result.
-    await expect(reply).toContainText(
-      "The shop says: A copy of The Quiet Network is held",
-    );
-    await expect(reply).toContainText("Hold number H-");
-    await page.getByTestId("voice-call-toggle").click();
-
-    await page.reload();
-    await expect(
-      page.getByTestId("turn-assistant").locator('.part[data-state="done"]'),
-    ).toHaveCount(1);
-  });
-});
+}

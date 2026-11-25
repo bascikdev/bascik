@@ -5,6 +5,9 @@
 //
 // The ticket is good for one session, for a minute, and has the app's
 // instructions and tools locked into it. The API key never leaves the server.
+// With Azure Voice Live the address is this server's relay, which holds the
+// credential and the setup. A server set up for more than one provider uses
+// the first, unless the request names one: ?provider=gemini-live.
 // 404 when this server has no voice provider.
 import { voiceTools } from "@bascik/genui/voice";
 import {
@@ -24,7 +27,9 @@ export const POST = async (request: Request): Promise<Response> => {
     request,
     typeof named === "string" ? named : undefined,
   );
-  const voice = await loadVoice();
+  const voice = await loadVoice(
+    new URL(request.url).searchParams.get("provider"),
+  );
   if (!voice) {
     return new Response("This server has no voice provider.", { status: 404 });
   }
