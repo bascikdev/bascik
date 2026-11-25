@@ -250,76 +250,146 @@ The optional client runtime. Without it every form in the chat is a page load, a
 
   /*
    * A page the model wrote in a ```html-app fence runs in a sandboxed frame
-   * (see @bascik/ai/sandbox). It can ask two things of the chat: to be as tall
-   * as its content, and to put text in the composer. A message counts only
-   * when it comes from an opaque origin, from the frame's own window, and
-   * repeats the token the server gave that frame. The text is never sent for
-   * the reader, never replaces what they typed, and never takes the focus.
+   * (see @bascik/ai/sandbox). Its first script sends the token the server gave
+   * the frame, once, with a MessageChannel port; everything after that comes
+   * through the port, which a page the frame navigates to never has. The
+   * page can ask to be as tall as its content, and offer a reply, which is
+   * shown as a button under the frame: only the reader's click on it puts
+   * the text in the message box, and the reader still presses Send.
    */
   // bascik-ignore js-attribute-selector the frames are the renderer's output, not a component's
   const SANDBOX_FRAMES = "iframe[data-genui-sandbox]";
-  const sandboxLoads = new WeakMap<HTMLIFrameElement, number>();
-  const lastSuggest = new WeakMap<HTMLIFrameElement, number>();
-  let suggested = "";
+  const sandboxPorts = new WeakMap<HTMLIFrameElement, MessagePort>();
+  /** When each frame last answered a ping, or was first seen. */
+  const sandboxAnswered = new WeakMap<HTMLIFrameElement, number>();
 
-  // A frame loads its page once. A second load is the page navigating the
-  // frame somewhere else: stop it there, and say so.
-  document.addEventListener(
-    "load",
-    (event) => {
-      const frame = event.target;
-      if (!(frame instanceof HTMLIFrameElement) || !frame.matches(SANDBOX_FRAMES)) {
-        return;
-      }
-      const loads = (sandboxLoads.get(frame) ?? 0) + 1;
-      sandboxLoads.set(frame, loads);
-      if (loads < 2) return;
-      const note = document.createElement("p");
-      note.dataset.testid = "sandbox-stopped";
-      note.textContent =
-        "This page tried to open another address, so it was stopped.";
-      frame.replaceWith(note);
-    },
-    true,
-  );
+  const stopFrame = (frame: HTMLIFrameElement): void => {
+    sandboxPorts.get(frame)?.close();
+    const note = document.createElement("p");
+    note.dataset.testid = "sandbox-stopped";
+    note.textContent =
+      "This page was stopped: it left its frame, or it stopped answering the chat.";
+    const next = frame.nextElementSibling;
+    if (next instanceof HTMLElement && next.dataset.testid === "sandbox-suggestion") {
+      next.remove();
+    }
+    frame.replaceWith(note);
+  };
+
+  /** A suggestion as the reader will see it: one line, no hidden characters, at most 200. */
+  const cleanSuggestion = (text: string): string =>
+    text
+      // Hangul fillers and the blank braille cell are letters that draw nothing.
+      .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u115F\u1160\u3164\uFFA0\u2800]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 200);
+
+  const offer = (frame: HTMLIFrameElement, text: string): void => {
+    let button = frame.nextElementSibling;
+    if (!(button instanceof HTMLButtonElement) || button.dataset.testid !== "sandbox-suggestion") {
+      const made = document.createElement("button");
+      made.type = "button";
+      made.dataset.testid = "sandbox-suggestion";
+      made.addEventListener("click", () => {
+        const input = byTestId(document, "chat-composer-input");
+        if (!(input instanceof HTMLTextAreaElement)) return;
+        input.value = made.dataset.text ?? "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.focus();
+      });
+      frame.after(made);
+      button = made;
+    }
+    // The button shows every character it will put in the message box.
+    (button as HTMLElement).dataset.text = text;
+    const label = document.createElement("strong");
+    label.textContent = "Suggested by the page:";
+    const reply = document.createElement("span");
+    reply.textContent = text;
+    button.replaceChildren(label, " ", reply);
+  };
 
   window.addEventListener("message", (event) => {
     if (event.origin !== "null") return;
     const data: unknown = event.data;
     if (typeof data !== "object" || data === null) return;
-    const kind = Reflect.get(data, "bascikSandbox");
-    if (kind !== "height" && kind !== "suggest") return;
+    if (Reflect.get(data, "bascikSandbox") !== "ready") return;
     const token = Reflect.get(data, "token");
+    const port = event.ports[0];
     const frame = [...document.querySelectorAll<HTMLIFrameElement>(SANDBOX_FRAMES)].find(
-      (each) =>
-        each.contentWindow === event.source &&
-        typeof token === "string" &&
-        token !== "" &&
-        each.getAttribute("data-genui-sandbox") === token &&
-        (sandboxLoads.get(each) ?? 0) < 2,
+      (each) => each.contentWindow === event.source,
     );
-    if (!frame) return;
-    if (kind === "height") {
-      const height = Number(Reflect.get(data, "height"));
-      if (Number.isFinite(height)) {
-        frame.height = String(Math.round(Math.min(Math.max(height, 60), 2000)));
+    if (
+      !frame ||
+      !port ||
+      typeof token !== "string" ||
+      token === "" ||
+      frame.getAttribute("data-genui-sandbox") !== token ||
+      sandboxPorts.has(frame)
+    ) {
+      port?.close();
+      return;
+    }
+    sandboxPorts.set(frame, port);
+    sandboxAnswered.set(frame, performance.now());
+    let lastOffer = -Infinity;
+    port.onmessage = (message) => {
+      const body: unknown = message.data;
+      if (body === "pong") {
+        sandboxAnswered.set(frame, performance.now());
+        return;
       }
-      return;
-    }
-    const text = Reflect.get(data, "text");
-    const input = byTestId(document, "chat-composer-input");
-    if (typeof text !== "string" || !(input instanceof HTMLTextAreaElement)) {
-      return;
-    }
-    // One suggestion a second per frame, and only into an empty box or over
-    // the last suggestion: what the reader typed is theirs.
-    const now = performance.now();
-    if (now - (lastSuggest.get(frame) ?? -Infinity) < 1000) return;
-    if (input.value !== "" && input.value !== suggested) return;
-    lastSuggest.set(frame, now);
-    suggested = text.slice(0, 2000);
-    input.value = suggested;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
+      if (body === "leaving") {
+        stopFrame(frame);
+        return;
+      }
+      if (typeof body !== "object" || body === null) return;
+      const kind = Reflect.get(body, "bascikSandbox");
+      if (kind === "height") {
+        const height = Number(Reflect.get(body, "height"));
+        if (Number.isFinite(height)) {
+          frame.height = String(Math.round(Math.min(Math.max(height, 60), 2000)));
+        }
+      } else if (kind === "suggest") {
+        const text = Reflect.get(body, "text");
+        const now = performance.now();
+        if (typeof text !== "string" || now - lastOffer < 1000) return;
+        const shown = cleanSuggestion(text);
+        if (!shown) return;
+        lastOffer = now;
+        offer(frame, shown);
+      }
+    };
   });
+
+  // Every frame must keep answering on its own port. A frame that navigated
+  // has a page that cannot (its port died with the old document), and a
+  // frame that never sent its token has no port at all: both are stopped.
+  // The check does not wait for load events, which a page can hold off.
+  let lastTick = performance.now();
+  setInterval(() => {
+    const now = performance.now();
+    // A hidden tab runs timers late, and its frames answer late too: after a
+    // late tick, judge no frame until each has had a fresh chance.
+    const late = now - lastTick > 2500;
+    lastTick = now;
+    for (const frame of document.querySelectorAll<HTMLIFrameElement>(SANDBOX_FRAMES)) {
+      const answered = sandboxAnswered.get(frame);
+      if (answered === undefined || late) {
+        if (answered === undefined || sandboxPorts.has(frame)) {
+          sandboxAnswered.set(frame, now);
+        }
+        if (sandboxPorts.has(frame)) sandboxPorts.get(frame)!.postMessage("ping");
+        continue;
+      }
+      // A page busy with its own script still answers well within this.
+      if (now - answered > 4000) {
+        stopFrame(frame);
+        continue;
+      }
+      sandboxPorts.get(frame)?.postMessage("ping");
+    }
+  }, 1000);
   state.genui = "idle";
 </script>

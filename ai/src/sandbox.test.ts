@@ -114,9 +114,11 @@ describe("sandboxFence", () => {
     const second = fence("<p>One</p>")!;
     expect(tokenOf(first)).not.toBe(tokenOf(second));
     const doc = decodeSrcdoc(/srcdoc="([^"]*)"/.exec(first)![1]!);
-    expect(doc).toContain(`const T="${tokenOf(first)}"`);
-    // suggest needs a click or a key press in the frame.
-    expect(doc).toContain("userActivation");
+    expect(doc).toContain(`token:"${tokenOf(first)}"`);
+    // The token goes out once, with a private port, from the first script.
+    expect(doc.indexOf("<script>")).toBeLessThan(doc.indexOf("<body>"));
+    expect(doc).toContain("new MessageChannel()");
+    expect(doc).toContain("document.currentScript.remove()");
   });
 
   it.each([

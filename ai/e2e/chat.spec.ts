@@ -132,46 +132,60 @@ test("an open-ended page runs in a sandboxed frame and can only suggest a messag
     fetch: "blocked",
   });
 
-  // A script with no click behind it cannot fill the message box, and a
-  // message without the frame's token is ignored.
+  // Only the frame's own port is heard: a message posted to the page, even
+  // one that claims the frame's token, is ignored.
   const composer = page.getByTestId("chat-composer-input");
-  // Playwright's evaluate counts as a gesture, which lasts about five
-  // seconds: the call is made after it has expired.
-  await child.evaluate(() => {
-    setTimeout(() => {
-      (
-        window as unknown as { bascik: { suggest(text: string): void } }
-      ).bascik.suggest("No click");
-    }, 5500);
+  const token = await frame.getAttribute("data-genui-sandbox");
+  await child.evaluate((token) => {
+    parent.postMessage({ bascikSandbox: "ready", token }, "*");
     parent.postMessage(
-      { bascikSandbox: "suggest", token: "forged-token-0000", text: "Forged" },
+      { bascikSandbox: "suggest", token, text: "Forged" },
       "*",
     );
     parent.postMessage({ bascikSandbox: "height", height: 1999 }, "*");
-  });
-  await page.waitForTimeout(6000);
-  await expect(composer).toHaveValue("");
+  }, token);
+  await page.waitForTimeout(300);
   await expect(frame).not.toHaveAttribute("height", "1999");
+  await expect(page.getByTestId("sandbox-suggestion")).toHaveCount(0);
 
-  // Its answer goes to the message box, and nothing is sent until the reader sends it.
+  // A reply it offers is a button in the chat. Only the reader's click on it
+  // fills the message box, and nothing is sent until the reader sends it.
   const before = await page.getByTestId("turn-user").count();
   await inside.getByTestId("timer-log").click();
+  const suggestion = page.getByTestId("sandbox-suggestion");
+  await expect(suggestion).toContainText("Log 1 minute of reading");
+  await expect(composer).toHaveValue("");
+  await suggestion.click();
   await expect(composer).toHaveValue("Log 1 minute of reading");
-  await expect(composer).not.toBeFocused();
   await expect(page.getByTestId("turn-user")).toHaveCount(before);
 
-  // What the reader typed is theirs: a suggestion never replaces it.
-  await composer.fill("My own words");
+  // The button shows every character it puts in the box: one line, nothing
+  // hidden, at most 200.
+  await composer.fill("");
   await page.waitForTimeout(1100);
-  await inside.getByTestId("timer-log").click();
-  await page.waitForTimeout(300);
-  await expect(composer).toHaveValue("My own words");
+  await child.evaluate(() => {
+    (
+      window as unknown as { bascik: { suggest(text: string): void } }
+    ).bascik.suggest("Yes\u200b\u202e please\n" + "x".repeat(400));
+  });
+  await expect(suggestion).toContainText("Yes please x");
+  await suggestion.click();
+  const filled = await composer.inputValue();
+  expect(filled).toMatch(/^Yes please x+$/);
+  expect(filled.length).toBeLessThanOrEqual(200);
+  expect(await suggestion.textContent()).toContain(filled);
 
-  // A page that navigates its frame is stopped there.
+  // A page that answers the chat's checks keeps running.
+  await page.waitForTimeout(5000);
+  await expect(frame).toBeVisible();
+
+  // A page that navigates its frame is stopped there, even before its own
+  // page has finished loading.
   await child.evaluate(() => {
     location.href = "http://127.0.0.1:4477/robots.txt";
   });
   await expect(page.getByTestId("sandbox-stopped")).toBeVisible();
+  await expect(suggestion).toHaveCount(0);
   await expect(page.getByTestId("turn-live").locator("iframe")).toHaveCount(0);
 });
 

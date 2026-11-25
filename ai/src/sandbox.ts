@@ -14,13 +14,18 @@
  * so it cannot fetch, load images from the network, or send data anywhere,
  * except scripts from origins the app lists.
  *
+ * Talking to the chat: the frame's first script sends a one-time token with a
+ * MessageChannel port, before any of the page's scripts run, and every later
+ * message uses that port, so a page the frame navigates to cannot talk to
+ * the chat. A suggestion is shown as a button in the chat page: only the
+ * reader's click there puts it in the message box.
+ *
  * The page can still send data out by navigating its own frame: no sandbox
  * flag and no CSP directive prevents that, so a prompt-injected page can put
  * what it was told into an address. The client runtime removes a frame that
- * navigates, but the request has gone by then. Each frame also carries a
- * random token that its messages to the chat must repeat, and the runtime
- * accepts them only from an opaque origin, so a page the frame navigated to
- * cannot talk to the chat. Other known limits: a page CSP is inherited by an srcdoc frame (a strict page CSP that
+ * leaves its page, but the request has gone by then, and an address that
+ * answers 204 No Content loads nothing, so a page can repeat it without being
+ * stopped. Other known limits: a page CSP is inherited by an srcdoc frame (a strict page CSP that
  * does not allow 'unsafe-inline' blocks the frame's scripts); and a listed
  * script origin receives whatever URL the page asks it for.
  */
@@ -82,7 +87,7 @@ export function sandboxPrompt(
     "Write one complete small web page in it, with inline style and script, only when no component fits: an interactive simulation, a custom chart, a small game, a calculator.",
     "It runs in a sandboxed frame with no network: no fetch, no images or fonts from the web (draw with inline SVG or a canvas), no links or navigation to other addresses, no forms, and no alert.",
     scriptLine,
-    'To answer for the reader, call bascik.suggest("text") from a click handler: it puts the text in their message box, for them to send.',
+    'To offer the reader a reply, call bascik.suggest("text"): the chat shows it as a button under the page, and pressing it puts the text in their message box.',
     "Keep it under 300 lines.",
   ].join(" ");
 }
@@ -112,16 +117,26 @@ export function sandboxDocument(
     `; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; form-action 'none'; base-uri 'none'`;
   const base =
     ":root{color-scheme:light dark}body{margin:0;padding:12px;font:15px/1.5 system-ui,sans-serif}";
-  // The token ties each message to this frame's own document: a page the
-  // frame navigates to does not have it. suggest needs a click or a key press
-  // in the frame, so a page cannot fill the message box on its own.
+  // The bridge is the first script of the frame, so it runs before any of
+  // the page's. It sends the token once, with a MessageChannel port, and
+  // removes its own element; later messages go only through the port, which
+  // page script cannot reach, and a page the frame navigates to never has it.
+  // The chat pings the port every few seconds and removes a frame that does
+  // not answer, and the bridge says "leaving" when its document goes away.
   const bridge =
-    `const T=${JSON.stringify(token)};` +
-    'const post=(m)=>parent.postMessage(Object.assign({token:T},m),"*");' +
-    'window.bascik={suggest(text){const a=navigator.userActivation;if(a&&!a.isActive)return;post({bascikSandbox:"suggest",text:String(text).slice(0,2000)})}};' +
-    'let lastHeight=0;const reportHeight=()=>{const h=Math.ceil(document.documentElement.scrollHeight);if(h!==lastHeight){lastHeight=h;post({bascikSandbox:"height",height:h})}};' +
-    'window.addEventListener("load",reportHeight);' +
-    'document.addEventListener("DOMContentLoaded",()=>{new ResizeObserver(reportHeight).observe(document.documentElement)});';
+    "(()=>{" +
+    `const channel=new MessageChannel(),port=channel.port1,send=port.postMessage.bind(port);` +
+    `parent.postMessage({bascikSandbox:"ready",token:${JSON.stringify(token)}},"*",[channel.port2]);` +
+    'port.onmessage=(e)=>{if(e.data==="ping")send("pong")};' +
+    'let lastHeight=0;const reportHeight=()=>{const h=Math.ceil(document.documentElement.scrollHeight);if(h!==lastHeight){lastHeight=h;send({bascikSandbox:"height",height:h})}};' +
+    'const suggest=(text)=>send({bascikSandbox:"suggest",text:String(text).slice(0,200)});' +
+    'Object.defineProperty(window,"bascik",{value:Object.freeze({suggest}),enumerable:true});' +
+    'addEventListener("load",reportHeight);' +
+    // Leaving this document, by navigation or otherwise: the chat stops the frame.
+    'addEventListener("pagehide",()=>send("leaving"));' +
+    'document.addEventListener("DOMContentLoaded",()=>new ResizeObserver(reportHeight).observe(document.documentElement));' +
+    "document.currentScript.remove();" +
+    "})();";
   return (
     `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}"><style>${base}</style><script>${bridge}</script></head><body>` +
     source +
@@ -176,6 +191,6 @@ export function sandboxFence(options: SandboxFenceOptions = {}): FenceRenderer {
     const token = newToken();
     const doc = sandboxDocument(source, origins, token);
     const escapedDoc = escapeAttr(doc);
-    return `<iframe class="genui-sandbox" data-genui-sandbox="${token}" sandbox="allow-scripts" referrerpolicy="no-referrer" loading="lazy" width="100%" height="${height}" title="${escapedTitle}" srcdoc="${escapedDoc}"></iframe>`;
+    return `<iframe class="genui-sandbox" data-genui-sandbox="${token}" sandbox="allow-scripts" referrerpolicy="no-referrer" width="100%" height="${height}" title="${escapedTitle}" srcdoc="${escapedDoc}"></iframe>`;
   };
 }
