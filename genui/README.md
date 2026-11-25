@@ -144,7 +144,7 @@ The package is shaped the way Bascik shares anything, and has two halves:
 - **Functions you import**, from `dist/`. In this repository the exports point at `src/*.ts`, which Node runs as it is. Node does not strip types under `node_modules`, so `publishConfig.exports` points the published package at JavaScript built by `yarn build`. Claude's SDK and `beautiful-mermaid` are optional peers: the core has no dependencies.
 - **Components you copy**, from `components/`. The `bascik.components` field offers them to [`bascik add`](https://bascik.dev/how-to/sharing-components), which copies `components/catalog/` (what a model may write) and `components/chat/` (the composer, the client runtime, voice, the approval form) into the reader's `src/components/`. They are the reader's files after that. That matters here: a catalog component's `@bascik` comment is part of the prompt, so it has to be editable.
 
-`yarn workspace @bascik/genui pack` builds the tarball. It was installed into an empty project, `bascik add @bascik/genui` copied its 19 components, and the docs' Quick Start page ran from it. `src/package.test.ts` checks the manifest and that every shipped component stands alone (a description, a test id, no `@/` import). It stays `private` until someone decides to publish it; releasing is not part of the experiment.
+`yarn workspace @bascik/genui pack` builds the tarball. It was installed into an empty project, `bascik add @bascik/genui` copied its components, and the docs' Quick Start page ran from it. `src/package.test.ts` checks the manifest and that every shipped component stands alone (a description, a test id, no `@/` import). It stays `private` until someone decides to publish it; releasing is not part of the experiment.
 
 ## Voice
 
@@ -159,8 +159,32 @@ It needed nothing from the server: the reply is already text in the page. A comp
 What it showed, and did not:
 
 - **The page is a good source for speech.** Because the reply is finished HTML, "what to say" is a walk over the reply's child nodes, and it stays in step with what the reader sees.
-- **Browser voices are the floor.** They are free and instant, and they sound like a browser. The docs' Voice page sketches where a speech model would plug in: audio as a second stream for the same turn, with word timestamps driving the same captions. None of that is built.
+- **Browser voices are the floor.** They are free and instant, and they sound like a browser. The next section is the other kind.
 - **Tested with stand-ins.** A headless browser has no speech engines, so the browser tests replace them with fakes that send word boundaries and one heard sentence. No real voice or microphone was part of a test.
+
+## A voice call with a speech-to-speech model
+
+`components/chat/voice-call.html`, `src/voice.ts`, and `src/gemini-live.ts` are a spoken conversation with Gemini Live: the reader talks, the model answers aloud, and what it shows arrives in the thread as components.
+
+The shape is different from a text reply, because a call is a long two-way audio connection:
+
+- **Audio goes direct.** The server asks Google for a one-use token with the whole session setup locked in (model, instructions, tools), and the browser connects to Google with it. The key stays on the server and no audio passes through it. This also means Bascik's server needed no WebSocket support.
+- **What runs or renders goes through the server.** A tool call arrives in the browser, which posts it to `/api/voice-tool`. `runVoiceTool` checks it, holds it for approval if the tool asks for that, and runs it.
+- **Components are a tool.** The model gets a `show` tool whose input is markup in the usual format. The server renders it through the catalog. The browser fetches the result as a page (`/voice-view`), because an API response is not rendered by Bascik and a page is.
+- **A turn is stored as parts.** What was spoken is a text part marked `spoken`, shown as plain text.
+
+What it showed:
+
+- **It works against the real model.** `stress/voice-live.ts` runs a session with a real key and no microphone. `gemini-3.8-live` called `list_books`, then `show` with a valid `card-grid` of two `book-card`s and an `ask-button`, and spoke for seven seconds; first audio arrived in two to three seconds. Asked to hold a book, it called `place_hold`, which waited for approval, ran, and was confirmed aloud. In a browser, a typed question in a real call rendered two styled cards in the thread.
+- **A model says markup if you let it.** The first prompt let the model put buttons in a second, spoken turn: it read tags aloud. The prompt now says the `show` tool is the only way to the screen, and spoken text is never parsed as markup.
+- **No word timestamps.** Gemini Live refuses `wordTimestamp` on a live session, so captions follow the audio clock: the current word is found by how far into the turn's audio playback is.
+- **Captions must outlive the turn.** A turn is complete, and stored, well before its audio has finished playing. The browser test caught captions stopping at that moment.
+
+What it did not test:
+
+- **A real microphone.** The browser tests give the component a synthetic tone as its microphone and a stand-in provider (`e2e/fake-live-server.ts`). The headless browser's own fake microphone hung on this machine. Nobody has spoken to it yet.
+- **Interruption, echo, and long sessions.** The code stops playback when the provider says the reader cut in. That path has only been read, not exercised.
+- **Any other provider.** Azure Voice Live and OpenAI Realtime would each be a `VoiceProvider` and a wire protocol in the component.
 
 ## A UI layer without a client framework
 

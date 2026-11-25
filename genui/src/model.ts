@@ -8,6 +8,12 @@ export interface TextPart {
   type: "text";
   /** Model output in the reply format: prose, catalog tags, fences. */
   text: string;
+  /**
+   * True for words a voice model spoke, as transcribed. They are shown as
+   * plain text, never read as the reply format: speech has no markup, and a
+   * transcript that looks like a tag is still only something that was said.
+   */
+  spoken?: boolean;
 }
 
 /**

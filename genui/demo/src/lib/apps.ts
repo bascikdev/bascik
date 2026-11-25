@@ -205,7 +205,7 @@ export const APPS: ChatApp[] = [
       { label: "Help me choose", say: "Help me choose a book" },
     ],
     instructions:
-      "You are a reading assistant for a small bookshop. Be brief and concrete. When the reader wants a copy kept for them, call place_hold; say first, in one sentence, what you are about to hold.",
+      "You are a reading assistant for a small bookshop. Be brief and concrete. Call list_books before recommending, and recommend only books the shop stocks. When the reader wants a copy kept for them, call place_hold; say first, in one sentence, what you are about to hold.",
     tools: bookTools,
     elements: [],
     offline: demoModel,

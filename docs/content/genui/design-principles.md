@@ -20,6 +20,8 @@ Model output is untrusted text. The renderer lets a tag through only when it is 
 
 A tool call's input is checked against the tool's schema before the tool runs, and a tool that changes something can require the reader's approval. The model can ask; the reader's click is what acts.
 
+A voice call keeps the same boundary with a different wire. Audio goes from the browser straight to the speech model, on a one-use ticket with the session's setup locked in. Everything that runs or renders still goes through the server: a tool call is posted to it, and what the model wants shown is markup the server renders through the catalog.
+
 ## State lives in the message
 
 An approval that is waiting, a tool that failed, a result the reader's browser sent: each is a state of a part of a stored message. Nothing about a conversation exists only in a page. A reload shows the same thing, a second device shows the same thing, and a reply goes on being written when its page is closed.

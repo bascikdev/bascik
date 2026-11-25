@@ -1,0 +1,490 @@
+<!-- @bascik
+A spoken conversation with a speech-to-speech model: the reader talks, the model answers aloud, and what it shows arrives in the thread as components. Captions follow the voice a few words at a time, with the current word in bold. Optional and all script. It needs three routes of yours: /api/voice-session for a ticket, /api/voice-tool to run the model's tool calls, and /api/voice-turn to store what was said, and a /voice-view page that renders what a call shows. The app prop is sent to them. Put it next to the composer.
+-->
+<style>
+  .call {
+    display: grid;
+    gap: 0.5rem;
+    max-inline-size: 46rem;
+    inline-size: 100%;
+    margin: 0 auto 0.5rem;
+  }
+  /* The class sets a display, which would otherwise undo the attribute. */
+  .call[hidden] {
+    display: none;
+  }
+  .caption {
+    min-block-size: 2.75rem;
+    margin: 0;
+    padding: 0.5rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 1.25rem;
+    line-height: 1.4;
+    text-align: center;
+    text-wrap: balance;
+  }
+  .caption:empty {
+    display: none;
+  }
+  .bar {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: end;
+    font-size: 0.8125rem;
+  }
+  .status {
+    margin: 0;
+    color: var(--muted);
+  }
+  .toggle {
+    padding: 0.25rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .toggle[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+</style>
+<div id="call" class="call" hidden data-testid="voice-call">
+  <!-- The same words as the voice, so it is hidden from a screen reader. -->
+  <p
+    id="caption"
+    class="caption"
+    aria-hidden="true"
+    data-testid="voice-call-caption"
+  ></p>
+  <div class="bar">
+    <p
+      id="status"
+      class="status"
+      role="status"
+      data-testid="voice-call-status"
+    ></p>
+    <button
+      id="toggle"
+      class="toggle"
+      type="button"
+      aria-pressed="false"
+      data-testid="voice-call-toggle"
+    >
+      Voice call
+    </button>
+  </div>
+  <input id="app" type="hidden" data-bascik-attr-value="app" />
+  <script type="text/typescript">
+    const root = document.getElementById("call")!;
+    const caption = document.getElementById("caption")!;
+    const status = document.getElementById("status")!;
+    const toggle = document.getElementById("toggle")!;
+    const app = (document.getElementById("app") as HTMLInputElement).value;
+
+    /** Everything one call holds, so ending it is letting go of this. */
+    interface Call {
+      socket: WebSocket;
+      playback: AudioContext;
+      /** Audio that is playing or queued, to stop it when the reader cuts in. */
+      sources: Set<AudioBufferSourceNode>;
+      /** When the next piece of audio starts, on the playback clock. */
+      nextAt: number;
+      microphone?: MediaStream;
+      capture?: AudioContext;
+      /** Calls that wait for the reader's answer, by id. */
+      waiting: Map<string, (decision: string) => void>;
+    }
+    let call: Call | null = null;
+
+    /** The turn being spoken: its words, its audio, and where it is drawn. */
+    let reader = "";
+    let said = "";
+    let readerBubble: HTMLElement | null = null;
+    let reply: HTMLElement | null = null;
+    let saidText: Text | null = null;
+    /**
+     * What the caption follows: the words and the audio of the turn being
+     * played. It is kept apart from the turn above, because a turn is over,
+     * and stored, well before its audio has finished playing.
+     */
+    let voiced = { text: "", start: 0, seconds: 0, open: false };
+    const voicing = (): typeof voiced => {
+      if (!voiced.open) voiced = { text: "", start: 0, seconds: 0, open: true };
+      return voiced;
+    };
+
+    const post = (path: string, fields: Record<string, string>): Promise<Response> => {
+      const body = new FormData();
+      body.set("app", app);
+      for (const [name, value] of Object.entries(fields)) body.set(name, value);
+      return fetch(path, { method: "POST", body });
+    };
+
+    /* ---- The thread: what was said and shown, as it happens ---- */
+
+    const thread = (): HTMLElement | null =>
+      document.querySelector<HTMLElement>('[data-testid="chat-thread"]');
+
+    function showReader(): void {
+      if (!readerBubble) {
+        readerBubble = document.createElement("p");
+        readerBubble.className = "turn-user";
+        readerBubble.dataset.testid = "turn-user";
+        thread()?.append(readerBubble);
+      }
+      readerBubble.textContent = reader.trim();
+    }
+
+    function showReply(): HTMLElement {
+      if (!reply) {
+        reply = document.createElement("div");
+        reply.className = "turn-assistant";
+        reply.dataset.testid = "turn-voice";
+        saidText = document.createTextNode("");
+        reply.append(saidText);
+        // An approval card in a spoken reply is answered in the call, not by
+        // a page load: the model is waiting on the line for the result.
+        reply.addEventListener("submit", (event) => {
+          const form = event.target as HTMLFormElement;
+          const id = new FormData(form).get("call");
+          const answer = (event.submitter as HTMLButtonElement | null)?.value;
+          const decide = typeof id === "string" && call?.waiting.get(id);
+          if (!decide || !answer) return;
+          event.preventDefault();
+          event.stopPropagation();
+          decide(answer);
+        });
+        thread()?.append(reply);
+      }
+      return reply;
+    }
+
+    /**
+     * Put a call's view in the reply. The view is a page the server renders,
+     * so its components arrive as finished markup; a script in it is made
+     * again here, because a script that was parsed elsewhere does not run.
+     */
+    async function showView(id: string): Promise<void> {
+      const response = await fetch(
+        `/voice-view?app=${encodeURIComponent(app)}&call=${encodeURIComponent(id)}`,
+      );
+      if (!response.ok) return;
+      const page = new DOMParser().parseFromString(await response.text(), "text/html");
+      const view = page.querySelector('[data-testid="voice-view"]');
+      if (!view) return;
+      const holder = document.createElement("div");
+      holder.dataset.view = id;
+      holder.append(...[...view.childNodes].map((node) => document.importNode(node, true)));
+      for (const parsed of holder.querySelectorAll("script")) {
+        const script = document.createElement("script");
+        for (const { name, value } of parsed.attributes) script.setAttribute(name, value);
+        script.textContent = parsed.textContent;
+        parsed.replaceWith(script);
+      }
+      const target = showReply();
+      const earlier = target.querySelector(`[data-view="${CSS.escape(id)}"]`);
+      if (earlier) earlier.replaceWith(holder);
+      else target.append(holder);
+    }
+
+    /* ---- Tool calls: the model asks here, the server runs them ---- */
+
+    interface ToolAnswer {
+      state: string;
+      output?: string;
+      view: boolean;
+    }
+
+    async function runTool(tool: { id: string; name: string; args: unknown }): Promise<string> {
+      const fields = { id: tool.id, name: tool.name, input: JSON.stringify(tool.args ?? {}) };
+      let answer = (await (await post("/api/voice-tool", fields)).json()) as ToolAnswer;
+      if (answer.view) await showView(tool.id);
+      if (answer.state === "approval-requested" && call) {
+        status.textContent = "Waiting for your answer on screen.";
+        const decision = await new Promise<string>((resolve) =>
+          call!.waiting.set(tool.id, resolve),
+        );
+        call?.waiting.delete(tool.id);
+        answer = (await (
+          await post("/api/voice-tool", { ...fields, decision })
+        ).json()) as ToolAnswer;
+        if (answer.view) await showView(tool.id);
+        if (call) status.textContent = call.microphone ? "Listening." : "";
+      }
+      return answer.output ?? "";
+    }
+
+    /* ---- Sound out: the model's voice, and captions that follow it ---- */
+
+    function play(base64: string): void {
+      if (!call) return;
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+      const samples = new Int16Array(bytes.buffer, 0, bytes.length >> 1);
+      const buffer = call.playback.createBuffer(1, samples.length, 24_000);
+      const channel = buffer.getChannelData(0);
+      for (let at = 0; at < samples.length; at++) channel[at] = samples[at]! / 32_768;
+      const source = call.playback.createBufferSource();
+      source.buffer = buffer;
+      source.connect(call.playback.destination);
+      const now = call.playback.currentTime;
+      if (call.nextAt < now) call.nextAt = now + 0.05;
+      const turn = voicing();
+      if (turn.seconds === 0) turn.start = call.nextAt;
+      source.start(call.nextAt);
+      call.nextAt += buffer.duration;
+      turn.seconds += buffer.duration;
+      call.sources.add(source);
+      source.onended = () => call?.sources.delete(source);
+    }
+
+    /** The reader cut in: stop talking at once. */
+    function quiet(): void {
+      for (const source of call?.sources ?? []) source.stop();
+      call?.sources.clear();
+      if (call) call.nextAt = 0;
+      voiced = { text: "", start: 0, seconds: 0, open: false };
+    }
+
+    /**
+     * The provider sends what the model says as text, with no time for each
+     * word. The text and the audio grow together, so the word being spoken
+     * is found by how far into the turn's audio the playback is.
+     */
+    const GROUP = 6;
+    function captions(): void {
+      if (!call) return;
+      const text = voiced.text.trim();
+      const words = text.split(/\s+/).filter(Boolean);
+      const elapsed = call.playback.currentTime - voiced.start;
+      if (!words.length || voiced.seconds === 0 || elapsed > voiced.seconds + 0.4) {
+        caption.replaceChildren();
+        delete caption.dataset.key;
+      } else {
+        const position = Math.max(0, elapsed / voiced.seconds) * text.length;
+        let index = 0;
+        for (let at = 0, word = 0; word < words.length; word++) {
+          if (at <= position) index = word;
+          at += words[word]!.length + 1;
+        }
+        const start = Math.floor(index / GROUP) * GROUP;
+        const key = `${start}:${index}:${words.length}`;
+        if (caption.dataset.key !== key) {
+          caption.dataset.key = key;
+          caption.replaceChildren(
+            ...words.slice(start, start + GROUP).flatMap((word, offset) => {
+              if (offset + start !== index) return [`${word} `];
+              const current = document.createElement("strong");
+              current.textContent = word;
+              return [current, " "];
+            }),
+          );
+        }
+      }
+      requestAnimationFrame(captions);
+    }
+
+    /* ---- Sound in: the microphone, as the provider wants it ---- */
+
+    const WORKLET = `registerProcessor("mic", class extends AudioWorkletProcessor {
+      process(inputs) {
+        const channel = inputs[0][0];
+        if (channel) this.port.postMessage(channel.slice(0));
+        return true;
+      }
+    });`;
+
+    async function listen(current: Call): Promise<void> {
+      const microphone = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      });
+      // Asking for 16 kHz here means the browser resamples, not this script.
+      const capture = new AudioContext({ sampleRate: 16_000 });
+      current.microphone = microphone;
+      current.capture = capture;
+      await capture.audioWorklet.addModule(
+        URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })),
+      );
+      const node = new AudioWorkletNode(capture, "mic");
+      capture.createMediaStreamSource(microphone).connect(node);
+      let pending: number[] = [];
+      node.port.onmessage = ({ data }: MessageEvent<Float32Array>) => {
+        for (const sample of data) {
+          pending.push(Math.max(-1, Math.min(1, sample)) * 32_767);
+        }
+        // A tenth of a second at a time.
+        if (pending.length < 1600 || current.socket.readyState !== WebSocket.OPEN) return;
+        const bytes = new Uint8Array(Int16Array.from(pending).buffer);
+        pending = [];
+        let binary = "";
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        current.socket.send(
+          JSON.stringify({
+            realtimeInput: {
+              audio: { data: btoa(binary), mimeType: "audio/pcm;rate=16000" },
+            },
+          }),
+        );
+      };
+    }
+
+    /* ---- The call ---- */
+
+    /** Store what was said, and start the next turn with a clean slate. */
+    function endTurn(): void {
+      if (reader.trim() || said.trim() || reply) {
+        void post("/api/voice-turn", { reader, model: said });
+      }
+      reader = said = "";
+      readerBubble = reply = saidText = null;
+      // The next thing said starts a new caption; this one plays out.
+      voiced.open = false;
+    }
+
+    async function onMessage(current: Call, event: MessageEvent): Promise<void> {
+      const text = typeof event.data === "string" ? event.data : await (event.data as Blob).text();
+      const message = JSON.parse(text);
+      if (current !== call) return;
+      if (message.setupComplete) {
+        // The call is on. The microphone joins when the reader allows it;
+        // without one the call still works, and the reader types.
+        status.textContent = "Connected. Type to talk.";
+        listen(current).then(
+          () => {
+            if (current === call) status.textContent = "Listening.";
+          },
+          () => {
+            if (current === call) status.textContent = "No microphone: type to talk.";
+          },
+        );
+        return;
+      }
+      if (message.toolCall) {
+        const functionResponses = [];
+        for (const tool of message.toolCall.functionCalls ?? []) {
+          const result = await runTool(tool).catch(() => "Error: the tool could not be run.");
+          functionResponses.push({ id: tool.id, name: tool.name, response: { result } });
+        }
+        if (current.socket.readyState === WebSocket.OPEN) {
+          current.socket.send(JSON.stringify({ toolResponse: { functionResponses } }));
+        }
+        return;
+      }
+      const content = message.serverContent;
+      if (!content) return;
+      if (content.interrupted) quiet();
+      if (content.inputTranscription?.text) {
+        reader += content.inputTranscription.text;
+        showReader();
+      }
+      for (const part of content.modelTurn?.parts ?? []) {
+        if (part.inlineData?.data) play(part.inlineData.data);
+      }
+      if (content.outputTranscription?.text) {
+        said += content.outputTranscription.text;
+        voicing().text += content.outputTranscription.text;
+        showReply();
+        saidText!.data = said;
+      }
+      // A turn that only called tools is not over: the model speaks next.
+      if (content.turnComplete && (said.trim() || !reply)) endTurn();
+    }
+
+    function hangUp(why = ""): void {
+      const ending = call;
+      if (!ending) return;
+      call = null;
+      endTurn();
+      for (const decide of ending.waiting.values()) decide("deny");
+      ending.socket.close();
+      for (const source of ending.sources) source.stop();
+      ending.microphone?.getTracks().forEach((track) => track.stop());
+      void ending.capture?.close();
+      void ending.playback.close();
+      caption.replaceChildren();
+      status.textContent = why;
+      toggle.setAttribute("aria-pressed", "false");
+      delete document.documentElement.dataset.genuiCall;
+    }
+
+    async function start(): Promise<void> {
+      toggle.setAttribute("aria-pressed", "true");
+      status.textContent = "Connecting…";
+      // Made in the click, so the browser lets it play.
+      const playback = new AudioContext({ sampleRate: 24_000 });
+      const response = await post("/api/voice-session", {});
+      if (!response.ok) {
+        void playback.close();
+        toggle.setAttribute("aria-pressed", "false");
+        status.textContent =
+          response.status === 404
+            ? "Voice is not set up on this server."
+            : "The voice service did not answer.";
+        return;
+      }
+      const ticket = (await response.json()) as { url: string; setup: unknown };
+      const current: Call = {
+        socket: new WebSocket(ticket.url),
+        playback,
+        sources: new Set(),
+        nextAt: 0,
+        waiting: new Map(),
+      };
+      call = current;
+      // Other voices on the page stay quiet while a call is on.
+      document.documentElement.dataset.genuiCall = "on";
+      const begin = (): void => current.socket.send(JSON.stringify(ticket.setup));
+      if (current.socket.readyState === WebSocket.OPEN) begin();
+      else current.socket.onopen = begin;
+      current.socket.onmessage = (event) => void onMessage(current, event);
+      current.socket.onclose = () => {
+        if (current === call) hangUp("The call ended.");
+      };
+      requestAnimationFrame(captions);
+    }
+
+    toggle.addEventListener("click", () => {
+      if (call) hangUp();
+      else void start().catch(() => hangUp("The call could not start."));
+    });
+
+    // During a call, a typed message is said to the model, not posted.
+    document.addEventListener(
+      "submit",
+      (event) => {
+        const form = event.target as HTMLFormElement;
+        if (!call || form.dataset.testid !== "chat-composer") return;
+        const input = form.querySelector("textarea");
+        const text = input?.value.trim();
+        if (!text || call.socket.readyState !== WebSocket.OPEN) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        quiet();
+        if (reader.trim() || said.trim()) endTurn();
+        reader = text;
+        showReader();
+        call.socket.send(
+          JSON.stringify({
+            clientContent: {
+              turns: [{ role: "user", parts: [{ text }] }],
+              turnComplete: true,
+            },
+          }),
+        );
+        form.reset();
+      },
+      true,
+    );
+
+    window.addEventListener("pagehide", () => hangUp());
+    if (typeof WebSocket === "function" && typeof AudioContext === "function") {
+      root.hidden = false;
+    }
+  </script>
+</div>

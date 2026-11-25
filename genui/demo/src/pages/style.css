@@ -95,6 +95,11 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* Words a voice model spoke, as transcribed. */
+.turn-assistant .spoken {
+  margin: 0;
+}
+
 .turn-assistant h3,
 .turn-assistant h4 {
   margin: 1rem 0 0.25rem;

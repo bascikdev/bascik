@@ -8,7 +8,7 @@ A reply is not one string. It is text the model wrote and the tool calls it made
 
 ```ts
 type MessagePart =
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; spoken?: boolean }
   | {
       type: "tool";
       id: string;
@@ -27,7 +27,7 @@ type MessagePart =
     };
 ```
 
-Parts are what you store, what the model is shown again, and what the page renders. A tool call therefore looks the same while it runs, after a reload, and to the model.
+A text part marked `spoken` is words from a [voice call](/genui/voice#a-call-with-a-speech-model), shown as plain text. Parts are what you store, what the model is shown again, and what the page renders. A tool call therefore looks the same while it runs, after a reload, and to the model.
 
 ## Define a tool
 

@@ -191,6 +191,11 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     let finished = false;
 
     function scan(): void {
+      // A voice call has its own voice and captions (voice-call).
+      if (document.documentElement.dataset.genuiCall) {
+        if (playing) hush();
+        return;
+      }
       const live = document.querySelector('[data-testid="turn-live"]');
       if (live !== reply) {
         // A new reply: whatever was being said belongs to the last one.

@@ -54,3 +54,8 @@ export {
   type TurnEvent,
   type TurnOptions,
 } from "./turn.ts";
+export type {
+  VoiceProvider,
+  VoiceSessionConfig,
+  VoiceTicket,
+} from "./voice.ts";

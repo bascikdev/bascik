@@ -4,7 +4,7 @@
  * before it runs (`approval: true`).
  */
 import type { Tool } from "@bascik/genui";
-import { findBook } from "./books.ts";
+import { BOOKS, findBook } from "./books.ts";
 
 /** A hold number that is the same for the same title, so tests can name it. */
 const holdNumber = (title: string): string => {
@@ -19,6 +19,14 @@ export const OPENS = 9;
 export const CLOSES = 18;
 
 export const bookTools: Tool[] = [
+  {
+    name: "list_books",
+    description:
+      "List the books this shop stocks, as JSON: title, author, rating, pages, year, mood, and a one-sentence blurb. Recommend only books from this list.",
+    inputSchema: { type: "object", properties: {} },
+    note: () => `<tool-note>Checked the shelves</tool-note>`,
+    run: () => JSON.stringify(BOOKS),
+  },
   {
     name: "local_time",
     description:

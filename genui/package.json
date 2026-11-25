@@ -22,8 +22,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./anthropic": "./src/anthropic.ts",
+    "./gemini-live": "./src/gemini-live.ts",
     "./mermaid": "./src/mermaid.ts",
-    "./openai": "./src/openai.ts"
+    "./openai": "./src/openai.ts",
+    "./voice": "./src/voice.ts"
   },
   "publishConfig": {
     "exports": {
@@ -35,6 +37,10 @@
         "types": "./dist/anthropic.d.ts",
         "default": "./dist/anthropic.js"
       },
+      "./gemini-live": {
+        "types": "./dist/gemini-live.d.ts",
+        "default": "./dist/gemini-live.js"
+      },
       "./mermaid": {
         "types": "./dist/mermaid.d.ts",
         "default": "./dist/mermaid.js"
@@ -42,6 +48,10 @@
       "./openai": {
         "types": "./dist/openai.d.ts",
         "default": "./dist/openai.js"
+      },
+      "./voice": {
+        "types": "./dist/voice.d.ts",
+        "default": "./dist/voice.js"
       }
     }
   },

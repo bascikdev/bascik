@@ -29,6 +29,7 @@ src/components/
     chat-composer.html
     chat-enhance.html
     chat-voice.html
+    voice-call.html
     tool-approval.html
     tool-status.html
 ```

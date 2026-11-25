@@ -34,14 +34,14 @@ The reader gets the prose as it is written, then each component as finished mark
 
 ## What is in the package
 
-| Piece          | What it does                                                                                            | Page                                                         |
-| :------------- | :------------------------------------------------------------------------------------------------------ | :----------------------------------------------------------- |
-| Catalog        | Reads a component folder into the list of tags a model may write, and into the prompt that teaches them | [Catalog](/genui/catalog)                                    |
-| Renderer       | Turns a model's text stream into complete, safe HTML chunks                                             | [Catalog](/genui/catalog#the-renderer-is-the-trust-boundary) |
-| Turn loop      | Runs the tools a model calls, with states, approval, and tools the reader's browser answers             | [Tools & Approval](/genui/tools)                             |
-| Client runtime | An optional script that sends forms with `fetch` and streams the answer into the open page              | [Client Runtime](/genui/client-runtime)                      |
-| Voice          | An optional script that reads replies aloud and captions them word by word                              | [Voice & Captions](/genui/voice)                             |
-| Components     | A starter catalog and the chat's own pieces, copied into your project with `bascik add`                 | [Quick Start](/genui/quick-start)                            |
+| Piece          | What it does                                                                                                                     | Page                                                         |
+| :------------- | :------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------- |
+| Catalog        | Reads a component folder into the list of tags a model may write, and into the prompt that teaches them                          | [Catalog](/genui/catalog)                                    |
+| Renderer       | Turns a model's text stream into complete, safe HTML chunks                                                                      | [Catalog](/genui/catalog#the-renderer-is-the-trust-boundary) |
+| Turn loop      | Runs the tools a model calls, with states, approval, and tools the reader's browser answers                                      | [Tools & Approval](/genui/tools)                             |
+| Client runtime | An optional script that sends forms with `fetch` and streams the answer into the open page                                       | [Client Runtime](/genui/client-runtime)                      |
+| Voice          | Optional scripts that read replies aloud with word-by-word captions, or hold a spoken conversation with a speech-to-speech model | [Voice & Captions](/genui/voice)                             |
+| Components     | A starter catalog and the chat's own pieces, copied into your project with `bascik add`                                          | [Quick Start](/genui/quick-start)                            |
 
 [Design Principles](/genui/design-principles) explains the choices behind these, and where they fit Bascik's own.
 

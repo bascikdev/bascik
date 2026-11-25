@@ -15,6 +15,7 @@ import {
   runTurn,
   turnPending,
   type Broadcast,
+  type VoiceProvider,
   type Catalog,
   type ChatMessage,
   type Model,
@@ -22,6 +23,7 @@ import {
   type TurnRenderOptions,
 } from "@bascik/genui";
 import { MERMAID_PROMPT, mermaidFence } from "@bascik/genui/mermaid";
+import { newVoiceTurn, voicePrompt, type VoiceTurn } from "@bascik/genui/voice";
 import { APPS, type ChatApp } from "./apps.ts";
 import { listModels, modelFor, pickModel, requestedModel } from "./models.ts";
 
@@ -285,14 +287,72 @@ export async function stopTurn(conversationId: string): Promise<boolean> {
 
 /** A 303 back to the app's page, so a form POST ends in a GET (and reload is safe). */
 export function backToChat(session: Session, id: string): Response {
-  const headers = new Headers({ location: session.app.path });
+  const headers = chatCookies(session, id);
+  headers.set("location", session.app.path);
+  return new Response(null, { status: 303, headers });
+}
+
+/** The cookies that say who the visitor is and which conversation is open. */
+export function chatCookies(session: Session, id: string): Headers {
+  const headers = new Headers();
   const attributes = "Path=/; HttpOnly; SameSite=Lax";
   headers.append("set-cookie", `chat_${session.app.id}=${id}; ${attributes}`);
   headers.append(
     "set-cookie",
     `visitor=${session.visitor}; Max-Age=31536000; ${attributes}`,
   );
-  return new Response(null, { status: 303, headers });
+  return headers;
+}
+
+/* ---- Voice: a spoken conversation with a speech-to-speech model ---- */
+
+/**
+ * The voice provider this server is set up with, or null. With
+ * GEMINI_API_KEY set it is Gemini Live. The key stays here: a browser gets a
+ * one-use ticket from /api/voice-session and connects to the provider itself.
+ */
+export async function loadVoice(): Promise<VoiceProvider | null> {
+  if (!process.env.GEMINI_API_KEY) return null;
+  const { geminiLiveVoice } = await import("@bascik/genui/gemini-live");
+  return geminiLiveVoice({
+    model: process.env.GEMINI_LIVE_MODEL,
+    // A test points these at a stand-in for the provider.
+    httpBase: process.env.GEMINI_LIVE_HTTP,
+    wsBase: process.env.GEMINI_LIVE_WS,
+  });
+}
+
+/** What a spoken conversation is told: the app's instructions, then how to speak and show. */
+export async function voiceSystemPrompt(app: ChatApp): Promise<string> {
+  return [
+    app.instructions,
+    "",
+    voicePrompt(await loadCatalog(), {
+      elements: app.elements,
+      fences: { mermaid: MERMAID_PROMPT },
+    }),
+  ].join("\n");
+}
+
+/**
+ * The voice turn being recorded for each conversation: the tool calls made
+ * and what was shown since the last turn was stored, and the HTML of each
+ * call's view, which the page fetches from /voice-view so that Bascik renders
+ * its components. One process's memory, like a live reply.
+ */
+interface VoiceState {
+  turn: VoiceTurn;
+  views: Map<string, string>;
+}
+const voiceStates = new Map<string, VoiceState>();
+
+export function voiceState(conversationId: string): VoiceState {
+  let state = voiceStates.get(conversationId);
+  if (!state) {
+    state = { turn: newVoiceTurn(), views: new Map() };
+    voiceStates.set(conversationId, state);
+  }
+  return state;
 }
 
 /* ---- Catalog and model ---- */

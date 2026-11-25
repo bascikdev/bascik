@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 const PORT = 4477;
 const MODEL_PORT = 4479;
+const VOICE_PORT = 4480;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -23,6 +24,12 @@ export default defineConfig({
   ],
   webServer: [
     {
+      // A stand-in for a speech-to-speech provider, so a voice call has one to reach.
+      command: `node e2e/fake-live-server.ts ${VOICE_PORT}`,
+      port: VOICE_PORT,
+      reuseExistingServer: false,
+    },
+    {
       // A stand-in for a local model server, so the selector has one to list.
       command: `node e2e/fake-model-server.ts ${MODEL_PORT}`,
       url: `http://127.0.0.1:${MODEL_PORT}/v1/models`,
@@ -39,6 +46,10 @@ export default defineConfig({
         GENUI_LOCAL_MODELS: "0",
         OPENAI_BASE_URL: `http://127.0.0.1:${MODEL_PORT}/v1`,
         OPENAI_LABEL: "Test server",
+        // Voice goes to the stand-in, with a key that is not one.
+        GEMINI_API_KEY: "not-a-key",
+        GEMINI_LIVE_HTTP: `http://127.0.0.1:${VOICE_PORT}`,
+        GEMINI_LIVE_WS: `ws://127.0.0.1:${VOICE_PORT}`,
       },
     },
   ],

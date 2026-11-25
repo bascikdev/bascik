@@ -63,9 +63,11 @@ export function renderMessage(
 ): string {
   return partsOf(message)
     .map((part) =>
-      part.type === "text"
-        ? renderText(part.text, catalog, options)
-        : renderToolPart(part, catalog, options),
+      part.type === "tool"
+        ? renderToolPart(part, catalog, options)
+        : part.spoken
+          ? `<p class="spoken">${escapeHtml(part.text)}</p>`
+          : renderText(part.text, catalog, options),
     )
     .join("");
 }
