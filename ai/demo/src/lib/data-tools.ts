@@ -1,8 +1,19 @@
 /**
  * A small bookshop database (SQLite, in memory, seeded the same way on every
  * start) and one read-only query tool over it.
+ *
+ * The model writes the SQL, so a query can be slow on purpose: a recursive
+ * CTE that never ends, or a cross join of the orders table with itself a few
+ * times. node:sqlite runs a statement synchronously, with no time limit and
+ * no progress handler, so the database lives in a child process. A query
+ * that runs past its deadline is stopped by killing that process, and the
+ * next query starts a fresh one. A worker thread would not do: terminating
+ * one cannot interrupt SQLite's native loop, so the thread would keep a CPU
+ * core busy forever. The server's own process never runs model-written SQL.
  */
-import { DatabaseSync } from "node:sqlite";
+import { fork, type ChildProcess } from "node:child_process";
+import { constants, DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
 import type { Tool } from "@bascik/ai";
 
 export const SCHEMA = `
@@ -101,8 +112,12 @@ function createDatabase(): DatabaseSync {
   return db;
 }
 
-let database: DatabaseSync | undefined;
 const MAX_ROWS = 200;
+/** How long one query may run before its process is stopped. */
+export const QUERY_TIMEOUT_MS = 2000;
+const CHILD_FLAG = "--bascik-data-tools-database";
+/** SQLITE_AUTH: the authorizer refused the statement. */
+const SQLITE_AUTH = 23;
 
 export interface QueryResult {
   columns: string[];
@@ -110,8 +125,8 @@ export interface QueryResult {
   truncated: boolean;
 }
 
-/** Run one read-only SELECT and return at most 200 rows. */
-export function runSql(sql: string): QueryResult {
+/** Check that `sql` is one SELECT, and return it without a final semicolon. */
+function selectStatement(sql: string): string {
   const statement = sql.trim().replace(/;\s*$/, "");
   if (!/^(select|with)\b/i.test(statement)) {
     throw new Error("Only a SELECT statement is allowed.");
@@ -119,10 +134,24 @@ export function runSql(sql: string): QueryResult {
   if (statement.includes(";")) {
     throw new Error("Send one statement, with no semicolons inside it.");
   }
-  database ??= createDatabase();
-  const prepared = database.prepare(
-    `SELECT * FROM (${statement}) LIMIT ${MAX_ROWS + 1}`,
-  );
+  return statement;
+}
+
+/** Run a checked statement on the child process's database. */
+function query(database: DatabaseSync, statement: string): QueryResult {
+  let prepared;
+  try {
+    prepared = database.prepare(
+      `SELECT * FROM (${statement}) LIMIT ${MAX_ROWS + 1}`,
+    );
+  } catch (error) {
+    if ((error as { errcode?: unknown }).errcode === SQLITE_AUTH) {
+      throw new Error(
+        "Recursive queries are not allowed. Write the query without a CTE that refers to itself.",
+      );
+    }
+    throw error;
+  }
   const records = prepared.all() as Record<string, unknown>[];
   const columns = prepared.columns().map((column) => column.name);
   return {
@@ -132,6 +161,193 @@ export function runSql(sql: string): QueryResult {
       .map((record) => columns.map((column) => record[column])),
     truncated: records.length > MAX_ROWS,
   };
+}
+
+type DatabaseReply =
+  { ready: true } | { result: QueryResult } | { error: string };
+
+/** The child's side: build the database, then answer one query at a time. */
+function serveQueries(): void {
+  const database = createDatabase();
+  // A recursive CTE can produce rows forever, so the connection refuses one,
+  // whether or not the query spells out RECURSIVE.
+  database.setAuthorizer((action) =>
+    action === constants.SQLITE_RECURSIVE
+      ? constants.SQLITE_DENY
+      : constants.SQLITE_OK,
+  );
+  process.on("message", (statement: string) => {
+    let reply: DatabaseReply;
+    try {
+      reply = { result: query(database, statement) };
+    } catch (error) {
+      reply = { error: error instanceof Error ? error.message : String(error) };
+    }
+    process.send!(reply);
+  });
+  // The server went away, so this process has nobody to answer.
+  process.on("disconnect", () => process.exit(0));
+  process.send!({ ready: true } satisfies DatabaseReply);
+}
+
+if (process.argv.includes(CHILD_FLAG) && typeof process.send === "function") {
+  serveQueries();
+}
+
+interface DatabaseProcess {
+  child: ChildProcess;
+  ready: Promise<void>;
+}
+
+let current: DatabaseProcess | undefined;
+// Queries run one at a time, so each deadline measures only its own query.
+let queue: Promise<unknown> = Promise.resolve();
+
+/** Let an idle child, or a busy one, decide whether the server stays up. */
+function holdOpen(child: ChildProcess, busy: boolean): void {
+  const channel = child.channel as
+    { ref?: () => void; unref?: () => void } | null | undefined;
+  if (busy) {
+    child.ref();
+    channel?.ref?.();
+  } else {
+    child.unref();
+    channel?.unref?.();
+  }
+}
+
+function startProcess(): DatabaseProcess {
+  const child = fork(fileURLToPath(import.meta.url), [CHILD_FLAG], {
+    execArgv: [],
+    serialization: "advanced",
+    stdio: ["ignore", "inherit", "inherit", "ipc"],
+  });
+  // A failed send or spawn is reported to the query; never crash the server.
+  child.on("error", () => undefined);
+  const kill = () => child.kill("SIGKILL");
+  process.once("exit", kill);
+  child.once("exit", () => process.off("exit", kill));
+  holdOpen(child, false);
+  const ready = new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      child.off("message", onMessage);
+      child.off("error", onFailure);
+      child.off("exit", onFailure);
+    };
+    const onMessage = (reply: DatabaseReply) => {
+      if ("ready" in reply) {
+        cleanup();
+        resolve();
+      }
+    };
+    const onFailure = (error?: unknown) => {
+      cleanup();
+      reject(
+        error instanceof Error
+          ? error
+          : new Error("The database process stopped while starting."),
+      );
+    };
+    child.on("message", onMessage);
+    child.on("error", onFailure);
+    child.on("exit", onFailure);
+  });
+  return { child, ready };
+}
+
+/** Send one statement to the child and wait at most `timeoutMs` for rows. */
+async function ask(statement: string, timeoutMs: number): Promise<QueryResult> {
+  const running = (current ??= startProcess());
+  const { child } = running;
+  const discard = () => {
+    if (current === running) current = undefined;
+  };
+  holdOpen(child, true);
+  try {
+    await running.ready;
+  } catch (error) {
+    discard();
+    holdOpen(child, false);
+    throw error;
+  }
+  return new Promise<QueryResult>((resolve, reject) => {
+    let settled = false;
+    const finish = (settle: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.off("message", onMessage);
+      child.off("error", onFailure);
+      child.off("exit", onFailure);
+      holdOpen(child, false);
+      settle();
+    };
+    const onMessage = (reply: DatabaseReply) => {
+      if ("result" in reply) finish(() => resolve(reply.result));
+      else if ("error" in reply) finish(() => reject(new Error(reply.error)));
+    };
+    const onFailure = (error?: unknown) => {
+      if (settled) return;
+      discard();
+      child.kill("SIGKILL");
+      finish(() =>
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("The database process stopped during the query."),
+        ),
+      );
+    };
+    const timer = setTimeout(() => {
+      discard();
+      // Only killing the process stops SQLite mid-statement.
+      child.kill("SIGKILL");
+      finish(() =>
+        reject(
+          new Error(
+            `The query ran longer than ${timeoutMs} ms and was stopped. Write a smaller query.`,
+          ),
+        ),
+      );
+    }, timeoutMs);
+    child.on("message", onMessage);
+    child.on("error", onFailure);
+    child.on("exit", onFailure);
+    child.send(statement, (error) => {
+      if (error) onFailure(error);
+    });
+  });
+}
+
+/** The process id of the database process, if one is running (for tests). */
+export function databaseProcessId(): number | undefined {
+  return current?.child.pid;
+}
+
+export interface RunSqlOptions {
+  /** How long the query may run, in milliseconds. */
+  timeoutMs?: number;
+}
+
+/**
+ * Run one read-only SELECT and return at most 200 rows. It runs in a child
+ * process, and a query that runs longer than `timeoutMs` (2 seconds by
+ * default) is stopped and rejected.
+ */
+export function runSql(
+  sql: string,
+  options: RunSqlOptions = {},
+): Promise<QueryResult> {
+  let statement: string;
+  try {
+    statement = selectStatement(sql);
+  } catch (error) {
+    return Promise.reject(error);
+  }
+  const timeoutMs = options.timeoutMs ?? QUERY_TIMEOUT_MS;
+  const result = queue.then(() => ask(statement, timeoutMs));
+  queue = result.catch(() => undefined);
+  return result;
 }
 
 export const dataTools: Tool[] = [
@@ -146,6 +362,6 @@ export const dataTools: Tool[] = [
       required: ["sql"],
     },
     note: () => `<tool-note>Querying the database</tool-note>`,
-    run: (input) => JSON.stringify(runSql(String(input.sql))),
+    run: async (input) => JSON.stringify(await runSql(String(input.sql))),
   },
 ];
