@@ -150,5 +150,5 @@ export const BLOG_TEMPLATE: StarterTemplate = {
     "A blog: Markdown posts, a post list, an Atom feed, and an about page",
   directories: blogDirectories,
   files: blogFiles,
-  dependencies: { marked: "^18.2.0" },
+  dependencies: { marked: "^18.2.1" },
 };
