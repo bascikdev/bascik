@@ -144,7 +144,7 @@ describe("docs template", () => {
     expect(TEMPLATES).toContain(DOCS_TEMPLATE);
     expect(templateNamed("docs")).toBe(DOCS_TEMPLATE);
     expect(templateNamed("Docs")).toBe(DOCS_TEMPLATE);
-    expect(DOCS_TEMPLATE.dependencies).toEqual({ marked: "^18.2.0" });
+    expect(DOCS_TEMPLATE.dependencies).toEqual({ marked: "^18.2.1" });
     expect(file("src/lib/markdown.ts")).toContain('from "marked"');
   });
 

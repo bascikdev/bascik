@@ -5401,7 +5401,7 @@ __metadata:
     esbuild: "npm:^0.28.2"
     handlebars: "npm:^4.7.10"
     lighthouse: "npm:^13.6.0"
-    marked: "npm:^18.2.0"
+    marked: "npm:^18.2.1"
     node-pty: "npm:^1.1.0"
     nunjucks: "npm:^3.2.4"
     opentype.js: "npm:^2.0.0"
@@ -5455,7 +5455,7 @@ __metadata:
     "@playwright/test": "npm:^1.65.1"
     "@types/node": "npm:^24.19.1"
     "@vitest/coverage-v8": "npm:^5.1.0"
-    marked: "npm:^18.2.0"
+    marked: "npm:^18.2.1"
     sharp: "npm:^0.35.5"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.8"
@@ -12389,12 +12389,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"marked@npm:^18.2.0":
-  version: 18.2.0
-  resolution: "marked@npm:18.2.0"
+"marked@npm:^18.2.1":
+  version: 18.2.1
+  resolution: "marked@npm:18.2.1"
   bin:
     marked: bin/marked.js
-  checksum: 10c0/7766e5564cc6dbe3e8d6ee0091f3a4656002dd993817e68c5510e2ff1fa1d6456c9bcd18af1a4a5e8ea87382832a07026c109ab333913f125d51c93f29ba9017
+  checksum: 10c0/6b266b2b20b2cc7e4275087f6c32f8a1b7f9ce5e73e233a4f46614a59617b7afc8d613bbcb57bacaea5da8f6ad5a830fe10384564106d2d1afb354ba1b0bb9e0
   languageName: node
   linkType: hard
 

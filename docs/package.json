@@ -76,7 +76,7 @@
     "@bascik/bascik": "workspace:*",
     "ejs": "^7.0.2",
     "handlebars": "^4.7.10",
-    "marked": "^18.2.0",
+    "marked": "^18.2.1",
     "nunjucks": "^3.2.4"
   }
 }
