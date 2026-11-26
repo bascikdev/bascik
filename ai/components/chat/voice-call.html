@@ -256,6 +256,42 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
   </button>
   <input id="app" type="hidden" data-bascik-attr-value="app" />
   <script type="text/typescript">
+    import { barTransform, decodePcm16, isPlaying, measureSpeech, pcmChunker } from "./voice-call/audio.ts";
+    import { azureVoiceLive } from "./voice-call/azure-voice-live.ts";
+    import {
+      captionAt,
+      captionGroup,
+      captionParts,
+      newResponse as resetResponse,
+      newTimeline,
+      scheduleAudio,
+      silent,
+      timedWord as placeWord,
+      voicing,
+    } from "./voice-call/captions.ts";
+    import { callOf, fillForm, formGet, isApproval, openForm, sendForm } from "./voice-call/forms.ts";
+    import type { SentForm } from "./voice-call/forms.ts";
+    import { geminiLive } from "./voice-call/gemini-live.ts";
+    import { closeCall, openMicrophone } from "./voice-call/microphone.ts";
+    import { fetchView, postForm, viewHolder } from "./voice-call/requests.ts";
+    import {
+      closeReason,
+      providerLabel,
+      sessionFailure,
+      statusText,
+      toggleLabel,
+    } from "./voice-call/status.ts";
+    import { answerTool as routeTool, runTool } from "./voice-call/tools.ts";
+    import type { ToolCall } from "./voice-call/tools.ts";
+    import type {
+      Call,
+      StatusPatch,
+      Ticket,
+      ToolAnswer,
+      ToolRequest,
+      WireHooks,
+    } from "./voice-call/types.ts";
+
     const root = document.getElementById("call")!;
     const caption = document.getElementById("caption")!;
     const status = document.getElementById("status")!;
@@ -264,84 +300,27 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     const provider = document.getElementById("provider")!;
     const meter = document.getElementById("meter")!;
     const bars = [...meter.children] as HTMLElement[];
-    /** The speech models a ticket can name, as the reader is told. */
-    const PROVIDERS: Record<string, string> = {
-      "azure-voice-live": "Azure Voice Live",
-      "gemini-live": "Gemini Live",
-    };
     /** The button says what pressing it does. */
     const pressed = (on: boolean): void => {
       toggle.setAttribute("aria-pressed", String(on));
-      label.textContent = on ? "End call" : "Voice call";
-      toggle.title = on ? "End call" : "Voice call";
+      label.textContent = toggleLabel(on);
+      toggle.title = toggleLabel(on);
       if (!on) {
         provider.textContent = "";
         toggle.removeAttribute("aria-busy");
       }
     };
     const app = (document.getElementById("app") as HTMLInputElement).value;
-
-    /** Everything one call holds, so ending it is letting go of this. */
-    interface Call {
-      socket: WebSocket;
-      playback: AudioContext;
-      /** Audio that is playing or queued, to stop it when the reader cuts in. */
-      sources: Set<AudioBufferSourceNode>;
-      /** When the next piece of audio starts, on the playback clock. */
-      nextAt: number;
-      microphone?: MediaStream;
-      capture?: AudioContext;
-      /** Calls that wait for the reader's answer, by id. */
-      waiting: Map<string, (decision: string) => void>;
-      wire: Wire;
-      /** What the status line says when nothing more urgent is going on. */
-      base: string;
-      /** The reader is speaking. */
-      hearing: boolean;
-      /** The reader has finished, and the model has not yet answered. */
-      thinking: boolean;
-      /** Tool calls and forms on their way to the server. */
-      working: number;
-      /** The microphone's level, 0 to 1, and whether it counts as speech. */
-      level: number;
-      speaking: boolean;
-      /** When the level last fell quiet, while still counted as speech. */
-      quietAt: number;
-    }
-    /** One provider's protocol: what to send, and what its messages mean. */
-    interface Wire {
-      /** True when only the microphone's level tells that the reader speaks. */
-      readonly byMeter: boolean;
-      /** The first message, when the provider wants one from the browser. */
-      begin(): void;
-      /** A piece of microphone audio: 16 kHz, 16-bit, base64. */
-      audio(base64: string): void;
-      /** A typed message, said to the model. */
-      text(text: string): void;
-      receive(message: any): Promise<void>;
-    }
     let call: Call | null = null;
 
     /* ---- The status line: one thing at a time, the most pressing first ---- */
 
-    /** Approval waits, then work, then thinking, then hearing, then listening. */
     function refresh(): void {
       if (!call) return;
-      status.textContent = call.waiting.size
-        ? "Waiting for your answer on screen."
-        : call.working > 0
-          ? "Working…"
-          : call.thinking
-            ? "Thinking…"
-            : call.hearing
-              ? "Hearing you…"
-              : call.base;
+      status.textContent = statusText(call);
     }
     let thinkingStamp = 0;
-    function mark(
-      patch: Partial<Pick<Call, "base" | "hearing" | "thinking">>,
-      current: Call | null = call,
-    ): void {
+    function mark(patch: StatusPatch, current: Call | null = call): void {
       if (!current) return;
       Object.assign(current, patch);
       if (patch.thinking) {
@@ -376,72 +355,14 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     let readerBubble: HTMLElement | null = null;
     let reply: HTMLElement | null = null;
     let saidText: Text | null = null;
-    /**
-     * What the caption follows: the words and the audio of the turn being
-     * played. It is kept apart from the turn above, because a turn is over,
-     * and stored, well before its audio has finished playing.
-     */
-    interface TimedWord {
-      text: string;
-      /** Seconds from the start of the turn's audio. */
-      at: number;
-    }
-    interface Voiced {
-      text: string;
-      start: number;
-      seconds: number;
-      open: boolean;
-      /** The time of each word, when the provider says it. */
-      words: TimedWord[];
-    }
-    const silent = (open: boolean): Voiced => ({
-      text: "",
-      start: 0,
-      seconds: 0,
-      open,
-      words: [],
-    });
-    let voiced = silent(false);
-    const voicing = (): Voiced => {
-      if (!voiced.open) voiced = silent(true);
-      return voiced;
-    };
-    /**
-     * A provider times words from the start of one response's audio, and a
-     * turn can have more than one response. This is where the response being
-     * played starts in the turn's audio; null until its first audio arrives,
-     * and words that come before that wait in `early`.
-     */
-    let responseAt: number | null = null;
-    let early: { text: string; ms: number }[] = [];
-    const newResponse = (): void => {
-      responseAt = null;
-      early = [];
-    };
-    function timedWord(text: string, ms: number): void {
-      if (responseAt === null) {
-        early.push({ text, ms });
-        return;
-      }
-      const words = voicing().words;
-      // A full stop comes as a word of its own: it belongs to the word before.
-      if (/^[\p{P}\p{S}]+$/u.test(text) && words.length) {
-        words[words.length - 1]!.text += text;
-      } else {
-        words.push({ text, at: responseAt + ms / 1000 });
-      }
-    }
+    /** What the caption follows, apart from the turn (see captions.ts). */
+    const timeline = newTimeline();
 
     const post = (
       path: string,
       fields: Record<string, string>,
       signal?: AbortSignal,
-    ): Promise<Response> => {
-      const body = new FormData();
-      body.set("app", app);
-      for (const [name, value] of Object.entries(fields)) body.set(name, value);
-      return fetch(path, { method: "POST", body, signal });
-    };
+    ): Promise<Response> => postForm(app, path, fields, signal);
 
     /* ---- The thread: what was said and shown, as it happens ---- */
 
@@ -486,8 +407,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
 
     /**
      * Put a call's view in the reply. The view is a page the server renders,
-     * so its components arrive as finished markup; a script in it is made
-     * again here, because a script that was parsed elsewhere does not run.
+     * so its components arrive as finished markup (see requests.ts).
      */
     async function showView(id: string): Promise<void> {
       // Where the view will go, until it comes.
@@ -501,91 +421,66 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       if (earlier) earlier.replaceWith(placeholder);
       else target.append(placeholder);
       try {
-        await fillView(id, placeholder);
+        const view = await fetchView(app, id);
+        if (view) placeholder.replaceWith(viewHolder(view, id));
       } finally {
         // A view that did not come leaves nothing behind.
         placeholder.remove();
       }
     }
 
-    async function fillView(id: string, placeholder: HTMLElement): Promise<void> {
-      const response = await fetch(
-        `/voice-view?app=${encodeURIComponent(app)}&call=${encodeURIComponent(id)}`,
-      );
-      if (!response.ok) return;
-      const page = new DOMParser().parseFromString(await response.text(), "text/html");
-      // A data attribute is not renamed per instance, so it can be selected as written.
-      // bascik-ignore js-attribute-selector
-      const view = page.querySelector('[data-testid="voice-view"]');
-      if (!view) return;
-      const holder = document.createElement("div");
-      holder.dataset.view = id;
-      holder.append(...[...view.childNodes].map((node) => document.importNode(node, true)));
-      for (const parsed of holder.querySelectorAll("script")) {
-        const script = document.createElement("script");
-        for (const { name, value } of parsed.attributes) script.setAttribute(name, value);
-        script.textContent = parsed.textContent;
-        parsed.replaceWith(script);
-      }
-      placeholder.replaceWith(holder);
-    }
-
     /* ---- Tool calls: the model asks here, the server runs them ---- */
 
-    interface ToolAnswer {
-      state: string;
-      output?: string;
-      view: boolean;
+    function serverTool(tool: ToolCall): Promise<string> {
+      const current = call;
+      return runTool(tool, {
+        ask: (fields) =>
+          busy(current, async () => {
+            const answer = (await (await post("/api/voice-tool", fields)).json()) as ToolAnswer;
+            if (answer.view) await showView(tool.id);
+            return answer;
+          }),
+        wait: (id) =>
+          call
+            ? new Promise<string>((resolve) => {
+                call!.waiting.set(id, resolve);
+                refresh();
+              })
+            : null,
+        done: (id) => call?.waiting.delete(id),
+      });
     }
 
-    async function runTool(tool: { id: string; name: string; args: unknown }): Promise<string> {
-      const fields = { id: tool.id, name: tool.name, input: JSON.stringify(tool.args ?? {}) };
-      const current = call;
-      const run = (extra: Record<string, string>): Promise<ToolAnswer> =>
-        busy(current, async () => {
-          const answer = (await (
-            await post("/api/voice-tool", { ...fields, ...extra })
-          ).json()) as ToolAnswer;
-          if (answer.view) await showView(tool.id);
-          return answer;
-        });
-      let answer = await run({});
-      if (answer.state === "approval-requested" && call) {
-        const decision = await new Promise<string>((resolve) => {
-          call!.waiting.set(tool.id, resolve);
-          refresh();
-        });
-        call?.waiting.delete(tool.id);
-        answer = await run({ decision });
-      }
-      return answer.output ?? "";
-    }
+    const answerTool = (tool: ToolRequest): Promise<string> => {
+      mark({ thinking: false });
+      return routeTool(tool, {
+        fillForm: (args) =>
+          fillForm(
+            args,
+            openForm(thread()),
+            (form, button) => sendForm(form, button, (job) => busy(call, job)),
+            (say) => heard(reader.trim() ? `\n${say}` : say),
+          ),
+        runTool: serverTool,
+      });
+    };
 
     /* ---- Sound out: the model's voice, and captions that follow it ---- */
 
     function play(base64: string): void {
       if (!call) return;
-      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-      const samples = new Int16Array(bytes.buffer, 0, bytes.length >> 1);
+      const samples = decodePcm16(base64);
       const buffer = call.playback.createBuffer(1, samples.length, 24_000);
-      const channel = buffer.getChannelData(0);
-      for (let at = 0; at < samples.length; at++) channel[at] = samples[at]! / 32_768;
+      buffer.getChannelData(0).set(samples);
       const source = call.playback.createBufferSource();
       source.buffer = buffer;
       source.connect(call.playback.destination);
       const now = call.playback.currentTime;
       if (call.nextAt < now) call.nextAt = now + 0.05;
       mark({ thinking: false });
-      const turn = voicing();
-      if (turn.seconds === 0) turn.start = call.nextAt;
-      if (responseAt === null) {
-        responseAt = call.nextAt - turn.start;
-        for (const word of early.splice(0)) timedWord(word.text, word.ms);
-      }
+      scheduleAudio(timeline, call.nextAt, buffer.duration);
       source.start(call.nextAt);
       call.nextAt += buffer.duration;
-      // Measured on the clock, so a pause between two responses is counted.
-      turn.seconds = call.nextAt - turn.start;
       call.sources.add(source);
       source.onended = () => call?.sources.delete(source);
     }
@@ -595,52 +490,28 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       for (const source of call?.sources ?? []) source.stop();
       call?.sources.clear();
       if (call) call.nextAt = 0;
-      voiced = silent(false);
-      newResponse();
+      timeline.voiced = silent(false);
+      resetResponse(timeline);
     }
 
-    /**
-     * Which word is being spoken. A provider that sends the time of each
-     * word is followed exactly. One that sends only text is estimated: the
-     * text and the audio grow together, so the word is found by how far into
-     * the turn's audio the playback is.
-     */
-    const GROUP = 6;
+    /** Draw the word being spoken, a frame at a time, for as long as the call is on. */
     function captions(): void {
       if (!call) return;
-      const timed = voiced.words.length > 0;
-      const text = voiced.text.trim();
-      const words = timed
-        ? voiced.words.map((word) => word.text)
-        : text.split(/\s+/).filter(Boolean);
-      const elapsed = call.playback.currentTime - voiced.start;
-      if (!words.length || voiced.seconds === 0 || elapsed > voiced.seconds + 0.4) {
+      const frame = captionAt(timeline.voiced, call.playback.currentTime);
+      if (!frame) {
         caption.replaceChildren();
         delete caption.dataset.key;
       } else {
-        let index = 0;
-        if (timed) {
-          voiced.words.forEach((word, at) => {
-            if (word.at <= elapsed) index = at;
-          });
-        } else {
-          const position = Math.max(0, elapsed / voiced.seconds) * text.length;
-          for (let at = 0, word = 0; word < words.length; word++) {
-            if (at <= position) index = word;
-            at += words[word]!.length + 1;
-          }
-        }
-        const start = Math.floor(index / GROUP) * GROUP;
-        const key = `${start}:${index}:${words.length}`;
+        const { key } = captionGroup(frame);
         if (caption.dataset.key !== key) {
           caption.dataset.key = key;
-          caption.dataset.timing = timed ? "words" : "estimate";
+          caption.dataset.timing = frame.timed ? "words" : "estimate";
           caption.replaceChildren(
-            ...words.slice(start, start + GROUP).flatMap((word, offset) => {
-              if (offset + start !== index) return [`${word} `];
+            ...captionParts(frame.words, frame.index).map((part) => {
+              if (typeof part === "string") return part;
               const current = document.createElement("strong");
-              current.textContent = word;
-              return [current, " "];
+              current.textContent = part.current;
+              return current;
             }),
           );
         }
@@ -650,41 +521,11 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
 
     /* ---- Sound in: the microphone, as the provider wants it ---- */
 
-    const WORKLET = `registerProcessor("mic", class extends AudioWorkletProcessor {
-      process(inputs) {
-        const channel = inputs[0][0];
-        if (channel) this.port.postMessage(channel.slice(0));
-        return true;
-      }
-    });`;
-
-    /** Above this the reader counts as speaking; below the lower one, as quiet. */
-    const SPEECH_ON = 0.15;
-    const SPEECH_OFF = 0.08;
-    /** How long it must stay quiet before speech is over, in milliseconds. */
-    const QUIET_FOR = 500;
-    const BAR_SHAPE = [0.55, 0.8, 1, 0.8, 0.55];
-
-    /** True while the model's voice is playing, when the microphone hears it back. */
-    const playing = (current: Call): boolean => current.playback.currentTime < current.nextAt;
-
-    /** One block of microphone sound: smooth its level, and tell when speech starts and ends. */
+    /** One block of microphone sound: its level, and whether the reader speaks. */
     function measure(current: Call, rms: number): void {
-      // A voice is far quieter than a full-scale tone: this puts speech near the top.
-      const target = Math.min(1, rms * 8);
-      current.level += (target - current.level) * (target > current.level ? 0.5 : 0.06);
-      const now = performance.now();
-      if (!current.speaking && current.level > SPEECH_ON) {
-        current.speaking = true;
-        current.quietAt = 0;
-      } else if (current.speaking && current.level < SPEECH_OFF) {
-        current.quietAt ||= now;
-        if (now - current.quietAt > QUIET_FOR) current.speaking = false;
-      } else if (current.speaking) {
-        current.quietAt = 0;
-      }
+      measureSpeech(current, rms, performance.now());
       if (!current.wire.byMeter || current !== call) return;
-      const hearing = current.speaking && !playing(current);
+      const hearing = current.speaking && !isPlaying(current);
       if (hearing === current.hearing) return;
       // Speaking again is not waiting for an answer; stopping is, if words were heard.
       const waits = !hearing && reader.trim() !== "" && !said.trim();
@@ -698,7 +539,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       if (meter.dataset.level !== shown) {
         meter.dataset.level = shown;
         bars.forEach((bar, at) => {
-          bar.style.transform = `scaleY(${Math.max(0.12, current.level * BAR_SHAPE[at]!).toFixed(2)})`;
+          bar.style.transform = barTransform(current.level, at);
         });
       }
       meter.toggleAttribute("data-speaking", current.speaking);
@@ -706,41 +547,16 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     }
 
     async function listen(current: Call): Promise<void> {
-      const microphone = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-      });
-      // The call ended while the browser was asking: nothing may keep the microphone.
-      if (current !== call) {
-        microphone.getTracks().forEach((track) => track.stop());
-        return;
-      }
-      // Asking for 16 kHz here means the browser resamples, not this script.
-      const capture = new AudioContext({ sampleRate: 16_000 });
-      current.microphone = microphone;
-      current.capture = capture;
-      await capture.audioWorklet.addModule(
-        URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })),
-      );
-      if (current !== call) return;
-      const node = new AudioWorkletNode(capture, "mic");
-      capture.createMediaStreamSource(microphone).connect(node);
-      let pending: number[] = [];
+      const node = await openMicrophone(current, () => current === call);
+      if (!node) return;
+      const chunks = pcmChunker();
       meter.dataset.on = "";
       requestAnimationFrame(() => drawMeter(current));
       node.port.onmessage = ({ data }: MessageEvent<Float32Array>) => {
-        let squares = 0;
-        for (const sample of data) {
-          squares += sample * sample;
-          pending.push(Math.max(-1, Math.min(1, sample)) * 32_767);
-        }
-        measure(current, Math.sqrt(squares / (data.length || 1)));
-        // A tenth of a second at a time.
-        if (pending.length < 1600 || current.socket.readyState !== WebSocket.OPEN) return;
-        const bytes = new Uint8Array(Int16Array.from(pending).buffer);
-        pending = [];
-        let binary = "";
-        for (const byte of bytes) binary += String.fromCharCode(byte);
-        current.wire.audio(btoa(binary));
+        measure(current, chunks.add(data));
+        if (current.socket.readyState !== WebSocket.OPEN) return;
+        const chunk = chunks.take();
+        if (chunk !== null) current.wire.audio(chunk);
       };
     }
 
@@ -755,7 +571,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       readerBubble = reply = saidText = null;
       mark({ thinking: false });
       // The next thing said starts a new caption; this one plays out.
-      voiced.open = false;
+      timeline.voiced.open = false;
     }
 
     /** The call is on. The microphone joins when the reader allows it;
@@ -782,325 +598,27 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
 
     function spoke(text: string): void {
       said += text;
-      voicing().text += text;
+      voicing(timeline).text += text;
       showReply();
       saidText!.data = said;
     }
 
-    const answerTool = (tool: { id: unknown; name: string; args: unknown }): Promise<string> => {
-      mark({ thinking: false });
-      // A call with no id cannot be matched to its answer or its approval:
-      // it is refused here, and never posted as "undefined".
-      const id = tool.id;
-      if (typeof id !== "string" || !id) {
-        return Promise.resolve("Error: the tool call has no id.");
-      }
-      return (
-        tool.name === "fill_form" ? fillForm(tool.args) : runTool({ ...tool, id })
-      ).catch(
-        () => "Error: the tool could not be run.",
-      );
-    };
-
-    /* ---- Forms on screen: the reader presses them, or says the answer ---- */
-
-    const plain = (text: string | null | undefined): string =>
-      (text ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-
-    /*
-     * A form's controls are also its properties, by name, and they win over
-     * the form's own: `<input name="action">` makes `form.action` that input.
-     * The model names the fields of the forms it writes, so a form in the
-     * thread is read only through the prototype, never by property name.
-     */
-    const formGet = <K extends keyof HTMLFormElement>(form: HTMLFormElement, key: K): HTMLFormElement[K] =>
-      Reflect.get(HTMLFormElement.prototype, key, form) as HTMLFormElement[K];
-    const controlsOf = (form: HTMLFormElement): Element[] => [...formGet(form, "elements")];
-
-    /**
-     * A question about allowing an action is the reader's alone to answer. It
-     * answers a call by a hidden field, which no field the model writes is.
-     */
-    const callOf = (form: HTMLFormElement): string | undefined =>
-      controlsOf(form).find(
-        (control): control is HTMLInputElement =>
-          control instanceof HTMLInputElement && control.type === "hidden" && control.name === "call",
-      )?.value;
-    const isApproval = (form: HTMLFormElement): boolean =>
-      callOf(form) !== undefined || Element.prototype.closest.call(form, "[data-part]") !== null;
-
-    /** The newest form in the thread that has not been sent. */
-    function openForm(): HTMLFormElement | null {
-      const forms = [...(thread()?.querySelectorAll("form") ?? [])].filter(
-        (form) =>
-          !formGet(form, "dataset").sent &&
-          !isApproval(form) &&
-          // One that is on the page but not shown is not one the reader means.
-          Element.prototype.checkVisibility.call(form),
-      );
-      return forms.at(-1) ?? null;
-    }
-
-    /**
-     * Send a form the way a call needs it sent: to its own address, marked as
-     * coming from a call. The server does what the form does and answers with
-     * what it says, which goes to the speech model in place of a typed reply.
-     */
-    async function sendForm(
-      form: HTMLFormElement,
-      submitter: HTMLElement | null,
-    ): Promise<{ say: string; hidden: boolean } | null> {
-      // Read before the controls are disabled: a disabled control is not sent.
-      const body = new FormData(form, submitter);
-      body.set("voice", "1");
-      const locked = controlsOf(form).filter(
-        (control): control is HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement =>
-          "disabled" in control && !control.disabled,
-      );
-      const style = formGet(form, "style");
-      Element.prototype.setAttribute.call(form, "aria-busy", "true");
-      // A form is not part of this component's template, so it is dimmed here.
-      style.cssText += ";opacity:0.7;cursor:progress";
-      for (const control of locked) control.disabled = true;
-      let answer: { say?: unknown; hidden?: unknown } | null = null;
-      try {
-        answer = await busy(call, async () => {
-          const response = await fetch(formGet(form, "action"), { method: "POST", body });
-          return response.ok
-            ? ((await response.json().catch(() => null)) as {
-                say?: unknown;
-                hidden?: unknown;
-              } | null)
-            : null;
-        });
-      } finally {
-        Element.prototype.removeAttribute.call(form, "aria-busy");
-        style.opacity = "";
-        style.cursor = "";
-        for (const control of locked) control.disabled = false;
-      }
-      if (typeof answer?.say !== "string" || !answer.say.trim()) return null;
-      // Sent once: it stays on screen as it was answered, and says so.
-      formGet(form, "dataset").sent = "";
-      Reflect.set(HTMLElement.prototype, "inert", true, form);
-      style.opacity = "0.7";
-      const pressed = submitter?.textContent?.trim();
-      const note = document.createElement("p");
-      note.dataset.testid = "voice-call-answered";
-      note.style.cssText = "margin:0;font-size:0.8125rem;font-weight:600";
-      note.textContent = pressed ? `Answered: ${pressed}` : "Answered";
-      Element.prototype.append.call(form, note);
-      // A record in a fixed shape is for the model; the reader's own words are theirs.
-      return { say: answer.say.trim(), hidden: answer.hidden === true };
-    }
-
-    /** The model fills in the newest form with what the reader said, and presses it. */
-    async function fillForm(input: unknown): Promise<string> {
-      const { press, text, field } = (
-        typeof input === "object" && input !== null ? input : {}
-      ) as Record<string, unknown>;
-      const form = openForm();
-      if (!form) return "Error: there is no form on the screen to fill in.";
-      const controls = controlsOf(form) as (HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement)[];
-      const named = (control: HTMLElement & { labels?: NodeListOf<HTMLLabelElement> | null }): string =>
-        control instanceof HTMLButtonElement
-          ? plain(control.textContent)
-          : plain(control.labels?.[0]?.textContent);
-      const boxes = controls.filter(
-        (control) =>
-          control instanceof HTMLTextAreaElement ||
-          (control instanceof HTMLInputElement &&
-            !["hidden", "radio", "checkbox", "submit", "button"].includes(control.type)),
-      );
-      const options = controls.filter(
-        (control): control is HTMLInputElement =>
-          control instanceof HTMLInputElement &&
-          (control.type === "radio" || control.type === "checkbox"),
-      );
-      const buttons = controls.filter(
-        (control): control is HTMLButtonElement =>
-          control instanceof HTMLButtonElement && control.type === "submit",
-      );
-      const has = (kind: string, list: HTMLElement[]): string =>
-        list.length ? ` ${kind}: ${list.map((control) => named(control) || "unnamed").join(", ")}.` : "";
-      const contents = `This form has${has("buttons", buttons)}${has("options", options)}${has("text boxes", boxes)}`;
-
-      if (typeof text === "string" && text.trim()) {
-        const wanted = plain(typeof field === "string" ? field : "");
-        const box = (wanted && boxes.find((candidate) => named(candidate).includes(wanted))) || boxes[0];
-        if (!box) return `Error: this form has no text box. ${contents}`;
-        (box as HTMLTextAreaElement).value = text.trim();
-        box.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-      const wanted = plain(typeof press === "string" ? press : "");
-      if (!wanted) return `Error: say what to press. ${contents}`;
-      const match = <T extends HTMLElement>(list: T[]): T | undefined =>
-        list.find((control) => named(control) === wanted) ??
-        list.find((control) => named(control).includes(wanted));
-      const option = match(options);
-      if (option) {
-        option.checked = true;
-        option.dispatchEvent(new Event("change", { bubbles: true }));
-        return `Chose "${named(option)}". It is not sent yet. ${contents}`;
-      }
-      const button = match(buttons);
-      if (!button) return `Error: no button or option says "${String(press)}". ${contents}`;
-      const sent = await sendForm(form, button);
-      if (!sent) return "Error: the form could not be sent.";
-      // What was sent is the reader's answer, and is shown and stored as theirs.
-      if (!sent.hidden) heard(reader.trim() ? `\n${sent.say}` : sent.say);
-      return `Sent for the reader: ${sent.say}\nThis is the reader's answer, sent and recorded. Nothing more will arrive for it: carry on now with what comes next.`;
-    }
-
-    /* ---- The providers ---- */
-
-    function geminiLive(current: Call, setup: unknown): Wire {
-      const send = (message: unknown): void => {
-        if (current.socket.readyState === WebSocket.OPEN) {
-          current.socket.send(JSON.stringify(message));
-        }
-      };
-      return {
-        byMeter: true,
-        begin: () => send(setup),
-        audio: (data) =>
-          send({ realtimeInput: { audio: { data, mimeType: "audio/pcm;rate=16000" } } }),
-        text: (text) =>
-          send({
-            clientContent: { turns: [{ role: "user", parts: [{ text }] }], turnComplete: true },
-          }),
-        async receive(message) {
-          if (message.setupComplete) {
-            connected(current);
-            return;
-          }
-          if (message.toolCall) {
-            const functionResponses = [];
-            for (const tool of message.toolCall.functionCalls ?? []) {
-              const result = await answerTool(tool);
-              functionResponses.push({ id: tool.id, name: tool.name, response: { result } });
-            }
-            send({ toolResponse: { functionResponses } });
-            // The model goes on with what the tools said.
-            mark({ thinking: true }, current);
-            return;
-          }
-          const content = message.serverContent;
-          if (!content) return;
-          if (content.interrupted) quiet();
-          if (content.inputTranscription?.text) heard(content.inputTranscription.text);
-          for (const part of content.modelTurn?.parts ?? []) {
-            if (part.inlineData?.data) play(part.inlineData.data);
-          }
-          if (content.outputTranscription?.text) spoke(content.outputTranscription.text);
-          // A turn that only called tools is not over: the model speaks next.
-          if (content.turnComplete && (said.trim() || !reply)) endTurn();
-        },
-      };
-    }
-
-    /**
-     * Azure Voice Live, through the server's relay. The relay sends the
-     * session's setup, so the first thing heard here is that it is on.
-     */
-    function azureVoiceLive(current: Call): Wire {
-      const send = (message: unknown): void => {
-        if (current.socket.readyState === WebSocket.OPEN) {
-          current.socket.send(JSON.stringify(message));
-        }
-      };
-      /** A reply is being made. */
-      let active = false;
-      /** The tool calls of the reply being made. */
-      let tools: Promise<void>[] = [];
-      return {
-        byMeter: false,
-        begin: () => {},
-        audio: (audio) => send({ type: "input_audio_buffer.append", audio }),
-        text(text) {
-          if (active) send({ type: "response.cancel" });
-          send({
-            type: "conversation.item.create",
-            item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
-          });
-          send({ type: "response.create" });
-        },
-        async receive(message) {
-          switch (message.type) {
-            case "session.updated":
-              connected(current);
-              break;
-            case "input_audio_buffer.speech_started":
-              // The reader cut in, or began a new turn.
-              quiet();
-              if (said.trim()) endTurn();
-              mark({ hearing: true, thinking: false });
-              break;
-            case "input_audio_buffer.speech_stopped":
-              // The reader is done: the model has not answered yet.
-              mark({ hearing: false, thinking: true });
-              break;
-            case "conversation.item.input_audio_transcription.delta":
-              // The words so far; the completed text that follows replaces them.
-              if (message.delta) heard(message.delta);
-              break;
-            case "conversation.item.input_audio_transcription.completed":
-              if (message.transcript) heard(message.transcript, true);
-              break;
-            case "response.created":
-              active = true;
-              newResponse();
-              // A turn can be more than one response: keep their words apart.
-              if (said && !/\s$/.test(said)) spoke(" ");
-              break;
-            case "response.audio.delta":
-              if (message.delta) play(message.delta);
-              break;
-            case "response.audio_transcript.delta":
-              if (message.delta) spoke(message.delta);
-              break;
-            case "response.audio_timestamp.delta":
-              if (message.text) timedWord(message.text, message.audio_offset_ms ?? 0);
-              break;
-            case "response.function_call_arguments.done": {
-              let args: unknown;
-              try {
-                args = JSON.parse(message.arguments || "{}");
-              } catch {
-                // Passed on as it is: the server refuses it, and the model is told.
-                args = message.arguments;
-              }
-              const tool = { id: message.call_id, name: message.name, args };
-              tools.push(
-                answerTool(tool).then((output) =>
-                  send({
-                    type: "conversation.item.create",
-                    item: { type: "function_call_output", call_id: tool.id, output },
-                  }),
-                ),
-              );
-              break;
-            }
-            case "response.done": {
-              active = false;
-              const called = tools;
-              tools = [];
-              if (called.length && message.response?.status !== "cancelled") {
-                // The model hears the results once its reply is over, and goes on.
-                await Promise.all(called);
-                if (current === call) {
-                  mark({ thinking: true });
-                  send({ type: "response.create" });
-                }
-              } else {
-                endTurn();
-              }
-              break;
-            }
-          }
-        },
-      };
-    }
+    /** What a provider's messages do to `current` (see types.ts). */
+    const hooksFor = (current: Call): WireHooks => ({
+      connected: () => connected(current),
+      answerTool,
+      mark: (patch) => mark(patch, current),
+      quiet,
+      heard,
+      play,
+      spoke,
+      timedWord: (text, ms) => placeWord(timeline, text, ms),
+      newResponse: () => resetResponse(timeline),
+      endTurn,
+      said: () => said,
+      hasReply: () => reply !== null,
+      isCurrent: () => current === call,
+    });
 
     async function onMessage(current: Call, event: MessageEvent): Promise<void> {
       const text = typeof event.data === "string" ? event.data : await (event.data as Blob).text();
@@ -1114,12 +632,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       if (!ending) return;
       call = null;
       endTurn();
-      for (const decide of ending.waiting.values()) decide("deny");
-      ending.socket.close();
-      for (const source of ending.sources) source.stop();
-      ending.microphone?.getTracks().forEach((track) => track.stop());
-      void ending.capture?.close();
-      void ending.playback.close();
+      closeCall(ending);
       caption.replaceChildren();
       status.textContent = why;
       meter.hidden = true;
@@ -1159,19 +672,10 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         playback = new AudioContext({ sampleRate: 24_000 });
         const response = await post("/api/voice-session", {}, attempt.signal);
         if (!response.ok) {
-          cancelStart(
-            response.status === 404
-              ? "Voice is not set up on this server."
-              : "The voice service did not answer.",
-          );
+          cancelStart(sessionFailure(response.status));
           return;
         }
-        const ticket = (await response.json()) as {
-          protocol: string;
-          url: string;
-          setup: unknown;
-          label?: string;
-        };
+        const ticket = (await response.json()) as Ticket;
         // The reader pressed the button again while the session was on its way.
         if (attempt.signal.aborted) return;
         const current = {
@@ -1190,14 +694,14 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         } as Call;
         current.wire =
           ticket.protocol === "azure-voice-live"
-            ? azureVoiceLive(current)
-            : geminiLive(current, ticket.setup);
-        newResponse();
+            ? azureVoiceLive(current, hooksFor(current))
+            : geminiLive(current, ticket.setup, hooksFor(current));
+        resetResponse(timeline);
         call = current;
         // The call has its own audio now, and the attempt is over.
         playback = null;
         starting = null;
-        provider.textContent = ticket.label ?? PROVIDERS[ticket.protocol] ?? "";
+        provider.textContent = providerLabel(ticket);
         // Other voices on the page stay quiet while a call is on.
         document.documentElement.dataset.genuiCall = "on";
         if (current.socket.readyState === WebSocket.OPEN) current.wire.begin();
@@ -1205,7 +709,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         current.socket.onmessage = (event) => void onMessage(current, event);
         current.socket.onclose = (event) => {
           // A relay or a provider can say why it hung up.
-          if (current === call) hangUp(event.reason.slice(0, 160) || "The call ended.");
+          if (current === call) hangUp(closeReason(event.reason));
         };
         requestAnimationFrame(captions);
       } catch {
@@ -1259,7 +763,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         event.preventDefault();
         event.stopImmediatePropagation();
         const current = call;
-        void sendForm(form, event.submitter).then((sent) => {
+        void sendForm(form, event.submitter, (job) => busy(call, job)).then((sent: SentForm | null) => {
           if (!sent || current !== call) return;
           quiet();
           if (reader.trim() || said.trim()) endTurn();

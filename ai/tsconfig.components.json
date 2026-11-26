@@ -1,0 +1,11 @@
+{
+  // The browser modules beside the chat components (components/chat/*/*.ts),
+  // which Bascik bundles into the components' scripts, and their unit tests.
+  // They run in the browser, so they are checked against the DOM's types.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["components/**/*.ts"]
+}

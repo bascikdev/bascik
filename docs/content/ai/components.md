@@ -180,6 +180,8 @@ Content: the status text.
 
 You place these in your pages.
 
+> **Install esbuild for the voice components.** `chat-voice` and `voice-call` keep their logic in TypeScript modules beside them (`chat/chat-voice/` and `chat/voice-call/`), which Bascik bundles into each component's script at build time with esbuild. Install it in the project that builds them: `npm install --save-dev esbuild`. Without it, a build that uses either component fails naming the component's script. See [Importing TypeScript Modules](/scoped-javascript#importing-typescript-modules).
+
 ### chat-attachment
 
 One file a reader attached, as a link to the file.
@@ -199,6 +201,7 @@ Props: None.
 
 Voice for a chat. Put it inside the composer.
 Props: None.
+Modules: `chat-voice/` (settings, sentences, captions).
 
 ### memory-item
 
@@ -235,6 +238,7 @@ Props: None.
 A spoken conversation with a speech-to-speech model. Put it inside the composer.
 Props: `app` (the app name).
 Needs: /api/voice-session, /api/voice-tool, /api/voice-turn, /voice-view.
+Modules: `voice-call/` (one per protocol, `gemini-live.ts` and `azure-voice-live.ts`, plus audio, captions, forms, tools, requests, status and types).
 
 ## Adding your own
 

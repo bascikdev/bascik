@@ -193,19 +193,11 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     <span id="name" class="name">Reading aids</span>
   </button>
   <script type="text/typescript">
-    interface Recognizer {
-      lang: string;
-      interimResults: boolean;
-      onresult:
-        | ((event: {
-            results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>;
-          }) => void)
-        | null;
-      onend: (() => void) | null;
-      onerror: (() => void) | null;
-      start(): void;
-      abort(): void;
-    }
+    import { captionParts, wordAt, wordDelay, wordStarts } from "./chat-voice/captions.ts";
+    import { sentenceEnd, sentencesOf, speakable } from "./chat-voice/sentences.ts";
+    import { STORE, aidsLabel, isActive, loadSettings, saveSettings } from "./chat-voice/settings.ts";
+    import type { Recognizer } from "./chat-voice/types.ts";
+
     const root = document.getElementById("voice")!;
     const caption = document.getElementById("caption")!;
     const captionsButton = document.getElementById("captions")!;
@@ -221,54 +213,11 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     const Recognition = scope.SpeechRecognition ?? scope.webkitSpeechRecognition;
 
     /** What the reader chose, kept for their next visit. */
-    const STORE = "bascik-genui-voice";
-    const settings = { captions: false, aloud: false, talk: false, speed: "1" };
-    try {
-      Object.assign(settings, JSON.parse(localStorage.getItem(STORE) ?? "{}"));
-    } catch {
-      // No storage, or nothing stored: the defaults stand.
-    }
-    // Listening starts only when the reader presses Talk in this visit.
-    settings.talk = false;
-    if (!synth) settings.aloud = false;
-    const save = (): void => {
-      try {
-        localStorage.setItem(STORE, JSON.stringify(settings));
-      } catch {
-        // Not kept. Nothing else depends on it.
-      }
-    };
-    const active = (): boolean => settings.captions || settings.aloud;
+    const settings = loadSettings(() => localStorage.getItem(STORE), Boolean(synth));
+    const save = (): void => saveSettings((value) => localStorage.setItem(STORE, value), settings);
+    const active = (): boolean => isActive(settings);
 
     /* ---- What to say: the reply's prose, as it streams ---- */
-
-    const INLINE = new Set(["STRONG", "B", "EM", "I", "CODE"]);
-
-    /**
-     * The words of a reply that make sense spoken. Prose is read as written.
-     * A component is a picture, so it is skipped, unless an element in it
-     * says what it shows with `data-say`.
-     */
-    function speakable(reply: Element): string {
-      let text = "";
-      for (const node of reply.childNodes) {
-        if (node instanceof Text) {
-          text += node.data;
-        } else if (node instanceof Element) {
-          if (INLINE.has(node.tagName)) {
-            text += node.textContent;
-            continue;
-          }
-          // A data attribute is not renamed per instance, so it can be selected as written.
-          // bascik-ignore js-attribute-selector
-          const said = [node, ...node.querySelectorAll("[data-say]")]
-            .map((element) => element.getAttribute("data-say")?.trim())
-            .filter(Boolean);
-          text += said.length ? `\n${said.join(".\n")}.\n` : "\n";
-        }
-      }
-      return text;
-    }
 
     let reply: Element | null = null;
     /** How much of the current reply's text is already queued. */
@@ -304,24 +253,13 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
       }
       const rest = text.slice(taken);
       // Only whole sentences are said: the rest of this one is still coming.
-      const end = over
-        ? rest.length
-        : Math.max(
-            rest.lastIndexOf("\n") + 1,
-            ...[". ", "! ", "? ", ": "].map((mark) => {
-              const at = rest.lastIndexOf(mark);
-              return at < 0 ? 0 : at + mark.length;
-            }),
-          );
+      const end = sentenceEnd(rest, over);
       if (end === 0) {
         if (over && !playing) drained();
         return;
       }
       taken += end;
-      for (const sentence of rest.slice(0, end).split(/(?<=[.!?:])\s+|\n+/)) {
-        const clean = sentence.replace(/\s+/g, " ").trim();
-        if (/[\p{L}\p{N}]/u.test(clean)) queue.push(clean);
-      }
+      queue.push(...sentencesOf(rest.slice(0, end)));
       if (!playing) play();
     }
 
@@ -338,18 +276,16 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     let utterance: SpeechSynthesisUtterance | null = null;
 
     /** A few words at a time, the one being said in bold. */
-    const GROUP = 6;
     let shown: { words: string[]; index: number } | null = null;
     function show(words: string[], index: number): void {
       if (shown?.words === words && shown.index === index) return;
       shown = { words, index };
-      const start = Math.floor(index / GROUP) * GROUP;
       caption.replaceChildren(
-        ...words.slice(start, start + GROUP).flatMap((word, offset) => {
-          if (offset + start !== index) return [`${word} `];
+        ...captionParts(words, index).map((part) => {
+          if (typeof part === "string") return part;
           const current = document.createElement("strong");
-          current.textContent = word;
-          return [current, " "];
+          current.textContent = part.current;
+          return current;
         }),
       );
     }
@@ -362,9 +298,7 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
           return;
         }
         show(words, index);
-        const perWord = 60_000 / (190 * Number(settings.speed));
-        const weight = 0.6 + Math.min(words[index]!.length, 12) / 10;
-        timer = window.setTimeout(() => step(index + 1), perWord * weight);
+        timer = window.setTimeout(() => step(index + 1), wordDelay(words[index]!, settings.speed));
       };
       step(from);
     }
@@ -389,12 +323,7 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
         return;
       }
       // Where each word starts, to find the word a boundary event is about.
-      const starts: number[] = [];
-      let at = 0;
-      for (const word of words) {
-        starts.push(at);
-        at += word.length + 1;
-      }
+      const starts = wordStarts(words);
       const spoken = new SpeechSynthesisUtterance(sentence);
       utterance = spoken;
       spoken.rate = Number(settings.speed);
@@ -408,8 +337,7 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
         if (event.name && event.name !== "word") return;
         heard = true;
         window.clearTimeout(timer);
-        const index = starts.findLastIndex((start) => start <= event.charIndex);
-        show(words, Math.max(index, 0));
+        show(words, wordAt(starts, event.charIndex));
       };
       spoken.onend = spoken.onerror = () => {
         if (utterance === spoken) next();
@@ -469,16 +397,10 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
       aloudButton.setAttribute("aria-pressed", String(settings.aloud));
       talkButton.setAttribute("aria-pressed", String(settings.talk));
       // Closed, the line still says what is on.
-      const on = [
-        settings.captions && "captions",
-        settings.aloud && "read aloud",
-        settings.talk && "dictate",
-      ].filter(Boolean);
-      summaryName.textContent = on.length
-        ? `Reading aids: ${on.join(", ")}`
-        : "Reading aids";
+      const { name, on } = aidsLabel(settings);
+      summaryName.textContent = name;
       summary.title = summaryName.textContent;
-      if (on.length) summary.dataset.on = "";
+      if (on) summary.dataset.on = "";
       else delete summary.dataset.on;
       speed.value = settings.speed;
     }

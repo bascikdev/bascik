@@ -16,14 +16,27 @@ const manifest = JSON.parse(
 };
 const components = join(root, manifest.bascik.components);
 
+/** Every file under components/, by absolute path. */
+async function packageFiles(): Promise<string[]> {
+  const entries = await readdir(components, {
+    recursive: true,
+    withFileTypes: true,
+  });
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name));
+}
+
+/** The components: one HTML file each. */
 async function componentFiles(): Promise<string[]> {
-  const files: string[] = [];
-  for (const folder of await readdir(components)) {
-    for (const file of await readdir(join(components, folder))) {
-      files.push(join(components, folder, file));
-    }
-  }
-  return files;
+  return (await packageFiles()).filter((file) => file.endsWith(".html"));
+}
+
+/** The browser modules the components' scripts import, without their tests. */
+async function moduleFiles(): Promise<string[]> {
+  return (await packageFiles()).filter(
+    (file) => file.endsWith(".ts") && !file.endsWith(".test.ts"),
+  );
 }
 
 describe("the package", () => {
@@ -31,6 +44,8 @@ describe("the package", () => {
     expect(manifest.bascik.components).toBe("./components");
     expect(manifest.files).toContain("components/");
     expect(manifest.files).toContain("dist/");
+    // The components' module tests stay in the repository.
+    expect(manifest.files).toContain("!components/**/*.test.ts");
   });
 
   it("carries the metadata a published package needs", () => {
@@ -78,6 +93,33 @@ describe("the package", () => {
       expect(source, file).not.toMatch(/from\s+["']@\//);
       expect(source, file).toMatch(/data-testid="/);
     }
+  });
+
+  it("ships browser modules that bundle into the components", async () => {
+    const modules = await moduleFiles();
+    expect(modules.length).toBeGreaterThan(0);
+    for (const file of modules) {
+      const source = await readFile(file, "utf8");
+      // Each says what it is for, first thing.
+      expect(source, file).toMatch(/^\/\*/);
+      // Bascik bundles relative imports only: a package or `@/` import
+      // would not resolve in the reader's project.
+      for (const [, specifier] of source.matchAll(
+        /^import\b[^"']*["']([^"']+)["']/gm,
+      )) {
+        expect(specifier, file).toMatch(/^\.\.?\//);
+      }
+    }
+  });
+
+  it("does not take a component's module folder for a component", async () => {
+    const folder = join(components, "chat");
+    const chat = await readCatalog(folder);
+    const html = (await componentFiles())
+      .filter((file) => file.startsWith(`${folder}/`))
+      .map((file) => file.slice(folder.length + 1).replace(/\.html$/, ""))
+      .sort();
+    expect([...chat.keys()].sort()).toEqual(html);
   });
 
   it("brings a catalog a model can be taught as it is", async () => {

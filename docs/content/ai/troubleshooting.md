@@ -168,25 +168,25 @@ What to do: Ensure the tool is defined and passed to the model. The model may ha
 
 ### Error: the tool could not be run.
 
-Where: `ai/components/chat/voice-call.html`
+Where: `ai/components/chat/voice-call/tools.ts`
 What it means: A tool call in a voice session failed to execute in the browser.
 What to do: Check the browser console for the underlying error.
 
 ### Error: there is no form on the screen to fill in.
 
-Where: `ai/components/chat/voice-call.html`
+Where: `ai/components/chat/voice-call/forms.ts`
 What it means: The voice assistant tried to fill a form, but no form element was found on the page.
 What to do: Ensure a form is present and visible when the assistant attempts to fill it.
 
 ### Error: no button or option says "<press>". <contents>
 
-Where: `ai/components/chat/voice-call.html`
+Where: `ai/components/chat/voice-call/forms.ts`
 What it means: The voice assistant tried to click a button or select an option, but no matching element was found in the form. The message includes the form's contents.
 What to do: Ensure the form contains the expected buttons or options. The assistant may have misheard the reader.
 
 ### Error: the form could not be sent.
 
-Where: `ai/components/chat/voice-call.html`
+Where: `ai/components/chat/voice-call/forms.ts`
 What it means: The voice assistant tried to submit a form, but the submission failed.
 What to do: Check the browser console for the underlying error.
 

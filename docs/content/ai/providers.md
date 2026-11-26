@@ -181,4 +181,4 @@ export function myVoiceProvider(): VoiceProvider {
 
 The config has `system` and `tools`. The ticket has `protocol`, `url`, `setup`, and an optional `label`.
 
-> **A voice provider has a browser side too.** The `voice-call` component speaks the wire protocol the ticket names, and it knows two: `gemini-live` and `azure-voice-live`. A provider with a protocol of its own also needs that protocol added to the component, which `bascik add` copies into your project for you to edit.
+> **A voice provider has a browser side too.** The `voice-call` component speaks the wire protocol the ticket names, and it knows two: `gemini-live` and `azure-voice-live`. Each protocol is one module beside the component, `voice-call/gemini-live.ts` and `voice-call/azure-voice-live.ts`, which `bascik add` copies into your project for you to edit. A provider with a protocol of its own needs a module like them, chosen by the ticket's `protocol` in the component's script.

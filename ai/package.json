@@ -103,6 +103,7 @@
   "files": [
     "dist/",
     "components/",
+    "!components/**/*.test.ts",
     "LICENSE",
     "README.md",
     "!demo/**"
@@ -115,7 +116,7 @@
     "prepack": "yarn build && cp ../LICENSE LICENSE",
     "unit": "vitest run --project unit",
     "integration": "vitest run --project integration",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.components.json --noEmit",
     "demo": "cd demo && bascik",
     "demo:build": "cd demo && bascik --build",
     "demo:server": "cd demo && bascik --server",
@@ -142,6 +143,7 @@
     "@playwright/test": "^1.65.0",
     "@types/node": "^24.19.1",
     "beautiful-mermaid": "^1.1.3",
+    "esbuild": "^0.28.2",
     "fast-check": "^4.10.2",
     "leaflet": "1.9.4",
     "three": "0.170.0",

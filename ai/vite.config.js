@@ -6,7 +6,12 @@ export default defineConfig({
       {
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts", "demo/src/lib/**/*.test.ts"],
+          include: [
+            "src/**/*.test.ts",
+            "demo/src/lib/**/*.test.ts",
+            // The browser modules beside the chat components.
+            "components/**/*.test.ts",
+          ],
           exclude: ["src/**/*.integration.test.ts"],
         },
       },

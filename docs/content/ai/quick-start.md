@@ -29,10 +29,18 @@ src/components/
     chat-composer.html
     chat-enhance.html
     chat-voice.html
+    chat-voice/   modules its script imports
     voice-call.html
+    voice-call/   modules its script imports
     search-result.html
     tool-approval.html
     tool-status.html
+```
+
+The voice components, `chat-voice` and `voice-call`, import TypeScript modules from the folders beside them, and Bascik bundles those into each script with esbuild. If you use either one, install esbuild too:
+
+```sh
+npm install --save-dev esbuild
 ```
 
 The components read a few custom properties for their colors: `--bg`, `--surface`, `--border`, `--text`, `--muted`, `--accent`, `--on-accent`, and `--radius`. Define them once in your stylesheet; see [Theming](/how-to/theming).

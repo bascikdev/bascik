@@ -13,7 +13,7 @@ npx bascik add @bascik/ai
 
 The package has two parts: functions you import, and components you copy. [`bascik add`](https://bascik.dev/how-to/sharing-components) copies the components into `src/components/`, where they are your files to read and change. `catalog/` holds the components a model may write, and `chat/` holds the chat's own pieces (composer, voice, tool approval).
 
-Requires Node 24.21 or newer and `@bascik/bascik` 1.0.2 or newer.
+Requires Node 24.21 or newer and `@bascik/bascik` 1.0.2 or newer. The voice components (`chat-voice`, `voice-call`) import TypeScript modules from the folders beside them, which Bascik bundles with esbuild: install it in the project that builds them (`npm install --save-dev esbuild`).
 
 ## Minimal example
 

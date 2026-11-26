@@ -156,6 +156,9 @@ describe("the packed package", () => {
       expect(described, file).not.toBeNull();
       expect(described!.description, file).not.toBe("");
     }
+    // The modules the voice components' scripts import ship beside them.
+    expect(files).toContain("components/chat/voice-call/gemini-live.ts");
+    expect(files).toContain("components/chat/chat-voice/sentences.ts");
   });
 
   it("ships the license and the npm README, and nothing a user did not ask for", () => {
