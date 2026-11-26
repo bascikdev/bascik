@@ -189,7 +189,7 @@ Component scripts are TypeScript unless the person asked for JavaScript:
 
 - Bascik strips the types (Node's strip-only mode) before scoping, so `getElementById` strings and class names are still rewritten, and DevTools line numbers still match. No setup is needed.
 - Erasable syntax only: annotations, interfaces, type aliases, `as`, `!`, and `import type`. Use an `as const` object instead of `enum`.
-- Inline `type="text/typescript"` blocks are classic scripts: no `import` or `export`. For a module, use a companion with `<script type="module" src="name.ts">`.
+- Inline `type="text/typescript"` blocks are classic scripts: no `export`, and only relative or `@/` imports, which Bascik bundles in (needs esbuild; `/scoped-javascript#importing-typescript-modules`). For a module that imports a URL or package, use a companion with `<script type="module" src="name.ts">`.
 - For `enum`, decorators, an older browser target, or npm packages in the browser, use esbuild: the `scripts.typescript` snippet in the `bascik` skill, and `read-doc.mjs /how-to/bundling-npm-packages`.
 - When moving a component from a TypeScript codebase, carry its prop and state types into the `.ts` companion instead of dropping them.
 

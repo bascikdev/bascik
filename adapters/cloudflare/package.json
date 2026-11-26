@@ -56,14 +56,14 @@
   },
   "devDependencies": {
     "@bascik/bascik": "^1.0.2",
-    "@playwright/test": "^1.65.0",
+    "@playwright/test": "^1.65.1",
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.1.0",
     "miniflare": "4.20260730.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0",
-    "wrangler": "^4.160.0"
+    "wrangler": "^4.164.0"
   },
   "publishConfig": {
     "access": "public"

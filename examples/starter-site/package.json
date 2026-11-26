@@ -13,6 +13,6 @@
     "marked": "^18.0.14"
   },
   "devDependencies": {
-    "@bascik/language-server": "^1.1.0"
+    "@bascik/language-server": "^1.1.1"
   }
 }

@@ -158,7 +158,12 @@ const DIRECTIVE_SCRIPT_RE = new RegExp(
 import { getScriptType, isJavaScriptScript } from "./script-types.ts";
 import { findJsLiteralSpans } from "./js-literal-spans.ts";
 import { sourceLinePadding, takeScriptLine } from "./script-source-lines.ts";
-import { isTypeScriptFile, transformBrowserTypeScript } from "./typescript.ts";
+import {
+  isBrowserTypeScriptEnabled,
+  isTypeScriptFile,
+  transformBrowserTypeScript,
+} from "./typescript.ts";
+import { bundleBrowserImports } from "./browser-imports.ts";
 import {
   addElementClassesInHtml,
   addIdClassesInHtml,
@@ -1246,6 +1251,8 @@ export const prefixElementAttribute = (
 export interface ComponentScriptInfo {
   relPath: string;
   code: string;
+  /** Files bundled into `code` from its local imports (`browser-imports.ts`). */
+  dependencies?: string[];
 }
 
 export interface ComponentScriptsResult {
@@ -1389,15 +1396,30 @@ export const getComponentScripts = async (
     // function, or `false` to leave the file as authored). Transform errors
     // are authoring errors and must fail the component loudly, not degrade
     // to a missing script.
+    const baseName = basename(scriptPath);
+    let dependencies: string[] | undefined;
     if (isTypeScriptFile(scriptPath)) {
       code = await transformBrowserTypeScript(code, {
         sourcePath: relPath,
         kind: "companion",
         runtime: "browser",
       });
+      // A browser script's relative and `@/` imports are bundled into it. A
+      // module in the folder that no `<script src>` names is only imported
+      // (or a test), so it is left alone.
+      if (
+        isBrowserTypeScriptEnabled() &&
+        (referenced === undefined || referenced.browser.has(baseName))
+      ) {
+        const bundled = await bundleBrowserImports(code, {
+          sourceFile: scriptPath,
+        });
+        code = bundled.code;
+        if (bundled.dependencies.length) dependencies = bundled.dependencies;
+      }
     }
-    const baseName = basename(scriptPath);
     const info: ComponentScriptInfo = { relPath, code };
+    if (dependencies) info.dependencies = dependencies;
 
     scriptMap.set(baseName, info);
     scriptMap.set(`./${baseName}`, info);

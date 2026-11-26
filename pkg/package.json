@@ -69,38 +69,42 @@
     "parse5": "^8.1.1"
   },
   "peerDependencies": {
-    "@bascik/language-server": "^1.1.0"
+    "@bascik/language-server": "^1.1.1",
+    "esbuild": ">=0.25.0"
   },
   "peerDependenciesMeta": {
     "@bascik/language-server": {
+      "optional": true
+    },
+    "esbuild": {
       "optional": true
     }
   },
   "devDependencies": {
     "0x": "^6.0.0",
-    "@mdn/browser-compat-data": "^8.1.8",
-    "@playwright/test": "^1.65.0",
+    "@mdn/browser-compat-data": "^8.1.9",
+    "@playwright/test": "^1.65.1",
     "@swc/core": "^1.16.22",
     "@types/css-tree": "^3.2.0",
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.1.0",
-    "@webref/css": "^8.7.8",
+    "@webref/css": "^8.7.9",
     "@webref/elements": "^2.9.2",
-    "@webref/idl": "^3.86.0",
+    "@webref/idl": "^3.87.0",
     "@xterm/headless": "^6.0.0",
     "autoprefixer": "^10.6.2",
     "c8": "^12.0.0",
     "clinic": "^13.0.0",
     "css-tree": "^3.2.1",
-    "dependency-cruiser": "^18.7.2",
+    "dependency-cruiser": "^18.8.0",
     "esbuild": "^0.28.2",
     "fast-check": "^4.10.2",
-    "postcss": "^8.5.32",
+    "postcss": "^8.5.33",
     "typescript": "^7.0.2",
     "typescript-6": "npm:typescript@^6.0.3",
     "vite": "^8.3.8",
     "vitest": "^5.1.0",
-    "web-features": "^3.45.0",
+    "web-features": "^3.46.0",
     "webidl2": "^24.5.0"
   },
   "scripts": {

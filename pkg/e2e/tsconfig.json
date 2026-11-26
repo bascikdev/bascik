@@ -11,7 +11,8 @@
     "rootDir": "..",
     "types": ["node"],
     "lib": ["ES2025", "DOM"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["**/*.ts", "../bascik.config.ts"]
 }

@@ -252,6 +252,35 @@ test.describe("Docs Component E2E Tests", () => {
     ).toContainText(/ECONNRESET/i);
   });
 
+  test("docs-search says the text could not be loaded, and the next keystroke tries again", async ({
+    page,
+  }) => {
+    // Both the hashed text file and the public index it falls back to fail, then come back.
+    let offline = true;
+    await page.route(
+      /\/assets\/(?:search-text\.[0-9a-f]{10}|search-index)\.json$/,
+      (route) => (offline ? route.abort() : route.continue()),
+    );
+    await page.goto("/");
+    await page.getByRole("button", { name: "Search docs" }).first().click();
+    const input = page.getByPlaceholder("Search docs…");
+    const modal = page.getByTestId("search-overlay");
+    const results = page.getByRole("listbox", { name: "Search results" });
+
+    await input.fill("ECONNRESET");
+    await expect(modal).toContainText("The page text could not be loaded.");
+    await expect(modal).not.toContainText("Searching page text…");
+
+    // Titles and headings are still searchable from the outline.
+    await input.fill("scoped styles");
+    await expect(results.locator("li").first()).toContainText("Scoped Styles");
+
+    offline = false;
+    await input.fill("ECONNRESET");
+    await expect(results).toContainText(/ECONNRESET/i);
+    await expect(modal).not.toContainText("The page text could not be loaded.");
+  });
+
   test("docs-search still finds results when a deploy removed the page's hashed index", async ({
     page,
   }) => {

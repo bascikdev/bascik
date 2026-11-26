@@ -54,7 +54,12 @@ import {
   expandComponents,
   type ExpandOptions,
 } from "./component-expansion-core.ts";
-import { maskRawTextContent } from "./component-masking.ts";
+import {
+  blankForeignCdataInForeignContent,
+  maskBlankedHtml,
+  maskRawTextContent,
+  spansInForeignContent,
+} from "./component-masking.ts";
 import { DEFAULT_BINDING_POLICY } from "./component-props.ts";
 import {
   SCAN_BUDGET,
@@ -454,7 +459,10 @@ const expandUsages = (
 ): string => {
   // Most outputs name no component: skip the mask and the scans.
   if (!mayContainComponent(html, componentList)) return html;
-  const masked = maskRawTextContent(html);
+  const inForeignContent = opts.inForeignContent === true;
+  const masked = inForeignContent
+    ? maskBlankedHtml(blankForeignCdataInForeignContent(html))
+    : maskRawTextContent(html);
   // The output does not change while its usages are located, so one close
   // finder pairs every opener: a run of unclosed openers would otherwise
   // each walk to the end of the output.
@@ -489,6 +497,10 @@ const expandUsages = (
   // The loop checks the size before its first search too.
   if (html.length > maxOutputBytes)
     throw new ComponentExpansionLimitError(0, `<${spans[0].name}>`);
+  // Each usage is expanded in its own text, which no longer has the SVG or
+  // MathML open around it: whether a CDATA section there is text is read
+  // here, once for all of them, and handed down.
+  const foreign = spansInForeignContent(html, spans, inForeignContent);
   const pieces: string[] = [];
   const expanded: string[] = [];
   let emitted = 0;
@@ -515,9 +527,13 @@ const expandUsages = (
           maxSubstitutions: remaining,
           maxOutputBytes: maxOutputBytes - emitted - (html.length - span.end),
         },
+        inForeignContent: foreign[index],
         expandInstance:
           depth < INSTANCE_TEXT_DEPTH
-            ? (instance, { open, maxOutputBytes: instanceBytes }) =>
+            ? (
+                instance,
+                { open, maxOutputBytes: instanceBytes, inForeignContent },
+              ) =>
                 expandUsages(
                   instance,
                   componentList,
@@ -525,6 +541,7 @@ const expandUsages = (
                     ...opts,
                     limits: { maxSubstitutions, maxOutputBytes: instanceBytes },
                     openAncestors: open,
+                    inForeignContent,
                   },
                   usedComponents,
                   undefined,

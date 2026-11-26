@@ -100,7 +100,7 @@ export interface StarterTemplate {
  * rejects a compatibility date newer than itself and the adapter pins a recent one.
  */
 const WRANGLER_VERSION = "^4.153.0";
-const NETLIFY_CLI_VERSION = "^27.17.0";
+const NETLIFY_CLI_VERSION = "^27.20.0";
 
 export const PACKAGE_JSON = (
   name: string,
@@ -156,7 +156,7 @@ export const PACKAGE_JSON = (
         devDependencies: {
           ...(cloudflare && { "@bascik/adapter-cloudflare": "^1.0.0" }),
           ...(netlify && { "@bascik/adapter-netlify": "^1.0.0" }),
-          "@bascik/language-server": "^1.1.0",
+          "@bascik/language-server": "^1.1.1",
           "@playwright/test": "^1.62.0",
           "@types/node": "^24.0.0",
           "@vitest/coverage-v8": "^5.0.3",

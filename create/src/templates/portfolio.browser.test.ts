@@ -16,6 +16,10 @@ import {
 } from "../scaffold.ts";
 import { PORTFOLIO_TEMPLATE } from "./portfolio.ts";
 
+// Every browser test here opens a page on a production server. The default 5s
+// is too short on a loaded Windows runner; tests that need longer say so.
+vi.setConfig({ testTimeout: 30_000 });
+
 const root = resolve(fileURLToPath(import.meta.url), "../../../..");
 const url = "http://localhost:19441";
 let directory: string;
@@ -270,7 +274,9 @@ describe("fresh portfolio production browser", () => {
         Buffer.from(data, "base64"),
       );
     await page.close();
-  });
+    // The first page this browser opens, then four more: it passed the
+    // default 5s limit on the Windows runner.
+  }, 30_000);
 
   it("supports keyboard theme switching, persistence, and accessible responsive navigation", async () => {
     const page = await browser!.newPage();

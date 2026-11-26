@@ -573,35 +573,45 @@ describe("Where a TypeScript mistake is, and the build failing for it (real `bas
     expect(code, output).toBe(0);
   }, 60_000);
 
-  it("fails a page module .ts that imports another file, naming the tag, the import and esbuild", async () => {
-    const source = page(
-      "Module",
-      `    <p>above</p>\n    <script type="module" src="./mod.ts"></script>`,
-    );
+  it("bundles the relative import of a page module .ts into the page, keeping it a module", async () => {
     const { code, output } = await build({
-      "src/pages/index.html": source,
-      "src/pages/mod.ts": `import { shout } from "./util.ts";\nconst text: string = shout("hi");\nconsole.log(text);\n`,
+      "src/pages/index.html": page(
+        "Module",
+        `    <p>above</p>\n    <script type="module" src="./mod.ts"></script>`,
+      ),
+      "src/pages/mod.ts": `import { shout } from "./util.ts";\nconst text: string = shout("page-bundled");\nconsole.log(text);\n`,
       "src/pages/util.ts": `export const shout = (s: string): string => s.toUpperCase();\n`,
     });
-    expect(code).not.toBe(0);
-    expect(output).toContain(
-      `src/pages/index.html:${lineOf(source, "mod.ts")}:5`,
-    );
-    expect(output).toContain(`"./util.ts"`);
-    expect(output).toContain("esbuild");
+    expect(code, output).toBe(0);
+    const html = await readFile(join(roots.at(-1)!, "dist/index.html"), "utf8");
+    expect(html).toContain('type="module"');
+    expect(html).toContain("toUpperCase");
+    expect(html).not.toContain("./util.ts");
+    expect(html).not.toContain(": string");
   }, 60_000);
 
-  it("fails a component's .ts module companion that imports another file, naming the file and the import", async () => {
+  it("bundles the relative import of a component's .ts module companion", async () => {
     const { code, output } = await build({
       "src/pages/index.html": page("Comp", `    <x-box></x-box>`),
       "src/components/x-box/x-box.html": `<div data-testid="x-box">box</div>\n<script type="module" src="x-box.ts"></script>\n`,
       "src/components/x-box/x-box.ts": `import { shout } from "./util.ts";\nconsole.log(shout("box" as string));\n`,
       "src/components/x-box/util.ts": `export const shout = (s: string): string => s.toUpperCase();\n`,
     });
+    expect(code, output).toBe(0);
+    const html = await readFile(join(roots.at(-1)!, "dist/index.html"), "utf8");
+    expect(html).toContain("toUpperCase");
+    expect(html).not.toContain("./util.ts");
+  }, 60_000);
+
+  it("fails a component script whose local import is missing, naming the file, the line and the import", async () => {
+    const { code, output } = await build({
+      "src/pages/index.html": page("Comp", `    <x-box></x-box>`),
+      "src/components/x-box/x-box.html": `<div data-testid="x-box">box</div>\n<script src="x-box.ts"></script>\n`,
+      "src/components/x-box/x-box.ts": `const a = 1;\nimport { shout } from "./missing.ts";\nconsole.log(a, shout);\n`,
+    });
     expect(code).not.toBe(0);
-    expect(output).toContain("src/components/x-box/x-box.ts");
-    expect(output).toContain(`"./util.ts"`);
-    expect(output).toContain("esbuild");
+    expect(output).toContain("src/components/x-box/x-box.ts:2:");
+    expect(output).toContain(`"./missing.ts"`);
   }, 60_000);
 
   it("builds a page module .ts that imports only a published URL", async () => {
