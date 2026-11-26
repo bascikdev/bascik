@@ -107,4 +107,23 @@ describe("answerTool", () => {
       "Error: the tool could not be run.",
     );
   });
+
+  test("a tool that throws before it returns a promise tells the model so", async () => {
+    // The component's fill_form hook finds the form first, and that can throw
+    // (no checkVisibility in older browsers) before any promise exists.
+    const throwing = {
+      fillForm: (): Promise<string> => {
+        throw new TypeError("checkVisibility is not a function");
+      },
+      runTool: (): Promise<string> => {
+        throw new Error("no");
+      },
+    };
+    expect(
+      await answerTool({ id: "a", name: "fill_form", args: {} }, throwing),
+    ).toBe("Error: the tool could not be run.");
+    expect(await answerTool({ id: "b", name: "x", args: {} }, throwing)).toBe(
+      "Error: the tool could not be run.",
+    );
+  });
 });

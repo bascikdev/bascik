@@ -664,6 +664,44 @@ describe("bascik add", () => {
     ).toBe(true);
   });
 
+  it("copies the modules in the folder named after a selected component", async () => {
+    await setupFixturePackage(
+      "voice-kit",
+      {
+        name: "voice-kit",
+        version: "1.0.0",
+        bascik: { components: "components" },
+      },
+      {
+        "components/chat/voice-call.html":
+          '<script type="text/typescript">import "./voice-call/audio.ts";</script>',
+        "components/chat/voice-call/audio.ts": "export {};\n",
+        "components/chat/voice-call/deep/more.ts": "export {};\n",
+        "components/chat/voice-call/audio.test.ts": "export {};\n",
+        "components/chat/voice-caller.html": "<p>other</p>",
+        "components/chat/voice-caller/x.ts": "export {};\n",
+        "components/chat/other.html": "<p>other</p>",
+      },
+    );
+
+    const result = await addComponents(["voice-kit/voice-call"], {
+      cwd: testDir,
+    });
+    const copied = result.copiedFiles
+      .map((file) =>
+        file.destPath.slice(componentsDir.length + 1).replace(/\\/g, "/"),
+      )
+      .sort();
+    expect(copied).toEqual([
+      "chat/voice-call.html",
+      "chat/voice-call/audio.ts",
+      "chat/voice-call/deep/more.ts",
+    ]);
+    expect(
+      await readFile(join(componentsDir, "chat/voice-call/audio.ts"), "utf8"),
+    ).toBe("export {};\n");
+  });
+
   // A workspace hoists the package to the repo root node_modules, and its
   // exports map does not list package.json. Node's own resolution walks up
   // from the project, so `bascik add` must find it there too.

@@ -64,9 +64,13 @@ export function answerTool(
   if (typeof id !== "string" || !id) {
     return Promise.resolve("Error: the tool call has no id.");
   }
-  return (
-    tool.name === "fill_form"
-      ? deps.fillForm(tool.args)
-      : deps.runTool({ ...tool, id })
-  ).catch(() => "Error: the tool could not be run.");
+  // Run the dep inside the promise chain, so one that throws before it
+  // returns a promise is told to the model like one that rejects.
+  return Promise.resolve()
+    .then(() =>
+      tool.name === "fill_form"
+        ? deps.fillForm(tool.args)
+        : deps.runTool({ ...tool, id }),
+    )
+    .catch(() => "Error: the tool could not be run.");
 }

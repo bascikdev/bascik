@@ -29,7 +29,7 @@ describe("postForm", () => {
     ]);
   });
 
-  test("a field named app does not hide the app's own name", async () => {
+  test("a field named app replaces the app's name, as the component always did", async () => {
     let body: FormData | undefined;
     const fetcher = (async (_path: string, init: RequestInit) => {
       body = init.body as FormData;
