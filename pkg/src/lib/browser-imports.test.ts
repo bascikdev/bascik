@@ -1,7 +1,16 @@
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { transform } from "esbuild";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   __setEsbuildLoaderForTests,
   bundleBrowserImports,
@@ -31,6 +40,15 @@ const run = (code: string): unknown => {
   new Function("scope", code)(scope);
   return scope.out;
 };
+
+// esbuild records process.cwd() when its module first loads and starts its
+// service process there. The static import above loads it before cwd is
+// mocked (the module under test imports it lazily, inside a test), so the
+// service never runs inside a test's temporary project: Windows cannot remove
+// a directory that a running process has as its working directory (EBUSY).
+beforeAll(async () => {
+  await transform("");
+});
 
 beforeEach(async () => {
   // esbuild reports real paths, so the project root is one too.
