@@ -167,7 +167,7 @@ describe("the offline reviewer", () => {
     const reply = reviewReply(messages);
     expect(reply).toContain("That was the last item.");
     expect(reply).toContain(
-      "<td>returns-window</td><td>fact</td><td>wrong</td><td>&lt;b>45&lt;/b> days &amp; a receipt</td>",
+      "<td>returns-window</td><td>fact</td><td>wrong</td><td>&lt;b&gt;45&lt;/b&gt; days &amp; a receipt</td>",
     );
     expect(reply.match(/<tr><td>/g)).toHaveLength(QUEUE.length);
   });

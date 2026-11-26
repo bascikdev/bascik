@@ -29,6 +29,7 @@
  * does not allow 'unsafe-inline' blocks the frame's scripts); and a listed
  * script origin receives whatever URL the page asks it for.
  */
+import { esc } from "@bascik/bascik/html";
 import type { FenceRenderer } from "./render.ts";
 
 export interface SandboxFenceOptions {
@@ -151,17 +152,6 @@ const newToken = (): string =>
   ).join("");
 
 /**
- * Escapes a string for use in a double-quoted HTML attribute.
- */
-function escapeAttr(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-/**
  * A renderer for ```html-app fences. Returns an `<iframe>` that runs the
  * source in an isolated frame.
  */
@@ -182,7 +172,7 @@ export function sandboxFence(options: SandboxFenceOptions = {}): FenceRenderer {
     throw new TypeError(`Invalid maxLength: ${maxLength}`);
   }
 
-  const escapedTitle = escapeAttr(title);
+  const escapedTitle = esc(title);
 
   return (source: string): string | null => {
     if (!source.trim() || source.length > maxLength) {
@@ -190,7 +180,7 @@ export function sandboxFence(options: SandboxFenceOptions = {}): FenceRenderer {
     }
     const token = newToken();
     const doc = sandboxDocument(source, origins, token);
-    const escapedDoc = escapeAttr(doc);
+    const escapedDoc = esc(doc);
     return `<iframe class="genui-sandbox" data-genui-sandbox="${token}" sandbox="allow-scripts" referrerpolicy="no-referrer" width="100%" height="${height}" title="${escapedTitle}" srcdoc="${escapedDoc}"></iframe>`;
   };
 }

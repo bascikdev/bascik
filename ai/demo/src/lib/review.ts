@@ -10,6 +10,7 @@
  */
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { esc } from "@bascik/bascik/html";
 import { scriptedModel, type Model, type Tool } from "@bascik/ai";
 
 /* ---- Decisions: what a review form posts, and where it is kept ---- */
@@ -301,9 +302,6 @@ const ACKNOWLEDGE: Record<string, string> = {
   "none-fit": "Recorded: none of my options fit. Your note is the rule.",
 };
 
-const escapeText = (value: string): string =>
-  value.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-
 function acknowledge(decision: Decision): string {
   if (decision.kind === "facts") {
     const wrong = Object.entries(decision.rows)
@@ -344,7 +342,7 @@ function summary(decisions: Decision[]): string {
           ? "all rows right"
           : `wrong: ${flagged.join(", ")}`
         : decision.verdict;
-      return `<tr><td>${decision.item}</td><td>${decision.kind}</td><td>${answer}</td><td>${escapeText(decision.note)}</td></tr>`;
+      return `<tr><td>${decision.item}</td><td>${decision.kind}</td><td>${answer}</td><td>${esc(decision.note)}</td></tr>`;
     }),
     "</tbody>",
     "</table>",

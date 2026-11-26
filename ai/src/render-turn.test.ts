@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { describeComponent, type Catalog } from "./catalog.ts";
 import type { ChatMessage, Tool, ToolPart } from "./model.ts";
-import { escapeHtml } from "./render.ts";
+import { esc } from "@bascik/bascik/html";
 import {
   renderMessage,
   renderToolPart,
@@ -65,7 +65,7 @@ describe("renderToolPart", () => {
   it("lets the app draw a state, and falls back to the note when it draws nothing", () => {
     const view = (drawn: ToolPart) =>
       drawn.state === "approval-requested"
-        ? `<form data-call="${escapeHtml(drawn.id)}"></form>`
+        ? `<form data-call="${esc(drawn.id)}"></form>`
         : null;
     expect(
       renderToolPart(part("approval-requested"), catalog, { tools, view }),

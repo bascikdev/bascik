@@ -9,7 +9,6 @@ export {
 } from "./catalog.ts";
 export {
   createRenderer,
-  escapeHtml,
   inline,
   renderStream,
   renderText,

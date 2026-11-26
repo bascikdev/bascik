@@ -13,22 +13,12 @@
  * Bascik then renders the surviving tags with its own request-time renderer,
  * which treats each prop as text and checks every URL and attribute binding.
  */
+import { esc } from "@bascik/bascik/html";
 import type { Catalog, CatalogEntry } from "./catalog.ts";
-
-const ESCAPES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-export const escapeHtml = (value: string): string =>
-  value.replace(/[&<>"']/g, (character) => ESCAPES[character]!);
 
 /** Escape a finished run of text and apply `**bold**` and `` `code` ``. */
 export function inline(text: string): string {
-  return escapeHtml(text)
+  return esc(text)
     .replace(/`([^`\n]+)`/g, (_, code: string) => `<code>${code}</code>`)
     .replace(
       /\*\*([^*\n]+)\*\*/g,
@@ -80,7 +70,7 @@ function openTagHtml(entry: CatalogEntry, props: Map<string, string>): string {
   for (const prop of entry.props) {
     const value = props.get(prop);
     if (value !== undefined) {
-      tag += ` data-bascik-prop-${prop}="${escapeHtml(value)}"`;
+      tag += ` data-bascik-prop-${prop}="${esc(value)}"`;
     }
   }
   return `${tag}>`;
@@ -355,7 +345,7 @@ export function createRenderer(
       }
     };
     const codeLine = (line: string): void =>
-      block(`<code data-line>${escapeHtml(line) || "<br>"}</code>`);
+      block(`<code data-line>${esc(line) || "<br>"}</code>`);
     /** The drawn fence is over: draw it, or show it as the code it is. */
     const closeDrawn = (): void => {
       if (!drawn) return;
@@ -507,12 +497,12 @@ export function createRenderer(
 
       const special = source.search(/[<`*\n]/);
       if (special < 0) {
-        text(escapeHtml(source));
+        text(esc(source));
         buffer = "";
         break;
       }
       if (special > 0) {
-        text(escapeHtml(source.slice(0, special)));
+        text(esc(source.slice(0, special)));
         buffer = source.slice(special);
         continue;
       }
@@ -532,7 +522,7 @@ export function createRenderer(
         const lineEnd = source.indexOf("\n", from - 1);
         const close = source.indexOf(marker, from);
         if (close > marker.length && (lineEnd < 0 || close < lineEnd)) {
-          const inner = escapeHtml(source.slice(marker.length, close));
+          const inner = esc(source.slice(marker.length, close));
           text(`<${tag}>${inner}</${tag}>`);
           buffer = source.slice(close + marker.length);
           continue;
@@ -542,7 +532,7 @@ export function createRenderer(
           searchedTo = source.length;
           break;
         }
-        text(escapeHtml(marker));
+        text(esc(marker));
         buffer = source.slice(marker.length);
         continue;
       }

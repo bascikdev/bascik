@@ -8,16 +8,13 @@
  * component added to either folder shows up as a section, and the gallery
  * test fails until it has a sample below.
  */
-import { html, raw, type SafeHtml } from "@bascik/bascik/html";
+import { esc, html, raw, type SafeHtml } from "@bascik/bascik/html";
 import { readCatalog, type CatalogEntry } from "@bascik/ai";
 
 const FOLDERS = [
   { title: "Package catalog", path: "../components/catalog" },
   { title: "Demo catalog", path: "src/genui" },
 ] as const;
-
-const escape = (text: string): string =>
-  text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
 /** One component tag, its props passed as `data-bascik-prop-NAME`. */
 const tag = (
@@ -26,9 +23,7 @@ const tag = (
   ...children: string[]
 ): string => {
   const attributes = Object.entries(props)
-    .map(
-      ([key, value]) => ` data-bascik-prop-${key}="${escape(String(value))}"`,
-    )
+    .map(([key, value]) => ` data-bascik-prop-${key}="${esc(String(value))}"`)
     .join("");
   return `<${name}${attributes}>${children.join("")}</${name}>`;
 };

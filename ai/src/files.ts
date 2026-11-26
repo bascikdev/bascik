@@ -10,7 +10,7 @@
  * only ever served back to them.
  */
 import { randomUUID } from "node:crypto";
-import { escapeHtml } from "./render.ts";
+import { html } from "@bascik/bascik/html";
 import { isSafeKey } from "./store.ts";
 
 /* ---- Storage ---- */
@@ -602,23 +602,38 @@ export function refusedPage(
   text: string,
   page: string,
 ): Response {
-  const body = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Not sent</title>
-</head>
-<body>
-<main>
-<h1>Not sent</h1>
-<p role="alert" data-testid="attach-refused">${escapeHtml(message)}</p>
-${text ? `<p>Your message, to copy:</p>\n<textarea readonly rows="6" cols="60" data-testid="attach-refused-text">${escapeHtml(text)}</textarea>` : ""}
-<p><a href="${escapeHtml(page)}" data-testid="attach-refused-back">Back to the chat</a></p>
-</main>
-</body>
-</html>
-`;
+  // Bascik's html template escapes every value and checks the link's URL.
+  const body = html`<!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Not sent</title>
+      </head>
+      <body>
+        <main>
+          <h1>Not sent</h1>
+          <p role="alert" data-testid="attach-refused">${message}</p>
+          ${
+            text
+              ? html`<p>Your message, to copy:</p>
+                  <textarea
+                    readonly
+                    rows="6"
+                    cols="60"
+                    data-testid="attach-refused-text"
+                  >
+${text}</textarea>`
+              : ""
+          }
+          <p>
+            <a href="${page}" data-testid="attach-refused-back"
+              >Back to the chat</a
+            >
+          </p>
+        </main>
+      </body>
+    </html> `.toString();
   return new Response(body, {
     status: 422,
     headers: {

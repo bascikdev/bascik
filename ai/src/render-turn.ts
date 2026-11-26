@@ -1,3 +1,4 @@
+import { esc } from "@bascik/bascik/html";
 /**
  * Message parts as HTML: a live turn as it streams, and a stored message.
  *
@@ -19,7 +20,6 @@ import {
 } from "./model.ts";
 import {
   createRenderer,
-  escapeHtml,
   type ComponentBudget,
   renderText,
   type RendererOptions,
@@ -57,7 +57,7 @@ export function renderToolPart(
       ?.note?.(part.input);
     inner = note ? renderText(note, catalog, options, budget) : "";
   }
-  return `<div class="part" data-part="${escapeHtml(part.id)}" data-tool="${escapeHtml(part.name)}" data-state="${part.state}">${inner}</div>`;
+  return `<div class="part" data-part="${esc(part.id)}" data-tool="${esc(part.name)}" data-state="${part.state}">${inner}</div>`;
 }
 
 /**
@@ -78,7 +78,7 @@ export function renderMessage(
         : part.type === "tool"
           ? renderToolPart(part, catalog, options, budget)
           : part.spoken
-            ? `<p class="spoken">${escapeHtml(part.text)}</p>`
+            ? `<p class="spoken">${esc(part.text)}</p>`
             : renderText(part.text, catalog, options, budget),
     )
     .join("");
