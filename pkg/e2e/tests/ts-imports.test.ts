@@ -57,6 +57,7 @@ test.describe("TypeScript scripts with local imports", () => {
   });
 
   test("emitted HTML holds no local import, no TypeScript and no page-global helper", async ({
+    page,
     request,
   }) => {
     const response = await request.get("/ts-imports-test");
@@ -71,19 +72,26 @@ test.describe("TypeScript scripts with local imports", () => {
     expect(html).not.toContain("interface Book");
     expect(html).not.toContain('ts-imports-test.ts"');
 
+    // Read the scripts through the browser's HTML parser, not a regex.
+    await page.goto("/ts-imports-test");
+    const scripts = await page.locator("script").evaluateAll((elements) =>
+      elements.map((element) => ({
+        type: element.getAttribute("type"),
+        text: element.textContent ?? "",
+      })),
+    );
+
     // The page's module script stays a module, unwrapped.
-    const moduleScript = [
-      ...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi),
-    ].find((m) => m[2].includes("page-module-out"));
-    expect(moduleScript?.[1]).toContain('type="module"');
+    const moduleScript = scripts.find(({ text }) =>
+      text.includes("page-module-out"),
+    );
+    expect(moduleScript?.type).toBe("module");
 
     // The page's own classic script is wrapped, so the helper it bundles
     // is not a global the page's other scripts could collide with.
-    const pageScript = [
-      ...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi),
-    ]
-      .map((m) => m[1])
-      .find((body) => body.includes("page-out"));
+    const pageScript = scripts.find(({ text }) =>
+      text.includes("page-out"),
+    )?.text;
     expect(pageScript).toBeDefined();
     expect(pageScript!.trimStart().startsWith("(")).toBe(true);
   });
