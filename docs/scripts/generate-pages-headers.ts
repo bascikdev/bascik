@@ -22,19 +22,23 @@ import {
   buildSearchEntries,
   searchIndexJson,
   searchIndexPath,
+  searchTextJson,
+  searchTextPath,
 } from "../src/lib/search-index.ts";
 
 const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = process.env.BASCIK_OUT_DIR ?? join(docsDir, "dist");
 
+const searchEntries = await buildSearchEntries();
 await mkdir(outDir, { recursive: true });
 await writeFile(
   join(outDir, "_headers"),
   pagesHeaders(VERSIONED_IMAGE_FOLDERS, {
     pageFolders: pageFolders(join(docsDir, "src/pages")),
-    // Only the content-hashed index. The unversioned /assets/search-index.json changes on every deploy.
+    // Only the content-hashed files. The unversioned /assets/search-index.json changes on every deploy.
     versionedFiles: [
-      searchIndexPath(searchIndexJson(await buildSearchEntries())),
+      searchIndexPath(searchIndexJson(searchEntries)),
+      searchTextPath(searchTextJson(searchEntries)),
     ],
   }),
 );

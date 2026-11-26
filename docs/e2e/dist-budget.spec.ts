@@ -8,8 +8,11 @@ import { join, relative } from "node:path";
 import { highlightCode } from "../src/lib/highlight.ts";
 import {
   PUBLIC_SEARCH_INDEX_PATH,
+  compressedSize,
   SEARCH_INDEX_FILE_PATTERN,
-  SEARCH_INDEX_MAX_BYTES,
+  SEARCH_INDEX_MAX_COMPRESSED_BYTES,
+  SEARCH_TEXT_FILE_PATTERN,
+  SEARCH_TEXT_MAX_COMPRESSED_BYTES,
 } from "../src/lib/search-index.ts";
 import {
   headersForPath,
@@ -177,19 +180,43 @@ test.describe("speculation rules", () => {
 });
 
 test.describe("search index", () => {
-  /** The one content-hashed index in dist, as a site path. */
-  const hashedIndex = () => {
+  /** The one content-hashed file in dist that matches, as a site path. */
+  const hashedFile = (pattern: RegExp) => {
     const names = readdirSync(join(dist, "assets")).filter((name) =>
-      SEARCH_INDEX_FILE_PATTERN.test(name),
+      pattern.test(name),
     );
     expect(names).toHaveLength(1);
     return `/assets/${names[0]}`;
   };
+  const hashedIndex = () => hashedFile(SEARCH_INDEX_FILE_PATTERN);
+
+  test("has its text in a second file, within budget, named by its content hash, and asked for by every page", () => {
+    const path = hashedFile(SEARCH_TEXT_FILE_PATTERN);
+    const json = readFileSync(join(dist, path), "utf8");
+    expect(compressedSize(json)).toBeLessThanOrEqual(
+      SEARCH_TEXT_MAX_COMPRESSED_BYTES,
+    );
+    const version = createHash("sha256")
+      .update(json)
+      .digest("hex")
+      .slice(0, 10);
+    expect(path).toBe(`/assets/search-text.${version}.json`);
+    // One string per entry of the outline, or the browser refuses it.
+    const outline = JSON.parse(readFileSync(join(dist, hashedIndex()), "utf8"));
+    expect(JSON.parse(json)).toHaveLength(outline.entries.length);
+    const stale = builtPages()
+      .filter(({ html }) => html.includes("/assets/search-text."))
+      .filter(({ html }) => !html.includes(`"${path}"`))
+      .map(({ path }) => path);
+    expect(stale).toEqual([]);
+  });
 
   test("is within budget and fetched by a file name carrying its content hash", () => {
     const path = hashedIndex();
     const json = readFileSync(join(dist, path));
-    expect(json.length).toBeLessThanOrEqual(SEARCH_INDEX_MAX_BYTES);
+    expect(compressedSize(json.toString("utf8"))).toBeLessThanOrEqual(
+      SEARCH_INDEX_MAX_COMPRESSED_BYTES,
+    );
     const version = createHash("sha256")
       .update(json)
       .digest("hex")
@@ -226,6 +253,12 @@ test.describe("Cloudflare Pages headers", () => {
     expect(headersForPath(rules, `/assets/${hashed}`)["cache-control"]).toEqual(
       [IMMUTABLE_CACHE_CONTROL],
     );
+    const hashedText = readdirSync(join(dist, "assets")).find((name) =>
+      SEARCH_TEXT_FILE_PATTERN.test(name),
+    );
+    expect(
+      headersForPath(rules, `/assets/${hashedText}`)["cache-control"],
+    ).toEqual([IMMUTABLE_CACHE_CONTROL]);
     // Its contents change on every deploy, so a year-long cache would pin old results.
     expect(
       headersForPath(rules, PUBLIC_SEARCH_INDEX_PATH)["cache-control"] ?? [],

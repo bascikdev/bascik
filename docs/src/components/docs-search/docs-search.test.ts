@@ -69,6 +69,15 @@ describe("docs-search component template", () => {
     expect(dom).toContain("fetch(SEARCH_INDEX_URL)");
     expect(dom).not.toContain('fetch("/assets/search-index.json")');
     expect(dom).toContain("expandSearchIndex(");
+    // The text of every section is a second file, fetched once the visitor is searching.
+    expect(html).toContain("searchTextPath(");
+    expect(html).toContain("var SEARCH_TEXT_URL = ");
+    expect(dom).toContain("fetch(SEARCH_TEXT_URL)");
+    expect(dom).toContain("applySearchText(");
+    // A hover warms the small outline only, never the text.
+    expect(dom).toMatch(
+      /function warmIndex\(\) \{\s*if \(!index\) loadIndex\(\);\s*\}/,
+    );
     // Hovering or focusing the search button starts the download before the click.
     expect(dom).toMatch(
       /btn\.addEventListener\(\s*"pointerenter",\s*warmIndex/,

@@ -426,15 +426,15 @@ describe("G. a hostile output settles in time proportional to its size", () => {
   // term: it fails a pass quadratic in the padding.
   const SIZE = 400_000;
   const USAGES = 999;
-  /** `USAGES` copies of `unit`, padded with text to `size` characters in all. */
-  const padded = (unit: string, size: number): string =>
+  /** `usages` copies of `unit`, padded with text to `size` characters in all. */
+  const padded = (unit: string, size: number, usages = USAGES): string =>
     (
-      unit + "x".repeat(Math.max(0, Math.ceil(size / USAGES) - unit.length))
-    ).repeat(USAGES);
+      unit + "x".repeat(Math.max(0, Math.ceil(size / usages) - unit.length))
+    ).repeat(usages);
   // Each `<a>` is a whole tag: after an `<a ` with no `>`, every later
   // `<x-p>` would be part of its attributes, as a browser reads it.
-  const nested = (size: number) =>
-    `<my-card>${padded("<x-p><a>", size)}</my-card>`;
+  const nested = (size: number, usages = USAGES) =>
+    `<my-card>${padded("<x-p><a>", size, usages)}</my-card>`;
   /** One request for `html`: rendered, or a RequestRenderError. */
   const settlerOf = async () => {
     const manifest = await build(list);
@@ -454,8 +454,14 @@ describe("G. a hostile output settles in time proportional to its size", () => {
     "<my-card> + fill('<x-p><a>') + </my-card> settles (rendered or a RequestRenderError) in linear time",
     async () => {
       const settle = await settlerOf();
-      await expectLinearTimeAsync(nested, SIZE, settle, {
-        baseline: nested(0),
+      // The padding is read a few times and no longer copied once per
+      // usage, so beside 999 usages its cost is a fraction of their fixed
+      // cost at any size under the output limit, and its growth unreadable.
+      // So a tenth of the usages go around eight times the padding, where
+      // a pass over the padding per usage would again be most of the run.
+      const few = (size: number) => nested(size, 99);
+      await expectLinearTimeAsync(few, 8 * SIZE, settle, {
+        baseline: few(0),
       });
     },
     LINEAR_TIME_TIMEOUT_MS,
@@ -478,26 +484,23 @@ describe("G. a hostile output settles in time proportional to its size", () => {
     LINEAR_TIME_TIMEOUT_MS,
   );
 
-  // The nested case is linear in the output at a fixed usage count, but not
-  // in the usage count. `<my-card>` holds every usage, so it expands as one
-  // fragment (expandByUsage), and each substitution splices the whole
-  // fragment and its mask: V8 joins the pieces lazily and copies the whole
-  // string the next time it is read (`body.slice` in spliceRawTextMask, the
-  // mask's in expandComponents). The cost is usages times fragment length:
-  // at 400 bytes per usage, 7 ms for 100 usages, 60 ms for 500, 186 ms for
-  // 1000. Only the instance cap (`REQUEST_RENDER_LIMITS.maxInstances`)
-  // bounds the usage count, and `maxOutputLength` the length: 998 usages in a
-  // 4 MB output took 1.4 s of CPU. So the cost at the cap is pinned, as a
-  // ratio to the work it is made of, timed in the same process: one splice
-  // of the page and of its mask per substitution, each then read
-  // (`spliceCopies`). CPU time on both sides keeps load out of the ratio,
-  // and the splices slow down with the machine as the request does; a
-  // regression that makes the request more than twice as costly fails it
-  // (four runs read 1.24 to 1.25 plain, 2.31 to 2.32 with coverage). The
-  // calibration is the highest of four runs on an M-series Mac, with and
-  // without coverage (which slows the renderer and not the copying); measure
-  // again after a change that makes the request cheaper.
-  const CAP_COST: CalibratedRatio = { plain: 1.25, coverage: 2.32 };
+  // The nested case once cost usages times fragment length: `<my-card>`
+  // holds every usage, so it expanded as one fragment, and each substitution
+  // spliced the whole fragment and its mask, which V8 copies whole the next
+  // time it is read (at 400 bytes per usage, 7 ms for 100 usages, 60 ms for
+  // 500, 186 ms for 1000; 998 usages in a 4 MB output took 1.4 s of CPU).
+  // Each instance is now expanded in its own text (`expandByUsage`), so the
+  // fragment is spliced once per level, not once per usage. The cost at the
+  // instance cap (`REQUEST_RENDER_LIMITS.maxInstances`) stays pinned, as a
+  // ratio to the copying the old way did, timed in the same process: one
+  // splice of the page and of its mask per substitution, each then read
+  // (`spliceCopies`). CPU time on both sides keeps load out of the ratio.
+  // Splicing per usage read 1.24 to 1.25 plain and 2.31 to 2.32 with
+  // coverage; four runs on Linux x64 now read 0.11 to 0.14 plain and 0.20
+  // to 0.23 with coverage (which slows the renderer and not the copying).
+  // The calibration leaves room for a machine that copies faster, and a
+  // return to one copy per usage still reads three times the limit.
+  const CAP_COST: CalibratedRatio = { plain: 0.2, coverage: 0.35 };
   it(
     "costs at most twice its calibrated share at the instance cap",
     async () => {

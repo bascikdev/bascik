@@ -200,7 +200,7 @@ describe("reports template", () => {
     for (const [path, text] of filesOf()) {
       expect(path).not.toMatch(/\.(js|mjs|cjs)$/);
       if (!path.endsWith(".html")) continue;
-      for (const [tag] of text.matchAll(/<script\b[^>]*>/g))
+      for (const [tag] of text.matchAll(/<script\b[^>]*>/gi))
         expect(tag, `${path}: ${tag}`).toContain('type="text/typescript"');
     }
   });

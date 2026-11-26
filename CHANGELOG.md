@@ -11,6 +11,25 @@ it is not `@bascik/bascik`.
 
 ## [Unreleased]
 
+### Changed
+
+- `create-bascik` 1.1.2: new projects depend on `@bascik/bascik` `^1.0.2` and `@bascik/language-server` `^1.1.1`, so they start with the fixes below. Blog and docs projects depend on `marked` `^18.2.1`, and projects made with `--adapter netlify` on `netlify-cli` `^27.20.0`. Existing projects already allow these versions, and `npm update` installs them.
+
+### Fixed
+
+- The dev server's pinned `Server running at` line is now followed only by the command and that run's output. In a terminal that already had output on screen, such as an earlier run, the address was drawn on the top row and the old output stayed under it, so it read as part of the new run. The old output is now scrolled up into the terminal's scrollback. `--no-pin` still turns pinning off. See [What you see in the terminal](https://bascik.dev/developer-experience#what-you-see-in-the-terminal).
+- `@bascik/language-server` 1.1.1 and the VS Code extension 1.0.2: reading a component's `data-bascik-attr-*` bindings takes time proportional to the file. A file with a long run of attribute-name characters before a binding could stall diagnostics, completions and hovers. Update the extension, or run `npm install @bascik/language-server@latest` where the linter is installed.
+- `@bascik/bascik` 1.0.2: component tags returned by a server or stream script render in time proportional to the output when one component holds many others, such as a grid whose slot holds a few hundred cards. Each card used to copy and search the whole grid again, so 990 cards in one grid took over a second of blocked event loop where the same cards spread over many grids took a tenth of that. Named-slot content that holds many component usages (`data-bascik-slot="..."` wrappers around or inside them) had a second pass of the same kind, which also slowed builds of such pages. Output is unchanged; see [`scripts.renderLimits`](https://bascik.dev/configuration#scriptsrenderlimits) for the limits on one output.
+
+## [create-bascik 1.1.1] - 2026-11-22
+
+### Fixed
+
+- `create-bascik` 1.1.1: every template now has the same phone-width navigation as the Bascik docs site. A menu button at the top right of the header opens a menu that covers the screen below it, and the light/dark switch is the last row of that menu, labeled `Light` or `Dark`, instead of an icon in the bar. The docs template shows search as a magnifying-glass icon beside the menu button and lists its pages in the menu; the dashboard lists its sidebar links there. Their separate Menu buttons are gone. Escape closes the menu, and without JavaScript the links stay visible as ordinary links.
+- `create-bascik` 1.1.1: the reports template no longer writes two empty folders, `REPORTS.m` and `bascik.config.t`, into a new project. Delete them from a project scaffolded with 1.1.0.
+
+## [create-bascik 1.1.0] - 2026-11-20
+
 ### Added
 
 - `create-bascik` 1.1.0: `--adapter <name>` adds a deploy adapter to the starter (`cloudflare`, `netlify`, or `none`), as in `npm create bascik my-site -- --adapter cloudflare`. `--template cloudflare` and `--template netlify` still work and mean the same thing; naming two different adapters with the two flags is an error. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
@@ -28,12 +47,10 @@ it is not `@bascik/bascik`.
 - `create-bascik`: the dashboard template uses a restrained data-product palette, clearer typographic hierarchy and content spacing, with reduced-motion-aware pressed buttons. Initial page content paints without entrance animations.
 - `create-bascik`: dashboard scaffolds inline their global stylesheet through `assets.inlineStyles`, retain the canonical Bascik favicon, and use an accessible icon-only light/dark toggle. Navigation remains non-underlined at rest, settings use the plain `dashboard` name, and seeded customers and inventory use explicit demo labels rather than invented claims about real people.
 - `create-bascik`: dashboard cards and navigation now use a neutral, softly layered light/dark palette with responsive surfaces and a more legible accent.
-
 - `create-bascik`: shop opens directly on the all-products catalog at `/`, with product pages under `/products/<slug>`. A Bascik server script reads SQLite (or Cloudflare D1), and native GET filters work without JavaScript. Use `bascik --server` or a deploy adapter in production.
 - `create-bascik`: the shop template uses plain `shop` branding, original product-matched illustrations and a roomier editorial storefront, without associating its fictional catalog with real people or companies.
 - `create-bascik`: shop adds an accessible icon-only theme toggle with pre-paint preference restoration, keeps the canonical Bascik favicon, inlines global CSS through `assets.inlineStyles`, and removes initial entrance animations. Resting navigation is deliberately not underlined. Product pages now have viewport-sized desktop panels and clearly illustrative material, fit, specification and availability details.
 - `create-bascik`: shop pages and book cards now use the shared raised light/dark surfaces, with responsive padding and theme-aware form errors.
-
 - `create-bascik`: the portfolio template is now an art-directed creator portfolio with fictional identity, editorial, and image-making projects rather than a motorsport author portfolio.
 - `create-bascik`: portfolio now uses an inset editorial masthead with numbered links, non-underlined navigation, and a persistent accessible icon-only theme toggle. Global CSS is inlined with `assets.inlineStyles`; first-paint content stays visible without entrance animation, and canonical Bascik favicons remain unchanged. Collections, case studies, and the biography are explicitly labeled as fictional samples.
 - `create-bascik`: the landing template now presents a focused project-workspace product in a clean editorial layout, with a responsive CSS product preview instead of the book illustration.
@@ -41,34 +58,26 @@ it is not `@bascik/bascik`.
 - `create-bascik`: the blog template uses a responsive editorial author sidebar, a plain project-slug brand, rule-led post entries, and an unboxed reading column with article author context. An accessible icon-only light/dark toggle restores the saved theme before paint, while global styles are inlined through `assets.inlineStyles`. The Bascik favicon is unchanged; navigation has no default underline and above-the-fold content has no entrance animation. Sample racing guides are explicitly illustrative, with a John Doe placeholder instead of invented real-person biographies or endorsements.
 - `create-bascik`: docs now opens directly in the introductory Markdown guide at `/`, with the existing searchable sidebar, active table of contents, and pagination. Its icon-only theme control persists both schemes, global CSS is inlined without a stylesheet request, navigation has no resting underline, and content paints without entrance animation. The shared SVG favicon is restored to canonical Bascik geometry and colors.
 - `create-bascik`: the corporate template keeps its navy, stone, and copper identity with an accessible icon-only light/dark toggle, saved theme restoration before paint, a borderless Services disclosure that works with hover, keyboard, and touch, and inlined global CSS. Initial page content no longer animates or flashes, and the favicon keeps the original Bascik colors.
-
 - `create-bascik`: the reports template uses an editorial-analytics design with a warm paper palette, typographic hierarchy, restrained chart color, and a consistent neutral treatment in light and dark modes. Its demo data uses fictional names instead of real companies and people. Chart inspection remains keyboard accessible, and charts and tables work without JavaScript in screen and print layouts.
 - `create-bascik`: the default starter and adapter variants use a warm paper-and-ink design system with moss accents, quieter surfaces, clearer typography, and reduced-motion-aware button feedback.
-- Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).
 - `create-bascik`: the docs template has a searchable header dialog, a responsive docs layout, and a table of contents that highlights the current section.
 
 ### Fixed
 
-- `create-bascik` 1.1.1: every template now has the same phone-width navigation as the Bascik docs site. A menu button at the top right of the header opens a menu that covers the screen below it, and the light/dark switch is the last row of that menu, labeled `Light` or `Dark`, instead of an icon in the bar. The docs template shows search as a magnifying-glass icon beside the menu button and lists its pages in the menu; the dashboard lists its sidebar links there. Their separate Menu buttons are gone. Escape closes the menu, and without JavaScript the links stay visible as ordinary links.
-- `create-bascik` 1.1.1: the reports template no longer writes two empty folders, `REPORTS.m` and `bascik.config.t`, into a new project. Delete them from a project scaffolded with 1.1.0.
-- HTML minification preserves the browser's handling of an initial newline in `<pre>` and `<listing>` when malformed table markup would otherwise move a script in front of it. See [HTML minification](https://bascik.dev/internals/minification#html-minification-html-minifierts).
-- Upgrading `@bascik/bascik` now runs every build script again. The installed version is part of the build script cache key, so a new release never serves output an older version produced, and you no longer need to delete `node_modules/.cache/bascik` after upgrading. See [Performance: Output Caching](https://bascik.dev/scripts/build#performance-output-caching).
 - `create-bascik`: portfolio restores only its own saved theme, and generated database ignore entries stay specific to the selected template.
 - `create-bascik`: default's icon-only theme toggle follows Contact at the far right of desktop navigation and in keyboard order.
 - `create-bascik`: the default starter welcomes your project name, includes an accessible icon-only theme toggle that remembers both themes without flashing, inlines global CSS, and retains the canonical Bascik favicon. Navigation has deliberate resting styles, initial content stays static including view transitions, and independent counters demonstrate scoped CSS monitoring the raw numeric `data-value` to turn negative values red without JavaScript sign classification.
-
 - `create-bascik`: the starter's mobile navigation works without JavaScript and returns focus to the menu button when dismissed with Escape.
 - `create-bascik`: the docs template highlights the last section at the bottom of the page, even when its heading cannot reach the reading position. Direct links to nearby headings keep the correct highlight.
 - `create-bascik`: the landing template now has an accessible icon-only light/dark toggle with a saved preference applied before paint, no initial hero or root view-transition fades, an inlined global stylesheet, consistent project-slug branding, and the canonical Bascik favicon. Its landing-specific styling and reduced-motion-aware interaction feedback are preserved.
 - `create-bascik`: shop product actions no longer change the panel height after load or disturb restored scroll positions. The cart count stays visible as a neutral pill, including `0` for an empty cart.
 - `create-bascik`: shop reserves navigation and cart-count space before paint, initializes theme/menu controls without network-loaded cart modules, and no longer reveals or reorders the catalog after load.
 - `create-bascik`: reports use an accessible icon-only persistent theme toggle, the unchanged Bascik favicon, inline global CSS, and immediate above-fold paint. Linked month rows navigate to real report pages; chart-month controls alone pin month inspection. SQLite/D1 rendering and CSV downloads remain intact.
-
 - `create-bascik`: the generated dashboard Playwright spec now parses correctly.
 - `create-bascik`: dashboard builds without a pre-seeded database use an in-memory SQLite seed, avoiding races between parallel build workers. Run `npm run db:seed` to create the persistent demo database.
 - `create-bascik`: the starter's "Skip to content" link stays hidden when you put something above `<site-header>`, such as a banner or another nav. It was hidden with a fixed offset that only worked while the header was first on the page; it is now clipped until it has keyboard focus. Existing sites: in `src/components/site-header/site-header.html`, set `.skip-link` to `top: 8px` and replace the `.skip-link:focus` rule with `.skip-link:not(:focus) { width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }`.
 
-## [1.0.1] - 2026-11-16
+## [1.0.1] - 2026-11-20
 
 ### Added
 
@@ -77,6 +86,7 @@ it is not `@bascik/bascik`.
 ### Changed
 
 - `@bascik/bascik` now requires `parse5` 8.1.1, which Bascik parses pages and components with. That release fixes security issues in the HTML parser, among them crashes from a few bytes of input and parse times that grew quadratically with deeply nested or attribute-heavy markup. Updating `@bascik/bascik` installs it; no change is needed in your project.
+- Public Bascik skills: testing guidance now includes optional development-only CSS diagnostics for compiled HTML, with Bascik scoping precautions and explicit limits on what selector-based checks can prove. See [Component testing](https://bascik.dev/testing/component-testing#optional-css-diagnostics-on-compiled-html).
 
 ### Fixed
 
@@ -187,6 +197,8 @@ it is not `@bascik/bascik`.
 - The built-in JavaScript minifier now ends a class field that has no value when the next member starts with `[` or `*`. In a class written without semicolons, a production build turned `#abort\n[kResume] = null` into `#abort[kResume]=null` and `count\n*items() {}` into `count*items(){}`, neither of which parses. No change is needed in your code; rebuild. See the "Class fields without semicolons" row of the [compatibility page](https://bascik.dev/compatibility).
 - HTML minification no longer changes where text ends up in a page that stops inside unfinished markup within a `<table>` (for example a file ending in `</`). The moved client scripts were placed between that markup and the text in front of it, so whitespace the browser had moved out of the table stayed inside it. No change is needed in your pages; rebuild.
 - The built-in JavaScript minifier now ends a statement at a line break that JavaScript ends it at in two more places. A line after `return`, `break`, `continue`, or `yield` that starts with `-`, `+`, or a regex was joined to it, so `return\n-z` returned `-z` instead of `undefined`, and `break\n+1` did not parse. A `var`, `let`, or `const` declaration of a name with no value, followed by a line starting with `[` or `(`, was joined too (`var p\n[a, b].forEach(f)` became `var p[a,b].forEach(f)`, which does not parse). No change is needed in your code; rebuild. See the "Semicolon-free scripts" row of the [compatibility page](https://bascik.dev/compatibility).
+- HTML minification preserves the browser's handling of an initial newline in `<pre>` and `<listing>` when malformed table markup would otherwise move a script in front of it. See [HTML minification](https://bascik.dev/internals/minification#html-minification-html-minifierts).
+- Upgrading `@bascik/bascik` now runs every build script again. The installed version is part of the build script cache key, so a new release never serves output an older version produced, and you no longer need to delete `node_modules/.cache/bascik` after upgrading. See [Performance: Output Caching](https://bascik.dev/scripts/build#performance-output-caching).
 
 ## [1.0.0] - 2026-11-12
 
@@ -196,5 +208,7 @@ Bascik is a build tool for HTML components with automatically scoped CSS and
 JavaScript and no runtime. Start a site with `npm create bascik`, and see
 [Getting Started](https://bascik.dev/getting-started) for the rest.
 
+[create-bascik 1.1.1]: https://github.com/bascikdev/bascik/compare/create-v1.1.0...create-v1.1.1
+[create-bascik 1.1.0]: https://github.com/bascikdev/bascik/compare/create-v1.0.0...create-v1.1.0
 [1.0.1]: https://github.com/bascikdev/bascik/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/bascikdev/bascik/releases/tag/v1.0.0

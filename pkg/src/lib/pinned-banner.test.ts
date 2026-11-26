@@ -6,6 +6,7 @@ import {
   needsEmptyScrollback,
   pinServerUrl,
   readCursorPosition,
+  scrollEarlierOutputAway,
   type PinnedBannerInput,
   type PinnedBannerStream,
 } from "./pinned-banner.ts";
@@ -279,6 +280,77 @@ describe("pinned-banner", () => {
         ),
       ).toBeUndefined();
       expect(writes).toEqual([]);
+    });
+  });
+
+  describe("scrollEarlierOutputAway", () => {
+    it("scrolls what is above the command into the scrollback and puts the cursor back on its line", async () => {
+      const { stream, writes } = makeStream({ rows: 40 });
+      const { input, answer } = makeInput({ reply: `${ESC}[7;5R` });
+      answer(stream);
+      await scrollEarlierOutputAway(stream, {}, input);
+      // The cursor query, then one write.
+      expect(writes).toHaveLength(2);
+      expect(writes[1]).toBe(
+        // A stale region would keep a newline from scrolling the whole screen.
+        `${ESC}[r${ESC}[?6l` +
+          // The cursor was on row 7. Five newlines on the last row scroll rows 1 to 5 away, which leaves the
+          // command's line (row 6) on the top row and the cursor's line under it.
+          `${ESC}[40;1H\n\n\n\n\n` +
+          `${ESC}[2;5H`,
+      );
+    });
+
+    it("writes nothing when the cursor has at most one line above it", async () => {
+      for (const row of [1, 2]) {
+        const { stream, writes } = makeStream({ rows: 24 });
+        const { input, answer } = makeInput({ reply: `${ESC}[${row};1R` });
+        answer(stream);
+        await scrollEarlierOutputAway(stream, {}, input);
+        expect(writes).toEqual([`${ESC}[6n`]);
+      }
+    });
+
+    it("treats a terminal that does not answer as having the cursor on the last row, which loses nothing", async () => {
+      vi.useFakeTimers();
+      try {
+        const { stream, writes } = makeStream({ rows: 24 });
+        const { input, answer } = makeInput({});
+        answer(stream);
+        const pending = scrollEarlierOutputAway(stream, {}, input);
+        await vi.advanceTimersByTimeAsync(1000);
+        await pending;
+        expect(writes[1]).toBe(
+          `${ESC}[r${ESC}[?6l${ESC}[24;1H${"\n".repeat(22)}${ESC}[2;1H`,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("never erases the scrollback, in VS Code's terminal either: that waits for the banner", async () => {
+      const { stream, writes } = makeStream({ rows: 24 });
+      const { input, answer } = makeInput({ reply: `${ESC}[20;1R` });
+      answer(stream);
+      await scrollEarlierOutputAway(
+        stream,
+        { TERM_PROGRAM: "vscode", VSCODE_INJECTION: "1" },
+        input,
+      );
+      expect(writes[1]).not.toContain(`${ESC}[3J`);
+    });
+
+    it("writes nothing, not even the cursor query, when pinning is off or the stream cannot pin", async () => {
+      const off = makeStream();
+      await scrollEarlierOutputAway(
+        off.stream,
+        { BASCIK_PIN_SERVER_URL: "0" },
+        makeInput({ reply: `${ESC}[9;1R` }).input,
+      );
+      expect(off.writes).toEqual([]);
+      const piped = makeStream({ isTTY: false });
+      await scrollEarlierOutputAway(piped.stream, {}, undefined);
+      expect(piped.writes).toEqual([]);
     });
   });
 
@@ -599,6 +671,117 @@ describe("pinned-banner", () => {
         "Server running at http://localhost:8080 on-number-1.svg",
       );
       expect(/https?:\/\/\S+/.exec(topLine)?.[0]).toBe("http://localhost:8080");
+    });
+
+    /**
+     * A dev server start in a terminal that already shows an earlier run: the earlier output is scrolled away
+     * when the run starts, a `pre` exec script prints, and only then is the address known and pinned.
+     */
+    const startAfterAnEarlierRun = async (
+      rows: number,
+      preLines: number,
+      /** Whether the run goes on to print after the address is pinned. */
+      printsAfterPinning = true,
+    ) => {
+      const terminal = new Terminal({
+        cols: columns,
+        rows,
+        allowProposedApi: true,
+      });
+      let written: Promise<void> = Promise.resolve();
+      const write = (chunk: string) => {
+        written = written.then(
+          () => new Promise<void>((done) => terminal.write(chunk, done)),
+        );
+        return true;
+      };
+      const stream: PinnedBannerStream = {
+        isTTY: true,
+        rows,
+        columns,
+        write,
+        on: () => stream,
+        off: () => stream,
+      };
+      /** Answers the cursor query with where the emulator's cursor really is. */
+      const input = (): PinnedBannerInput => {
+        const cursor = terminal.buffer.active;
+        const { input: stdin, answer } = makeInput({
+          reply: `${ESC}[${cursor.cursorY + 1};${cursor.cursorX + 1}R`,
+        });
+        answer(stream);
+        return stdin;
+      };
+      // An earlier run's output, a prompt, and the command, as a shell leaves them.
+      for (let line = 1; line <= 6; line++)
+        write(`earlier run line ${line}\r\n`);
+      write("$ bascik\r\n");
+      await written;
+      await scrollEarlierOutputAway(stream, {}, input());
+      for (let line = 1; line <= preLines; line++)
+        write(`pre script line ${line}\r\n`);
+      await written;
+      const banner = await pinServerUrl(
+        "http://localhost:8080",
+        stream,
+        {},
+        input(),
+      );
+      if (printsAfterPinning) stream.write("Starting transpiling...\r\n");
+      await written;
+      const buffer = terminal.buffer.active;
+      const read = (from: number, count: number) =>
+        Array.from({ length: count }, (_, row) =>
+          buffer.getLine(from + row)!.translateToString(true),
+        );
+      const result = {
+        screen: read(buffer.baseY, rows),
+        scrollback: read(0, buffer.baseY),
+      };
+      banner?.release();
+      await written;
+      terminal.dispose();
+      return result;
+    };
+
+    it("shows the banner, the command, and all of this run's output, with the earlier run in the scrollback", async () => {
+      const { screen, scrollback } = await startAfterAnEarlierRun(14, 3);
+      expect(screen.slice(0, 7)).toEqual([
+        "Server running at http://localhost:8080 ",
+        "$ bascik",
+        "pre script line 1",
+        "pre script line 2",
+        "pre script line 3",
+        "Starting transpiling...",
+        "",
+      ]);
+      expect(screen.join("\n")).not.toContain("earlier run");
+      // The earlier run was scrolled away, not erased: it is all in the scrollback, in order.
+      expect(scrollback).toEqual(
+        [1, 2, 3, 4, 5, 6].map((line) => `earlier run line ${line}`),
+      );
+    });
+
+    it("loses none of this run's output to the pin when a pre script printed more than a screen first", async () => {
+      // Read at the moment the address is pinned. What scrolls past the banner afterwards is not kept by any
+      // terminal: that is what pinning costs, and what --no-pin is for.
+      const rows = 8;
+      const { screen, scrollback } = await startAfterAnEarlierRun(
+        rows,
+        20,
+        false,
+      );
+      expect(screen[0]).toBe("Server running at http://localhost:8080 ");
+      // Every line of this run is on screen or in the scrollback, in order, after the earlier run.
+      const all = [...scrollback, ...screen.slice(1)].filter(Boolean);
+      expect(all).toEqual([
+        ...[1, 2, 3, 4, 5, 6].map((line) => `earlier run line ${line}`),
+        "$ bascik",
+        ...Array.from(
+          { length: 20 },
+          (_, line) => `pre script line ${line + 1}`,
+        ),
+      ]);
     });
 
     it("reads the banner alone when a whole log line sits under it", async () => {

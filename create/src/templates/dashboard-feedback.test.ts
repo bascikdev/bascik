@@ -17,9 +17,13 @@ import {
   expect as browserExpect,
   type Browser,
 } from "@playwright/test";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { FAVICON_SVG, scaffold } from "../scaffold.ts";
 import { DASHBOARD_TEMPLATE } from "./dashboard.ts";
+
+// Every browser test here opens a page on a production server. The default 5s
+// is too short on a loaded Windows runner; tests that need longer say so.
+vi.setConfig({ testTimeout: 30_000 });
 
 const root = resolve(fileURLToPath(import.meta.url), "../../../..");
 const exec = promisify(execFile);

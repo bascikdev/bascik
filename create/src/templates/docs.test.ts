@@ -8,6 +8,16 @@ import { TEMPLATES, templateNamed } from "../templates.js";
 import { DOCS_TEMPLATE } from "./docs.js";
 import { DOCS_SITE_META_HTML } from "./docs/site.js";
 
+/** Applies `pattern` until nothing changes, so removing one match cannot leave another behind. */
+const stripRepeatedly = (text: string, pattern: RegExp): string => {
+  let previous: string;
+  do {
+    previous = text;
+    text = text.replace(pattern, "");
+  } while (text !== previous);
+  return text;
+};
+
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../../../..");
 
 const filesOf = (
@@ -31,10 +41,10 @@ const pathsMatching = (pattern: RegExp): string[] =>
 
 /** The opening tags in a file, in order, without comments, styles or scripts. */
 const openingTags = (html: string): string[] =>
-  html
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<(style|script)\b[\s\S]*?<\/\1>/g, "")
-    .match(/<[a-z][^>]*>/g) ?? [];
+  stripRepeatedly(
+    stripRepeatedly(html, /<!--[\s\S]*?-->/g),
+    /<(style|script)\b[\s\S]*?<\/\1>/gi,
+  ).match(/<[a-z][^>]*>/g) ?? [];
 
 // ─── The generated modules, loaded and run ────────────────────────────────────
 
@@ -134,7 +144,7 @@ describe("docs template", () => {
     expect(TEMPLATES).toContain(DOCS_TEMPLATE);
     expect(templateNamed("docs")).toBe(DOCS_TEMPLATE);
     expect(templateNamed("Docs")).toBe(DOCS_TEMPLATE);
-    expect(DOCS_TEMPLATE.dependencies).toEqual({ marked: "^18.2.0" });
+    expect(DOCS_TEMPLATE.dependencies).toEqual({ marked: "^18.2.1" });
     expect(file("src/lib/markdown.ts")).toContain('from "marked"');
   });
 
@@ -215,7 +225,7 @@ describe("docs template", () => {
 describe("docs template markup", () => {
   it("writes every script as TypeScript", () => {
     for (const path of pathsMatching(/\.html$/)) {
-      for (const tag of file(path).match(/<script\b[^>]*>/g) ?? []) {
+      for (const tag of file(path).match(/<script\b[^>]*>/gi) ?? []) {
         expect(
           tag.includes('type="text/typescript"') || /src="[^"]+\.ts"/.test(tag),
           `${path}: ${tag}`,

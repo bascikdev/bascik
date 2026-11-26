@@ -9,7 +9,11 @@ Every release goes through one pull request and then `yarn release`:
    (`[<version>]: https://github.com/bascikdev/bascik/compare/v<previous>...v<version>`;
    the first release links its tag). The `/releases` docs page renders this file, so an
    empty or missing section shows on bascik.dev. Packages that did not change get no
-   section of their own; their bullets name the package.
+   section of their own; their bullets name the package. A release with no new
+   `@bascik/bascik` version gets a section named for its package, such as
+   `## [create-bascik 1.1.1] - 2026-11-22`, with a comparison link between that
+   package's tags (`[create-bascik 1.1.1]: .../compare/create-v1.1.0...create-v1.1.1`).
+   Remove the `## [Unreleased]` heading when nothing is left under it.
 2. **Versions and ranges.** Bump `version` in each package that changed: `pkg/`,
    `create/`, `adapters/cloudflare/`, `adapters/netlify/`, `lsp/`,
    `extensions/vscode-bascik/`. Then the ranges that must include the new versions:

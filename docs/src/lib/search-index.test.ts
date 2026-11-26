@@ -5,12 +5,17 @@ import {
   buildSearchEntries,
   compactSearchIndex,
   publicSearchIndexJson,
+  compressedSize,
   searchIndexJson,
   searchIndexPath,
+  searchTextJson,
+  searchTextPath,
   PUBLIC_SEARCH_INDEX_PATH,
-  SEARCH_INDEX_MAX_BYTES,
+  SEARCH_INDEX_MAX_COMPRESSED_BYTES,
+  SEARCH_TEXT_MAX_COMPRESSED_BYTES,
 } from "./search-index.ts";
 import {
+  applySearchText,
   buildResults,
   expandSearchIndex,
   snippet,
@@ -20,12 +25,50 @@ import {
 
 const entries = await buildSearchEntries();
 
+/** What a browser has once both files have arrived. */
+function loaded(): SearchEntry[] {
+  const index = expandSearchIndex(JSON.parse(searchIndexJson(entries)));
+  expect(applySearchText(index, JSON.parse(searchTextJson(entries)))).toBe(
+    true,
+  );
+  return index;
+}
+
 describe("search index", () => {
-  it("expands back to exactly the entries it was built from", () => {
-    const expanded = expandSearchIndex(
-      JSON.parse(JSON.stringify(compactSearchIndex(entries))),
+  it("expands back to exactly the entries it was built from, once the text is applied", () => {
+    expect(loaded()).toEqual(entries);
+  });
+
+  it("holds no text in the outline, which is what a first search waits for", () => {
+    const outline = expandSearchIndex(JSON.parse(searchIndexJson(entries)));
+    expect(outline).toHaveLength(entries.length);
+    for (const entry of outline) expect(entry.text).toBe("");
+    expect(outline.map((entry) => entry.path)).toEqual(
+      entries.map((entry) => entry.path),
     );
-    expect(expanded).toEqual(entries);
+  });
+
+  it("finds a page by its title or a heading with the outline alone", () => {
+    const outline = expandSearchIndex(JSON.parse(searchIndexJson(entries)));
+    for (const query of ["scoped styles", "stream scripts", "props"]) {
+      const top = buildResults(outline, query, tokens(query), 13);
+      expect(top.length, query).toBeGreaterThan(0);
+    }
+  });
+
+  it("refuses a text file that is not this outline's", () => {
+    const outline = expandSearchIndex(JSON.parse(searchIndexJson(entries)));
+    const texts = JSON.parse(searchTextJson(entries)) as string[];
+    expect(applySearchText(outline, texts.slice(1))).toBe(false);
+    expect(applySearchText(outline, { pages: [] })).toBe(false);
+    expect(
+      applySearchText(
+        outline,
+        texts.map(() => 1),
+      ),
+    ).toBe(false);
+    // Nothing was half applied.
+    for (const entry of outline) expect(entry.text).toBe("");
   });
 
   it("stores each page's title, label, section and path once, not once per heading", () => {
@@ -41,9 +84,16 @@ describe("search index", () => {
     for (const entry of entries) expect(entry.text).not.toMatch(/\s{2}|\n|\t/);
   });
 
-  it(`is at most ${SEARCH_INDEX_MAX_BYTES} bytes, which every visitor downloads on the first search`, () => {
-    const bytes = Buffer.byteLength(searchIndexJson(entries));
-    expect(bytes).toBeLessThanOrEqual(SEARCH_INDEX_MAX_BYTES);
+  it(`has an outline of at most ${SEARCH_INDEX_MAX_COMPRESSED_BYTES} compressed bytes, which every first search waits for`, () => {
+    expect(compressedSize(searchIndexJson(entries))).toBeLessThanOrEqual(
+      SEARCH_INDEX_MAX_COMPRESSED_BYTES,
+    );
+  });
+
+  it(`has at most ${SEARCH_TEXT_MAX_COMPRESSED_BYTES} compressed bytes of text, which loads in the background`, () => {
+    expect(compressedSize(searchTextJson(entries))).toBeLessThanOrEqual(
+      SEARCH_TEXT_MAX_COMPRESSED_BYTES,
+    );
   });
 
   it("is fetched from a file name that changes with its content, so it can be cached for a year", () => {
@@ -51,11 +101,25 @@ describe("search index", () => {
     expect(path).toMatch(/^\/assets\/search-index\.[0-9a-f]{10}\.json$/);
     expect(path).not.toBe(PUBLIC_SEARCH_INDEX_PATH);
     expect(searchIndexPath(searchIndexJson(entries))).toBe(path);
-    const changed = [
+    const renamed = [
+      { ...entries[0], title: `${entries[0].title} more` },
+      ...entries.slice(1),
+    ];
+    expect(searchIndexPath(searchIndexJson(renamed))).not.toBe(path);
+  });
+
+  it("keeps the outline's file name when only the text of a section changes", () => {
+    const edited = [
       { ...entries[0], text: `${entries[0].text} more` },
       ...entries.slice(1),
     ];
-    expect(searchIndexPath(searchIndexJson(changed))).not.toBe(path);
+    // A reader who has the outline cached keeps it; only the text is downloaded again.
+    expect(searchIndexPath(searchIndexJson(edited))).toBe(
+      searchIndexPath(searchIndexJson(entries)),
+    );
+    const textPath = searchTextPath(searchTextJson(entries));
+    expect(textPath).toMatch(/^\/assets\/search-text\.[0-9a-f]{10}\.json$/);
+    expect(searchTextPath(searchTextJson(edited))).not.toBe(textPath);
   });
 
   // The installed bascik agent skill scripts and pages loaded before a deploy (an open tab, a bfcache restore)
@@ -79,13 +143,11 @@ describe("search index", () => {
     expect(
       expandSearchIndex(JSON.parse(publicSearchIndexJson(entries))),
     ).toEqual(entries);
-    expect(expandSearchIndex(JSON.parse(searchIndexJson(entries)))).toEqual(
-      entries,
-    );
+    expect(loaded()).toEqual(entries);
   });
 
   it("finds a term deep in a section and shows it in the snippet", () => {
-    const index: SearchEntry[] = expandSearchIndex(compactSearchIndex(entries));
+    const index: SearchEntry[] = loaded();
     // Terms that appear well past the start of their section, so a shortened index would lose them.
     const deep = entries
       .filter((entry) => entry.heading !== null && entry.text.length > 1500)

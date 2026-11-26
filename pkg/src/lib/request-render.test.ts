@@ -57,6 +57,7 @@ import {
   type ComponentManifest,
 } from "./component-manifest.ts";
 import {
+  ComponentCycleError,
   ComponentExpansionLimitError,
   expandComponents,
 } from "./component-expansion-core.ts";
@@ -90,7 +91,7 @@ import {
   scopeComponentInstance,
 } from "./scoping-template.ts";
 import { serverSidecarRegistry } from "./server-sidecar.ts";
-import type { ComponentList } from "./types.ts";
+import type { BascikComponent, ComponentList } from "./types.ts";
 
 // These tests check output, not speed: each file does seconds of real
 // compiling (generated inputs, every repository component, multi-MiB pages).
@@ -1581,6 +1582,227 @@ describe.each([true, false])(
       expect(() => expandByUsage(usage.repeat(4), list, over)).toThrow(
         ComponentExpansionLimitError,
       );
+    });
+
+    // Each instance is expanded in its own text, not spliced into the
+    // usage and searched again from its start (the loop's way, which
+    // copies the whole usage once per instance inside it).
+    const bothWays = (html: string, list: ComponentList = cards()) => {
+      const run = (
+        expand: (
+          opts: ReturnType<typeof buildOptions> & {
+            warn: (message: string) => void;
+          },
+          used: BascikComponent[],
+        ) => string,
+      ) => {
+        clearScopingTemplates();
+        const state = freshState();
+        const used: BascikComponent[] = [];
+        const warnings: string[] = [];
+        const out = expand(
+          { ...buildOptions(state), warn: (m) => warnings.push(m) },
+          used,
+        );
+        return {
+          out,
+          names: used.map((c) => c.name),
+          ids: [...state.issuedIds],
+          warnings,
+        };
+      };
+      return {
+        whole: run(
+          (opts, used) =>
+            expandComponents(html, list, opts, used).transpiledHtmlBody,
+        ),
+        chunked: run((opts, used) => expandByUsage(html, list, opts, used)),
+      };
+    };
+
+    it.each([
+      [
+        "one slot holding many usages, some with slots of their own",
+        `<server-card data-bascik-prop-name="grid">` +
+          Array.from(
+            { length: 40 },
+            (_, i) =>
+              `<plain-card data-bascik-prop-t="t${i}"><div data-bascik-slot="x"><bare-card data-bascik-prop-t="b${i}"></bare-card></div></plain-card> text ${i} `,
+          ).join("") +
+          `<div data-bascik-slot="foot"><nest-parent>fwd</nest-parent></div></server-card>`,
+      ],
+      [
+        "usages nested deeper than the renderer follows instance by instance",
+        `<server-card data-bascik-prop-name="n">`.repeat(40) +
+          `<bare-card></bare-card>` +
+          `</server-card>`.repeat(40),
+      ],
+      [
+        "an unclosed usage and masked usages inside a slot",
+        `<server-card><!-- <bare-card></bare-card> --><textarea><bare-card></bare-card></textarea>` +
+          `<bare-card data-bascik-prop-t="a"></bare-card><plain-card data-bascik-prop-t="open"></server-card>` +
+          `<bare-card data-bascik-prop-t="after"></bare-card>`,
+      ],
+      [
+        "a prop and a slot the nested template does not declare",
+        `<server-card><bare-card data-bascik-prop-nope="x">dropped</bare-card></server-card>`,
+      ],
+    ])(
+      "nested usages are byte-identical, in the same order: %s",
+      (_name, html) => {
+        const { whole, chunked } = bothWays(html);
+        expect(chunked.out).toBe(whole.out);
+        expect(chunked.names).toEqual(whole.names);
+        expect(chunked.ids).toEqual(whole.ids);
+        expect(chunked.warnings).toEqual(whole.warnings);
+        expect(chunked.names.length).toBeGreaterThan(1);
+        expect(chunked.out).not.toContain("bascik-source-file");
+      },
+    );
+
+    // A CDATA section in SVG or MathML content is text, so a tag written in
+    // it is not a usage. Whether `<![CDATA[` starts a section depends on the
+    // SVG or MathML open around it, which can be in an enclosing instance's
+    // template or in the output around the usage.
+    const ART: ComponentList = {
+      "art-wrap": {
+        fileName: "src/components/art-wrap.html",
+        fileContent: `<figure class="art"><svg><art-label></art-label></svg><art-label></art-label></figure>`,
+      },
+      "art-label": {
+        fileName: "src/components/art-label.html",
+        fileContent: `<text class="label"><![CDATA[see <b>this</b>: <art-dot></art-dot>]]></text>`,
+      },
+      "art-slot": {
+        fileName: "src/components/art-slot.html",
+        fileContent: `<g class="slot" data-bascik-slot></g>`,
+      },
+      "art-dot": {
+        fileName: "src/components/art-dot.html",
+        fileContent: `<circle class="dot"></circle>`,
+      },
+    };
+    it.each([
+      // The label in the SVG keeps its tag as text; the one after it is in
+      // HTML content, where `<![CDATA[` is a bogus comment up to the first
+      // `>`, so the tag after it is a usage.
+      ["an SVG in the enclosing template", `<art-wrap></art-wrap>`, 1],
+      [
+        "an SVG in the output around the usage",
+        `<svg><art-label></art-label></svg><art-label></art-label>`,
+        1,
+      ],
+      [
+        "an SVG two instances up, through a slot",
+        `<svg><art-slot><art-slot><art-label></art-label></art-slot></art-slot></svg>`,
+        0,
+      ],
+      ["MathML", `<math><art-label></art-label></math>`, 0],
+      [
+        "an integration point, which is HTML content again",
+        `<svg><foreignObject><art-label></art-label></foreignObject></svg>`,
+        1,
+      ],
+      [
+        "a section written in a slot inside an SVG",
+        `<svg><art-slot><![CDATA[<art-dot></art-dot>]]><art-dot></art-dot></art-slot></svg>`,
+        1,
+      ],
+    ])("a tag inside a CDATA section stays text: %s", (_name, html, dots) => {
+      const { whole, chunked } = bothWays(html, ART);
+      expect(chunked.out).toBe(whole.out);
+      expect(chunked.names).toEqual(whole.names);
+      expect(chunked.ids).toEqual(whole.ids);
+      expect(chunked.names.filter((name) => name === "art-dot")).toHaveLength(
+        dots,
+      );
+    });
+
+    it("a template cycle reached inside an instance is the loop's cycle error", () => {
+      const list: ComponentList = {
+        "ring-a": {
+          fileName: "src/components/ring-a.html",
+          fileContent: `<div class="a"><ring-b></ring-b></div>`,
+        },
+        "ring-b": {
+          fileName: "src/components/ring-b.html",
+          fileContent: `<div class="b"><ring-a></ring-a></div>`,
+        },
+        "ring-wrap": {
+          fileName: "src/components/ring-wrap.html",
+          fileContent: `<section class="w" data-bascik-slot></section>`,
+        },
+      };
+      const html = `<ring-wrap><ring-wrap><ring-a></ring-a></ring-wrap></ring-wrap>`;
+      const failure = (expand: () => unknown): ComponentCycleError => {
+        clearScopingTemplates();
+        try {
+          expand();
+        } catch (error) {
+          if (error instanceof ComponentCycleError) return error;
+          throw error;
+        }
+        throw new Error("no cycle error");
+      };
+      const whole = failure(() =>
+        expandComponents(html, list, buildOptions(freshState())),
+      );
+      const chunked = failure(() =>
+        expandByUsage(html, list, buildOptions(freshState())),
+      );
+      expect(chunked.chain).toEqual(["ring-a", "ring-b", "ring-a"]);
+      expect(chunked.chain).toEqual(whole.chain);
+      expect(chunked.message).toBe(whole.message);
+      // A usage nested in its own name by slot content is not a cycle.
+      expect(
+        count(
+          expandByUsage(
+            `<ring-wrap><ring-wrap>x</ring-wrap></ring-wrap>`,
+            list,
+            buildOptions(freshState()),
+          ),
+          "<section",
+        ),
+      ).toBe(2);
+    });
+
+    it("counts the substitution and size limits through nested usages", () => {
+      const list = cards();
+      const html = `<server-card>${`<bare-card data-bascik-prop-t="n"></bare-card>`.repeat(3)}</server-card>`;
+      const limited = (maxSubstitutions: number, maxOutputBytes = 1 << 20) =>
+        expandByUsage(html, list, {
+          ...buildOptions(freshState()),
+          limits: { maxSubstitutions, maxOutputBytes },
+        });
+      expect(count(limited(5), "bare")).toBe(3);
+      expect(() => limited(4)).toThrow(ComponentExpansionLimitError);
+      const size = limited(5).length;
+      // The tripwire is read before each search, on the output as it stands.
+      expect(() => limited(5, size - 1)).toThrow(ComponentExpansionLimitError);
+    });
+
+    it("a failure inside a nested instance is reported for that instance only", () => {
+      const list = cards();
+      const failed: string[] = [];
+      clearScopingTemplates();
+      const state = freshState();
+      const out = expandByUsage(
+        `<server-card><bare-card data-bascik-prop-t="a"></bare-card><plain-card></plain-card></server-card>`,
+        list,
+        {
+          ...buildOptions(state),
+          scope: (component, instanceId) => {
+            if (component.name === "plain-card") throw new Error("no scope");
+            return scopeComponentInstance(component, instanceId);
+          },
+          onError: (component) => {
+            failed.push(component.name);
+          },
+        },
+      );
+      expect(failed).toEqual(["plain-card"]);
+      expect(count(out, "bare")).toBe(1);
+      expect(out).not.toContain("plain-card");
     });
 
     it("output without a usage is returned as the same string", () => {
