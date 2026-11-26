@@ -9,6 +9,16 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
+## [Unreleased]
+
+### Added
+
+- A TypeScript browser script (a component's `.ts` companion, an inline `<script type="text/typescript">`, or a page's own `.ts` script) can now import `.ts` and `.js` files by a relative or `@/` path, as in `import { parseEvent } from "./parse-event.ts"`. Bascik bundles them into the script at build time, so a large component's logic can live in small files that unit tests import directly. Install esbuild in the project (`npm install --save-dev esbuild`) to use it; a script without local imports is emitted as before. See [Importing TypeScript Modules](https://bascik.dev/scoped-javascript#importing-typescript-modules).
+
+### Fixed
+
+- `bascik add <package>/<component>` also copies the files in the folder named after that component, beside it, such as `chat/voice-call/*.ts` next to `chat/voice-call.html`. Before, only the component's own files were copied, so one that imports modules from that folder failed to build. Test files in the folder are left out. See [Sharing Components](https://bascik.dev/how-to/sharing-components).
+
 ## [1.0.2] - 2026-11-25
 
 ### Changed
@@ -32,7 +42,6 @@ it is not `@bascik/bascik`.
 
 ### Added
 
-- A TypeScript browser script (a component's `.ts` companion, an inline `<script type="text/typescript">`, or a page's own `.ts` script) can now import `.ts` and `.js` files by a relative or `@/` path, as in `import { parseEvent } from "./parse-event.ts"`. Bascik bundles them into the script at build time, so a large component's logic can live in small files that unit tests import directly. Install esbuild in the project (`npm install --save-dev esbuild`) to use it; a script without local imports is emitted as before. See [Importing TypeScript Modules](https://bascik.dev/scoped-javascript#importing-typescript-modules).
 - `create-bascik` 1.1.0: `--adapter <name>` adds a deploy adapter to the starter (`cloudflare`, `netlify`, or `none`), as in `npm create bascik my-site -- --adapter cloudflare`. `--template cloudflare` and `--template netlify` still work and mean the same thing; naming two different adapters with the two flags is an error. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
 - `create-bascik` 1.1.0: `--template blog` scaffolds a blog, as in `npm create bascik my-blog -- --template blog`. Posts are Markdown files with front matter in `content/posts/`; the starter has a home page with the newest posts, a post list, a page per post and per tag, an Atom feed at `/feed.xml`, canonical and Open Graph tags for every post, an about page, and a 404 page. A post with a missing title, description, author or date stops the build with an error that names the file. It takes any `--adapter`. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).
 - `create-bascik` 1.1.0: `--template docs` scaffolds a documentation site, as in `npm create bascik my-docs -- --template docs`. Each Markdown file in `content/docs/` becomes a page at `/docs/<name>` with a sidebar that marks the current page, an "On this page" list built from the page's headings, and previous and next links. To add a page, write the file and list it in `src/lib/sidebar.ts`; a page missing from the sidebar, or an entry with no file, fails the build with an error that names it. It works with `--adapter cloudflare` and `--adapter netlify`. See [Scaffold a new project](https://bascik.dev/cli#scaffold-a-new-project).

@@ -361,6 +361,31 @@ export const addComponents = async (
           `Component "${componentSelector}" not found in package "${packageName}".`,
         );
       }
+
+      // A component can keep its modules in a folder named after it, beside
+      // it (`chat/voice-call.html` imports `./voice-call/audio.ts`). Those
+      // files have other names, so the selector alone misses them: take the
+      // folder's non-test files too, or the copied component cannot build.
+      const relOf = (filePath: string) =>
+        relative(pkgComponentsDir, filePath).replace(/\\/g, "/");
+      const siblingFolders = candidateFiles
+        .map(relOf)
+        .filter(
+          (rel) => rel.endsWith(".html") && !/\.(test|spec)\.html$/.test(rel),
+        )
+        .map((rel) => `${rel.slice(0, -".html".length)}/`);
+      if (siblingFolders.length > 0) {
+        const chosen = new Set(candidateFiles);
+        for (const filePath of packageFiles as string[]) {
+          if (chosen.has(filePath)) continue;
+          const rel = relOf(filePath);
+          if (/\.(test|spec)\.[^./]+$/.test(rel)) continue;
+          if (siblingFolders.some((folder) => rel.startsWith(folder))) {
+            candidateFiles.push(filePath);
+            chosen.add(filePath);
+          }
+        }
+      }
     }
 
     for (const srcFilePath of candidateFiles) {
