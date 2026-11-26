@@ -83,6 +83,14 @@ describe("localModuleImports", () => {
     ).toEqual(["./a.ts", "../b.js", "@/lib/c.ts", "./d.ts"]);
   });
 
+  it("lists a module's local re-exports", () => {
+    expect(
+      localModuleImports(
+        `export { a } from "./a.ts";\nexport * from "@/lib/b.ts";\nexport const c = 1;\n`,
+      ),
+    ).toEqual(["./a.ts", "@/lib/b.ts"]);
+  });
+
   it("ignores import-shaped text in strings and comments", () => {
     expect(
       localModuleImports(
@@ -124,6 +132,20 @@ describe("bundleBrowserImports", () => {
       "src/components/c/format.ts",
       "src/components/c/math.ts",
     ]);
+  });
+
+  it("bundles a module whose only local dependency is a re-export", async () => {
+    await write(
+      "src/c/format.ts",
+      `export const label = (n: number): string => \`n=\${n}\`;\n`,
+    );
+    const { code, dependencies } = await bundleBrowserImports(
+      `export { label } from "./format.ts";\n`,
+      { sourceFile: "src/c/c.ts" },
+    );
+    expect(code).not.toContain("./format.ts");
+    expect(code).toContain("n=");
+    expect(dependencies).toEqual(["src/c/format.ts"]);
   });
 
   it("resolves @/ against scripts.importRoot", async () => {

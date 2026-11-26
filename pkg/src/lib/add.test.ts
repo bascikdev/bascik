@@ -702,6 +702,41 @@ describe("bascik add", () => {
     ).toBe("export {};\n");
   });
 
+  it("copies the helpers in a component's own folder (name/name.html)", async () => {
+    await setupFixturePackage(
+      "rating-kit",
+      {
+        name: "rating-kit",
+        version: "1.0.0",
+        bascik: { components: "components" },
+      },
+      {
+        "components/chat/book-rating/book-rating.html":
+          '<script src="book-rating.ts"></script>',
+        "components/chat/book-rating/book-rating.ts":
+          'import "./format-rating.ts";\n',
+        "components/chat/book-rating/format-rating.ts": "export {};\n",
+        "components/chat/book-rating/format-rating.test.ts": "export {};\n",
+        "components/chat/other.html": "<p>other</p>",
+        "components/chat/other-helper.ts": "export {};\n",
+      },
+    );
+
+    const result = await addComponents(["rating-kit/book-rating"], {
+      cwd: testDir,
+    });
+    const copied = result.copiedFiles
+      .map((file) =>
+        file.destPath.slice(componentsDir.length + 1).replace(/\\/g, "/"),
+      )
+      .sort();
+    expect(copied).toEqual([
+      "chat/book-rating/book-rating.html",
+      "chat/book-rating/book-rating.ts",
+      "chat/book-rating/format-rating.ts",
+    ]);
+  });
+
   // A workspace hoists the package to the repo root node_modules, and its
   // exports map does not list package.json. Node's own resolution walks up
   // from the project, so `bascik add` must find it there too.
