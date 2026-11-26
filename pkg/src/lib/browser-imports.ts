@@ -63,9 +63,12 @@ export interface BundleBrowserImportsOptions {
   wrap?: boolean;
 }
 
-/** The relative and `@/` specifiers `code` imports, static or literal dynamic. */
+/**
+ * The relative and `@/` specifiers `code` imports or re-exports
+ * (`export { a } from "./a.ts"`), static or literal dynamic.
+ */
 export const localModuleImports = (code: string): string[] =>
-  /\bimport\b/.test(code)
+  /\b(?:import|export)\b/.test(code)
     ? findModuleSpecifiers(code)
         .map(({ value }) => value)
         .filter((value) => {

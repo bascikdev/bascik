@@ -363,9 +363,11 @@ export const addComponents = async (
       }
 
       // A component can keep its modules in a folder named after it, beside
-      // it (`chat/voice-call.html` imports `./voice-call/audio.ts`). Those
-      // files have other names, so the selector alone misses them: take the
-      // folder's non-test files too, or the copied component cannot build.
+      // it (`chat/voice-call.html` imports `./voice-call/audio.ts`), or in
+      // its own folder (`book-rating/book-rating.html` imports
+      // `./format-rating.ts`). Those files have other names, so the selector
+      // alone misses them: take the folder's non-test files too, or the
+      // copied component cannot build.
       const relOf = (filePath: string) =>
         relative(pkgComponentsDir, filePath).replace(/\\/g, "/");
       const siblingFolders = candidateFiles
@@ -373,7 +375,13 @@ export const addComponents = async (
         .filter(
           (rel) => rel.endsWith(".html") && !/\.(test|spec)\.html$/.test(rel),
         )
-        .map((rel) => `${rel.slice(0, -".html".length)}/`);
+        .flatMap((rel) => {
+          const stem = rel.slice(0, -".html".length);
+          const name = stem.slice(stem.lastIndexOf("/") + 1);
+          const dir = stem.slice(0, stem.length - name.length);
+          const ownFolder = dir.endsWith(`/${name}/`) || dir === `${name}/`;
+          return ownFolder ? [`${stem}/`, dir] : [`${stem}/`];
+        });
       if (siblingFolders.length > 0) {
         const chosen = new Set(candidateFiles);
         for (const filePath of packageFiles as string[]) {
