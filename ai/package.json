@@ -139,7 +139,7 @@
   "devDependencies": {
     "@anthropic-ai/sdk": "^1.9.0",
     "@bascik/bascik": "^1.0.2",
-    "@playwright/test": "^1.65.0",
+    "@playwright/test": "^1.65.1",
     "@types/node": "^24.19.1",
     "beautiful-mermaid": "^1.1.3",
     "fast-check": "^4.10.2",
