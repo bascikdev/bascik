@@ -69,10 +69,14 @@
     "parse5": "^8.1.1"
   },
   "peerDependencies": {
-    "@bascik/language-server": "^1.1.0"
+    "@bascik/language-server": "^1.1.0",
+    "esbuild": ">=0.25.0"
   },
   "peerDependenciesMeta": {
     "@bascik/language-server": {
+      "optional": true
+    },
+    "esbuild": {
       "optional": true
     }
   },

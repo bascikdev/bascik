@@ -1,0 +1,14 @@
+<!-- A component whose TypeScript scripts import helper modules beside it and
+     through @/ (scripts.importRoot). Bascik bundles those imports into each
+     script, so the browser never requests a .ts file. Two instances on the
+     page prove the bundled code still runs against its own instance's ids. -->
+<section class="ts-imports" data-testid="ts-imports">
+  <output id="inline-out" data-testid="ts-imports-inline">pending</output>
+  <output id="module-out" data-testid="ts-imports-module">pending</output>
+  <script type="text/typescript">
+    import { formatRating } from "./ts-imports-format.ts";
+    const inlineOut = document.getElementById("inline-out") as HTMLOutputElement;
+    inlineOut.textContent = formatRating("Kindred", 4);
+  </script>
+  <script type="module" src="ts-imports.ts"></script>
+</section>

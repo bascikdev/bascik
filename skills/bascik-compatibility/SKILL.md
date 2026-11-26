@@ -41,7 +41,7 @@ The surprises that matter most:
 - **Element names are not converted inside `:is()`, `:where()`, `:has()`,** and element selectors never reach slotted content or elements a script creates. Exception that is safe: `.markdown :is(p, ul)` (a scoped class, then a descendant combinator) matches every descendant, slotted content included, and is not flagged.
 - **Attribute selectors are not scoped:** anchor them on a class in CSS, and never use them in `querySelector`.
 - **`name` ships as written** (`scoping.attributes.name` is off by default): `FormData` keys, radio groups, `<details name>` accordions, `<iframe>` targets, and `<map>` names behave as the HTML standard defines them, across every component instance on the page. A component holding a whole radio group needs its own `<form>`, or `data-bascik-attr-name="group"` (no literal `name`) with a per-usage prop; the linter warns `shared-name-group`. With `scoping.attributes.name: true`, every `name` but `<meta name>` is scoped per instance and `data-bascik-preserve="name"` keeps one literal. Read `/component-best-practices#name-form-controls-and-groups`.
-- **TypeScript runs in the browser only** through `<script type="text/typescript">` or a companion `.ts` file, with erasable syntax.
+- **TypeScript runs in the browser only** through `<script type="text/typescript">` or a companion `.ts` file, with erasable syntax. Its relative and `@/` imports are bundled into it (needs esbuild); a plain JavaScript component script's are not, and the browser resolves them against the page URL.
 - **Not provided by design:** API middleware, schema validation, automatic CORS, and API response compression. Write them in the handler.
 
 ## Lint rules

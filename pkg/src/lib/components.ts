@@ -35,6 +35,7 @@ import { maskElementContents } from "./shielding.ts";
 import { scanHtmlComments } from "./html-scanner.ts";
 import { invalidComponentNameMessage } from "./component-name-validity.ts";
 import { templateShapeProblems } from "./component-template-shape.ts";
+import { bundleBrowserImports } from "./browser-imports.ts";
 import {
   transformTypeScriptScriptTags,
   TypeScriptTransformError,
@@ -451,7 +452,8 @@ const relativeImportProblems = (
         message:
           `the import "${value}" resolves against the page URL, not the component file, because Bascik inlines this script into each page and does not bundle its imports` +
           (sibling ? "; the file beside the component is not published" : "") +
-          `. Put the file in public/ and import its URL (such as "/js/${value.replace(/^(?:\.{1,2}\/|@\/)+/, "")}"), or bundle the script with a pipeline.exec step.`,
+          `. Put the file in public/ and import its URL (such as "/js/${value.replace(/^(?:\.{1,2}\/|@\/)+/, "")}"), ` +
+          `or write the script in TypeScript (a .ts companion or <script type="text/typescript">), whose relative and @/ imports Bascik bundles.`,
       });
     }
   };
@@ -1249,6 +1251,8 @@ export const listComponents = async (
           })
         : stampedContent;
       let resolvedContent = onceResolvedContent;
+      // Files bundled into this component's TypeScript scripts.
+      const browserImportDependencies = new Set<string>();
 
       if (companionScripts && companionScripts.scriptMap.size > 0) {
         resolvedContent = replaceCompanionScriptTags(
@@ -1316,6 +1320,8 @@ export const listComponents = async (
                     unbundled,
                   );
               }
+              for (const dep of scriptInfo.dependencies ?? [])
+                browserImportDependencies.add(dep);
               // The companion's first line is line 1 of its own sourceURL file.
               const openTag = withScriptLine(
                 `<script${attrStr} data-bascik-source="${scriptInfo.relPath}">`,
@@ -1334,6 +1340,17 @@ export const listComponents = async (
       resolvedContent = await transformTypeScriptScriptTags(
         resolvedContent,
         fileName,
+        {
+          afterCompile: async (code) => {
+            const bundled = await bundleBrowserImports(code, {
+              sourceFile: fileName,
+              inline: true,
+            });
+            for (const dep of bundled.dependencies)
+              browserImportDependencies.add(dep);
+            return bundled.code;
+          },
+        },
       );
       const { html: cleanedContent, css: inlineCss } =
         extractInlineStyles(resolvedContent);
@@ -1375,6 +1392,9 @@ export const listComponents = async (
         fileContent: minifiedContent,
         scriptDependenciesContent: rawContent,
       };
+      if (browserImportDependencies.size > 0) {
+        component.browserImportDependencies = [...browserImportDependencies];
+      }
       if (combinedCss) {
         component.cssFileContent = combinedCss;
       }

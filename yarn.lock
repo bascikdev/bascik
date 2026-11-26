@@ -237,6 +237,7 @@ __metadata:
     webidl2: "npm:^24.5.0"
   peerDependencies:
     "@bascik/language-server": ^1.1.0
+    esbuild: ">=0.25.0"
   dependenciesMeta:
     chokidar:
       optional: true
@@ -244,6 +245,8 @@ __metadata:
       optional: true
   peerDependenciesMeta:
     "@bascik/language-server":
+      optional: true
+    esbuild:
       optional: true
   bin:
     bascik: bin/bascik.js

@@ -54,6 +54,11 @@ const dynamicCreatedPagePath = join(
 );
 const tempUnlinkCompPath = join(e2eDir, "src/components/temp-unlink-comp.html");
 const missingHelperPath = join(e2eDir, "src/lib/failed-import-helper.ts");
+// Imported, through another helper, by <ts-imports>'s TypeScript scripts.
+const bundledHelperPath = join(
+  e2eDir,
+  "src/components/ts-imports/ts-imports-rating.ts",
+);
 const importedPartialPath = join(
   e2eDir,
   "src/components/css-import/import-base.css",
@@ -215,6 +220,7 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
   let originalImportedPartial: string;
   let originalColocatedEntries: string;
   let originalColocatedOnceNotes: string;
+  let originalBundledHelper: string;
 
   test.beforeAll(async () => {
     originalPageContent = await readFile(pagePath, "utf8");
@@ -228,6 +234,7 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     originalImportedPartial = await readFile(importedPartialPath, "utf8");
     originalColocatedEntries = await readFile(colocatedEntriesPath, "utf8");
     originalColocatedOnceNotes = await readFile(colocatedOnceNotesPath, "utf8");
+    originalBundledHelper = await readFile(bundledHelperPath, "utf8");
   });
 
   test.afterEach(async () => {
@@ -293,6 +300,11 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
       colocatedOnceNotesPath,
       originalColocatedOnceNotes,
       "/colocated-data-test",
+    );
+    await restoreAndConsumeReload(
+      bundledHelperPath,
+      originalBundledHelper,
+      "/ts-imports-test",
     );
     await rm(staticCssPath, { force: true });
     await rm(dynamicCreatedCompPath, { force: true });
@@ -485,6 +497,34 @@ test.describe("Dev Server Live-Reload & Watch Engine", () => {
     );
     const elapsed = performance.now() - start;
     expect(elapsed).toBeLessThan(5000);
+  });
+
+  test("open browser page updates live when a module a TypeScript script imports changes", async ({
+    page,
+  }) => {
+    await page.goto("/ts-imports-test");
+    await expect(page.getByTestId("ts-imports-inline").first()).toHaveText(
+      "Kindred: 4/5",
+    );
+
+    // The edited file is imported by ts-imports-format.ts, which the
+    // component's scripts and the page's own block import.
+    await writeFile(
+      bundledHelperPath,
+      originalBundledHelper.replace("Math.min(5,", "Math.min(3,"),
+      "utf8",
+    );
+
+    await expect(page.getByTestId("ts-imports-inline").first()).toHaveText(
+      "Kindred: 3/5",
+      { timeout: 15000 },
+    );
+    await expect(page.getByTestId("ts-imports-module").last()).toHaveText(
+      "Parable of the Sower: 3/5 by Octavia E. Butler",
+    );
+    await expect(page.getByTestId("ts-imports-page")).toHaveText(
+      "Beloved: 3/5",
+    );
   });
 
   // ── 4. Multi-Tab Live Reload ───────────────────────────────────────────────
