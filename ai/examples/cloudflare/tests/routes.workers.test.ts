@@ -9,10 +9,11 @@ import {
   env,
   waitOnExecutionContext,
 } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import bascik from "bascik-worker-built";
 import { chatOf, route } from "../src/lib/chat.ts";
 import type { Env, RequestContext } from "../src/lib/env.ts";
+import { SEND_WINDOW_MS } from "../src/lib/guards.ts";
 
 const bindings = env as unknown as Env;
 
@@ -89,7 +90,20 @@ function upload(size: number): { type: string; body: string } {
   return { type: `Multipart/Form-Data; boundary=${boundary}`, body };
 }
 
+/** Longer than any one test here takes to make its sends. */
+const WINDOW_EDGE_MS = 5_000;
+
 describe("the chat's routes", () => {
+  // Send counters are named for the ten-minute window the send falls in. A
+  // test that starts just before a window ends would count its sends in two
+  // windows and never reach a limit, so wait the edge out first.
+  beforeEach(async () => {
+    const left = SEND_WINDOW_MS - (Date.now() % SEND_WINDOW_MS);
+    if (left < WINDOW_EDGE_MS) {
+      await new Promise((resolve) => setTimeout(resolve, left + 50));
+    }
+  }, WINDOW_EDGE_MS + 5_000);
+
   it("counts every path Bascik routes to send against one window", async () => {
     const limited: Env = { ...bindings, GENUI_IP_SENDS: "3" };
     const paths = [

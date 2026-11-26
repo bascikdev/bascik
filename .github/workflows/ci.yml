@@ -554,6 +554,10 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      # @bascik/ai imports @bascik/bascik/html, which resolves to pkg/dist.
+      - name: Build package
+        run: yarn pkg:build
+
       - name: Run generative UI unit tests
         run: yarn ai:unit
 
@@ -784,6 +788,10 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
+
+      # @bascik/ai imports @bascik/bascik/html, which resolves to pkg/dist.
+      - name: Build package
+        run: yarn pkg:build
 
       # Builds dist/, packs the tarball, and imports every entry from the unpacked package with plain node.
       - name: Run generative UI package tests
