@@ -182,6 +182,6 @@
     "test:all": "yarn typecheck:all && yarn check:all && yarn unit:all && yarn integration:all && yarn linear-time:all && yarn e2e:all && yarn docs:lighthouse"
   },
   "devDependencies": {
-    "prettier": "3.9.10"
+    "prettier": "3.10.1"
   }
 }
