@@ -3,9 +3,10 @@
  *
  * Runs in every e2e lane (static build, dev server, HTTP/1.1 and HTTP/2
  * production servers). <ts-imports> has an inline text/typescript block and
- * a type="module" companion that import helper modules beside the component
+ * a classic .ts companion that import helper modules beside the component
  * (one through another) and under scripts.importRoot through @/; the page has
- * its own inline block importing the same helper. The e2e config compiles
+ * its own inline block importing the same helper, and a type="module" .ts
+ * script importing through @/. The e2e config compiles
  * TypeScript with esbuild (scripts.typescript), so the helpers also go
  * through a custom compiler.
  */
@@ -44,6 +45,9 @@ test.describe("TypeScript scripts with local imports", () => {
     await expect(page.getByTestId("ts-imports-page")).toHaveText(
       "Beloved: 5/5",
     );
+    await expect(page.getByTestId("ts-imports-page-module")).toHaveText(
+      "module: Octavia E. Butler",
+    );
 
     expect(typeScriptRequests).toEqual([]);
     expect(
@@ -65,6 +69,13 @@ test.describe("TypeScript scripts with local imports", () => {
     expect(html).not.toContain("@/lib/");
     expect(html).not.toContain(": number");
     expect(html).not.toContain("interface Book");
+    expect(html).not.toContain('ts-imports-test.ts"');
+
+    // The page's module script stays a module, unwrapped.
+    const moduleScript = [
+      ...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi),
+    ].find((m) => m[2].includes("page-module-out"));
+    expect(moduleScript?.[1]).toContain('type="module"');
 
     // The page's own classic script is wrapped, so the helper it bundles
     // is not a global the page's other scripts could collide with.

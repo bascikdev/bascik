@@ -1,4 +1,4 @@
-// Module companion for <ts-imports>: imports a helper beside it, which imports
+// Classic companion for <ts-imports> (Bascik wraps it in a function): imports a helper beside it, which imports
 // another, and a helper under scripts.importRoot through @/.
 import { formatRating } from "./ts-imports-format.ts";
 import { featuredBook } from "@/lib/ts-imports-books.ts";
