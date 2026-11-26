@@ -62,19 +62,19 @@ What to do: This may be a temporary provider issue. Try the call again.
 
 ### The voice provider did not answer.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/voice-handlers.ts`
 What it means: The server could not create a voice session with the configured provider. The underlying error is logged via `onError`.
 What to do: Check the server logs for the specific error. Ensure the voice provider is configured and reachable.
 
 ### This server has no voice provider.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/voice-state.ts`, `ai/src/app/voice-handlers.ts`
 What it means: A voice call was requested, but the server was not configured with a voice provider.
 What to do: Configure a voice provider in the app options.
 
 ### Something went wrong while writing this reply.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/write-turn.ts`
 What it means: The model failed while generating a reply. The specific error is logged via `onError`.
 What to do: Check the server logs for the underlying error. This may be a transient model failure.
 
@@ -82,49 +82,49 @@ What to do: Check the server logs for the underlying error. This may be a transi
 
 ### Not a form.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/handlers.ts`
 What it means: A request expected a form body but did not receive one.
 What to do: Ensure the request sends a valid form with the correct content type.
 
 ### Not a tool call.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/voice-handlers.ts`
 What it means: A request expected a tool call payload but the data was missing, too large, or had an invalid decision value.
 What to do: Ensure the request includes a valid tool call ID and input within size limits.
 
 ### Not a voice turn.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/voice-handlers.ts`
 What it means: A voice turn request was missing required fields such as the reader ID or model name.
 What to do: Ensure the request includes all required fields for a voice turn.
 
 ### No tool call is waiting for that answer.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/handlers.ts`
 What it means: An approval request was sent for a tool call that is not in the `approval-requested` state, or the call ID does not match any pending call.
 What to do: Ensure the approval is sent for a tool call that is currently waiting for approval.
 
 ### No tool call is waiting for that result.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/handlers.ts`
 What it means: A tool result was submitted for a call that is not in the `client-requested` state, or the call ID does not match.
 What to do: Ensure the result is submitted for a client tool call that is currently waiting for a result.
 
 ### No memory to forget.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/handlers.ts`
 What it means: A request to forget a memory was missing the memory ID or the memory store was not configured.
 What to do: Ensure the request includes a valid memory ID and that memory storage is enabled.
 
 ### No such file.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/handlers.ts`
 What it means: A requested file ID was not found in the file store for the current reader.
 What to do: Ensure the file ID is correct and that the file belongs to the current reader.
 
 ### The files could not be saved. Nothing was sent; try again.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/uploads.ts`
 What it means: An error occurred while storing attached files. The message and files were not sent.
 What to do: Try sending the message again. Check server logs for storage errors.
 
@@ -266,7 +266,7 @@ What to do: Upload a file that matches its extension or type.
 
 ### These files are too large together (<size>). One message can carry up to <max>.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/files.ts`
 What it means: The total size of uploaded files exceeds the configured limit. The message includes the declared size and the maximum allowed.
 What to do: Reduce the total size of the files being uploaded.
 
@@ -306,7 +306,7 @@ What to do: Ensure the memory ID is correct.
 
 ### The voice call's state is busy.
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/voice-state.ts`
 What it means: The server could not acquire a lock for the voice call state after multiple attempts.
 What to do: Try the voice call again. This may be a temporary contention issue.
 
@@ -338,42 +338,42 @@ What to do: Check the server logs for the specific error detail.
 
 ### other servers cannot follow this reply
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/write-turn.ts`
 What it means: The server failed to notify other servers that a reply is being written.
 What to do: Check the shared store configuration and connectivity.
 
 ### the shared store did not answer
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/follow-turn.ts`, `ai/src/app/write-turn.ts`, `ai/src/app/voice-handlers.ts`
 What it means: The server could not read from or write to the shared store.
 What to do: Check the shared store configuration and connectivity.
 
 ### the reply could not be stored
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/write-turn.ts`
 What it means: The server failed to save a completed reply to the conversation store.
 What to do: Check the conversation store configuration and connectivity.
 
 ### Stop did not reach the server writing this reply
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/follow-turn.ts`
 What it means: The server failed to signal a stop request to the server currently writing a reply.
 What to do: Check the shared store configuration and connectivity.
 
 ### this reply could not be followed
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/follow-turn.ts`
 What it means: The server failed to relay a reply from another server.
 What to do: Check the shared store configuration and connectivity.
 
 ### no reply could be started
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/live-turns.ts`
 What it means: The server failed to acquire a lease to start a new reply.
 What to do: Check the shared store configuration and connectivity.
 
 ### Stop did not reach the shared store
 
-Where: `ai/src/app.ts`
+Where: `ai/src/app/live-turns.ts`
 What it means: The server failed to write a stop signal to the shared store.
 What to do: Check the shared store configuration and connectivity.
