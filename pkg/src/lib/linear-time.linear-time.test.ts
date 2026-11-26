@@ -528,4 +528,25 @@ describe("cost ratios", () => {
     expect(runs * 0.1).toBeGreaterThanOrEqual(COST_MIN_SAMPLE_MS);
     expect(ratio).toBeCloseTo(3, 9);
   });
+
+  it("sizes its samples again when the one that set the run count was the slow one", () => {
+    // The first reference sample pays a pause as long as the whole target,
+    // so one run already "reaches" it. On CI this left 14 ms samples against
+    // a 30 ms target; every later sample here is 6 ms per run.
+    let spent = 0;
+    let references = 0;
+    const clock = (fn: () => unknown) => {
+      spent = 0;
+      fn();
+      return spent;
+    };
+    const { runs, ratio, referenceMs } = measureCostRatio(
+      () => (spent += 12),
+      () => (spent += references++ === 0 ? 6 + COST_MIN_SAMPLE_MS : 6),
+      clock,
+    );
+    expect(referenceMs).toBe(6);
+    expect(referenceMs * runs).toBeGreaterThanOrEqual(COST_MIN_SAMPLE_MS / 2);
+    expect(ratio).toBeCloseTo(2, 9);
+  });
 });

@@ -5,9 +5,15 @@
  * It uses a terminal scroll region (DECSTBM): rows 2 to the bottom scroll, row 1 never does. Writing to row
  * 1 once is not enough, because the first screenful of output would scroll it away.
  *
- * Everything already on screen stays where the user can see it. One blank line is inserted at the top, which moves
- * the screen down a row, and the banner goes into that line. Only a completely full screen loses a line, exactly
- * one, to make room.
+ * The banner is followed by this run's output and nothing else. That takes two steps, at two moments:
+ *
+ * - When the dev server starts, before anything of this run is printed, `scrollEarlierOutputAway` scrolls the
+ *   screen until the line above the cursor, normally the command that was just typed, is the top row. What an
+ *   earlier command left on screen, an earlier run's log for example, would otherwise sit under the banner and
+ *   read as part of this run. What scrolls off goes into the terminal's scrollback, where it can still be read.
+ * - When the port is bound, `pinServerUrl` inserts one blank line at the top, which moves the screen down a row,
+ *   and the banner goes into that line. Everything this run has printed so far, `pre` exec scripts included,
+ *   stays where the user can see it. Only a completely full screen loses a line, exactly one, to make room.
  *
  * VS Code's integrated terminal needs one more step. With shell integration on, it draws the command line of
  * whichever command owns the top visible row as a sticky overlay across that row, as soon as that command's line
@@ -178,6 +184,37 @@ export const formatBanner = (url: string, columns: number): string => {
   const shown =
     url.length > room ? `${url.slice(0, Math.max(0, room - 1))}…` : url;
   return `${colorOut.green(LABEL)} ${colorOut.cyan(shown)} `;
+};
+
+/**
+ * Scrolls what earlier commands left on screen into the scrollback, so this run starts directly under its own
+ * command line. Call it before the run prints anything: it keeps the line above the cursor and the cursor's own
+ * line, and everything above them is taken to be older. It writes nothing when pinning is off or cannot be done,
+ * and nothing when there is nothing above the command to move.
+ *
+ * A terminal that does not say where the cursor is is treated as having it on the last row. That scrolls the
+ * whole screen but its last line away, which loses nothing: it is all in the scrollback.
+ */
+export const scrollEarlierOutputAway = async (
+  stream: PinnedBannerStream = process.stdout,
+  env: PinnedBannerEnvironment = process.env,
+  input: PinnedBannerInput | undefined = process.stdin,
+): Promise<void> => {
+  if (isPinningDisabled(env) || !canPinBanner(stream, env)) return;
+  // Asked BEFORE the region is reset, which homes the cursor.
+  const position = await readCursorPosition(stream, input);
+  const total = stream.rows ?? MIN_ROWS;
+  const cursorRow = Math.min(Math.max(position?.row ?? total, 1), total);
+  const cursorColumn = Math.max(position?.column ?? 1, 1);
+  const keptAbove = Math.min(cursorRow - 1, 1);
+  const scrolled = cursorRow - 1 - keptAbove;
+  if (scrolled <= 0) return;
+  // A region a killed run left behind would keep a newline from scrolling the whole screen, so it is reset first.
+  // A newline on the last row then moves every line up one, and the top line into the scrollback. Afterwards the
+  // kept line is the top row, and the cursor goes back to its own line, now the second row, in its column.
+  stream.write(
+    `${RESET_SCROLL_REGION}${RESET_ORIGIN_MODE}${ESC}[${total};1H${"\n".repeat(scrolled)}${ESC}[${keptAbove + 1};${cursorColumn}H`,
+  );
 };
 
 export interface PinnedBanner {

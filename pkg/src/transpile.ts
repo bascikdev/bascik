@@ -29,7 +29,12 @@ import {
 } from "./lib/build-state.ts";
 import { toleratingExecFailure } from "./lib/exec-policy.ts";
 import { stdout as colorOut } from "./lib/colors.ts";
-import { pinServerUrl } from "./lib/pinned-banner.ts";
+import {
+  canPinBanner,
+  isPinningDisabled,
+  pinServerUrl,
+  scrollEarlierOutputAway,
+} from "./lib/pinned-banner.ts";
 import { privateDirFor } from "./lib/private-dir.ts";
 import { assertPlaceholdersKept } from "./lib/lost-placeholders.ts";
 import { isSameOrInsideOnDisk } from "./lib/path-containment.ts";
@@ -120,6 +125,14 @@ const assertOutputIsNotSymlink = (outputDirectory: string): void => {
 export const runTranspile = async (
   options: { exitOnError?: boolean } = {},
 ): Promise<void> => {
+  // The dev server pins its address to the top of the terminal, and what an earlier command left on screen
+  // must not read as this run's output. Move it into the scrollback now, before this run prints anything
+  // (a `pre` exec script can print long before the address is known), so that all of this run stays on screen.
+  // Checked here as well as inside, so that a run that will not pin (a build, piped output, CI) takes no extra
+  // turn of the event loop before it starts.
+  if (!BascikConfig.isBuild && !isPinningDisabled() && canPinBanner()) {
+    await scrollEarlierOutputAway();
+  }
   const projectRoot = resolve(process.cwd());
   const outputDirectory = resolve(projectRoot, BascikConfig.directory.out);
   const relativeOutputDirectory = relative(projectRoot, outputDirectory);

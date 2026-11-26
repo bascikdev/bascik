@@ -1,5 +1,5 @@
 // Playwright global setup: bascik --server compresses a static file on its first request, which takes several
-// seconds for the 1 MB search index. Tests that open search would race that one-time cost against their
+// seconds for the 1 MB of search text. Tests that open search would race that one-time cost against their
 // timeouts, so it is paid here, once, before any test runs.
 import type { FullConfig } from "@playwright/test";
 
@@ -8,9 +8,10 @@ export default async function warmServer(config: FullConfig): Promise<void> {
   if (!baseURL) return;
   const home = await (await fetch(baseURL)).text();
   const index = /"(\/assets\/search-index\.[0-9a-f]+\.json)"/.exec(home)?.[1];
-  if (!index) return;
+  const text = /"(\/assets\/search-text\.[0-9a-f]+\.json)"/.exec(home)?.[1];
+  if (!index || !text) return;
   // The unversioned copy is what a page opened before a deploy falls back to, and it compresses once too.
-  for (const file of [index, "/assets/search-index.json"])
+  for (const file of [index, text, "/assets/search-index.json"])
     for (const encoding of ["br", "gzip", "identity"])
       await (
         await fetch(new URL(file, baseURL), {

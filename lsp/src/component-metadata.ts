@@ -196,7 +196,8 @@ function inferMembers(
 
   for (const match of masked.matchAll(
     // The prop a data-bascik-attr-* binding reads. (No other data-bascik-* attribute takes a prop name.)
-    /data-bascik-attr-[\w:.-]+\s*=\s*(?:"([\w-]+)"|'([\w-]+)'|([\w-]+))/gi,
+    // The lookbehind starts a match only at the start of an attribute name, which keeps this linear.
+    /(?<![\w:.-])data-bascik-attr-[\w:.-]+\s*=\s*(?:"([\w-]+)"|'([\w-]+)'|([\w-]+))/gi,
   )) {
     const name = match[1] ?? match[2] ?? match[3];
     if (name) {

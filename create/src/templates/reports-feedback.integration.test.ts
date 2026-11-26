@@ -7,9 +7,13 @@ import {
   expect as browserExpect,
   type Browser,
 } from "@playwright/test";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { scaffold, FAVICON_SVG } from "../scaffold.js";
 import { REPORTS_TEMPLATE } from "./reports.js";
+
+// Every browser test here opens a page on a production server. The default 5s
+// is too short on a loaded Windows runner; tests that need longer say so.
+vi.setConfig({ testTimeout: 30_000 });
 
 const repo = resolve(import.meta.dirname, "../../..");
 const url = "http://127.0.0.1:43933";

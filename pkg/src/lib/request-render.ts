@@ -54,7 +54,12 @@ import {
   expandComponents,
   type ExpandOptions,
 } from "./component-expansion-core.ts";
-import { maskRawTextContent } from "./component-masking.ts";
+import {
+  blankForeignCdataInForeignContent,
+  maskBlankedHtml,
+  maskRawTextContent,
+  spansInForeignContent,
+} from "./component-masking.ts";
 import { DEFAULT_BINDING_POLICY } from "./component-props.ts";
 import {
   SCAN_BUDGET,
@@ -410,6 +415,16 @@ export type UsageFinalizer = (
  * instance (an unclosed nested tag, raw-text element or comment), which
  * stays inside the instance here.
  *
+ * The same holds inside a usage: the loop hands each filled instance back
+ * (`ExpandOptions.expandInstance`) and it is expanded here, usage by usage
+ * in the instance's own text, before it is spliced once. A list component
+ * whose slot holds a thousand items otherwise copies and searches the whole
+ * list once per item (990 cards in one grid: 1.2 s). The order is still the
+ * loop's (an instance, then the usages inside it in document order), cycle
+ * detection reads the chain of instances the text sits in
+ * (`openAncestors`), and a malformed template reaches no further than its
+ * own instance.
+ *
  * Both limits are the whole output's, as in one loop over it: each usage
  * gets what is left of the substitution allowance, and of the size
  * tripwire after the text already emitted and the author's text still to
@@ -422,10 +437,32 @@ export const expandByUsage = (
   opts: ExpandOptions,
   usedComponents: BascikComponent[] = [],
   finalize?: UsageFinalizer,
+): string =>
+  expandUsages(html, componentList, opts, usedComponents, finalize, 0);
+
+/**
+ * How many instances deep `expandByUsage` expands each instance in its own
+ * text. Each level is a few stack frames and the instance limit is the
+ * host's to raise, so usages nested deeper than this are expanded by the
+ * loop inside the instance at this depth, which is still that instance's
+ * size per usage, not the output's.
+ */
+const INSTANCE_TEXT_DEPTH = 32;
+
+const expandUsages = (
+  html: string,
+  componentList: ComponentList,
+  opts: ExpandOptions,
+  usedComponents: BascikComponent[],
+  finalize: UsageFinalizer | undefined,
+  depth: number,
 ): string => {
   // Most outputs name no component: skip the mask and the scans.
   if (!mayContainComponent(html, componentList)) return html;
-  const masked = maskRawTextContent(html);
+  const inForeignContent = opts.inForeignContent === true;
+  const masked = inForeignContent
+    ? maskBlankedHtml(blankForeignCdataInForeignContent(html))
+    : maskRawTextContent(html);
   // The output does not change while its usages are located, so one close
   // finder pairs every opener: a run of unclosed openers would otherwise
   // each walk to the end of the output.
@@ -460,6 +497,10 @@ export const expandByUsage = (
   // The loop checks the size before its first search too.
   if (html.length > maxOutputBytes)
     throw new ComponentExpansionLimitError(0, `<${spans[0].name}>`);
+  // Each usage is expanded in its own text, which no longer has the SVG or
+  // MathML open around it: whether a CDATA section there is text is read
+  // here, once for all of them, and handed down.
+  const foreign = spansInForeignContent(html, spans, inForeignContent);
   const pieces: string[] = [];
   const expanded: string[] = [];
   let emitted = 0;
@@ -486,8 +527,32 @@ export const expandByUsage = (
           maxSubstitutions: remaining,
           maxOutputBytes: maxOutputBytes - emitted - (html.length - span.end),
         },
+        inForeignContent: foreign[index],
+        expandInstance:
+          depth < INSTANCE_TEXT_DEPTH
+            ? (
+                instance,
+                { open, maxOutputBytes: instanceBytes, inForeignContent },
+              ) =>
+                expandUsages(
+                  instance,
+                  componentList,
+                  {
+                    ...opts,
+                    limits: { maxSubstitutions, maxOutputBytes: instanceBytes },
+                    openAncestors: open,
+                    inForeignContent,
+                  },
+                  usedComponents,
+                  undefined,
+                  depth + 1,
+                )
+            : undefined,
       },
       usedComponents,
+      // A usage inside an instance is used in that instance's template
+      // file, as the loop's markers around a spliced instance say.
+      opts.openAncestors?.at(-1)?.fileName,
     ).transpiledHtmlBody;
     expanded.push(piece);
     pieces.push("");

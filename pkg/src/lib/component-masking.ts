@@ -63,6 +63,64 @@ export const blankForeignCdata = (html: string): string => {
   return parts.join("");
 };
 
+/** Stands in for the SVG or MathML open around a text read on its own. */
+const FOREIGN_OPENER = "<svg>";
+
+/**
+ * `blankForeignCdata` for text that sits in SVG or MathML content opened
+ * before it: one instance's text, expanded on its own (request-render.ts),
+ * whose `<svg>` is in an enclosing template or in the output around the
+ * usage. Read alone, its `<![CDATA[` would be a bogus comment ending at the
+ * first `>`, and a tag written after that would open a component.
+ */
+export const blankForeignCdataInForeignContent = (html: string): string =>
+  html.includes("<![CDATA[")
+    ? blankForeignCdata(FOREIGN_OPENER + html).slice(FOREIGN_OPENER.length)
+    : html;
+
+/**
+ * Stands in for a usage while its place in the text is read. In HTML content
+ * (an integration point included) it is a bogus comment that ends at its
+ * first `>`, so it does not end in `]]>` and is not taken for a section.
+ */
+const CDATA_PROBE = "<![CDATA[>]]>";
+const MAY_OPEN_FOREIGN = /<(?:svg|math)[\t\n\f\r />]/i;
+
+/**
+ * For each of `spans` (in document order, not overlapping), whether a CDATA
+ * section written at its start would be one: the span sits in SVG or MathML
+ * content, outside an integration point and outside foreign code. One read
+ * of `html` for all of them, with a probe section in place of each span, and
+ * none when the text opens no SVG or MathML and is not in any.
+ */
+export const spansInForeignContent = (
+  html: string,
+  spans: ReadonlyArray<{ start: number; end: number }>,
+  inForeignContent: boolean,
+): boolean[] => {
+  const found = spans.map(() => false);
+  if (!inForeignContent && !MAY_OPEN_FOREIGN.test(html)) return found;
+  const parts: string[] = [inForeignContent ? FOREIGN_OPENER : ""];
+  const probeAt = new Map<number, number>();
+  let length = parts[0].length;
+  let cursor = 0;
+  for (const [index, span] of spans.entries()) {
+    const lead = html.slice(cursor, span.start);
+    parts.push(lead, CDATA_PROBE);
+    length += lead.length;
+    // Where the inside of this span's probe section starts.
+    probeAt.set(length + 9, index);
+    length += CDATA_PROBE.length;
+    cursor = span.end;
+  }
+  parts.push(html.slice(cursor));
+  for (const section of scanForeignCdataText(parts.join(""))) {
+    const index = probeAt.get(section.start);
+    if (index !== undefined) found[index] = true;
+  }
+  return found;
+};
+
 const RAW_TEXT_TAGS = ["script", "style", "textarea"];
 
 /**
