@@ -13,7 +13,7 @@ it is not `@bascik/bascik`.
 
 ### Changed
 
-- `create-bascik` 1.1.2: new projects depend on `@bascik/bascik` `^1.0.2` and `@bascik/language-server` `^1.1.1`, so they start with the fixes below. Blog and docs projects depend on `marked` `^18.2.1`, and projects made with `--adapter netlify` on `netlify-cli` `^27.20.0`. Existing projects can update these with `npm install`.
+- `create-bascik` 1.1.2: new projects depend on `@bascik/bascik` `^1.0.2` and `@bascik/language-server` `^1.1.1`, so they start with the fixes below. Blog and docs projects depend on `marked` `^18.2.1`, and projects made with `--adapter netlify` on `netlify-cli` `^27.20.0`. Existing projects already allow these versions, and `npm update` installs them.
 
 ### Fixed
 
