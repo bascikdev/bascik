@@ -9,7 +9,7 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
-## [Unreleased]
+## [1.0.2] - 2026-11-25
 
 ### Changed
 
@@ -209,6 +209,7 @@ Bascik is a build tool for HTML components with automatically scoped CSS and
 JavaScript and no runtime. Start a site with `npm create bascik`, and see
 [Getting Started](https://bascik.dev/getting-started) for the rest.
 
+[1.0.2]: https://github.com/bascikdev/bascik/compare/v1.0.1...v1.0.2
 [create-bascik 1.1.1]: https://github.com/bascikdev/bascik/compare/create-v1.1.0...create-v1.1.1
 [create-bascik 1.1.0]: https://github.com/bascikdev/bascik/compare/create-v1.0.0...create-v1.1.0
 [1.0.1]: https://github.com/bascikdev/bascik/compare/v1.0.0...v1.0.1
