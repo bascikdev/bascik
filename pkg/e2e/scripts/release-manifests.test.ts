@@ -30,6 +30,7 @@ const PUBLISHED = [
   "adapters/cloudflare",
   "adapters/netlify",
   "lsp",
+  "ai",
 ];
 const DEPENDENCY_FIELDS = [
   "dependencies",
@@ -156,6 +157,18 @@ describe("published package manifests", () => {
     expect(satisfies(pkg.version, dev!), `${pkg.version} vs ${dev}`).toBe(true);
   });
 
+  // ai's own dev dependency keeps Yarn linking the workspace, and its peer
+  // range is what a user's install is checked against.
+  it("ai's peer and dev ranges on @bascik/bascik include pkg's version", () => {
+    const ai = manifest("ai");
+    const pkg = manifest("pkg");
+    const peer = ai.peerDependencies?.["@bascik/bascik"];
+    expect(ai.devDependencies?.["@bascik/bascik"]).toBe(peer);
+    expect(satisfies(pkg.version, peer!), `${pkg.version} vs ${peer}`).toBe(
+      true,
+    );
+  });
+
   // Bumping lsp/package.json to another patch tuple's prerelease (0.2.0-beta.1)
   // while pkg's peer stays >=0.1.0-beta.6 makes every scaffolded project warn
   // about an invalid peer.
@@ -200,6 +213,13 @@ describe("release.yml instructions", () => {
     const install = job.indexOf("npx playwright install chromium");
     expect(install, job).toBeGreaterThan(-1);
     expect(install).toBeLessThan(job.indexOf("run: yarn test:ci"));
+  });
+
+  it("documents the ai tag", () => {
+    expect(workflow).toMatch(
+      /^#.*git tag ai-v1\.0\.0 origin\/main && git push origin ai-v1\.0\.0$/m,
+    );
+    expect(workflow).toContain('- "ai-v*.*.*"');
   });
 
   it("tags origin/main and pushes each documented tag by name to origin", () => {

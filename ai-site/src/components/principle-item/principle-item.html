@@ -1,0 +1,18 @@
+<!-- @bascik
+One principle: a bold name prop followed by a sentence of content on the same line.
+-->
+<style>
+  .item {
+    margin-block: 0.5rem;
+  }
+  .name {
+    font-weight: 600;
+  }
+  .content {
+    display: inline;
+  }
+</style>
+<li class="item" data-testid="principle-item">
+  <strong class="name" data-bascik-prop-name></strong>
+  <span class="content"><span data-bascik-slot></span></span>
+</li>

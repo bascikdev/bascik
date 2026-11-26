@@ -1,0 +1,395 @@
+<!-- @bascik
+The optional client runtime. Without it every form in the chat is a page load, and everything works. With it a form is sent with fetch and the page it answers with is streamed into the open one: no reload, an instant echo of the message, a Stop button, and component scripts that start as their component arrives. Put it in the page before the thread.
+-->
+<script type="text/typescript">
+  const byTestId = (root: ParentNode, id: string): HTMLElement | null =>
+    root.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+  const state = document.documentElement.dataset;
+  let stop: AbortController | null = null;
+  let next: { form: HTMLFormElement; submitter: HTMLElement | null } | null =
+    null;
+  /*
+   * A form's controls are also its properties, by name, and they win over the
+   * form's own: `<input name="method">` makes `form.method` that input. The
+   * model names the fields of the forms it writes, so a form is read only
+   * through the prototype here, never by its own property names.
+   */
+  const formGet = <K extends keyof HTMLFormElement>(
+    form: HTMLFormElement,
+    key: K,
+  ): HTMLFormElement[K] =>
+    Reflect.get(HTMLFormElement.prototype, key, form) as HTMLFormElement[K];
+  const resubmit = (form: HTMLFormElement, submitter: HTMLElement | null) =>
+    HTMLFormElement.prototype.requestSubmit.call(form, submitter);
+
+  /**
+   * Copies a document that is still being parsed into the page, a little
+   * more after every chunk. Text grows in place, an element is copied once
+   * and then filled in, and a script is created fresh, when it is complete,
+   * so it runs exactly once.
+   */
+  function mirror(final: boolean, sourceRoot: Node, targetRoot: Node): void {
+    const closed = (node: Node): boolean => {
+      for (let at: Node | null = node; at && at !== sourceRoot; at = at.parentNode) {
+        if (at.nextSibling) return true;
+      }
+      return final;
+    };
+    const copy = (source: Node, target: Node): void => {
+      for (let child = source.firstChild; child; child = child.nextSibling) {
+        if (finished.has(child)) continue;
+        let twin = twins.get(child);
+        if (child instanceof Text || child instanceof Comment) {
+          if (!twin) {
+            twin = document.importNode(child, false);
+            twins.set(child, twin);
+            target.appendChild(twin);
+          }
+          (twin as CharacterData).data = child.data;
+        } else if (child instanceof Element) {
+          const isScript = child.localName === "script";
+          if (isScript && !closed(child)) return;
+          if (!twin) {
+            // importNode would carry over a script's "already started" flag.
+            twin = isScript
+              ? document.createElement("script")
+              : document.importNode(child, false);
+            if (isScript) {
+              for (const { name, value } of child.attributes) {
+                (twin as Element).setAttribute(name, value);
+              }
+              twin.textContent = child.textContent;
+            }
+            twins.set(child, twin);
+            target.appendChild(twin);
+          }
+          if (!isScript) copy(child, twin);
+        }
+        if (closed(child)) finished.add(child);
+      }
+    };
+    copy(sourceRoot, targetRoot);
+  }
+  let twins = new WeakMap<Node, Node>();
+  let finished = new WeakSet<Node>();
+
+  /** Show the message at once, and the caret, while the request is on its way. */
+  function echo(thread: HTMLElement, text: string): void {
+    if (text) {
+      const turn = document.createElement("p");
+      turn.className = "turn-user";
+      // The same hook as the stored thread's message that replaces it.
+      turn.dataset.testid = "turn-user";
+      turn.textContent = text;
+      thread.append(turn);
+    }
+    const live = document.createElement("div");
+    live.className = "turn-assistant live";
+    live.innerHTML = `<span class="writing"></span>`;
+    // Until the first chunk of the answer replaces it: a reply is on its way.
+    live.dataset.testid = "turn-pending";
+    live.setAttribute("aria-busy", "true");
+    thread.append(live);
+  }
+
+  async function send(form: HTMLFormElement, submitter: HTMLElement | null) {
+    const thread = byTestId(document, "chat-thread");
+    if (!thread) throw new Error("no thread");
+    const body = new FormData(form, submitter);
+    const text = body.get("text");
+    stop = new AbortController();
+    state.genui = "streaming";
+    // A message with files is shown only once the server has taken it: it may
+    // refuse a file, and then the reader's words and files must still be there.
+    const withFiles = [...body.values()].some(
+      (value) => typeof value !== "string" && value.size > 0,
+    );
+    const shown = (): void => {
+      echo(thread, typeof text === "string" ? text.trim() : "");
+      if (formGet(form, "dataset").testid === "chat-composer") {
+        HTMLFormElement.prototype.reset.call(form);
+      }
+    };
+    // Style on it: the request is in flight and nothing has come back yet.
+    const data = formGet(form, "dataset");
+    data.pending = "";
+    const arrived = (): void => {
+      delete data.pending;
+    };
+    if (!withFiles) shown();
+
+    const response = await fetch(formGet(form, "action"), {
+      method: "POST",
+      body,
+      signal: stop.signal,
+      headers: { accept: "text/html" },
+    });
+    if (withFiles && response.status === 422) {
+      // Refused: the answer is a page naming the reason. Show it in the
+      // composer, which still holds the text and the files.
+      const page = new DOMParser().parseFromString(
+        await response.text(),
+        "text/html",
+      );
+      const notice = byTestId(document, "chat-composer-notice");
+      const why = byTestId(page.documentElement, "attach-refused")?.textContent;
+      if (notice && why) {
+        notice.textContent = why;
+        notice.hidden = false;
+        return;
+      }
+      throw new Error("refused");
+    }
+    if (!response.ok || !response.body) throw new Error("not a page");
+    if (withFiles) shown();
+    if (new URL(response.url).pathname !== location.pathname) {
+      history.replaceState(null, "", response.url);
+    }
+
+    // Parse the answer as it arrives, in a document that is not shown.
+    const parsed = document.implementation.createHTMLDocument("");
+    const decoder = new TextDecoder();
+    let fresh: HTMLElement | null = null;
+    twins = new WeakMap();
+    finished = new WeakSet();
+    const sync = (final: boolean): void => {
+      const source = byTestId(parsed, "chat-thread");
+      if (!source) return;
+      if (!fresh) {
+        // Swap the thread in once the stored conversation is all there, so
+        // the page never shows half of it.
+        if (!final && !parsed.getElementById("thread-ready")) return;
+        fresh = document.importNode(source, false);
+        mirror(final, source, fresh);
+        byTestId(document, "chat-thread")!.replaceWith(fresh);
+        arrived();
+      } else {
+        mirror(final, source, fresh);
+      }
+    };
+    const reader = response.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parsed.write(decoder.decode(value, { stream: true }));
+      sync(false);
+    }
+    parsed.close();
+    sync(true);
+    if (!fresh) throw new Error("no thread in the answer");
+    const sidebar = byTestId(parsed, "chat-sidebar");
+    if (sidebar) {
+      byTestId(document, "chat-sidebar")?.replaceWith(
+        document.importNode(sidebar, true),
+      );
+    }
+  }
+
+  document.addEventListener("submit", (event) => {
+    const form = event.target as HTMLFormElement;
+    if (
+      event.defaultPrevented ||
+      formGet(form, "method") !== "post" ||
+      !Element.prototype.closest.call(form, "main") ||
+      formGet(form, "dataset").genui === "native"
+    ) {
+      return;
+    }
+    event.preventDefault();
+    const submitter = event.submitter;
+    if (state.genui === "streaming") {
+      // A component that sends itself (a client tool) can arrive while the
+      // reply that holds it is still streaming: it is sent when that ends.
+      next = { form, submitter };
+      return;
+    }
+    send(form, submitter)
+      .catch((error: unknown) => {
+        // Stopped by the reader: keep what arrived, and end the caret.
+        if (error instanceof DOMException && error.name === "AbortError") {
+          document
+            .querySelectorAll(".live:not(:has(.done))")
+            .forEach((live) => live.insertAdjacentHTML("beforeend", `<span class="done"></span>`));
+          return;
+        }
+        // Anything else: send the form the ordinary way.
+        formGet(form, "dataset").genui = "native";
+        resubmit(form, submitter);
+      })
+      .finally(() => {
+        delete formGet(form, "dataset").pending;
+        stop = null;
+        const queued = next;
+        next = null;
+        if (queued && Reflect.get(Node.prototype, "isConnected", queued.form)) {
+          // Still "streaming" to anything that watches: one reply, two requests.
+          state.genui = "idle";
+          resubmit(queued.form, queued.submitter);
+          return;
+        }
+        state.genui = "idle";
+        byTestId(document, "chat-composer-input")?.focus();
+      });
+  });
+
+  // Stop asks the server to end the reply, so what was written is stored
+  // before anything else is sent; the open response then ends by itself. If
+  // the server cannot be asked, closing the connection ends the reply too.
+  document.addEventListener("click", (event) => {
+    const button = (event.target as Element).closest<HTMLButtonElement>(
+      '[data-testid="chat-composer-stop"]',
+    );
+    if (!button?.form || !stop) return;
+    const current = stop;
+    fetch("/api/stop", { method: "POST", body: new FormData(button.form) })
+      .then((response) => {
+        if (!response.ok) current.abort();
+      })
+      .catch(() => current.abort());
+  });
+
+  /*
+   * A page the model wrote in a ```html-app fence runs in a sandboxed frame
+   * (see @bascik/ai/sandbox). Its first script sends the token the server gave
+   * the frame, once, with a MessageChannel port; everything after that comes
+   * through the port, which a page the frame navigates to never has. The
+   * page can ask to be as tall as its content, and offer a reply, which is
+   * shown as a button under the frame: only the reader's click on it puts
+   * the text in the message box, and the reader still presses Send.
+   */
+  // bascik-ignore js-attribute-selector the frames are the renderer's output, not a component's
+  const SANDBOX_FRAMES = "iframe[data-genui-sandbox]";
+  const sandboxPorts = new WeakMap<HTMLIFrameElement, MessagePort>();
+  /** When each frame last answered a ping, or was first seen. */
+  const sandboxAnswered = new WeakMap<HTMLIFrameElement, number>();
+
+  const stopFrame = (frame: HTMLIFrameElement): void => {
+    sandboxPorts.get(frame)?.close();
+    const note = document.createElement("p");
+    note.dataset.testid = "sandbox-stopped";
+    note.textContent =
+      "This page was stopped: it left its frame, or it stopped answering the chat.";
+    const next = frame.nextElementSibling;
+    if (next instanceof HTMLElement && next.dataset.testid === "sandbox-suggestion") {
+      next.remove();
+    }
+    frame.replaceWith(note);
+  };
+
+  /** A suggestion as the reader will see it: one line, no hidden characters, at most 200. */
+  const cleanSuggestion = (text: string): string =>
+    text
+      // Hangul fillers and the blank braille cell are letters that draw nothing.
+      .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u115F\u1160\u3164\uFFA0\u2800]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 200);
+
+  const offer = (frame: HTMLIFrameElement, text: string): void => {
+    let button = frame.nextElementSibling;
+    if (!(button instanceof HTMLButtonElement) || button.dataset.testid !== "sandbox-suggestion") {
+      const made = document.createElement("button");
+      made.type = "button";
+      made.dataset.testid = "sandbox-suggestion";
+      made.addEventListener("click", () => {
+        const input = byTestId(document, "chat-composer-input");
+        if (!(input instanceof HTMLTextAreaElement)) return;
+        input.value = made.dataset.text ?? "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.focus();
+      });
+      frame.after(made);
+      button = made;
+    }
+    // The button shows every character it will put in the message box.
+    (button as HTMLElement).dataset.text = text;
+    const label = document.createElement("strong");
+    label.textContent = "Suggested by the page:";
+    const reply = document.createElement("span");
+    reply.textContent = text;
+    button.replaceChildren(label, " ", reply);
+  };
+
+  window.addEventListener("message", (event) => {
+    if (event.origin !== "null") return;
+    const data: unknown = event.data;
+    if (typeof data !== "object" || data === null) return;
+    if (Reflect.get(data, "bascikSandbox") !== "ready") return;
+    const token = Reflect.get(data, "token");
+    const port = event.ports[0];
+    const frame = [...document.querySelectorAll<HTMLIFrameElement>(SANDBOX_FRAMES)].find(
+      (each) => each.contentWindow === event.source,
+    );
+    if (
+      !frame ||
+      !port ||
+      typeof token !== "string" ||
+      token === "" ||
+      frame.getAttribute("data-genui-sandbox") !== token ||
+      sandboxPorts.has(frame)
+    ) {
+      port?.close();
+      return;
+    }
+    sandboxPorts.set(frame, port);
+    sandboxAnswered.set(frame, performance.now());
+    let lastOffer = -Infinity;
+    port.onmessage = (message) => {
+      const body: unknown = message.data;
+      if (body === "pong") {
+        sandboxAnswered.set(frame, performance.now());
+        return;
+      }
+      if (body === "leaving") {
+        stopFrame(frame);
+        return;
+      }
+      if (typeof body !== "object" || body === null) return;
+      const kind = Reflect.get(body, "bascikSandbox");
+      if (kind === "height") {
+        const height = Number(Reflect.get(body, "height"));
+        if (Number.isFinite(height)) {
+          frame.height = String(Math.round(Math.min(Math.max(height, 60), 2000)));
+        }
+      } else if (kind === "suggest") {
+        const text = Reflect.get(body, "text");
+        const now = performance.now();
+        if (typeof text !== "string" || now - lastOffer < 1000) return;
+        const shown = cleanSuggestion(text);
+        if (!shown) return;
+        lastOffer = now;
+        offer(frame, shown);
+      }
+    };
+  });
+
+  // Every frame must keep answering on its own port. A frame that navigated
+  // has a page that cannot (its port died with the old document), and a
+  // frame that never sent its token has no port at all: both are stopped.
+  // The check does not wait for load events, which a page can hold off.
+  let lastTick = performance.now();
+  setInterval(() => {
+    const now = performance.now();
+    // A hidden tab runs timers late, and its frames answer late too: after a
+    // late tick, judge no frame until each has had a fresh chance.
+    const late = now - lastTick > 2500;
+    lastTick = now;
+    for (const frame of document.querySelectorAll<HTMLIFrameElement>(SANDBOX_FRAMES)) {
+      const answered = sandboxAnswered.get(frame);
+      if (answered === undefined || late) {
+        if (answered === undefined || sandboxPorts.has(frame)) {
+          sandboxAnswered.set(frame, now);
+        }
+        if (sandboxPorts.has(frame)) sandboxPorts.get(frame)!.postMessage("ping");
+        continue;
+      }
+      // A page busy with its own script still answers well within this.
+      if (now - answered > 4000) {
+        stopFrame(frame);
+        continue;
+      }
+      sandboxPorts.get(frame)?.postMessage("ping");
+    }
+  }, 1000);
+  state.genui = "idle";
+</script>

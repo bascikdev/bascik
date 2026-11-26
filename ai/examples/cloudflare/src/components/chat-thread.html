@@ -1,0 +1,130 @@
+<!-- @bascik
+The conversation: the turns so far, then the reply being written. The same two stream scripts as the Node demo's thread, except that each one takes the chat from the platform context, and hands the platform's waitUntil to thread(), so a reply this page starts is finished and stored after the reader leaves.
+-->
+<div class="thread" data-testid="chat-thread">
+  <!-- 1. The conversation so far, or the welcome when there is none. -->
+  <script data-bascik-stream type="text/typescript">
+    import { html, raw } from "@bascik/bascik/html";
+    import { filesOf, partsOf, renderMessage } from "@bascik/ai";
+    import { formatSize, isImageType } from "@bascik/ai/files";
+    import { WELCOME as app, chatOf } from "@/lib/chat.ts";
+    import type { RequestContext } from "@/lib/env.ts";
+
+    /** How many messages a page load renders unless the visitor asks for all. */
+    const RECENT = 40;
+
+    export default async function* (
+      request: Request,
+      context: RequestContext,
+    ) {
+      const { chat, host } = chatOf(context);
+      // While a reply is being written this is the conversation as it was
+      // when that reply started, so the reply is shown once, below.
+      const { messages: stored } = await chat.thread(request, host);
+      if (stored.length === 0) {
+        yield html`<section class="welcome" data-testid="chat-welcome">
+          <h1>${app.heading}</h1>
+          <p>${app.tagline}</p>
+          <p class="welcome-note" data-testid="chat-retention">
+            Demo chats are kept for 24 hours after your last message.
+          </p>
+          <div>
+            ${app.suggestions.map(
+              (suggestion) =>
+                html`<ask-button data-bascik-prop-say="${suggestion.say}"
+                  >${suggestion.label}</ask-button
+                >`,
+            )}
+          </div>
+        </section>`;
+        return;
+      }
+      const catalog = await chat.catalog();
+      const all = new URL(request.url).searchParams.has("all");
+      const messages = all ? stored : stored.slice(-RECENT);
+      const earlier = stored.length - messages.length;
+      if (earlier > 0) {
+        yield html`<a class="earlier" href="?all" data-testid="chat-earlier"
+          >Show ${earlier} earlier messages</a
+        >`;
+      }
+      const options = chat.renderOptions;
+      const carriedOn = stored.at(-1)?.awaiting === "model";
+      for (const message of messages) {
+        if (message.role === "user") {
+          const files = filesOf(message);
+          if (files.length) {
+            yield html`<ul class="turn-files" data-testid="turn-files">
+              ${files.map(
+                (file) =>
+                  isImageType(file.mediaType)
+                    ? html`<li>
+                        <chat-attachment
+                          data-bascik-prop-href="/api/file?id=${file.id}"
+                          data-bascik-prop-thumb="/api/file?id=${file.id}"
+                          data-bascik-prop-name="${file.name}"
+                          data-bascik-prop-size="${formatSize(file.size)}"
+                        ></chat-attachment>
+                      </li>`
+                    : html`<li>
+                        <chat-attachment
+                          data-bascik-prop-href="/api/file?id=${file.id}"
+                          data-bascik-prop-name="${file.name}"
+                          data-bascik-prop-size="${formatSize(file.size)}"
+                        ></chat-attachment>
+                      </li>`,
+              )}
+            </ul>`;
+          }
+          if (message.content) {
+            yield html`<p class="turn-user" data-testid="turn-user">${message.content}</p>`;
+          }
+          continue;
+        }
+        // A call the reader just allowed is about to run in the live reply
+        // below, so it is drawn there.
+        const shown =
+          carriedOn && message === messages.at(-1)
+            ? {
+                ...message,
+                parts: partsOf(message).filter(
+                  (part) => part.type !== "tool" || part.state !== "approved",
+                ),
+              }
+            : message;
+        yield html`<div class="turn-assistant" data-testid="turn-assistant">${raw(
+          renderMessage(shown, catalog, options),
+        )}</div>`;
+      }
+    }
+  </script>
+
+  <span
+    id="thread-ready"
+    class="thread-ready"
+    data-bascik-preserve="id"
+    data-testid="chat-thread-ready"
+  ></span>
+
+  <!-- 2. The reply being written, when there is one. On Workers it is read
+       from the conversation's ConversationLive object, from its first piece,
+       however late this page joined it. -->
+  <div class="turn-assistant live" data-testid="turn-live">
+    <script data-bascik-stream type="text/typescript">
+      import { chatOf } from "@/lib/chat.ts";
+      import type { RequestContext } from "@/lib/env.ts";
+
+      export default async function* (
+        request: Request,
+        context: RequestContext,
+      ) {
+        const { chat, host } = chatOf(context);
+        const { turn } = await chat.thread(request, host);
+        if (!turn) return;
+        yield `<span class="writing" data-testid="turn-writing"></span>`;
+        yield* turn.html.subscribe();
+        yield `<span class="done" data-testid="turn-done"></span>`;
+      }
+    </script>
+  </div>
+</div>

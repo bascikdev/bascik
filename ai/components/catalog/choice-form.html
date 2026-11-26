@@ -1,0 +1,40 @@
+<!-- @bascik
+A single-choice question. Put two to five choice-option components inside. The reader picks one and it is sent as their next message. Use it when you need one decision before you can answer.
+-->
+<style>
+  .form {
+    margin: 0.75rem 0;
+  }
+  .set {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .question {
+    padding: 0 0.35rem;
+    font-weight: 600;
+  }
+  .send {
+    justify-self: start;
+    margin-top: 0.35rem;
+    padding: 0.45rem 1rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+</style>
+<form class="form" method="post" action="/api/send" data-testid="choice-form">
+  <fieldset class="set">
+    <legend class="question" data-bascik-prop-question>Choose one</legend>
+    <span data-bascik-slot></span>
+    <button class="send" data-testid="choice-form-submit">Send</button>
+  </fieldset>
+</form>

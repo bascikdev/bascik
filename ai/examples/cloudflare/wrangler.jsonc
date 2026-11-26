@@ -1,0 +1,19 @@
+// What `bascik --build --target cloudflare` reads to write
+// dist/.bascik/cloudflare/wrangler.jsonc. That generated config is not what
+// deploys: wrangler.wrapper.jsonc is, with worker.ts as `main` (the guards and
+// the Durable Object classes) around the generated worker.js. Keep the name,
+// the compatibility settings and the vars here the same as there;
+// tests/config.test.ts checks it.
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "bascik-ai-example",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "GENUI_DAILY_READERS": "2000",
+    "GENUI_IP_SENDS": "30",
+    "GENUI_IP_UPLOADS": "10",
+    "GENUI_IP_READERS": "5",
+    "DEMO_MODEL_DELAY_MS": "20",
+  },
+}

@@ -1,0 +1,22 @@
+<!-- @bascik
+A question and answer: the question prop in the summary and the answer paragraph as content.
+-->
+<style>
+  .question {
+    margin: 0;
+    padding-block-start: 0.75rem;
+    padding-block-end: 0.25rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .summary {
+    margin-block-end: 0.5rem;
+    color: var(--text);
+    font-weight: 600;
+    cursor: pointer;
+  }
+</style>
+<details class="question" data-testid="question-item">
+  <summary class="summary" data-bascik-prop-question></summary>
+  <span data-bascik-slot></span>
+</details>

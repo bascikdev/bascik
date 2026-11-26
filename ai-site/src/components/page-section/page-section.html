@@ -1,0 +1,20 @@
+<!-- @bascik
+A page section with a heading and content below it.
+-->
+<style>
+  .section {
+    padding-block: 3rem;
+    background: var(--bg);
+  }
+  .heading {
+    margin: 0 0 1.25rem;
+    max-width: 60ch;
+    font-size: 1.75rem;
+    font-weight: 650;
+    line-height: 1.2;
+  }
+</style>
+<section class="section" data-testid="page-section">
+  <h2 class="heading" data-bascik-prop-heading></h2>
+  <span data-bascik-slot></span>
+</section>

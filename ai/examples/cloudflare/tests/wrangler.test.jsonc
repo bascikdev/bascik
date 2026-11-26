@@ -1,0 +1,30 @@
+// The Durable Object tests' Worker: the same bindings as
+// wrangler.wrapper.jsonc, over tests/test-worker.ts.
+{
+  "name": "bascik-ai-example-tests",
+  "main": "test-worker.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "READER", "class_name": "ReaderData" },
+      { "name": "LIVE", "class_name": "ConversationLive" },
+      { "name": "BUDGET", "class_name": "Budget" },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ReaderData", "ConversationLive", "Budget"],
+    },
+  ],
+  "ratelimits": [
+    {
+      "name": "REQUESTS",
+      "namespace_id": "1001",
+      "simple": { "limit": 120, "period": 60 },
+    },
+  ],
+  // IP_SALT is a secret in production; the wrapper's tests need one.
+  "vars": { "GENUI_DAILY_READERS": "400", "IP_SALT": "tests-only" },
+}

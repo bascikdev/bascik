@@ -12,6 +12,7 @@ name: Release
 # create:   git tag create-v1.0.0 origin/main && git push origin create-v1.0.0
 # adapter:  git tag adapter-cloudflare-v1.0.0 origin/main && git push origin adapter-cloudflare-v1.0.0
 #           git tag adapter-netlify-v1.0.0 origin/main && git push origin adapter-netlify-v1.0.0
+# ai:    git tag ai-v1.0.0 origin/main && git push origin ai-v1.0.0
 # lsp:      git tag lsp-v1.0.0 origin/main && git push origin lsp-v1.0.0
 # ext:      git tag ext-v1.0.0 origin/main && git push origin ext-v1.0.0            (Marketplace stable, even minor)
 #           git tag ext-pre-v1.1.0 origin/main && git push origin ext-pre-v1.1.0    (Marketplace pre-release, odd minor)
@@ -22,6 +23,7 @@ on:
       - "create-v*.*.*"
       - "adapter-cloudflare-v*.*.*"
       - "adapter-netlify-v*.*.*"
+      - "ai-v*.*.*"
       - "lsp-v*.*.*"
       - "ext-v*.*.*"
       - "ext-pre-v*.*.*"
@@ -206,6 +208,53 @@ jobs:
       - name: Publish to npm
         working-directory: adapters/netlify
         run: ${{ github.workspace }}/.github/scripts/publish-npm.sh adapter-netlify-v
+
+  release-ai:
+    name: Publish @bascik/ai to npm
+    if: startsWith(github.ref_name, 'ai-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      # Full history, so the next step can see origin/main.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Before anything is built or published: fails unless the tagged commit is on main (RELEASING.md).
+      - name: Check the tagged commit is on main
+        run: node .github/scripts/release-on-main.mjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use the .nvmrc Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          registry-url: "https://registry.npmjs.org"
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # ai renders through the workspace's @bascik/bascik build.
+      - name: Build package
+        run: yarn pkg:build
+
+      - name: Run unit tests
+        run: yarn ai:unit
+
+      # Builds dist/, packs the tarball, and imports every entry from the unpacked package with plain node.
+      - name: Run package tests
+        run: yarn ai:integration
+
+      # publish-npm.sh packs with `yarn pack` for this package, because npm ignores its publishConfig.exports.
+      - name: Publish to npm
+        working-directory: ai
+        run: ${{ github.workspace }}/.github/scripts/publish-npm.sh ai-v
 
   release-language-server:
     name: Publish @bascik/language-server to npm

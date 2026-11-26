@@ -1,0 +1,70 @@
+<!-- @bascik
+One fact in a fact-swipe. fact is the fact's id (letters, digits, dots and dashes) and is used as the radio name. claim is the fact in one plain sentence, shown in the legend. The slot holds a source-quote. Always inside fact-swipe; never put a form or button inside.
+-->
+<style>
+  .card {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    min-block-size: 11rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    touch-action: pan-y;
+    min-inline-size: 0;
+  }
+  .title {
+    font-weight: bold;
+    font-size: 1.125rem;
+    overflow-wrap: anywhere;
+  }
+  .body {
+    overflow-wrap: anywhere;
+  }
+  .answers {
+    display: flex;
+    gap: 0.75rem;
+  }
+  .answer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .answer:has(:checked) {
+    border-color: var(--accent);
+  }
+</style>
+<fieldset class="card" data-testid="fact-card">
+  <legend class="title" data-bascik-prop-claim></legend>
+  <div class="body">
+    <span data-bascik-slot></span>
+  </div>
+  <div class="answers">
+    <label class="answer" data-testid="fact-card-wrong">
+      <input
+        type="radio"
+        required
+        value="wrong"
+        data-bascik-attr-name="fact"
+        data-testid="fact-card-wrong-input"
+      />
+      <span>Wrong</span>
+    </label>
+    <label class="answer" data-testid="fact-card-right">
+      <input
+        type="radio"
+        required
+        value="right"
+        data-bascik-attr-name="fact"
+        data-testid="fact-card-right-input"
+      />
+      <span>Right</span>
+    </label>
+  </div>
+</fieldset>

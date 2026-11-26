@@ -1,0 +1,22 @@
+<!-- @bascik
+One object inside a scene-3d. It must always be written inside a scene-3d; on its own it is dropped without a warning. shape is one of box, sphere, cylinder, cone, torus. x, y, z are its position as numbers from -50 to 50 (the y axis points up). size is a number from 0.1 to 20, the object's width. color is one of red, orange, yellow, green, teal, blue, purple, pink, gray, white. label is a short name shown next to it. Always write it self-closed or empty: <scene-object shape="sphere" x="0" y="1" z="0" size="2" color="blue" label="Dune"></scene-object>.
+-->
+<style>
+  .cell {
+    padding: 0.3rem 0.6rem;
+    border-top: 1px solid var(--border);
+  }
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+<tr class="object" data-testid="scene-object">
+  <td class="cell" data-bascik-prop-shape></td>
+  <td class="cell num" data-bascik-prop-x></td>
+  <td class="cell num" data-bascik-prop-y></td>
+  <td class="cell num" data-bascik-prop-z></td>
+  <td class="cell num" data-bascik-prop-size></td>
+  <td class="cell" data-bascik-prop-color></td>
+  <td class="cell" data-bascik-prop-label></td>
+</tr>

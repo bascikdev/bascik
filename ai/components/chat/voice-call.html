@@ -1,0 +1,786 @@
+<!-- @bascik
+A spoken conversation with a speech-to-speech model: the reader talks, the model answers aloud, and what it shows arrives in the thread as components. Captions follow the voice a few words at a time, with the current word in bold. It speaks two providers' protocols, named by the ticket: gemini-live and azure-voice-live. Optional and all script. It needs three routes of yours: /api/voice-session for a ticket, /api/voice-tool to run the model's tool calls, and /api/voice-turn to store what was said, and a /voice-view page that renders what a call shows. The app prop is sent to them. Put it inside the composer (`<chat-composer><voice-call /></chat-composer>`): its button joins the composer's row, and its caption and status are a line above the message box. It also works on its own, next to the composer.
+-->
+<style>
+  /* The component has no box of its own: its parts are laid out by whatever
+     holds it, which in a composer is the row of the message box. */
+  .call {
+    display: contents;
+  }
+  .call[hidden] {
+    display: none;
+  }
+  /* One line above the message box: who is on the line, what is happening,
+     and the words being spoken. */
+  .strip {
+    order: -2;
+    flex: 0 0 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.6rem;
+    align-items: center;
+    padding: 0.15rem 0.4rem 0.5rem;
+    border-block-end: 1px solid var(--border);
+    font-size: 0.8125rem;
+  }
+  /* Nothing to say: no line. */
+  .strip:not(
+    :has(.status:not(:empty), .provider:not(:empty), .caption:not(:empty))
+  ) {
+    display: none;
+  }
+  .status {
+    margin: 0;
+    color: var(--muted);
+  }
+  .status:empty,
+  .provider:empty,
+  .caption:empty {
+    display: none;
+  }
+  /* The microphone's level, as a few bars. It keeps its room from the moment
+     a call starts, so showing it moves nothing. */
+  .meter {
+    display: inline-flex;
+    gap: 0.15rem;
+    align-items: center;
+    inline-size: 1.5rem;
+    block-size: 1rem;
+    color: var(--muted);
+    visibility: hidden;
+  }
+  .meter[hidden] {
+    display: none;
+  }
+  .meter[data-on] {
+    visibility: visible;
+  }
+  .meter[data-speaking] {
+    color: var(--accent);
+  }
+  .bar {
+    flex: 1;
+    block-size: 100%;
+    border-radius: 999px;
+    background: currentColor;
+    transform: scaleY(0.12);
+    transition: transform 90ms linear;
+  }
+  /* A view on its way: a block where it will go. */
+  .skeleton {
+    min-block-size: 6rem;
+    margin-block: 0.5rem;
+    border-radius: var(--radius);
+    background: var(--bg);
+    animation: pulse-block 1.4s ease-in-out infinite;
+  }
+  /* Which speech model is on the line, so it is not taken for the browser's voice. */
+  .provider {
+    margin: 0;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .caption {
+    flex: 1 1 14rem;
+    margin: 0;
+    color: var(--muted);
+    font-size: 1.125rem;
+    line-height: 1.35;
+    text-align: center;
+    text-wrap: balance;
+  }
+  .toggle {
+    display: inline-flex;
+    gap: 0.4rem;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 2.5rem;
+    block-size: 2.5rem;
+    padding: 0 0.6rem;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .toggle:hover {
+    background: var(--bg);
+    color: var(--accent);
+  }
+  .toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .toggle[aria-pressed="true"] {
+    padding-inline: 0.8rem;
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .icon {
+    inline-size: 1.15rem;
+    block-size: 1.15rem;
+    flex: none;
+  }
+  /* Until a call is on, the button is its icon; its name is still read out. */
+  .toggle[aria-pressed="false"] .label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* While a call is on, the microphone gives way to a light that it is live. */
+  .live {
+    display: none;
+    inline-size: 0.55rem;
+    block-size: 0.55rem;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .toggle[aria-pressed="true"] .icon {
+    display: none;
+  }
+  .toggle[aria-pressed="true"] .live {
+    display: block;
+  }
+  /* From the press until the call is on, a ring turns in place of the light. */
+  .spinner {
+    display: none;
+    inline-size: 1rem;
+    block-size: 1rem;
+    flex: none;
+    border: 2px solid currentColor;
+    border-inline-end-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .toggle[aria-busy="true"] .spinner {
+    display: block;
+  }
+  .toggle[aria-busy="true"] .live {
+    display: none;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes pulse-block {
+    50% {
+      opacity: 0.5;
+    }
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .live,
+    .spinner,
+    .skeleton {
+      animation: none;
+    }
+    .bar {
+      transition: none;
+    }
+  }
+</style>
+<div id="call" class="call" hidden data-testid="voice-call">
+  <div class="strip">
+    <p id="provider" class="provider" data-testid="voice-call-provider"></p>
+    <p
+      id="status"
+      class="status"
+      role="status"
+      data-testid="voice-call-status"
+    ></p>
+    <!-- Decoration: the status above says what is happening. -->
+    <span
+      id="meter"
+      class="meter"
+      hidden
+      aria-hidden="true"
+      data-level="0.00"
+      data-testid="voice-call-meter"
+    >
+      <span class="bar"></span>
+      <span class="bar"></span>
+      <span class="bar"></span>
+      <span class="bar"></span>
+      <span class="bar"></span>
+    </span>
+    <!-- The same words as the voice, so it is hidden from a screen reader. -->
+    <p
+      id="caption"
+      class="caption"
+      aria-hidden="true"
+      data-testid="voice-call-caption"
+    ></p>
+  </div>
+  <button
+    id="toggle"
+    class="toggle"
+    type="button"
+    aria-pressed="false"
+    title="Voice call"
+    data-testid="voice-call-toggle"
+  >
+    <svg
+      class="icon"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      aria-hidden="true"
+    >
+      <rect x="5.5" y="1.5" width="5" height="8" rx="2.5" />
+      <path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" />
+    </svg>
+    <span class="live" aria-hidden="true"></span>
+    <span
+      class="spinner"
+      aria-hidden="true"
+      data-testid="voice-call-connecting"
+    ></span>
+    <span id="label" class="label">Voice call</span>
+  </button>
+  <input id="app" type="hidden" data-bascik-attr-value="app" />
+  <script type="text/typescript">
+    import { barTransform, decodePcm16, isPlaying, measureSpeech, pcmChunker } from "./voice-call/audio.ts";
+    import { azureVoiceLive } from "./voice-call/azure-voice-live.ts";
+    import {
+      captionAt,
+      captionGroup,
+      captionParts,
+      newResponse as resetResponse,
+      newTimeline,
+      scheduleAudio,
+      silent,
+      timedWord as placeWord,
+      voicing,
+    } from "./voice-call/captions.ts";
+    import { callOf, fillForm, formGet, isApproval, openForm, sendForm } from "./voice-call/forms.ts";
+    import type { SentForm } from "./voice-call/forms.ts";
+    import { geminiLive } from "./voice-call/gemini-live.ts";
+    import { closeCall, openMicrophone } from "./voice-call/microphone.ts";
+    import { fetchView, postForm, viewHolder } from "./voice-call/requests.ts";
+    import {
+      closeReason,
+      providerLabel,
+      sessionFailure,
+      statusText,
+      toggleLabel,
+    } from "./voice-call/status.ts";
+    import { answerTool as routeTool, runTool } from "./voice-call/tools.ts";
+    import type { ToolCall } from "./voice-call/tools.ts";
+    import type {
+      Call,
+      StatusPatch,
+      Ticket,
+      ToolAnswer,
+      ToolRequest,
+      WireHooks,
+    } from "./voice-call/types.ts";
+
+    const root = document.getElementById("call")!;
+    const caption = document.getElementById("caption")!;
+    const status = document.getElementById("status")!;
+    const toggle = document.getElementById("toggle")!;
+    const label = document.getElementById("label")!;
+    const provider = document.getElementById("provider")!;
+    const meter = document.getElementById("meter")!;
+    const bars = [...meter.children] as HTMLElement[];
+    /** The button says what pressing it does. */
+    const pressed = (on: boolean): void => {
+      toggle.setAttribute("aria-pressed", String(on));
+      label.textContent = toggleLabel(on);
+      toggle.title = toggleLabel(on);
+      if (!on) {
+        provider.textContent = "";
+        toggle.removeAttribute("aria-busy");
+      }
+    };
+    const app = (document.getElementById("app") as HTMLInputElement).value;
+    let call: Call | null = null;
+
+    /* ---- The status line: one thing at a time, the most pressing first ---- */
+
+    function refresh(): void {
+      if (!call) return;
+      status.textContent = statusText(call);
+    }
+    let thinkingStamp = 0;
+    function mark(patch: StatusPatch, current: Call | null = call): void {
+      if (!current) return;
+      Object.assign(current, patch);
+      if (patch.thinking) {
+        // A sound that is not speech never gets an answer: do not wait for one for ever.
+        const stamp = ++thinkingStamp;
+        setTimeout(() => {
+          if (stamp === thinkingStamp) mark({ thinking: false }, current);
+        }, 20_000);
+      }
+      if (current === call) refresh();
+    }
+    /** A job that takes time: the status says so until it is done. */
+    async function busy<T>(current: Call | null, job: () => Promise<T>): Promise<T> {
+      if (current) {
+        current.thinking = false;
+        current.working++;
+        if (current === call) refresh();
+      }
+      try {
+        return await job();
+      } finally {
+        if (current) {
+          current.working--;
+          if (current === call) refresh();
+        }
+      }
+    }
+
+    /** The turn being spoken: its words, its audio, and where it is drawn. */
+    let reader = "";
+    let said = "";
+    let readerBubble: HTMLElement | null = null;
+    let reply: HTMLElement | null = null;
+    let saidText: Text | null = null;
+    /** What the caption follows, apart from the turn (see captions.ts). */
+    const timeline = newTimeline();
+
+    const post = (
+      path: string,
+      fields: Record<string, string>,
+      signal?: AbortSignal,
+    ): Promise<Response> => postForm(app, path, fields, signal);
+
+    /* ---- The thread: what was said and shown, as it happens ---- */
+
+    const thread = (): HTMLElement | null =>
+      document.querySelector<HTMLElement>('[data-testid="chat-thread"]');
+
+    function showReader(): void {
+      if (!readerBubble) {
+        readerBubble = document.createElement("p");
+        readerBubble.className = "turn-user";
+        readerBubble.dataset.testid = "turn-user";
+        // What the reader said can be written down after the answer has begun.
+        if (reply) reply.before(readerBubble);
+        else thread()?.append(readerBubble);
+      }
+      readerBubble.textContent = reader.trim();
+    }
+
+    function showReply(): HTMLElement {
+      if (!reply) {
+        reply = document.createElement("div");
+        reply.className = "turn-assistant";
+        reply.dataset.testid = "turn-voice";
+        saidText = document.createTextNode("");
+        reply.append(saidText);
+        // An approval card in a spoken reply is answered in the call, not by
+        // a page load: the model is waiting on the line for the result.
+        reply.addEventListener("submit", (event) => {
+          const form = event.target as HTMLFormElement;
+          const id = callOf(form);
+          const answer = (event.submitter as HTMLButtonElement | null)?.value;
+          const decide = id !== undefined && call?.waiting.get(id);
+          if (!decide || !answer) return;
+          event.preventDefault();
+          event.stopPropagation();
+          decide(answer);
+        });
+        thread()?.append(reply);
+      }
+      return reply;
+    }
+
+    /**
+     * Put a call's view in the reply. The view is a page the server renders,
+     * so its components arrive as finished markup (see requests.ts).
+     */
+    async function showView(id: string): Promise<void> {
+      // Where the view will go, until it comes.
+      const target = showReply();
+      const placeholder = document.createElement("div");
+      placeholder.dataset.view = id;
+      placeholder.className = "skeleton";
+      placeholder.dataset.testid = "voice-call-loading";
+      placeholder.setAttribute("aria-busy", "true");
+      const earlier = target.querySelector(`[data-view="${CSS.escape(id)}"]`);
+      if (earlier) earlier.replaceWith(placeholder);
+      else target.append(placeholder);
+      try {
+        const view = await fetchView(app, id);
+        if (view) placeholder.replaceWith(viewHolder(view, id));
+      } finally {
+        // A view that did not come leaves nothing behind.
+        placeholder.remove();
+      }
+    }
+
+    /* ---- Tool calls: the model asks here, the server runs them ---- */
+
+    function serverTool(tool: ToolCall): Promise<string> {
+      const current = call;
+      return runTool(tool, {
+        ask: (fields) =>
+          busy(current, async () => {
+            const answer = (await (await post("/api/voice-tool", fields)).json()) as ToolAnswer;
+            if (answer.view) await showView(tool.id);
+            return answer;
+          }),
+        wait: (id) =>
+          call
+            ? new Promise<string>((resolve) => {
+                call!.waiting.set(id, resolve);
+                refresh();
+              })
+            : null,
+        done: (id) => call?.waiting.delete(id),
+      });
+    }
+
+    const answerTool = (tool: ToolRequest): Promise<string> => {
+      mark({ thinking: false });
+      return routeTool(tool, {
+        fillForm: (args) =>
+          fillForm(
+            args,
+            openForm(thread()),
+            (form, button) => sendForm(form, button, (job) => busy(call, job)),
+            (say) => heard(reader.trim() ? `\n${say}` : say),
+          ),
+        runTool: serverTool,
+      });
+    };
+
+    /* ---- Sound out: the model's voice, and captions that follow it ---- */
+
+    function play(base64: string): void {
+      if (!call) return;
+      const samples = decodePcm16(base64);
+      const buffer = call.playback.createBuffer(1, samples.length, 24_000);
+      buffer.getChannelData(0).set(samples);
+      const source = call.playback.createBufferSource();
+      source.buffer = buffer;
+      source.connect(call.playback.destination);
+      const now = call.playback.currentTime;
+      if (call.nextAt < now) call.nextAt = now + 0.05;
+      mark({ thinking: false });
+      scheduleAudio(timeline, call.nextAt, buffer.duration);
+      source.start(call.nextAt);
+      call.nextAt += buffer.duration;
+      call.sources.add(source);
+      source.onended = () => call?.sources.delete(source);
+    }
+
+    /** The reader cut in: stop talking at once. */
+    function quiet(): void {
+      for (const source of call?.sources ?? []) source.stop();
+      call?.sources.clear();
+      if (call) call.nextAt = 0;
+      timeline.voiced = silent(false);
+      resetResponse(timeline);
+    }
+
+    /** Draw the word being spoken, a frame at a time, for as long as the call is on. */
+    function captions(): void {
+      if (!call) return;
+      const frame = captionAt(timeline.voiced, call.playback.currentTime);
+      if (!frame) {
+        caption.replaceChildren();
+        delete caption.dataset.key;
+      } else {
+        const { key } = captionGroup(frame);
+        if (caption.dataset.key !== key) {
+          caption.dataset.key = key;
+          caption.dataset.timing = frame.timed ? "words" : "estimate";
+          caption.replaceChildren(
+            ...captionParts(frame.words, frame.index).map((part) => {
+              if (typeof part === "string") return part;
+              const current = document.createElement("strong");
+              current.textContent = part.current;
+              return current;
+            }),
+          );
+        }
+      }
+      requestAnimationFrame(captions);
+    }
+
+    /* ---- Sound in: the microphone, as the provider wants it ---- */
+
+    /** One block of microphone sound: its level, and whether the reader speaks. */
+    function measure(current: Call, rms: number): void {
+      measureSpeech(current, rms, performance.now());
+      if (!current.wire.byMeter || current !== call) return;
+      const hearing = current.speaking && !isPlaying(current);
+      if (hearing === current.hearing) return;
+      // Speaking again is not waiting for an answer; stopping is, if words were heard.
+      const waits = !hearing && reader.trim() !== "" && !said.trim();
+      mark(hearing ? { hearing, thinking: false } : { hearing, thinking: waits || current.thinking });
+    }
+
+    /** Draw the level, a frame at a time, for as long as the call is on. */
+    function drawMeter(current: Call): void {
+      if (current !== call || !current.microphone) return;
+      const shown = current.level.toFixed(2);
+      if (meter.dataset.level !== shown) {
+        meter.dataset.level = shown;
+        bars.forEach((bar, at) => {
+          bar.style.transform = barTransform(current.level, at);
+        });
+      }
+      meter.toggleAttribute("data-speaking", current.speaking);
+      requestAnimationFrame(() => drawMeter(current));
+    }
+
+    async function listen(current: Call): Promise<void> {
+      const node = await openMicrophone(current, () => current === call);
+      if (!node) return;
+      const chunks = pcmChunker();
+      meter.dataset.on = "";
+      requestAnimationFrame(() => drawMeter(current));
+      node.port.onmessage = ({ data }: MessageEvent<Float32Array>) => {
+        measure(current, chunks.add(data));
+        if (current.socket.readyState !== WebSocket.OPEN) return;
+        const chunk = chunks.take();
+        if (chunk !== null) current.wire.audio(chunk);
+      };
+    }
+
+    /* ---- The call ---- */
+
+    /** Store what was said, and start the next turn with a clean slate. */
+    function endTurn(): void {
+      if (reader.trim() || said.trim() || reply) {
+        void post("/api/voice-turn", { reader, model: said });
+      }
+      reader = said = "";
+      readerBubble = reply = saidText = null;
+      mark({ thinking: false });
+      // The next thing said starts a new caption; this one plays out.
+      timeline.voiced.open = false;
+    }
+
+    /** The call is on. The microphone joins when the reader allows it;
+     * without one the call still works, and the reader types. */
+    function connected(current: Call): void {
+      toggle.removeAttribute("aria-busy");
+      mark({ base: "Connected. Type to talk." }, current);
+      listen(current).then(
+        () => mark({ base: "Listening." }, current),
+        () => {
+          // The reader declined: there is no level to show.
+          meter.hidden = true;
+          mark({ base: "No microphone: type to talk." }, current);
+        },
+      );
+    }
+
+    function heard(text: string, whole = false): void {
+      reader = whole ? text : reader + text;
+      showReader();
+      // Words that arrive after the reader stopped are an answer being waited for.
+      if (call?.wire.byMeter && !call.speaking && !said.trim()) mark({ thinking: true });
+    }
+
+    function spoke(text: string): void {
+      said += text;
+      voicing(timeline).text += text;
+      showReply();
+      saidText!.data = said;
+    }
+
+    /** What a provider's messages do to `current` (see types.ts). */
+    const hooksFor = (current: Call): WireHooks => ({
+      connected: () => connected(current),
+      answerTool,
+      mark: (patch) => mark(patch, current),
+      quiet,
+      heard,
+      play,
+      spoke,
+      timedWord: (text, ms) => placeWord(timeline, text, ms),
+      newResponse: () => resetResponse(timeline),
+      endTurn,
+      said: () => said,
+      hasReply: () => reply !== null,
+      isCurrent: () => current === call,
+    });
+
+    async function onMessage(current: Call, event: MessageEvent): Promise<void> {
+      const text = typeof event.data === "string" ? event.data : await (event.data as Blob).text();
+      const message = JSON.parse(text);
+      if (current !== call) return;
+      await current.wire.receive(message);
+    }
+
+    function hangUp(why = ""): void {
+      const ending = call;
+      if (!ending) return;
+      call = null;
+      endTurn();
+      closeCall(ending);
+      caption.replaceChildren();
+      status.textContent = why;
+      meter.hidden = true;
+      delete meter.dataset.on;
+      meter.dataset.level = "0.00";
+      meter.removeAttribute("data-speaking");
+      for (const bar of bars) bar.style.transform = "";
+      pressed(false);
+      delete document.documentElement.dataset.genuiCall;
+    }
+
+    /** The call that is being started: its session is asked for, and not yet answered. */
+    let starting: AbortController | null = null;
+
+    /** Give up on a call that is not on yet, and say why when there is something to say. */
+    function cancelStart(why = ""): void {
+      starting?.abort();
+      starting = null;
+      meter.hidden = true;
+      status.textContent = why;
+      pressed(false);
+    }
+
+    async function start(): Promise<void> {
+      const attempt = new AbortController();
+      starting = attempt;
+      pressed(true);
+      // Busy from the press until the call is on.
+      toggle.setAttribute("aria-busy", "true");
+      status.textContent = "Connecting…";
+      // Its room is kept now, so that it can show later without moving anything.
+      meter.hidden = false;
+      // Whatever this attempt holds is closed unless the call takes it over.
+      let playback: AudioContext | null = null;
+      try {
+        // Made in the click, so the browser lets it play.
+        playback = new AudioContext({ sampleRate: 24_000 });
+        const response = await post("/api/voice-session", {}, attempt.signal);
+        if (!response.ok) {
+          cancelStart(sessionFailure(response.status));
+          return;
+        }
+        const ticket = (await response.json()) as Ticket;
+        // The reader pressed the button again while the session was on its way.
+        if (attempt.signal.aborted) return;
+        const current = {
+          socket: new WebSocket(ticket.url),
+          playback,
+          sources: new Set(),
+          nextAt: 0,
+          waiting: new Map(),
+          base: "Connecting…",
+          hearing: false,
+          thinking: false,
+          working: 0,
+          level: 0,
+          speaking: false,
+          quietAt: 0,
+        } as Call;
+        current.wire =
+          ticket.protocol === "azure-voice-live"
+            ? azureVoiceLive(current, hooksFor(current))
+            : geminiLive(current, ticket.setup, hooksFor(current));
+        resetResponse(timeline);
+        call = current;
+        // The call has its own audio now, and the attempt is over.
+        playback = null;
+        starting = null;
+        provider.textContent = providerLabel(ticket);
+        // Other voices on the page stay quiet while a call is on.
+        document.documentElement.dataset.genuiCall = "on";
+        if (current.socket.readyState === WebSocket.OPEN) current.wire.begin();
+        else current.socket.onopen = () => current.wire.begin();
+        current.socket.onmessage = (event) => void onMessage(current, event);
+        current.socket.onclose = (event) => {
+          // A relay or a provider can say why it hung up.
+          if (current === call) hangUp(closeReason(event.reason));
+        };
+        requestAnimationFrame(captions);
+      } catch {
+        // A press that canceled this attempt has already said what there is to say.
+        if (attempt.signal.aborted) return;
+        if (call) hangUp("The call could not start.");
+        else cancelStart("The call could not start.");
+      } finally {
+        void playback?.close();
+      }
+    }
+
+    toggle.addEventListener("click", () => {
+      if (call) hangUp();
+      // Pressed while connecting: this is a cancel, not a second call.
+      else if (starting) cancelStart();
+      else void start();
+    });
+
+    // During a call, a typed message is said to the model, not posted.
+    document.addEventListener(
+      "submit",
+      (event) => {
+        const form = event.target as HTMLFormElement;
+        // Any form's submit comes here: only the composer, which is not the
+        // model's, is used by its own property names.
+        if (!call || formGet(form, "dataset").testid !== "chat-composer") return;
+        const input = form.querySelector("textarea");
+        const text = input?.value.trim();
+        if (!text || call.socket.readyState !== WebSocket.OPEN) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        quiet();
+        if (reader.trim() || said.trim()) endTurn();
+        reader = text;
+        showReader();
+        call.wire.text(text);
+        mark({ thinking: true });
+        form.reset();
+      },
+      true,
+    );
+
+    // During a call, a form in the thread that the reader presses is said to
+    // the model too: its answer does not start a typed reply.
+    document.addEventListener(
+      "submit",
+      (event) => {
+        const form = event.target as HTMLFormElement;
+        if (!call || !thread()?.contains(form) || isApproval(form)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const current = call;
+        void sendForm(form, event.submitter, (job) => busy(call, job)).then((sent: SentForm | null) => {
+          if (!sent || current !== call) return;
+          quiet();
+          if (reader.trim() || said.trim()) endTurn();
+          if (!sent.hidden) {
+            reader = sent.say;
+            showReader();
+          }
+          current.wire.text(sent.say);
+          mark({ thinking: true }, current);
+        });
+      },
+      true,
+    );
+
+    window.addEventListener("pagehide", () => hangUp());
+    if (typeof WebSocket === "function" && typeof AudioContext === "function") {
+      root.hidden = false;
+    }
+  </script>
+</div>

@@ -1,0 +1,28 @@
+<!-- @bascik
+An accent-filled button-looking link.
+-->
+<style>
+  .primary {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.55rem 1rem;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .primary:hover {
+    opacity: 0.92;
+  }
+  .primary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+</style>
+<a class="primary" data-testid="primary-link" data-bascik-attr-href="href"
+  ><span data-bascik-slot></span
+></a>

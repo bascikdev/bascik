@@ -1,0 +1,480 @@
+<!-- @bascik
+Voice for a chat: reads each reply aloud as it streams, captions it a few words at a time with the current word in bold, and can listen for the next message. Optional and all script: with scripts off it shows nothing. Put it inside the composer (`<chat-composer><chat-voice /></chat-composer>`): its button joins the composer's row, and its caption and controls open above the message box. It also works on its own, next to the composer. Captions also run with the sound off, as a paced reading aid. A component in a reply is spoken only when an element in it has a data-say attribute.
+-->
+<style>
+  /* The component has no box of its own: its parts are laid out by whatever
+     holds it, which in a composer is the row of the message box. */
+  .voice {
+    display: contents;
+  }
+  .voice[hidden] {
+    display: none;
+  }
+  .caption {
+    order: -3;
+    flex: 0 0 100%;
+    margin: 0;
+    padding: 0.15rem 0.4rem 0.5rem;
+    border-block-end: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 1.125rem;
+    line-height: 1.35;
+    text-align: center;
+    text-wrap: balance;
+  }
+  /* Shown only while there is something to caption, or to say about it. */
+  .caption:empty {
+    display: none;
+  }
+  /* The controls, opened by the button: a line above the message box. */
+  .aids {
+    order: -1;
+    flex: 0 0 100%;
+    padding: 0.15rem 0.4rem 0.5rem;
+    border-block-end: 1px solid var(--border);
+    font-size: 0.8125rem;
+  }
+  .aids[hidden] {
+    display: none;
+  }
+  .summary {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+  }
+  /* The sign for captions. Drawn here, so the button's text is its name alone. */
+  .summary::before {
+    content: "CC";
+    padding: 0.05rem 0.25rem;
+    border: 1.5px solid currentColor;
+    border-radius: 4px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .summary[hidden] {
+    display: none;
+  }
+  .summary:hover,
+  .summary[aria-expanded="true"] {
+    background: var(--bg);
+    color: var(--accent);
+  }
+  /* A light on the button while any aid is on, seen with the controls closed. */
+  .summary[data-on]::after {
+    content: "";
+    position: absolute;
+    inset-block-start: 0.35rem;
+    inset-inline-end: 0.3rem;
+    inline-size: 0.4rem;
+    block-size: 0.4rem;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .summary:focus-visible,
+  .toggle:focus-visible,
+  .speed:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .name {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  .toggle,
+  .speed {
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .toggle[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .pace {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    margin-inline-start: auto;
+    color: var(--muted);
+  }
+  .hint {
+    margin: 0.4rem 0 0;
+    color: var(--muted);
+  }
+</style>
+<div id="voice" class="voice" hidden data-testid="chat-voice">
+  <!-- The same words as the reply above, so it is hidden from a screen
+       reader, which already reads the reply. -->
+  <p
+    id="caption"
+    class="caption"
+    aria-hidden="true"
+    data-testid="chat-voice-caption"
+  ></p>
+  <div id="aids" class="aids" hidden data-testid="chat-voice-aids">
+    <div class="controls" role="group" aria-label="Reading aids">
+      <button
+        id="captions"
+        class="toggle"
+        type="button"
+        aria-pressed="false"
+        data-testid="chat-voice-captions"
+      >
+        Captions
+      </button>
+      <button
+        id="aloud"
+        class="toggle"
+        type="button"
+        aria-pressed="false"
+        hidden
+        data-testid="chat-voice-aloud"
+      >
+        Read aloud
+      </button>
+      <button
+        id="talk"
+        class="toggle"
+        type="button"
+        aria-pressed="false"
+        hidden
+        data-testid="chat-voice-talk"
+      >
+        Dictate
+      </button>
+      <label class="pace">
+        Speed
+        <select id="speed" class="speed" data-testid="chat-voice-speed">
+          <option value="0.75">Slow</option>
+          <option value="1" selected>Normal</option>
+          <option value="1.5">Fast</option>
+          <option value="2">Faster</option>
+        </select>
+      </label>
+    </div>
+    <p class="hint">
+      Read aloud and Dictate use your browser's own voice and speech
+      recognition, not a speech model.
+    </p>
+  </div>
+  <button
+    id="summary"
+    class="summary"
+    type="button"
+    aria-expanded="false"
+    title="Reading aids"
+    data-testid="chat-voice-summary"
+  >
+    <span id="name" class="name">Reading aids</span>
+  </button>
+  <script type="text/typescript">
+    import { captionParts, wordAt, wordDelay, wordStarts } from "./chat-voice/captions.ts";
+    import { sentenceEnd, sentencesOf, speakable } from "./chat-voice/sentences.ts";
+    import { STORE, aidsLabel, isActive, loadSettings, saveSettings } from "./chat-voice/settings.ts";
+    import type { Recognizer } from "./chat-voice/types.ts";
+
+    const root = document.getElementById("voice")!;
+    const caption = document.getElementById("caption")!;
+    const captionsButton = document.getElementById("captions")!;
+    const aloudButton = document.getElementById("aloud")!;
+    const talkButton = document.getElementById("talk")!;
+    const speed = document.getElementById("speed") as HTMLSelectElement;
+    const aids = document.getElementById("aids")!;
+    const summary = document.getElementById("summary")!;
+    const summaryName = document.getElementById("name")!;
+
+    const synth: SpeechSynthesis | undefined = window.speechSynthesis;
+    const scope = window as unknown as Record<string, new () => Recognizer>;
+    const Recognition = scope.SpeechRecognition ?? scope.webkitSpeechRecognition;
+
+    /** What the reader chose, kept for their next visit. */
+    const settings = loadSettings(() => localStorage.getItem(STORE), Boolean(synth));
+    const save = (): void => saveSettings((value) => localStorage.setItem(STORE, value), settings);
+    const active = (): boolean => isActive(settings);
+
+    /* ---- What to say: the reply's prose, as it streams ---- */
+
+    let reply: Element | null = null;
+    /** How much of the current reply's text is already queued. */
+    let taken = 0;
+    const queue: string[] = [];
+    let playing = false;
+    /** True once the current reply has been said to its end. */
+    let finished = false;
+
+    function scan(): void {
+      // A voice call has its own voice and captions (voice-call).
+      if (document.documentElement.dataset.genuiCall) {
+        if (playing) hush();
+        return;
+      }
+      // A data attribute is not renamed per instance, so it can be selected as written.
+      // bascik-ignore js-attribute-selector
+      const live = document.querySelector('[data-testid="turn-live"]');
+      if (live !== reply) {
+        // A new reply: whatever was being said belongs to the last one.
+        reply = live;
+        taken = 0;
+        finished = false;
+        hush();
+      }
+      if (!live) return;
+      const text = speakable(live);
+      const over = live.querySelector(".done") !== null;
+      if (!active()) {
+        taken = text.length;
+        if (over) drained();
+        return;
+      }
+      const rest = text.slice(taken);
+      // Only whole sentences are said: the rest of this one is still coming.
+      const end = sentenceEnd(rest, over);
+      if (end === 0) {
+        if (over && !playing) drained();
+        return;
+      }
+      taken += end;
+      queue.push(...sentencesOf(rest.slice(0, end)));
+      if (!playing) play();
+    }
+
+    /** The reply has been said to its end: in a conversation, listen again. */
+    function drained(): void {
+      if (finished || !reply?.querySelector(".done")) return;
+      finished = true;
+      if (settings.talk) listen();
+    }
+
+    /* ---- Saying it: one sentence at a time, the caption in step ---- */
+
+    let timer = 0;
+    let utterance: SpeechSynthesisUtterance | null = null;
+
+    /** A few words at a time, the one being said in bold. */
+    let shown: { words: string[]; index: number } | null = null;
+    function show(words: string[], index: number): void {
+      if (shown?.words === words && shown.index === index) return;
+      shown = { words, index };
+      caption.replaceChildren(
+        ...captionParts(words, index).map((part) => {
+          if (typeof part === "string") return part;
+          const current = document.createElement("strong");
+          current.textContent = part.current;
+          return current;
+        }),
+      );
+    }
+
+    /** Step through the words at a reading pace: a long word takes longer. */
+    function pace(words: string[], from: number, done: () => void): void {
+      const step = (index: number): void => {
+        if (index >= words.length) {
+          done();
+          return;
+        }
+        show(words, index);
+        timer = window.setTimeout(() => step(index + 1), wordDelay(words[index]!, settings.speed));
+      };
+      step(from);
+    }
+
+    function play(): void {
+      const sentence = queue.shift();
+      if (sentence === undefined) {
+        playing = false;
+        caption.replaceChildren();
+        drained();
+        return;
+      }
+      playing = true;
+      const words = sentence.split(" ");
+      const next = (): void => {
+        window.clearTimeout(timer);
+        utterance = null;
+        play();
+      };
+      if (!settings.aloud || !synth) {
+        pace(words, 0, next);
+        return;
+      }
+      // Where each word starts, to find the word a boundary event is about.
+      const starts = wordStarts(words);
+      const spoken = new SpeechSynthesisUtterance(sentence);
+      utterance = spoken;
+      spoken.rate = Number(settings.speed);
+      spoken.lang = document.documentElement.lang || "en";
+      let heard = false;
+      spoken.onstart = () => {
+        // Some voices send no word boundaries: until one does, keep pace.
+        if (!heard) pace(words, 0, () => {});
+      };
+      spoken.onboundary = (event) => {
+        if (event.name && event.name !== "word") return;
+        heard = true;
+        window.clearTimeout(timer);
+        show(words, wordAt(starts, event.charIndex));
+      };
+      spoken.onend = spoken.onerror = () => {
+        if (utterance === spoken) next();
+      };
+      show(words, 0);
+      synth.speak(spoken);
+    }
+
+    /** Stop saying anything, at once. */
+    function hush(): void {
+      queue.length = 0;
+      window.clearTimeout(timer);
+      utterance = null;
+      synth?.cancel();
+      playing = false;
+      shown = null;
+      caption.replaceChildren();
+    }
+
+    /* ---- Listening: the reader's turn ---- */
+
+    let recognizer: Recognizer | null = null;
+
+    function listen(): void {
+      if (!Recognition || recognizer || !settings.talk) return;
+      const input = document.querySelector<HTMLTextAreaElement>(
+        '[data-testid="chat-composer-input"]',
+      );
+      if (!input?.form) return;
+      const hearing = new Recognition();
+      recognizer = hearing;
+      hearing.lang = document.documentElement.lang || "en-US";
+      hearing.interimResults = true;
+      root.dataset.state = "listening";
+      caption.textContent = "Listening…";
+      hearing.onresult = (event) => {
+        const results = [...event.results];
+        input.value = results.map((result) => result[0]!.transcript).join("");
+        caption.textContent = input.value;
+        if (results.at(-1)?.isFinal && input.value.trim()) {
+          hearing.abort();
+          input.form!.requestSubmit();
+        }
+      };
+      hearing.onend = hearing.onerror = () => {
+        if (recognizer === hearing) recognizer = null;
+        delete root.dataset.state;
+        if (!playing) caption.replaceChildren();
+      };
+      hearing.start();
+    }
+
+    /* ---- Controls ---- */
+
+    function reflect(): void {
+      captionsButton.setAttribute("aria-pressed", String(settings.captions));
+      aloudButton.setAttribute("aria-pressed", String(settings.aloud));
+      talkButton.setAttribute("aria-pressed", String(settings.talk));
+      // Closed, the line still says what is on.
+      const { name, on } = aidsLabel(settings);
+      summaryName.textContent = name;
+      summary.title = summaryName.textContent;
+      if (on) summary.dataset.on = "";
+      else delete summary.dataset.on;
+      speed.value = settings.speed;
+    }
+    captionsButton.addEventListener("click", () => {
+      settings.captions = !settings.captions;
+      if (!active()) hush();
+      save();
+      reflect();
+      scan();
+    });
+    aloudButton.addEventListener("click", () => {
+      settings.aloud = !settings.aloud;
+      // What is being said goes on from the next sentence in the new mode.
+      if (!active()) hush();
+      else synth?.cancel();
+      save();
+      reflect();
+      scan();
+    });
+    talkButton.addEventListener("click", () => {
+      settings.talk = !settings.talk;
+      if (settings.talk) {
+        // A conversation is spoken both ways, when the browser can speak.
+        if (synth) settings.aloud = true;
+        hush();
+        listen();
+      } else {
+        recognizer?.abort();
+      }
+      save();
+      reflect();
+    });
+    speed.addEventListener("change", () => {
+      settings.speed = speed.value;
+      save();
+    });
+
+    aloudButton.hidden = !synth;
+    talkButton.hidden = !Recognition;
+    summary.addEventListener("click", () => {
+      aids.hidden = !aids.hidden;
+      summary.setAttribute("aria-expanded", String(!aids.hidden));
+    });
+    reflect();
+    root.hidden = false;
+    // A voice call has its own voice and captions: these step aside for it.
+    new MutationObserver(() => {
+      const calling = Boolean(document.documentElement.dataset.genuiCall);
+      summary.hidden = calling;
+      if (calling) {
+        aids.hidden = true;
+        summary.setAttribute("aria-expanded", "false");
+      }
+    }).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-genui-call"],
+    });
+
+    // The reply grows as it streams: look again whenever the page changes.
+    let scheduled = false;
+    new MutationObserver(() => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        scan();
+      });
+    }).observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    // Leaving the page must not leave a voice talking.
+    window.addEventListener("pagehide", hush);
+    scan();
+  </script>
+</div>

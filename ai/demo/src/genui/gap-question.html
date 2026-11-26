@@ -1,0 +1,103 @@
+<!-- @bascik
+A gap in the sources for the reader to fill in: a short id as item, the question the sources do not answer as question, and a source-quote of the nearest passage as content. The reader writes what really happens, or says they do not know, and the answer is recorded. Never guess the answer yourself.
+-->
+<style>
+  .gap {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    border-style: dashed;
+  }
+  .ask {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .question {
+    margin: 0;
+    font-size: 1.0625rem;
+    font-weight: 600;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .action {
+    padding: 0.45rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .note {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .text {
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+</style>
+<form class="gap" method="post" action="/api/decide" data-testid="gap-question">
+  <input type="hidden" name="app" value="review" />
+  <input type="hidden" name="kind" value="gap" />
+  <input type="hidden" name="item" data-bascik-attr-value="item" />
+  <p class="ask">The sources do not say</p>
+  <p
+    class="question"
+    data-testid="gap-question-question"
+    data-bascik-prop-question
+  ></p>
+  <span data-bascik-slot></span>
+  <label class="note">
+    What happens in practice?
+    <textarea
+      class="text"
+      name="note"
+      rows="3"
+      required
+      data-testid="gap-question-answer"
+    ></textarea>
+  </label>
+  <div class="actions">
+    <button
+      class="action primary"
+      name="verdict"
+      value="answered"
+      data-testid="gap-question-submit"
+    >
+      Save answer
+    </button>
+    <button
+      class="action"
+      name="verdict"
+      value="unknown"
+      formnovalidate
+      data-testid="gap-question-unknown"
+    >
+      I do not know
+    </button>
+  </div>
+</form>

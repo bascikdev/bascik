@@ -1,0 +1,61 @@
+<!-- @bascik
+One memory in a memory-list: its text as content, the day it was saved, and a Forget button. Written by the app from stored data, never by a model. The button is a plain form that posts to /api/forget.
+-->
+<style>
+  .item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.15rem 1rem;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .text {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .saved {
+    grid-column: 1;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  .forget {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    margin: 0;
+  }
+  .forget button {
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .forget button:hover,
+  .forget button:focus-visible {
+    border-color: var(--accent);
+  }
+</style>
+<li class="item" data-testid="memory-item">
+  <p class="text" data-testid="memory-item-text">
+    <span data-bascik-slot></span>
+  </p>
+  <time
+    class="saved"
+    data-testid="memory-item-saved"
+    data-bascik-attr-datetime="saved"
+    data-bascik-prop-saved
+  ></time>
+  <form class="forget" method="post" action="/api/forget">
+    <input type="hidden" name="app" data-bascik-attr-value="app" />
+    <input type="hidden" name="id" data-bascik-attr-value="memory" />
+    <input type="hidden" name="back" data-bascik-attr-value="back" />
+    <button data-testid="memory-item-forget">Forget</button>
+  </form>
+</li>

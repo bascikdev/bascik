@@ -1,0 +1,16 @@
+<!-- @bascik
+A numbered procedure. Put one step-item inside per step, in order.
+-->
+<style>
+  .steps {
+    display: grid;
+    gap: 0.6rem;
+    margin: 0.75rem 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: step;
+  }
+</style>
+<ol class="steps" data-testid="step-list">
+  <span data-bascik-slot></span>
+</ol>

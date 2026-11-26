@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bascik AI</title>
+    <meta
+      name="description"
+      content="Bascik AI is the AI interface for Bascik. The model writes tags from your catalog, and Bascik renders them as real HTML on the server."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <site-header />
+    <main>
+      <site-hero
+        data-bascik-prop-headline="The AI interface for Bascik"
+        data-bascik-prop-tagline="The model writes tags from your catalog, and Bascik renders them as real HTML on the server."
+      >
+        <primary-link data-bascik-prop-href="https://bascik.dev/ai/quick-start"
+          >Go to the quick start</primary-link
+        >
+        <quiet-link
+          data-bascik-prop-href="https://github.com/bascikdev/bascik/tree/main/ai/demo"
+          >See the example</quiet-link
+        >
+      </site-hero>
+
+      <page-section data-bascik-prop-heading="What it is">
+        <p>
+          Generative UI can mean three things. The model picks from a catalog
+          you approved. The model emits a structured description that the app
+          renders. The model writes raw code. <code>@bascik/ai</code> is the
+          first kind, delivered as the second. The model writes component tags,
+          and a renderer on the server draws only the tags in your catalog, as
+          real HTML.
+        </p>
+        <p>
+          It is never the third kind. Model output is untrusted text. It is
+          never run as code, and unknown tags are shown as text. Bascik ships
+          plain HTML, with no client framework. The reader gets prose and
+          finished components as one HTML document that grows. The browser needs
+          no JavaScript for that core reply.
+        </p>
+      </page-section>
+
+      <page-section data-bascik-prop-heading="Pillars">
+        <div class="pillars">
+          <pillar-card data-bascik-prop-name="Chat">
+            <p>
+              Chat is a complete chat interface. It covers the message box,
+              thread, tool approval, memory, conversation search, attachments,
+              and the server helpers behind them.
+            </p>
+            <ul>
+              <li>A composer and thread for stored messages.</li>
+              <li>Tool approval, memory, and conversation search.</li>
+              <li>Attachments and server helpers.</li>
+            </ul>
+          </pillar-card>
+          <pillar-card data-bascik-prop-name="Generative UI">
+            <p>
+              The model shows components from your catalog, a folder of ordinary
+              Bascik components, rendered on the server as real HTML.
+            </p>
+            <ul>
+              <li>A folder of approved components.</li>
+              <li>A prompt built from each component file.</li>
+              <li>A renderer that keeps only catalog tags.</li>
+            </ul>
+          </pillar-card>
+          <pillar-card data-bascik-prop-name="Voice">
+            <p>
+              Voice gives a chat spoken conversations with a speech model. It
+              shows word-by-word captions, lets the model show components while
+              it talks, and can fill in a form the reader answers aloud.
+            </p>
+            <ul>
+              <li>Captions and read aloud for replies.</li>
+              <li>Spoken calls with Gemini Live or Azure Voice Live.</li>
+              <li>Forms that can be pressed or answered aloud.</li>
+            </ul>
+          </pillar-card>
+        </div>
+      </page-section>
+
+      <page-section data-bascik-prop-heading="How a reply is made">
+        <ol>
+          <reply-step
+            >The reader sends a message through a form or a voice
+            call.</reply-step
+          >
+          <reply-step
+            >The server reads the catalog and sends the prompt and messages to a
+            model.</reply-step
+          >
+          <reply-step
+            >The model returns prose and catalog tags, and the renderer holds
+            each tag until it is complete.</reply-step
+          >
+          <reply-step
+            >Bascik renders approved tags as scoped HTML and sends the growing
+            page to the browser.</reply-step
+          >
+        </ol>
+      </page-section>
+
+      <page-section data-bascik-prop-heading="What it does not do">
+        <ul>
+          <li>It does not run model output as code.</li>
+          <li>It does not turn unknown tags into elements.</li>
+          <li>
+            It does not work as a static build, because it needs a server that
+            runs stream scripts.
+          </li>
+          <li>
+            It is not stable yet, because it is an experimental 0.x prototype.
+          </li>
+          <li>It does not offer browser-only tools in voice calls.</li>
+          <li>It does not implement OpenAI's own Realtime API.</li>
+        </ul>
+      </page-section>
+
+      <page-section data-bascik-prop-heading="Works with">
+        <ul>
+          <li>
+            Claude: uses the Claude adapter and <code>@anthropic-ai/sdk</code>.
+          </li>
+          <li>
+            OpenAI chat completions: works with any server that speaks the API,
+            including Ollama and LM Studio.
+          </li>
+          <li>OpenAI Responses: works with OpenAI and Azure OpenAI.</li>
+          <li>Gemini Live: uses Google's Gemini Live API for spoken calls.</li>
+          <li>
+            Azure Voice Live: uses Azure Voice Live through a server relay.
+          </li>
+        </ul>
+      </page-section>
+
+      <page-section data-bascik-prop-heading="Principles">
+        <ul>
+          <principle-item data-bascik-prop-name="The stream is the page"
+            >A reply is HTML that grows, with no message protocol between server
+            and browser.</principle-item
+          >
+          <principle-item
+            data-bascik-prop-name="The component file is the schema"
+            >A model's vocabulary is a folder of components, read from each
+            component file.</principle-item
+          >
+          <principle-item
+            data-bascik-prop-name="The server is the trust boundary"
+            >The renderer passes only catalog tags and declared props, then
+            escapes everything else.</principle-item
+          >
+          <principle-item data-bascik-prop-name="State lives in the message"
+            >Approvals, tool results, and failures are stored as parts of a
+            message.</principle-item
+          >
+          <principle-item data-bascik-prop-name="Interaction is forms"
+            >A component that talks back is a form, so it works without
+            scripts.</principle-item
+          >
+        </ul>
+      </page-section>
+
+      <page-section data-bascik-prop-heading="Start">
+        <code-sample
+          >npm install @bascik/ai&#10;npx bascik add @bascik/ai</code-sample
+        >
+        <p>
+          The first command installs the functions, and the second copies the
+          components into your project.
+        </p>
+        <primary-link data-bascik-prop-href="https://bascik.dev/ai/quick-start"
+          >Go to the quick start</primary-link
+        >
+        <quiet-link
+          data-bascik-prop-href="https://github.com/bascikdev/bascik/tree/main/ai/demo"
+          >See the example</quiet-link
+        >
+      </page-section>
+
+      <page-section data-bascik-prop-heading="Questions">
+        <question-item
+          data-bascik-prop-question="Does the browser need JavaScript?"
+        >
+          <p>
+            No. The core reply is HTML that grows, and forms work with scripts
+            off, while optional scripts add streaming, sorting, and voice.
+          </p>
+        </question-item>
+        <question-item
+          data-bascik-prop-question="Is the model's output trusted?"
+        >
+          <p>
+            No. The renderer passes only catalog tags and declared props,
+            escapes everything else, and shows unknown tags as text.
+          </p>
+        </question-item>
+        <question-item data-bascik-prop-question="Can I use my own components?">
+          <p>
+            Yes. The catalog is a folder of ordinary Bascik components, and the
+            component file is the definition.
+          </p>
+        </question-item>
+        <question-item data-bascik-prop-question="Which models work?">
+          <p>
+            Claude, OpenAI chat completions servers, OpenAI Responses servers,
+            Gemini Live, and Azure Voice Live are named. The Claude adapter
+            needs <code>@anthropic-ai/sdk</code>, and the OpenAI adapters use
+            <code>fetch</code>.
+          </p>
+        </question-item>
+        <question-item data-bascik-prop-question="Is it stable?">
+          <p>
+            No. It is an experimental 0.x prototype, and a minor version may
+            change the API, so pin the version you tested.
+          </p>
+        </question-item>
+        <question-item data-bascik-prop-question="Where is my data kept?">
+          <p>
+            Conversation and memory stores are yours to choose. The package
+            gives file and in-memory stores, and you can write your own.
+          </p>
+        </question-item>
+      </page-section>
+    </main>
+    <site-footer />
+  </body>
+</html>

@@ -1,0 +1,48 @@
+<!-- @bascik
+One replacement inside a code-map: the old code, the new code that replaces it, and what the code covers as content. The reader marks the row right or wrong.
+-->
+<style>
+  .cell {
+    padding: 0.4rem 0.5rem;
+    border-block-end: 1px solid var(--border);
+    vertical-align: baseline;
+  }
+  .code {
+    font-family: ui-monospace, monospace;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .checks {
+    display: flex;
+    gap: 0.75rem;
+    white-space: nowrap;
+  }
+</style>
+<tr data-testid="code-row">
+  <td class="cell code" data-testid="code-row-old" data-bascik-prop-old></td>
+  <td class="cell code" data-testid="code-row-new" data-bascik-prop-new></td>
+  <td class="cell"><span data-bascik-slot></span></td>
+  <td class="cell">
+    <span class="checks">
+      <label>
+        <input
+          type="radio"
+          value="right"
+          checked
+          data-testid="code-row-right"
+          data-bascik-attr-name="old"
+        />
+        Right
+      </label>
+      <label>
+        <input
+          type="radio"
+          value="wrong"
+          data-testid="code-row-wrong"
+          data-bascik-attr-name="old"
+        />
+        Wrong
+      </label>
+    </span>
+  </td>
+</tr>

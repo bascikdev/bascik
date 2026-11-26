@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <title>Voice view</title>
+  </head>
+  <body>
+    <!-- What one tool call of a spoken conversation puts on screen. The voice
+         component fetches this page and moves the view into the thread. It is
+         a page, and not an API response, so that Bascik renders the
+         components in it, with their styles and scripts. -->
+    <div data-testid="voice-view">
+      <script data-bascik-server type="text/typescript">
+        import { raw } from "@bascik/bascik/html";
+        import { appFor, chatFor } from "@/lib/chat.ts";
+
+        export default async (request: Request) => {
+          const url = new URL(request.url);
+          const chat = chatFor(appFor(request, url.searchParams.get("app")));
+          // Already rendered through the catalog, or drawn by the app's own view.
+          return raw(
+            await chat.voiceView(request, url.searchParams.get("call") ?? ""),
+          );
+        };
+      </script>
+    </div>
+  </body>
+</html>

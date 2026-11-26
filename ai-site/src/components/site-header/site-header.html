@@ -1,0 +1,56 @@
+<!-- @bascik
+The site header: brand link and three navigation links.
+-->
+<style>
+  .header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .brand {
+    color: inherit;
+    font-weight: 650;
+    text-decoration: none;
+  }
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .link {
+    color: var(--muted);
+    font-size: 0.9375rem;
+    text-decoration: none;
+  }
+  .brand:hover,
+  .link:hover {
+    color: var(--accent);
+  }
+  .brand:focus-visible,
+  .link:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+</style>
+<header class="header" data-testid="site-header">
+  <a class="brand" href="/" data-testid="site-header-brand">Bascik AI</a>
+  <nav class="nav">
+    <a class="link" href="https://bascik.dev/ai" data-testid="site-header-docs"
+      >Docs</a
+    >
+    <a
+      class="link"
+      href="https://github.com/bascikdev/bascik"
+      data-testid="site-header-github"
+      >GitHub</a
+    >
+    <a class="link" href="https://bascik.dev" data-testid="site-header-bascik"
+      >Bascik</a
+    >
+  </nav>
+</header>

@@ -1,0 +1,57 @@
+<!-- @bascik
+One place inside a map-view. Props: lat and lng (decimal degrees, plain numbers only, up to 15 decimal places, such as 51.5072 and -0.1276), label (the place name); the content inside map-pin is a short plain-text description. Use for places, routes of stops, where something is. Without JavaScript it is a list of links to OpenStreetMap, and it never takes a URL from the model.
+-->
+<style>
+  .pin {
+    border: 1px solid var(--border);
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius);
+    background: var(--surface);
+    display: grid;
+    gap: 0.15rem;
+  }
+  .label {
+    font-weight: 600;
+  }
+  .text {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .open {
+    margin-top: 0.25rem;
+  }
+  .link {
+    border: 0;
+    background: none;
+    color: var(--accent);
+    text-decoration: underline;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+  }
+</style>
+<li
+  class="pin"
+  data-testid="map-pin"
+  data-bascik-attr-data-lat="lat"
+  data-bascik-attr-data-lng="lng"
+  data-bascik-attr-data-label="label"
+>
+  <strong class="label" data-bascik-prop-label></strong>
+  <p class="text"><span data-bascik-slot></span></p>
+  <form
+    class="open"
+    method="get"
+    target="_blank"
+    action="https://www.openstreetmap.org/"
+    data-testid="map-pin-open"
+  >
+    <input type="hidden" name="mlat" data-bascik-attr-value="lat" />
+    <input type="hidden" name="mlon" data-bascik-attr-value="lng" />
+    <input type="hidden" name="zoom" value="15" />
+    <button class="link" data-testid="map-pin-link">
+      Open in OpenStreetMap
+    </button>
+  </form>
+</li>

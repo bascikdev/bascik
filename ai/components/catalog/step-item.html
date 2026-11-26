@@ -1,0 +1,36 @@
+<!-- @bascik
+One step inside a step-list: a short title, and a sentence or two of detail as content.
+-->
+<style>
+  .step {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.1rem 0.75rem;
+    counter-increment: step;
+  }
+  .step::before {
+    content: counter(step);
+    grid-row: span 2;
+    display: grid;
+    place-items: center;
+    inline-size: 1.6rem;
+    block-size: 1.6rem;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 0.8125rem;
+    font-weight: 650;
+  }
+  .title {
+    font-weight: 600;
+  }
+  .detail {
+    grid-column: 2;
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+</style>
+<li class="step" data-testid="step-item">
+  <span class="title" data-bascik-prop-title></span>
+  <span class="detail"><span data-bascik-slot></span></span>
+</li>

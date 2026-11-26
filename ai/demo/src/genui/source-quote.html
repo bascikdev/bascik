@@ -1,0 +1,28 @@
+<!-- @bascik
+A quoted passage from a source document: where it comes from as source (document name and section), and the exact words as content. Put one inside a fact-check, gap-question, or decision-fork so the reader sees what the claim rests on. Quote, never paraphrase.
+-->
+<style>
+  .quote {
+    margin: 0;
+    padding: 0.6rem 0.8rem;
+    border-inline-start: 3px solid var(--border);
+    background: var(--bg);
+    font-size: 0.9375rem;
+  }
+  .words {
+    margin: 0;
+  }
+  .source {
+    margin-top: 0.35rem;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+</style>
+<figure class="quote" data-testid="source-quote">
+  <blockquote class="words"><span data-bascik-slot></span></blockquote>
+  <figcaption
+    class="source"
+    data-testid="source-quote-source"
+    data-bascik-prop-source
+  ></figcaption>
+</figure>

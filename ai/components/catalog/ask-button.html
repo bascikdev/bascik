@@ -1,0 +1,28 @@
+<!-- @bascik
+A suggested next message. The content is the short button label, and say is the full message the reader sends by pressing it. End a reply with one to three of these when there are obvious next steps.
+-->
+<style>
+  .ask {
+    display: inline-block;
+    margin: 0.35rem 0.35rem 0 0;
+  }
+  .button {
+    padding: 0.4rem 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+  .button:hover {
+    border-color: var(--accent);
+  }
+</style>
+<form class="ask" method="post" action="/api/send" data-testid="ask-button">
+  <input type="hidden" name="text" data-bascik-attr-value="say" />
+  <button class="button" data-testid="ask-button-submit">
+    <span data-bascik-slot>Ask</span>
+  </button>
+</form>

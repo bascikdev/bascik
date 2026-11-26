@@ -1,0 +1,407 @@
+<!-- @bascik
+A simple interactive 3D illustration: a molecule, a floor layout, a comparison of sizes, points in space. title names it and caption says what to notice. Put one scene-object inside per object (up to 200). Readers can drag to rotate it; a table of the objects is always shown below. Use it when depth or position in space is the point; for plain numbers use bar-chart.
+-->
+<style>
+  .scene {
+    margin: 0.75rem 0;
+  }
+  .title {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+  }
+  .stage {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: pan-y;
+    cursor: grab;
+  }
+  .canvas:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .caption {
+    margin: 0.5rem 0 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .objects {
+    margin-top: 0.75rem;
+  }
+  .scroll {
+    overflow-x: auto;
+  }
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .head {
+    text-align: left;
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .status {
+    margin: 0.5rem 0 0;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+</style>
+<figure class="scene" data-testid="scene-3d">
+  <figcaption class="title" data-bascik-prop-title></figcaption>
+  <div class="stage" id="stage" hidden>
+    <canvas
+      id="canvas"
+      class="canvas"
+      tabindex="0"
+      data-testid="scene-3d-canvas"
+    ></canvas>
+  </div>
+  <p class="caption" data-bascik-prop-caption></p>
+  <div class="objects">
+    <div class="scroll">
+      <table class="table" data-testid="scene-3d-table">
+        <caption class="sr">
+          Objects in the scene
+        </caption>
+        <thead>
+          <tr>
+            <th class="head">Shape</th>
+            <th class="head">X</th>
+            <th class="head">Y</th>
+            <th class="head">Z</th>
+            <th class="head">Size</th>
+            <th class="head">Color</th>
+            <th class="head">Label</th>
+          </tr>
+        </thead>
+        <tbody class="rows">
+          <span data-bascik-slot></span>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p id="status" class="status" role="status" data-testid="scene-3d-status"></p>
+  <script type="text/typescript">
+    const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js";
+    const MAX_OBJECTS = 200;
+    const COLORS: Record<string, number> = {
+      red: 0xe5484d,
+      orange: 0xf76b15,
+      yellow: 0xffc53d,
+      green: 0x30a46c,
+      teal: 0x12a594,
+      blue: 0x3e63dd,
+      purple: 0x8e4ec6,
+      pink: 0xd6409f,
+      gray: 0x8b8d98,
+      white: 0xf2f2f2,
+    };
+    const SHAPES = ["box", "sphere", "cylinder", "cone", "torus"];
+
+    const stage = document.getElementById("stage") as HTMLDivElement;
+    const canvas = document.getElementById("canvas") as HTMLCanvasElement;
+    const status = document.getElementById("status") as HTMLElement;
+    const figure = stage.parentElement as HTMLElement;
+    const titleEl = figure.querySelector(".title") as HTMLElement;
+    const rowsEl = figure.querySelector(".rows") as HTMLElement;
+
+    interface SceneObject {
+      shape: string;
+      x: number;
+      y: number;
+      z: number;
+      size: number;
+      color: string;
+      label: string;
+    }
+
+    const clamp = (value: number, min: number, max: number): number =>
+      Math.min(max, Math.max(min, value));
+
+    const objects: SceneObject[] = [];
+    if (rowsEl) {
+      for (const row of rowsEl.querySelectorAll("tr")) {
+        const cells = row.cells;
+        if (cells.length < 7) continue;
+        const shape = cells[0].textContent?.trim().toLowerCase() ?? "";
+        if (!SHAPES.includes(shape)) continue;
+        const xRaw = Number(cells[1].textContent?.trim());
+        const yRaw = Number(cells[2].textContent?.trim());
+        const zRaw = Number(cells[3].textContent?.trim());
+        if (!Number.isFinite(xRaw) || !Number.isFinite(yRaw) || !Number.isFinite(zRaw)) continue;
+        const sizeRaw = Number(cells[4].textContent?.trim());
+        const size = Number.isFinite(sizeRaw) ? clamp(sizeRaw, 0.1, 20) : 1;
+        const colorName = cells[5].textContent?.trim().toLowerCase() ?? "";
+        const color = colorName in COLORS ? colorName : "gray";
+        const label = (cells[6].textContent?.trim() ?? "").slice(0, 40);
+        objects.push({
+          shape,
+          x: clamp(xRaw, -50, 50),
+          y: clamp(yRaw, -50, 50),
+          z: clamp(zRaw, -50, 50),
+          size,
+          color,
+          label,
+        });
+      }
+    }
+    const valid = objects.slice(0, MAX_OBJECTS);
+    const truncated = objects.length > MAX_OBJECTS;
+
+    if (valid.length > 0) {
+      let started = false;
+      const begin = (): void => {
+        if (started) return;
+        started = true;
+        void start();
+      };
+      if (typeof IntersectionObserver !== "undefined") {
+        const observer = new IntersectionObserver((entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            observer.disconnect();
+            begin();
+          }
+        });
+        observer.observe(figure);
+      } else {
+        begin();
+      }
+    }
+
+    async function start(): Promise<void> {
+      try {
+        const probe = document.createElement("canvas");
+        const gl = probe.getContext("webgl2") ?? probe.getContext("webgl");
+        if (!gl) {
+          status.textContent = "3D view unavailable; the table lists the objects.";
+          return;
+        }
+        (gl as WebGLRenderingContext).getExtension("WEBGL_lose_context")?.loseContext();
+        let THREE: Record<string, any>;
+        try {
+          // The library is loaded from a pinned CDN so it has no local types.
+          THREE = (await import(/* @vite-ignore */ THREE_URL)) as Record<string, any>;
+        } catch {
+          status.textContent = "The 3D view could not load; the table lists the objects.";
+          return;
+        }
+
+        stage.hidden = false;
+
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        canvas.addEventListener("webglcontextlost", (event) => {
+          event.preventDefault();
+          stage.hidden = true;
+          status.textContent = "The 3D view was lost; the table lists the objects.";
+        });
+        const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+        const scene = new THREE.Scene();
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x8888aa, 1.1));
+        const dir = new THREE.DirectionalLight(0xffffff, 1.4);
+        dir.position.set(5, 10, 7);
+        scene.add(dir);
+
+        const world = new THREE.Group();
+        scene.add(world);
+
+        const textColor = getComputedStyle(stage).color || "#222";
+
+        const makeLabel = (text: string): any => {
+          const c = document.createElement("canvas");
+          const ctx = c.getContext("2d")!;
+          const font = "600 48px system-ui, sans-serif";
+          ctx.font = font;
+          const width = Math.ceil(ctx.measureText(text).width) + 24;
+          const height = 72;
+          c.width = width;
+          c.height = height;
+          ctx.font = font;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = textColor;
+          ctx.fillText(text, width / 2, height / 2);
+          const texture = new THREE.CanvasTexture(c);
+          const material = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+          const sprite = new THREE.Sprite(material);
+          sprite.userData.aspect = width / height;
+          return sprite;
+        };
+
+        let radius = 0;
+        const sprites: any[] = [];
+        for (const obj of valid) {
+          let geometry: any;
+          if (obj.shape === "box") geometry = new THREE.BoxGeometry(obj.size, obj.size, obj.size);
+          else if (obj.shape === "sphere") geometry = new THREE.SphereGeometry(obj.size / 2, 32, 16);
+          else if (obj.shape === "cylinder") geometry = new THREE.CylinderGeometry(obj.size / 2, obj.size / 2, obj.size, 32);
+          else if (obj.shape === "cone") geometry = new THREE.ConeGeometry(obj.size / 2, obj.size, 32);
+          else geometry = new THREE.TorusGeometry(obj.size / 2, obj.size / 6, 16, 48);
+          const material = new THREE.MeshStandardMaterial({ color: COLORS[obj.color], roughness: 0.55, metalness: 0.05 });
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.position.set(obj.x, obj.y, obj.z);
+          world.add(mesh);
+          if (obj.label) {
+            const sprite = makeLabel(obj.label);
+            sprite.position.set(obj.x, obj.y + obj.size * 0.5 + 0.6, obj.z);
+            sprites.push(sprite);
+            world.add(sprite);
+          }
+          const distance = Math.sqrt(obj.x * obj.x + obj.y * obj.y + obj.z * obj.z) + obj.size;
+          if (distance > radius) radius = distance;
+        }
+
+        // Label height grows with the scene so text stays readable.
+        const labelHeight = Math.max(0.9, radius * 0.1);
+        for (const sprite of sprites) {
+          sprite.scale.set(sprite.userData.aspect * labelHeight, labelHeight, 1);
+        }
+        const camDistance = Math.max(6, radius * 3.2);
+        camera.position.set(0, camDistance * 0.35, camDistance);
+        camera.lookAt(0, 0, 0);
+
+        const parts = valid.slice(0, 8).map((obj) => {
+          const base = `${obj.color} ${obj.shape}`;
+          return obj.label ? `${base} ${obj.label}` : base;
+        });
+        let list = parts.join(", ");
+        if (valid.length > 8) list += `, and ${valid.length - 8} more`;
+        const title = titleEl.textContent?.trim() ?? "";
+        const prefix = title ? `${title}. ` : "";
+        canvas.setAttribute("role", "application");
+        canvas.setAttribute("aria-roledescription", "3D scene");
+        canvas.setAttribute(
+          "aria-label",
+          `${prefix}3D scene of ${valid.length} objects: ${list}. Drag or use the arrow keys to rotate.`
+        );
+        status.textContent = truncated ? "Showing the first 200 objects." : "";
+
+        let yaw = 0;
+        let pitch = 0;
+        let dragging = false;
+        let lastX = 0;
+        let lastY = 0;
+        let userInteracted = false;
+        const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+        let reducedMotion = motionQuery.matches;
+        motionQuery.addEventListener("change", () => {
+          reducedMotion = motionQuery.matches;
+        });
+        let visible = true;
+        let pending = false;
+
+        const clampPitch = (): void => {
+          pitch = clamp(pitch, -1.2, 1.2);
+        };
+
+        const render = (): void => {
+          world.rotation.set(pitch, yaw, 0);
+          renderer.render(scene, camera);
+        };
+
+        const frame = (): void => {
+          pending = false;
+          if (!visible || document.hidden) return;
+          if (!userInteracted && !reducedMotion) yaw += 0.004;
+          render();
+          if (!userInteracted && !reducedMotion) requestAnimationFrame(frame);
+        };
+
+        const invalidate = (): void => {
+          if (pending) return;
+          pending = true;
+          requestAnimationFrame(frame);
+        };
+
+        canvas.addEventListener("pointerdown", (event) => {
+          dragging = true;
+          userInteracted = true;
+          lastX = event.clientX;
+          lastY = event.clientY;
+          canvas.setPointerCapture(event.pointerId);
+          canvas.style.cursor = "grabbing";
+        });
+        canvas.addEventListener("pointermove", (event) => {
+          if (!dragging) return;
+          yaw += (event.clientX - lastX) * 0.01;
+          if (event.pointerType !== "touch") {
+            pitch += (event.clientY - lastY) * 0.01;
+            clampPitch();
+          }
+          lastX = event.clientX;
+          lastY = event.clientY;
+          invalidate();
+        });
+        const endDrag = (): void => {
+          dragging = false;
+          canvas.style.cursor = "grab";
+        };
+        canvas.addEventListener("pointerup", endDrag);
+        canvas.addEventListener("pointercancel", endDrag);
+
+        canvas.addEventListener("keydown", (event) => {
+          let handled = true;
+          if (event.key === "ArrowLeft") yaw -= 0.15;
+          else if (event.key === "ArrowRight") yaw += 0.15;
+          else if (event.key === "ArrowUp") pitch -= 0.15;
+          else if (event.key === "ArrowDown") pitch += 0.15;
+          else handled = false;
+          if (handled) {
+            event.preventDefault();
+            userInteracted = true;
+            clampPitch();
+            invalidate();
+          }
+        });
+
+        const resize = (): void => {
+          const width = stage.clientWidth;
+          const height = stage.clientHeight;
+          if (width === 0 || height === 0) return;
+          renderer.setSize(width, height, false);
+          camera.aspect = width / height;
+          camera.updateProjectionMatrix();
+          invalidate();
+        };
+
+        if (typeof ResizeObserver !== "undefined") {
+          new ResizeObserver(resize).observe(stage);
+        }
+        resize();
+
+        if (typeof IntersectionObserver !== "undefined") {
+          new IntersectionObserver((entries) => {
+            visible = entries.some((entry) => entry.isIntersecting);
+            if (visible) invalidate();
+          }).observe(figure);
+        }
+
+        render();
+        if (!reducedMotion) requestAnimationFrame(frame);
+      } catch {
+        status.textContent = "3D view unavailable; the table lists the objects.";
+      }
+    }
+  </script>
+</figure>

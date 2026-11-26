@@ -1,0 +1,118 @@
+<!-- @bascik
+A rule the sources leave open, for the reader to decide: a short id as item, the situation as question, then one fork-branch per option (two to four). You may put a source-quote first. The reader picks one branch, or says none fits, and the choice is recorded. Use it for "if this happens, which should we do?".
+-->
+<style>
+  .fork {
+    margin: 0.75rem 0;
+  }
+  .set {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    margin: 0;
+  }
+  .question {
+    padding: 0 0.35rem;
+    font-weight: 600;
+  }
+  /* The same box as a fork-branch above it: it is one more option. */
+  .none {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.15rem 0.6rem;
+    align-items: baseline;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    cursor: pointer;
+  }
+  .none:has(:checked) {
+    border-color: var(--accent);
+  }
+  .none-when {
+    font-weight: 600;
+  }
+  .none-then {
+    grid-column: 2;
+    color: var(--muted);
+    font-size: 0.9375rem;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .action {
+    padding: 0.45rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .note {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .text {
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+</style>
+<form
+  class="fork"
+  method="post"
+  action="/api/decide"
+  data-testid="decision-fork"
+>
+  <input type="hidden" name="app" value="review" />
+  <input type="hidden" name="kind" value="rule" />
+  <input type="hidden" name="item" data-bascik-attr-value="item" />
+  <fieldset class="set">
+    <legend class="question" data-bascik-prop-question>Which rule?</legend>
+    <span data-bascik-slot></span>
+    <label class="none">
+      <input
+        type="radio"
+        name="verdict"
+        value="none-fit"
+        required
+        data-testid="decision-fork-none"
+      />
+      <span class="none-when">None of these</span>
+      <span class="none-then">I will say what we do in the note.</span>
+    </label>
+    <label class="note">
+      Note (optional)
+      <textarea
+        class="text"
+        name="note"
+        rows="2"
+        data-testid="decision-fork-note"
+      ></textarea>
+    </label>
+    <div class="actions">
+      <button class="action primary" data-testid="decision-fork-submit">
+        Use this rule
+      </button>
+    </div>
+  </fieldset>
+</form>

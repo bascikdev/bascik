@@ -60,6 +60,7 @@ import type {
   TranspilePageResult,
 } from "./types.ts";
 import { transformTypeScriptScriptTags } from "./typescript.ts";
+import { bundleBrowserImports } from "./browser-imports.ts";
 
 import { recursivelyTranspile } from "./component-expansion.ts";
 import { decodeSource } from "./source-text.ts";
@@ -302,9 +303,22 @@ const transpileCountedPage = async (
   const pageTs = await pendingPageTs;
   resume();
   htmlWithBuildOutput = pageTs.html;
+  // A marked inline block's local imports are bundled into it and become
+  // page dependencies, as a page's own .ts script's do.
   const pendingTs = transformTypeScriptScriptTags(
     htmlWithBuildOutput,
     relativePagePathForDiagnostics(pagePath),
+    {
+      afterCompile: async (code) => {
+        const bundled = await bundleBrowserImports(code, {
+          sourceFile: pagePath,
+          inline: true,
+          wrap: true,
+        });
+        pageTs.dependencies.push(...bundled.dependencies);
+        return bundled.code;
+      },
+    },
   );
   pause();
   htmlWithBuildOutput = await pendingTs;
@@ -687,6 +701,11 @@ const transpileCountedPage = async (
           fileDependencies.push(dep);
         }
       }
+    }
+    // Files bundled into the component's TypeScript scripts: editing one
+    // rebuilds the page, as editing the component does.
+    for (const dep of comp.browserImportDependencies ?? []) {
+      if (!fileDependencies.includes(dep)) fileDependencies.push(dep);
     }
   }
 

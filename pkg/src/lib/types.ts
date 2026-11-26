@@ -80,6 +80,12 @@ export interface BascikComponent {
   fileContent: string;
   /** Preserved raw HTML before build script execution for dependency extraction */
   scriptDependenciesContent?: string;
+  /**
+   * Project-relative paths of the files bundled into the component's
+   * TypeScript browser scripts (see `browser-imports.ts`), so a page using the
+   * component rebuilds when one changes.
+   */
+  browserImportDependencies?: string[];
   cssFileContent?: string;
   /** The full matched usage tag string from the page HTML, e.g. `<my-nav class="x">...</my-nav>` */
   content?: string;

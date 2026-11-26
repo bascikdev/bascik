@@ -6,10 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 `@bascik/adapter-cloudflare`, `@bascik/adapter-netlify`, `@bascik/language-server`,
-the VS Code extension, and the public agent skills. A bullet names its package when
+`@bascik/ai`, the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
 ## [Unreleased]
+
+### Added
+
+- `@bascik/ai` 0.1.0 (experimental): Bascik AI, the AI interface for Bascik, consists of Chat, Generative UI, and Voice. Chat includes the message box, thread, tool approval, memory, conversation search, attachments, and the server kit. Generative UI renders model-written component tags from your catalog as server-side HTML. Voice enables spoken conversations with captions. It works with Claude, OpenAI-compatible servers, and the OpenAI Responses API for typed chat, and with Gemini Live and Azure Voice Live for voice. Run `npx bascik add @bascik/ai` to copy the catalog and chat components into your project. The voice components (`chat-voice`, `voice-call`) import TypeScript modules from the folders beside them, so a project that uses them also needs esbuild (`npm install --save-dev esbuild`); see [Components](https://bascik.dev/ai/components#chat-and-voice-components). The API may change between 0.x releases. Its catalog includes a swipe deck (keep or skip a stack of cards), a pick-one-of-two choice, a map with pins, and a simple 3D scene, each working without JavaScript as a plain form, list or table. Opt-in open-ended pages (`@bascik/ai/sandbox`) let a model write a whole small page that runs in a sandboxed frame with no network; see [Open-ended pages](https://bascik.dev/ai/catalog#open-ended-pages). The server kit runs on hosts where one request must not touch another's memory, such as Cloudflare Workers: pass `followLocally: false` and the host's `waitUntil` (see [Scaling](https://bascik.dev/ai/scaling)). See [Bascik AI](https://bascik.dev/ai).
+- A TypeScript browser script (a component's `.ts` companion, an inline `<script type="text/typescript">`, or a page's own `.ts` script) can now import `.ts` and `.js` files by a relative or `@/` path, as in `import { parseEvent } from "./parse-event.ts"`. Bascik bundles them into the script at build time, so a large component's logic can live in small files that unit tests import directly. Install esbuild in the project (`npm install --save-dev esbuild`) to use it; a script without local imports is emitted as before. See [Importing TypeScript Modules](https://bascik.dev/scoped-javascript#importing-typescript-modules).
+
+### Fixed
+
+- `bascik add <package>/<component>` also copies the files in the folder named after that component, beside it, such as `chat/voice-call/*.ts` next to `chat/voice-call.html`, and the other files in a component's own folder, such as `book-rating/format-rating.ts` beside `book-rating/book-rating.html`. Before, only the files named after the component were copied, so one that imports modules from those folders failed to build. Test files in the folder are left out. See [Sharing Components](https://bascik.dev/how-to/sharing-components).
+
+## [1.0.2] - 2026-11-25
 
 ### Changed
 
@@ -208,6 +219,7 @@ Bascik is a build tool for HTML components with automatically scoped CSS and
 JavaScript and no runtime. Start a site with `npm create bascik`, and see
 [Getting Started](https://bascik.dev/getting-started) for the rest.
 
+[1.0.2]: https://github.com/bascikdev/bascik/compare/v1.0.1...v1.0.2
 [create-bascik 1.1.1]: https://github.com/bascikdev/bascik/compare/create-v1.1.0...create-v1.1.1
 [create-bascik 1.1.0]: https://github.com/bascikdev/bascik/compare/create-v1.0.0...create-v1.1.0
 [1.0.1]: https://github.com/bascikdev/bascik/compare/v1.0.0...v1.0.1

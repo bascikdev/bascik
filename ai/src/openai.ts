@@ -1,0 +1,319 @@
+/**
+ * A `Model` backed by any server that speaks the OpenAI chat completions
+ * API: Ollama, LM Studio, llama.cpp, vLLM, a gateway, or OpenAI itself. It
+ * uses `fetch` and reads the event stream itself, so there is no SDK and
+ * nothing hidden between the request and the reply.
+ */
+import {
+  readAttachments,
+  userPieces,
+  type Attachments,
+} from "./attachments.ts";
+import {
+  partsOf,
+  roundsOf,
+  toolResult,
+  type ChatMessage,
+  type Model,
+} from "./model.ts";
+
+/**
+ * The highest tool-call `index` a server may send. One round with more calls
+ * than this is not a real reply, and the bound keeps the calls map small.
+ */
+export const MAX_TOOL_CALL_INDEX = 127;
+
+/**
+ * The slot of a streamed tool-call piece: a whole number from 0 to
+ * `MAX_TOOL_CALL_INDEX`, sent as a number or (by some servers) as a string
+ * of decimal digits. Anything else, a missing index included, throws: it is
+ * never guessed, because guessing merges separate calls or splits one.
+ */
+export function toolCallIndex(index: unknown): number {
+  const value =
+    typeof index === "number"
+      ? index
+      : typeof index === "string" && /^\d{1,3}$/.test(index)
+        ? Number(index)
+        : Number.NaN;
+  if (!Number.isInteger(value) || value < 0 || value > MAX_TOOL_CALL_INDEX) {
+    throw new Error(
+      `The model server sent a tool call index that is not a whole number from 0 to ${MAX_TOOL_CALL_INDEX}: ${JSON.stringify(index)?.slice(0, 40) ?? String(index)}.`,
+    );
+  }
+  return value;
+}
+
+export interface OpenAiCompatibleOptions {
+  /** The API root, for example `http://127.0.0.1:11434/v1`. */
+  baseUrl: string;
+  /** The model's name on that server. */
+  model: string;
+  /** Sent as a bearer token when set. Local servers need none. */
+  apiKey?: string;
+  /** Replace `fetch`, for a test or a proxy. */
+  fetch?: typeof fetch;
+  /**
+   * Extra fields for the request body, for a server that needs one, such
+   * as `{ reasoning_effort: "low" }`.
+   */
+  body?: Record<string, unknown>;
+}
+
+interface ToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+type WireMessage =
+  | { role: "system" | "user" | "assistant"; content: string }
+  | {
+      role: "user";
+      content: (
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+      )[];
+    }
+  | {
+      role: "assistant";
+      content: string | null;
+      tool_calls: {
+        id: string;
+        type: "function";
+        function: { name: string; arguments: string };
+      }[];
+    }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+/** The `data:` payloads of a server-sent event stream, one at a time. */
+export async function* events(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<string> {
+  const decoder = new TextDecoder();
+  let pending = "";
+  // Cast: the DOM and Node stream types disagree on async iteration.
+  for await (const chunk of body as unknown as AsyncIterable<Uint8Array>) {
+    pending += decoder.decode(chunk, { stream: true });
+    let end: number;
+    while ((end = pending.indexOf("\n")) !== -1) {
+      const line = pending.slice(0, end).replace(/\r$/, "");
+      pending = pending.slice(end + 1);
+      if (line.startsWith("data:")) yield line.slice(5).trim();
+    }
+  }
+  const last = pending.trim();
+  if (last.startsWith("data:")) yield last.slice(5).trim();
+}
+
+/**
+ * The conversation in the API's shape: each round of an assistant message as
+ * its text and calls, then one `tool` message per call with what it came to.
+ */
+export function toWireMessages(
+  system: string,
+  messages: ChatMessage[],
+  attachments: Attachments = new Map(),
+): WireMessage[] {
+  const wire: WireMessage[] = [{ role: "system", content: system }];
+  for (const message of messages) {
+    // Images are `image_url` data URLs. A PDF is not sent: chat completions
+    // servers do not agree on a shape for one, so the model is told its name.
+    const pieces =
+      message.role === "user"
+        ? userPieces(message, attachments, { image: true, pdf: false })
+        : null;
+    if (pieces) {
+      wire.push({
+        role: "user",
+        content: pieces.map((piece) =>
+          piece.kind === "image"
+            ? {
+                type: "image_url" as const,
+                image_url: {
+                  url: `data:${piece.mediaType};base64,${piece.data}`,
+                },
+              }
+            : {
+                type: "text" as const,
+                text: piece.kind === "text" ? piece.text : "",
+              },
+        ),
+      });
+      continue;
+    }
+    if (message.role === "user" || !message.parts) {
+      wire.push({ role: message.role, content: message.content });
+      continue;
+    }
+    for (const round of roundsOf(partsOf(message))) {
+      if (round.calls.length === 0) {
+        if (round.text.trim()) {
+          wire.push({ role: "assistant", content: round.text });
+        }
+        continue;
+      }
+      wire.push({
+        role: "assistant",
+        content: round.text || null,
+        tool_calls: round.calls.map((call) => ({
+          id: call.id,
+          type: "function",
+          function: { name: call.name, arguments: JSON.stringify(call.input) },
+        })),
+      });
+      for (const call of round.calls) {
+        const result = toolResult(call);
+        wire.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: result.failed ? `Error: ${result.text}` : result.text,
+        });
+      }
+    }
+  }
+  return wire;
+}
+
+/**
+ * One round of the model: it streams text, then yields the tool calls it
+ * made. `runTurn` runs them and calls this again with the results in
+ * `messages`.
+ */
+export function openAiCompatibleModel(options: OpenAiCompatibleOptions): Model {
+  const { model, apiKey } = options;
+  const send = options.fetch ?? fetch;
+  const endpoint = `${options.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+
+  return async function* ({ system, messages, tools = [], signal, readFile }) {
+    const attachments = await readAttachments(messages, readFile);
+    const response = await send(endpoint, {
+      method: "POST",
+      signal,
+      headers: {
+        "content-type": "application/json",
+        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        ...options.body,
+        model,
+        stream: true,
+        messages: toWireMessages(system, messages, attachments),
+        ...(tools.length > 0
+          ? {
+              tools: tools.map((tool) => ({
+                type: "function",
+                function: {
+                  name: tool.name,
+                  description: tool.description,
+                  parameters: tool.inputSchema,
+                },
+              })),
+            }
+          : {}),
+      }),
+    });
+    if (!response.ok || !response.body) {
+      const detail = (await response.text().catch(() => "")).slice(0, 300);
+      throw new Error(
+        `The model server answered ${response.status} for "${model}"${detail ? `: ${detail}` : ""}`,
+      );
+    }
+
+    let finish = "";
+    // Keyed by the server's `index`, checked by `toolCallIndex`.
+    const calls = new Map<number, ToolCall>();
+    for await (const data of events(response.body)) {
+      if (data === "[DONE]") break;
+      let event: {
+        choices?: {
+          delta?: {
+            content?: string | null;
+            tool_calls?: {
+              index?: unknown;
+              id?: string;
+              function?: { name?: string; arguments?: string };
+            }[];
+          };
+          finish_reason?: string | null;
+        }[];
+      };
+      try {
+        event = JSON.parse(data);
+      } catch {
+        continue;
+      }
+      const choice = event.choices?.[0];
+      if (!choice) continue;
+      if (choice.finish_reason) finish = choice.finish_reason;
+      const content = choice.delta?.content;
+      if (content) yield content;
+      // A tool call arrives in pieces: its name first, then its input.
+      for (const piece of choice.delta?.tool_calls ?? []) {
+        const index = toolCallIndex(piece.index);
+        let call = calls.get(index);
+        if (!call) {
+          call = { id: "", name: "", arguments: "" };
+          calls.set(index, call);
+        }
+        if (piece.id) call.id = piece.id;
+        if (piece.function?.name) call.name += piece.function.name;
+        if (piece.function?.arguments) {
+          call.arguments += piece.function.arguments;
+        }
+      }
+    }
+
+    if (finish === "length") {
+      // A tool call cut off here has a truncated input: never run it.
+      yield "\n\nThe reply was cut off at the length limit.";
+      return;
+    }
+    const ordered = [...calls].sort(([a], [b]) => a - b);
+    for (const [, call] of ordered) {
+      if (!call.name) continue;
+      // Input that is not JSON is passed on as it is: the turn refuses it
+      // and tells the model, like any other invalid call.
+      let input: unknown = call.arguments;
+      try {
+        input = JSON.parse(call.arguments || "{}");
+      } catch {
+        // Kept as the text the model wrote.
+      }
+      yield {
+        type: "tool-call",
+        ...(call.id ? { id: call.id } : {}),
+        name: call.name,
+        input,
+      };
+    }
+  };
+}
+
+/** The model names a server lists at `GET <baseUrl>/models`, or [] when it does not answer. */
+export async function listOpenAiCompatibleModels(options: {
+  baseUrl: string;
+  apiKey?: string;
+  timeoutMs?: number;
+  fetch?: typeof fetch;
+}): Promise<string[]> {
+  const send = options.fetch ?? fetch;
+  try {
+    const response = await send(
+      `${options.baseUrl.replace(/\/+$/, "")}/models`,
+      {
+        signal: AbortSignal.timeout(options.timeoutMs ?? 500),
+        headers: options.apiKey
+          ? { authorization: `Bearer ${options.apiKey}` }
+          : {},
+      },
+    );
+    if (!response.ok) return [];
+    const body = (await response.json()) as { data?: { id?: unknown }[] };
+    return (body.data ?? [])
+      .map((entry) => entry.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+  } catch {
+    return [];
+  }
+}

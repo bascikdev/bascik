@@ -1,0 +1,67 @@
+<!-- @bascik
+One of the two choices inside a choice-pair. The title is required: it is the heading and the answer sent, so always write it. Put a short description or one component inside.
+-->
+<style>
+  .card {
+    display: block;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+  .card:hover {
+    border-color: var(--accent);
+  }
+  .card:has(.radio:checked) {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .card:has(.radio:checked) .title::after {
+    content: " \2713";
+    color: var(--accent);
+  }
+  .card:has(.radio:focus-visible) {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .radio {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .title {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+  }
+  .body {
+    display: block;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+</style>
+<label class="card" data-testid="pair-option">
+  <input
+    class="radio"
+    type="radio"
+    name="text"
+    required
+    data-bascik-attr-value="title"
+  />
+  <strong
+    class="title"
+    data-bascik-prop-title
+    data-testid="pair-option-title"
+  ></strong>
+  <span class="body"><span data-bascik-slot></span></span>
+</label>

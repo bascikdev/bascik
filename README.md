@@ -81,6 +81,7 @@ This repository holds Bascik and everything around it. Each folder is a Yarn wor
 | `examples/`                 | Example components and a starter site to copy into a project (not a workspace)                                | [examples/README.md](examples/README.md)                                 |
 | `skills/`                   | Public agent skills for coding assistants, installed with `npx skills add bascikdev/bascik` (not a workspace) | [skills/README.md](skills/README.md)                                     |
 | `skills-tests/`             | Tests and fixtures for `skills/`, kept apart because `skills/` ships to users                                 | [skills-tests/README.md](skills-tests/README.md)                         |
+| `ai/`                       | `@bascik/ai`: an experiment in generative UI, with a chat demo that streams model-written components          | [ai/README.md](ai/README.md)                                             |
 
 ## Working in This Repo
 

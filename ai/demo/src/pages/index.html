@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bascik Chat: books</title>
+    <meta
+      name="description"
+      content="A chat interface with generative UI, streamed as HTML by Bascik."
+    />
+    <link rel="stylesheet" href="/style.css" />
+    <!-- Hold the first paint until the stored conversation is parsed. The
+         reply streams in after it. -->
+    <link rel="expect" href="#thread-ready" blocking="render" />
+  </head>
+  <body>
+    <chat-sidebar />
+    <main class="chat">
+      <!-- The composer is first in the source so it is sent before the reply
+           starts streaming; CSS shows it below the thread. -->
+      <div class="dock">
+        <chat-composer
+          data-bascik-prop-app="books"
+          data-bascik-prop-enctype="multipart/form-data"
+        >
+          <chat-voice />
+          <voice-call data-bascik-prop-app="books" />
+        </chat-composer>
+      </div>
+      <chat-enhance />
+      <div class="scroller">
+        <chat-thread />
+      </div>
+    </main>
+  </body>
+</html>

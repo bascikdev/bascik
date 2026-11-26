@@ -1,0 +1,15 @@
+{
+  "name": "bascik-ai-site",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The marketing site for Bascik AI (ai.bascik.dev): one static page that links to the docs.",
+  "type": "module",
+  "scripts": {
+    "dev": "bascik",
+    "build": "bascik --build --site-url https://ai.bascik.dev",
+    "check": "bascik --check --site-url https://ai.bascik.dev"
+  },
+  "devDependencies": {
+    "@bascik/bascik": "^1.0.2"
+  }
+}

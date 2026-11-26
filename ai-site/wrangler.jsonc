@@ -1,0 +1,20 @@
+// ai.bascik.dev: the Bascik AI marketing site as an assets-only Cloudflare Worker (no `main`, so no Worker code
+// runs). Build from the repo root with `yarn pkg:build && yarn ai-site:build`.
+//
+// NOT DEPLOYED YET. This config has no `routes` on purpose: a hostname listed here is taken over by the next
+// `wrangler deploy` without a prompt. To put the site on ai.bascik.dev, the owner adds
+//   "routes": [{ "pattern": "ai.bascik.dev", "custom_domain": true }],
+// and wires a deploy job in .github/workflows/ci.yml next to the docs one (see DEPLOYMENT.md).
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "bascik-ai-site",
+  "compatibility_date": "2026-08-23",
+  "assets": {
+    "directory": "./dist",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+  },
+  "workers_dev": false,
+  "preview_urls": true,
+  "previews": {},
+}

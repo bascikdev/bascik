@@ -160,6 +160,27 @@ export const NAV: NavSection[] = [
     ],
   },
   {
+    section: "AI",
+    pages: [
+      { href: "/ai", label: "Overview" },
+      { href: "/ai/quick-start", label: "Quick Start" },
+      { href: "/ai/how-to", label: "How-To Guides" },
+      { href: "/ai/server-kit", label: "Server Kit" },
+      { href: "/ai/catalog", label: "Catalog" },
+      { href: "/ai/components", label: "Components" },
+      { href: "/ai/tools", label: "Tools & Approval" },
+      { href: "/ai/memory", label: "Memory" },
+      { href: "/ai/providers", label: "Providers" },
+      { href: "/ai/client-runtime", label: "Client Runtime" },
+      { href: "/ai/voice", label: "Voice & Captions" },
+      { href: "/ai/conversation-search", label: "Conversation Search" },
+      { href: "/ai/attachments", label: "Attachments" },
+      { href: "/ai/scaling", label: "Running on Several Servers" },
+      { href: "/ai/troubleshooting", label: "Troubleshooting" },
+      { href: "/ai/design-principles", label: "Design Principles" },
+    ],
+  },
+  {
     section: "Example Components",
     pages: [
       { href: "/example-components", label: "Overview" },

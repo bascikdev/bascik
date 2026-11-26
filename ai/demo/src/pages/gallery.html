@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bascik Chat: component gallery</title>
+    <meta
+      name="description"
+      content="Every component the assistant may write, with a live example of each."
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="gallery" data-testid="gallery">
+      <header class="gallery-head">
+        <h1>Component gallery</h1>
+        <p>
+          Every component the assistant may write, as the reader sees it. Each
+          description is the one the model is given, read from the component's
+          own file when the page is built.
+        </p>
+        <a href="/" data-testid="gallery-back">Back to the chat</a>
+      </header>
+      <script data-bascik-build type="text/typescript">
+        import { gallery } from "../lib/gallery.ts";
+        export default gallery;
+      </script>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,220 @@
+<!-- @bascik
+An interactive map of places. Props: title (short heading), lat and lng (decimal degrees of the center, used only when there are no pins), zoom (integer 1 to 19, default 12). Put one map-pin component inside for each place: markers come only from map-pin children, and the center is used only when there are none. Example: <map-view title="Bookshops" zoom="13"><map-pin lat="51.5107" lng="-0.1288" label="Foyles">Large independent bookshop.</map-pin></map-view>. The text inside a map-pin is plain text. Use for places, routes of stops, where something is. Without JavaScript it is a list of links to OpenStreetMap, and it never takes a URL from the model.
+-->
+<style>
+  .map {
+    margin: 0.75rem 0;
+  }
+  .title {
+    margin: 0 0 0.5rem;
+    font-weight: 600;
+  }
+  .canvas {
+    height: 20rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-block: 0.5rem;
+  }
+  .list {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+</style>
+<section
+  id="root"
+  class="map"
+  data-testid="map-view"
+  data-bascik-attr-data-lat="lat"
+  data-bascik-attr-data-lng="lng"
+  data-bascik-attr-data-zoom="zoom"
+>
+  <h3 class="title" data-bascik-prop-title></h3>
+  <div
+    id="canvas"
+    class="canvas"
+    hidden
+    role="group"
+    aria-label="Map"
+    data-testid="map-view-canvas"
+  ></div>
+  <ol id="list" class="list" role="list" data-testid="map-view-list">
+    <span data-bascik-slot></span>
+  </ol>
+  <script type="text/typescript">
+    const LEAFLET_JS = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js";
+    const LEAFLET_CSS = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css";
+    const ICON_PATH = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/";
+    const JS_SRI = "sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH";
+    const CSS_SRI = "sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H";
+
+    function number(value: string | null | undefined, min: number, max: number): number | null {
+      if (!value) return null;
+      const trimmed = value.trim();
+      if (!/^[+-]?\d{1,3}(\.\d{1,15})?$/.test(trimmed)) return null;
+      const num = Number(trimmed);
+      if (!Number.isFinite(num) || num < min || num > max) return null;
+      return num;
+    }
+
+    function integer(value: string | null | undefined, min: number, max: number, fallback: number): number {
+      if (!value) return fallback;
+      const trimmed = value.trim();
+      if (!/^\d{1,2}$/.test(trimmed)) return fallback;
+      const num = Number(trimmed);
+      if (!Number.isFinite(num) || num < min || num > max) return fallback;
+      return num;
+    }
+
+    const root = document.getElementById("root") as HTMLElement;
+    const canvas = document.getElementById("canvas") as HTMLElement;
+    const list = document.getElementById("list") as HTMLElement;
+
+    const centerLat = number(root.dataset.lat, -90, 90);
+    const centerLng = number(root.dataset.lng, -180, 180);
+    const zoom = integer(root.dataset.zoom, 1, 19, 12);
+
+    interface Pin {
+      element: HTMLLIElement;
+      lat: number;
+      lng: number;
+      label: string;
+      description: string;
+    }
+
+    const pins: Pin[] = [];
+    const liElements = Array.from(list.children).filter((el): el is HTMLLIElement => el.tagName === "LI");
+
+    for (const li of liElements) {
+      const lat = number(li.dataset.lat, -90, 90);
+      const lng = number(li.dataset.lng, -180, 180);
+      const strong = li.querySelector("strong");
+      const label = li.dataset.label || (strong ? strong.textContent?.trim() || "" : "");
+      const p = li.querySelector("p");
+      const description = p ? p.textContent?.trim() || "" : "";
+      const form = li.querySelector("form");
+
+      if (lat !== null && lng !== null) {
+        pins.push({ element: li, lat, lng, label, description });
+
+        if (form) {
+          const link = document.createElement("a");
+          link.textContent = "Open in OpenStreetMap";
+          link.setAttribute("data-testid", "map-pin-link");
+          link.setAttribute("rel", "noopener noreferrer");
+          link.setAttribute("target", "_blank");
+          link.href = "https://www.openstreetmap.org/?mlat=" + lat + "&mlon=" + lng + "#map=" + zoom + "/" + lat + "/" + lng;
+          form.replaceWith(link);
+        }
+      } else {
+        if (form) form.remove();
+      }
+    }
+
+    const hasValidPins = pins.length > 0;
+    const hasValidCenter = centerLat !== null && centerLng !== null;
+
+    if (!("IntersectionObserver" in window) || (!hasValidPins && !hasValidCenter)) {
+      // Do nothing more
+    } else {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          observer.disconnect();
+          start();
+        }
+      });
+      observer.observe(root);
+    }
+
+    function loadLeaflet(): Promise<void> {
+      const win = window as unknown as { L?: any; __bascikLeaflet?: Promise<void> };
+      // One load for every map on the page, success or failure: a map never
+      // trusts a window.L it did not load, because the stylesheet may be missing.
+      if (!win.__bascikLeaflet) {
+        win.__bascikLeaflet = new Promise<void>((resolve, reject) => {
+          const cssPromise = new Promise<void>((res, rej) => {
+            const cssLink = document.createElement("link");
+            cssLink.rel = "stylesheet";
+            cssLink.href = LEAFLET_CSS;
+            cssLink.integrity = CSS_SRI;
+            cssLink.crossOrigin = "anonymous";
+            cssLink.addEventListener("load", () => res());
+            cssLink.addEventListener("error", () => rej(new Error("CSS load failed")));
+            document.head.appendChild(cssLink);
+          });
+
+          const jsPromise = new Promise<void>((res, rej) => {
+            const jsScript = document.createElement("script");
+            jsScript.src = LEAFLET_JS;
+            jsScript.integrity = JS_SRI;
+            jsScript.crossOrigin = "anonymous";
+            jsScript.addEventListener("load", () => res());
+            jsScript.addEventListener("error", () => rej(new Error("JS load failed")));
+            document.head.appendChild(jsScript);
+          });
+
+          Promise.all([cssPromise, jsPromise]).then(() => resolve()).catch(reject);
+        });
+      }
+      return win.__bascikLeaflet;
+    }
+
+    function start(): void {
+      loadLeaflet().then(() => {
+        const win = window as unknown as { L: any };
+        const L = win.L;
+        if (!L) return;
+
+        // Leaflet finds its marker images from the stylesheet's address, which a
+        // stylesheet added by a script does not give it: name them.
+        L.Icon.Default.imagePath = ICON_PATH;
+        canvas.hidden = false;
+        const heading = root.querySelector("h3");
+        canvas.setAttribute("aria-label", "Map: " + (heading?.textContent?.trim() || "places"));
+
+        const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const map = L.map(canvas, { scrollWheelZoom: false, zoomAnimation: !still, fadeAnimation: !still, markerZoomAnimation: !still, inertia: !still });
+
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        const points: [number, number][] = [];
+        const shown = pins.slice(0, 200);
+
+        for (const pin of shown) {
+          const marker = L.marker([pin.lat, pin.lng], { title: pin.label, alt: pin.label || "Place" });
+
+          const popupDiv = document.createElement("div");
+          const strong = document.createElement("strong");
+          strong.textContent = pin.label;
+          const p = document.createElement("p");
+          p.textContent = pin.description;
+          popupDiv.appendChild(strong);
+          popupDiv.appendChild(p);
+
+          marker.bindPopup(popupDiv);
+          marker.addTo(map);
+          points.push([pin.lat, pin.lng]);
+        }
+
+        if (points.length >= 2) {
+          map.fitBounds(L.latLngBounds(points), { padding: [30, 30], maxZoom: 15 });
+        } else if (points.length === 1) {
+          map.setView(points[0], zoom);
+        } else if (centerLat !== null && centerLng !== null) {
+          map.setView([centerLat, centerLng], zoom);
+        }
+
+        canvas.setAttribute("data-markers", String(shown.length));
+        canvas.setAttribute("data-ready", "true");
+      }).catch(() => {
+        // The list stays and the canvas stays hidden. Say so for tests.
+        canvas.setAttribute("data-ready", "failed");
+      });
+    }
+  </script>
+</section>

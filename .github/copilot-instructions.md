@@ -132,18 +132,18 @@ High unit test coverage numbers can create false confidence if tests only exerci
 
 ## License Source of Truth
 
-All first-party Bascik packages are licensed under MIT. The root `LICENSE` is the source of truth for `@bascik/bascik`, `@bascik/adapter-cloudflare`, and `@bascik/adapter-netlify`; their committed package `LICENSE` files are copies for npm tarballs. `create-bascik`, `@bascik/language-server`, and the VS Code extension keep their own committed MIT `LICENSE` files.
+All first-party Bascik packages are licensed under MIT. The root `LICENSE` is the source of truth for `@bascik/bascik`, `@bascik/adapter-cloudflare`, `@bascik/adapter-netlify`, and `@bascik/ai`; their committed package `LICENSE` files are copies for npm tarballs. `create-bascik`, `@bascik/language-server`, and the VS Code extension keep their own committed MIT `LICENSE` files.
 
 - `docs/content/license.md`: the web-formatted MIT license rendered at `https://bascik.dev/license`
 - `LICENSE` (repo root): plain-text MIT license; **required** for GitHub license detection and as the `prepack` source
-- `pkg/LICENSE`, `adapters/cloudflare/LICENSE`, and `adapters/netlify/LICENSE`: copies for npm tarballs; synced automatically on publish via the `prepack` script in each `package.json`
+- `pkg/LICENSE`, `adapters/cloudflare/LICENSE`, `adapters/netlify/LICENSE`, and `ai/LICENSE`: copies for npm tarballs; synced automatically on publish via the `prepack` script in each `package.json`
 
 **When updating the license terms:**
 
 1. Update the root `LICENSE` and mirror the terms in `docs/content/license.md`
-2. Run `cp LICENSE pkg/LICENSE && cp LICENSE adapters/cloudflare/LICENSE && cp LICENSE adapters/netlify/LICENSE` to sync the package copies immediately
+2. Run `cp LICENSE pkg/LICENSE && cp LICENSE adapters/cloudflare/LICENSE && cp LICENSE adapters/netlify/LICENSE && cp LICENSE ai/LICENSE` to sync the package copies immediately
 
-Do **not** delete the root `LICENSE`: GitHub reads it for repo-level license detection. Do not edit `pkg/LICENSE`, `adapters/cloudflare/LICENSE`, or `adapters/netlify/LICENSE` directly; they are derived files.
+Do **not** delete the root `LICENSE`: GitHub reads it for repo-level license detection. Do not edit `pkg/LICENSE`, `adapters/cloudflare/LICENSE`, `adapters/netlify/LICENSE`, or `ai/LICENSE` directly; they are derived files.
 
 ## Node 24: Native TypeScript Support
 
@@ -203,6 +203,7 @@ Root script prefixes map to workspaces:
 | `adapter:nf:` | `@bascik/adapter-netlify`    |
 | `lsp:`        | `@bascik/language-server`    |
 | `skills:`     | `bascik-skills-tests`        |
+| `ai:`         | `@bascik/ai`                 |
 
 Aggregators (`unit:all`, `integration:all`, `linear-time:all`, `e2e:all`, `coverage:all`, `typecheck:all`, `check:all`, `test:all`) fan out across all workspaces.
 

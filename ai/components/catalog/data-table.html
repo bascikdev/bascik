@@ -1,0 +1,98 @@
+<!-- @bascik
+A table the reader can sort and filter. Put exactly one table inside, with a thead row of th cells and a tbody. Use it instead of a bare table when there are more than about five rows. The caption is a short title. Only for apps that may write table elements.
+-->
+<style>
+  .wrap {
+    margin: 0.75rem 0;
+  }
+  .bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .caption {
+    font-weight: 600;
+  }
+  .filter {
+    min-inline-size: 12rem;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+  }
+  .count {
+    margin: 0.25rem 0 0;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+</style>
+<figure class="wrap" data-testid="data-table">
+  <div class="bar">
+    <figcaption class="caption" data-bascik-prop-caption></figcaption>
+    <!-- Shown by the script: with no JavaScript this is a plain table. -->
+    <input
+      id="filter"
+      class="filter"
+      type="search"
+      hidden
+      placeholder="Filter rows…"
+      aria-label="Filter rows"
+      data-testid="data-table-filter"
+    />
+  </div>
+  <div id="body" class="body"><span data-bascik-slot></span></div>
+  <p id="count" class="count" role="status" data-testid="data-table-count"></p>
+  <script type="text/typescript">
+    const filter = document.getElementById("filter") as HTMLInputElement;
+    const count = document.getElementById("count")!;
+    const table = document.getElementById("body")!.querySelector("table");
+    const body = table?.tBodies[0];
+    if (table && body) {
+      const rows = [...body.rows];
+      const headers = [...(table.tHead?.rows[0]?.cells ?? [])];
+      /** "$1,204" and "37" sort as numbers; anything else sorts as text. */
+      const key = (row: HTMLTableRowElement, column: number): number | string => {
+        const text = row.cells[column]?.textContent?.trim() ?? "";
+        const number = Number(text.replace(/[$,%\s]/g, ""));
+        return text !== "" && Number.isFinite(number) ? number : text.toLowerCase();
+      };
+      const show = (): void => {
+        const wanted = filter.value.trim().toLowerCase();
+        let shown = 0;
+        for (const row of rows) {
+          row.hidden = !row.textContent!.toLowerCase().includes(wanted);
+          if (!row.hidden) shown++;
+        }
+        count.textContent = wanted ? `${shown} of ${rows.length} rows` : "";
+      };
+      headers.forEach((header, column) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.append(...header.childNodes);
+        header.append(button);
+        button.addEventListener("click", () => {
+          const descending = header.getAttribute("aria-sort") === "ascending";
+          for (const other of headers) other.removeAttribute("aria-sort");
+          header.setAttribute("aria-sort", descending ? "descending" : "ascending");
+          const sorted = [...body.rows].sort((a, b) => {
+            const left = key(a, column);
+            const right = key(b, column);
+            const order =
+              typeof left === "number" && typeof right === "number"
+                ? left - right
+                : String(left).localeCompare(String(right));
+            return descending ? -order : order;
+          });
+          body.append(...sorted);
+        });
+      });
+      filter.hidden = false;
+      filter.addEventListener("input", show);
+    }
+  </script>
+</figure>

@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "types": [
+      "@cloudflare/workers-types",
+      "@cloudflare/vitest-plugin/types",
+      "node"
+    ],
+    "noEmit": true,
+    "strict": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "*.ts",
+    "do/**/*.ts",
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "e2e/**/*.ts"
+  ]
+}

@@ -1,0 +1,369 @@
+<!-- @bascik
+A stack of cards the reader judges one at a time, swiping right for yes and left for no, like Tinder; with arrow keys and two buttons; with no JavaScript it is a plain list of yes/no choices. Props: question (shown above the stack, a short question such as "Keep or skip?"), yes (the label for the right button, default "Yes"), no (the label for the left button, default "No"). Two to twelve swipe-card components go inside, each with a unique title and a short content. When the reader has answered every card the answers are sent as their next message, one "Title: yes" or "Title: no" line per card. Use it for deciding among several candidates, triaging items, or checking whether each of a series of statements is good or bad, true or false, relevant or not. Do not give a card the title text, app or voice; those names are reserved.
+-->
+<style>
+  .deck {
+    margin: 0.75rem 0;
+    display: grid;
+    gap: 0.75rem;
+    max-inline-size: 26rem;
+  }
+  .stack {
+    display: grid;
+    gap: 0.75rem;
+  }
+  .live {
+    display: grid;
+    position: relative;
+    touch-action: pan-y;
+    padding-block-end: 1.5rem;
+  }
+  .question {
+    font-weight: bold;
+  }
+  .progress {
+    color: var(--muted);
+    font-size: 0.875rem;
+    text-align: center;
+  }
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+  .off {
+    display: none;
+  }
+  .choice {
+    padding: 0.5rem 1.1rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    border-radius: 999px;
+  }
+  .choice-yes {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .done {
+    justify-self: start;
+    margin-top: 0.35rem;
+    padding: 0.45rem 1rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .choice:focus-visible,
+  .done:focus-visible {
+    outline: 2px solid var(--accent);
+  }
+</style>
+<form class="deck" method="post" action="/api/send" data-testid="swipe-deck">
+  <p class="question" data-bascik-prop-question>Keep or skip?</p>
+  <div id="stack" class="stack" data-testid="swipe-deck-stack">
+    <span data-bascik-slot></span>
+  </div>
+  <p
+    id="progress"
+    class="progress"
+    role="status"
+    aria-live="polite"
+    hidden
+    data-testid="swipe-deck-progress"
+  ></p>
+  <div id="controls" class="controls off">
+    <button
+      id="no"
+      type="button"
+      class="choice choice-no"
+      data-testid="swipe-deck-no"
+      data-bascik-prop-no
+    >
+      No
+    </button>
+    <button
+      id="undo"
+      type="button"
+      class="choice choice-undo"
+      data-testid="swipe-deck-undo"
+    >
+      Undo
+    </button>
+    <button
+      id="yes"
+      type="button"
+      class="choice choice-yes"
+      data-testid="swipe-deck-yes"
+      data-bascik-prop-yes
+    >
+      Yes
+    </button>
+  </div>
+  <button id="done" class="done" data-testid="swipe-deck-done">Done</button>
+  <script type="text/typescript">
+    const stack = document.getElementById("stack")!;
+    const controls = document.getElementById("controls")!;
+    const progress = document.getElementById("progress")!;
+    const done = document.getElementById("done")!;
+    const yesBtn = document.getElementById("yes")!;
+    const noBtn = document.getElementById("no")!;
+    const undoBtn = document.getElementById("undo")!;
+    const form = stack.closest("form")!;
+
+    // bascik-ignore js-attribute-selector the cards are another component's roots, found by their test id
+    const cards = [...stack.querySelectorAll('[data-testid="swipe-card"]')] as HTMLElement[];
+    if (cards.length === 0 || cards.length > 50) {
+      // Leave the plain form
+    } else {
+      const seen = new Map<string, number>();
+      for (const card of cards) {
+        const radios = card.getElementsByTagName("input");
+        let name = radios[0]?.name ?? "";
+        if (name === "text" || name === "app" || name === "voice") {
+          name = `${name} (item)`;
+        }
+        const n = (seen.get(name) ?? 0) + 1;
+        seen.set(name, n);
+        if (n > 1) {
+          name = `${name} (${n})`;
+        }
+        for (const radio of [...radios]) {
+          radio.name = name;
+        }
+      }
+
+      stack.classList.add("live");
+      controls.classList.remove("off");
+      progress.hidden = false;
+      done.hidden = true;
+
+      let answered: HTMLElement[] = [];
+      const answeredSet = new Set<HTMLElement>();
+      let submitted = false;
+      const leaving = new Set<HTMLElement>();
+
+      const remaining = (): HTMLElement[] => {
+        return cards.filter(c => !answeredSet.has(c));
+      };
+
+      const setShown = (card: HTMLElement, shown: boolean): void => { card.hidden = !shown; card.style.display = shown ? "" : "none"; };
+
+      const getTop = (): HTMLElement | undefined => {
+        return remaining()[0];
+      };
+
+      const layout = (): void => {
+        const rem = remaining();
+        cards.forEach(card => {
+          card.style.gridArea = "1 / 1";
+        });
+        rem.forEach((card, i) => {
+          if (i === 0) {
+            setShown(card, true);
+            card.style.transform = "";
+            card.inert = false;
+            card.removeAttribute("aria-hidden");
+            card.style.zIndex = "10";
+            card.style.userSelect = "none";
+          } else if (i <= 2) {
+            setShown(card, true);
+            card.style.transform = `translateY(${i * 10}px) scale(${1 - i * 0.04})`;
+            card.style.zIndex = String(10 - i);
+            card.inert = true;
+            card.setAttribute("aria-hidden", "true");
+            card.style.userSelect = "";
+          } else {
+            setShown(card, false);
+            card.style.userSelect = "";
+          }
+        });
+        cards.forEach(card => {
+          if (answeredSet.has(card)) {
+            if (!leaving.has(card)) {
+              setShown(card, false);
+            }
+          }
+        });
+        if (remaining().length === 0) {
+          progress.textContent = "All answered";
+        } else {
+          const title = rem[0].querySelector("legend")?.textContent ?? "";
+          progress.textContent = `${answered.length} of ${cards.length} answered. Next: ${title}`;
+        }
+      };
+
+      const answer = (card: HTMLElement, value: "yes" | "no"): void => {
+        const hadFocus = card.contains(document.activeElement);
+        const radios = card.getElementsByTagName("input");
+        for (const radio of [...radios]) {
+          if ((radio as HTMLInputElement).value === value) {
+            (radio as HTMLInputElement).checked = true;
+            break;
+          }
+        }
+        answered.push(card);
+        answeredSet.add(card);
+
+        const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        if (!reducedMotion) {
+          leaving.add(card);
+          card.style.transition = "transform 0.25s ease-out, opacity 0.25s";
+          card.style.transform = `translateX(${value === "yes" ? 120 : -120}%) rotate(${value === "yes" ? 18 : -18}deg)`;
+          card.style.opacity = "0";
+
+          setTimeout(() => {
+            leaving.delete(card);
+            card.style.transition = "";
+            card.style.opacity = "";
+            card.style.transform = "";
+            layout();
+          }, 250);
+        } else {
+          card.style.transition = "";
+          card.style.opacity = "";
+          card.style.transform = "";
+        }
+
+        layout();
+
+        if (hadFocus) {
+          const next = getTop();
+          const target = next ? next.getElementsByTagName("input")[0] : yesBtn;
+          (target as HTMLElement | undefined)?.focus();
+        }
+
+        if (remaining().length === 0 && !submitted) {
+          submitted = true;
+          form.requestSubmit();
+        }
+      };
+
+      yesBtn.addEventListener("click", () => {
+        const top = getTop();
+        if (top) answer(top, "yes");
+      });
+
+      noBtn.addEventListener("click", () => {
+        const top = getTop();
+        if (top) answer(top, "no");
+      });
+
+      undoBtn.addEventListener("click", () => {
+        if (answered.length === 0) return;
+        const last = answered.pop()!;
+        answeredSet.delete(last);
+        leaving.delete(last);
+        const radios = last.getElementsByTagName("input");
+        for (const radio of [...radios]) {
+          (radio as HTMLInputElement).checked = false;
+        }
+        last.style.transform = "";
+        last.style.opacity = "";
+        last.style.transition = "";
+        submitted = false;
+        layout();
+      });
+
+      form.addEventListener("keydown", (event) => {
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+        const top = getTop();
+        if (!top) return;
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          answer(top, "yes");
+        } else if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          answer(top, "no");
+        }
+      });
+
+      stack.addEventListener("change", (event) => {
+        const target = event.target as HTMLElement;
+        if (target.tagName === "INPUT" && (target as HTMLInputElement).type === "radio") {
+          const card = cards.find((c) => c.contains(target));
+          if (card && !answeredSet.has(card)) {
+            answer(card, (target as HTMLInputElement).value as "yes" | "no");
+          }
+        }
+      });
+
+      let dragging = false;
+      let justDragged = false;
+      let startX = 0;
+      let dragCard: HTMLElement | null = null;
+      let dx = 0;
+
+      stack.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        const top = getTop();
+        if (!top) return;
+        if (!top.contains(event.target as Node)) return;
+
+        startX = event.clientX;
+        dragCard = top;
+        dragging = false;
+        justDragged = false;
+        dx = 0;
+      });
+
+      stack.addEventListener("pointermove", (event) => {
+        if (!dragCard) return;
+        dx = event.clientX - startX;
+
+        if (!dragging && Math.abs(dx) > 6) {
+          dragging = true;
+          dragCard.setPointerCapture(event.pointerId);
+          dragCard.style.transition = "";
+        }
+
+        if (dragging) {
+          dragCard.style.transform = `translateX(${dx}px) rotate(${dx / 20}deg)`;
+        }
+      });
+
+      const endDrag = (event: PointerEvent) => {
+        if (!dragCard) return;
+        if (dragging) {
+          justDragged = true;
+          setTimeout(() => { justDragged = false; }, 0);
+          const threshold = Math.max(80, dragCard.offsetWidth * 0.3);
+          if (Math.abs(dx) > threshold) {
+            answer(dragCard, dx > 0 ? "yes" : "no");
+          } else {
+            const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+            if (!reducedMotion) {
+              dragCard.style.transition = "transform 0.2s ease-out";
+              dragCard.style.transform = "";
+              setTimeout(() => {
+                if (dragCard) dragCard.style.transition = "";
+              }, 200);
+            } else {
+              dragCard.style.transform = "";
+            }
+          }
+        }
+        dragging = false;
+        dragCard = null;
+      };
+
+      stack.addEventListener("pointerup", endDrag);
+      stack.addEventListener("pointercancel", endDrag);
+
+      stack.addEventListener("click", (event) => {
+        if (justDragged) {
+          event.preventDefault();
+          justDragged = false;
+        }
+      });
+
+      layout();
+    }
+  </script>
+</form>

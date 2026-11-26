@@ -1,0 +1,29 @@
+<!-- @bascik
+A horizontal bar chart for comparing a few numbers. Give it a title and put one bar-row inside per item.
+-->
+<style>
+  .chart {
+    margin: 0.75rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .caption {
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+  }
+  .rows {
+    display: grid;
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+</style>
+<figure class="chart" data-testid="bar-chart">
+  <figcaption class="caption" data-bascik-prop-title></figcaption>
+  <ul class="rows">
+    <span data-bascik-slot></span>
+  </ul>
+</figure>

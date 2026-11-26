@@ -4,6 +4,8 @@ type Workspace =
   | "lsp"
   | "docs"
   | "skills"
+  | "ai"
+  | "ai-cloudflare"
   | "extension"
   | "adapter-cloudflare"
   | "adapter-netlify";
