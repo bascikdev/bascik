@@ -4,7 +4,7 @@ Made with Bascik: real websites built with HTML components, scoped styles, and z
 
 ## New tool. Familiar output.
 
-Choosing a new tool for a production site is a real decision. Bascik is already in production on business websites, a CPA and business consulting firm, an online counseling practice, a SaaS product with a server-rendered dashboard, and an online shop. The sites below, including this one, show it at work.
+Choosing a new tool for a production site is a real decision. Bascik is already in production on business websites, a CPA and business consulting firm, an online counseling practice, a SaaS product with a server-rendered dashboard, an open-source project, and an online shop. The sites below, including this one, show it at work.
 
 You do not have to take the compiler's output on faith. Bascik ships HTML, JavaScript, and CSS to the browser. [Turn off minification](/configuration#minify-byominifier) to inspect the generated files yourself, then use the browser's developer tools to see what is actually running.
 
@@ -34,7 +34,9 @@ A SaaS website and dashboard built with Bascik and the Netlify adapter. The dash
 
 ### Fraktul
 
-A tool for mapping software. One model file describes a system, and fraktul checks it against the code and draws diagrams you click through, down to a line of source.
+An open-source tool for mapping software. One model file describes a system, and fraktul checks it against the code and draws diagrams you click through, down to a line of source.
+
+[Browse the Fraktul source on GitHub](https://github.com/fraktul/fraktul).
 
 ### Bascik
 
