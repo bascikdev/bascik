@@ -95,8 +95,26 @@ async function playedFor(page: Page, seconds: number): Promise<void> {
     .toBeGreaterThan(seconds);
 }
 
+/**
+ * Say `samples` into the microphone once it carries sound. A call says it is
+ * listening as soon as the microphone is open; the first sound through a
+ * newly opened one can be clipped, by more on a slow machine. So the
+ * provider must have had a second of the room's quiet before the reader speaks.
+ */
+const speakTo =
+  (provider: string) =>
+  async (page: Page, samples: Float32Array): ReturnType<typeof say> => {
+    await expect
+      .poll(async () => (await heard(provider)).sizes.length, {
+        timeout: 15_000,
+      })
+      .toBeGreaterThanOrEqual(10);
+    return say(page, samples, MIC_RATE);
+  };
+
 for (const provider of ["gemini-live", "azure-voice-live"]) {
   test.describe(`the voice lab (${provider})`, () => {
+    const speak = speakTo(provider);
     test.beforeEach(async ({ page }) => {
       test.skip(!withScripts(), "a voice call is a script");
       await resetLab(provider, false);
@@ -136,7 +154,7 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
       await startCall(page);
       // The open microphone of a quiet room, for a moment, then a sentence.
       await page.waitForTimeout(500);
-      await say(page, READER, MIC_RATE);
+      await speak(page, READER);
       await page.waitForTimeout(3600);
       const got = await heard(provider);
       await toggle(page).click();
@@ -243,7 +261,7 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
       await type(page, "lab:speak 8");
       await playedFor(page, 1.5);
       await expect(page.getByTestId("voice-call-caption")).not.toBeEmpty();
-      const cut = await say(page, CUT_IN, MIC_RATE);
+      const cut = await speak(page, CUT_IN);
       await page.waitForTimeout(2500);
       const out = await played(page);
 
@@ -414,6 +432,7 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
 
 test.describe("the voice lab (azure-voice-live only)", () => {
   const provider = "azure-voice-live";
+  const speak = speakTo(provider);
 
   test.beforeEach(async ({ page }) => {
     test.skip(!withScripts(), "a voice call is a script");
@@ -441,7 +460,7 @@ test.describe("the voice lab (azure-voice-live only)", () => {
     );
     await type(page, "lab:late 8");
     await playedFor(page, 1.5);
-    const cut = await say(page, CUT_IN, MIC_RATE);
+    const cut = await speak(page, CUT_IN);
     await page.waitForTimeout(2500);
     const out = await played(page);
     const stretches = soundStretches(out.samples, out.sampleRate);
