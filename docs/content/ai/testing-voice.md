@@ -27,19 +27,19 @@ The live lane is run by hand. Each run leaves cassettes, which the cassette lane
 
 Every lab test reports its numbers with the run, as `measured` annotations in Playwright's list and HTML reports, so a slow drift is seen before it becomes a failure.
 
-| Measurement              | How it is taken                                                                                                                      | Limit                                        |
-| :----------------------- | :----------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------- |
-| Capture match            | A known signal is said into the microphone. The provider's copy is lined up with it and compared, whole and in every quarter second. | Over 0.9 whole, 0.95 in every quarter second |
-| Capture clock slip       | How far any quarter second had to be moved to match. Two sound clocks differ by a few samples; a lost block is 8 ms.                 | Under 4 ms                                   |
-| Capture gain             | The copy's loudness over the original's.                                                                                             | 0.85 to 1.15                                 |
-| Capture pace             | Seconds of sound received over seconds passed. A page that captured at 48 kHz and said 16 kHz would send three times too much.       | 0.93 to 1.07                                 |
-| Playback match           | The provider sends a known voice. What the page sends to the loudspeaker is recorded sample for sample and compared.                 | Over 0.99 of 1                               |
-| Playback gaps and clicks | One stretch of sound as long as the voice, and no jump between samples larger than the voice's own.                                  | None                                         |
-| Barge-in stop            | From the reader's first sound into the microphone to the last sample of the model's voice out of the loudspeaker.                    | Under 700 ms                                 |
-| Hang-up stop             | From the press to the last sample played.                                                                                            | Under 300 ms                                 |
-| Nothing held             | Live microphone tracks, open audio contexts, and open sockets after a call ends, however it ended.                                   | 0, 0, and 0                                  |
-| Word error rate (live)   | The provider's own transcript of a spoken sentence against the sentence.                                                             | At most 34%                                  |
-| Answer starts (live)     | From the end of the reader's sentence to the model's first sound.                                                                    | Under 10 s                                   |
+| Measurement              | How it is taken                                                                                                                      | Limit                             |
+| :----------------------- | :----------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------- |
+| Capture match            | A known signal is said into the microphone. The provider's copy is lined up with it and compared, whole and in every quarter second. | Over 0.95 in every quarter second |
+| Capture clock slip       | How far any quarter second had to be moved to match. Two sound clocks differ by a few samples; a lost block is 8 ms.                 | Under 4 ms                        |
+| Capture gain             | The copy's loudness over the original's.                                                                                             | 0.85 to 1.15                      |
+| Capture pace             | Seconds of sound received over seconds passed. A page that captured at 48 kHz and said 16 kHz would send three times too much.       | 0.93 to 1.07                      |
+| Playback match           | The provider sends a known voice. What the page sends to the loudspeaker is recorded sample for sample and compared.                 | Over 0.99 of 1                    |
+| Playback gaps and clicks | One stretch of sound as long as the voice, and no jump between samples larger than the voice's own.                                  | None                              |
+| Barge-in stop            | From the reader's first sound into the microphone to the last sample of the model's voice out of the loudspeaker.                    | Under 700 ms                      |
+| Hang-up stop             | From the press to the last sample played.                                                                                            | Under 300 ms                      |
+| Nothing held             | Live microphone tracks, open audio contexts, and open sockets after a call ends, however it ended.                                   | 0, 0, and 0                       |
+| Word error rate (live)   | The provider's own transcript of a spoken sentence against the sentence.                                                             | At most 34%                       |
+| Answer starts (live)     | From the end of the reader's sentence to the model's first sound.                                                                    | Under 10 s                        |
 
 On a developer laptop the stand-in lanes measure a barge-in stop of 50 to 100 ms and a hang-up stop under 30 ms. Those are the page's own share. In a real call the provider's time to notice speech is added, and the live lane measures that.
 

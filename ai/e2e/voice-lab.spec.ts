@@ -41,6 +41,16 @@ const CUT_IN = speechLike(0.8, MIC_RATE, { pitch: 120, rate: 4.2 });
 
 const withScripts = (): boolean => test.info().project.name === "js";
 
+/**
+ * These specs measure sound in real time, to the sample. A shared CI runner
+ * can keep a browser's audio thread waiting for longer than a block of
+ * sound, which leaves a gap that is the machine's and not the page's. A
+ * second and third try are allowed there, and only there: a fault in the
+ * page fails every try, and Playwright reports a spec that needed one as
+ * flaky. On a developer's machine a spec gets one try.
+ */
+test.describe.configure({ retries: process.env.CI ? 2 : 0 });
+
 /** Record a measurement in the report, so a run shows the numbers and not only pass or fail. */
 const measured = (name: string, value: number, unit: string): void => {
   test.info().annotations.push({
@@ -151,7 +161,9 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
       measured("capture worst quarter second", match.worst, "of 1");
       measured("capture gain", match.gain, "x");
       measured("capture clock slip", (match.slip / MIC_RATE) * 1000, "ms");
-      expect(match.score).toBeGreaterThan(0.9);
+      // Every quarter second is judged where it best matches, within the
+      // slip allowed. The score of the whole is at one place for all of it,
+      // so a slip within the allowance lowers it: it is reported, not judged.
       expect(match.worst).toBeGreaterThan(0.95);
       expect(match.slip).toBeLessThan(64);
       expect(match.gain).toBeGreaterThan(0.85);

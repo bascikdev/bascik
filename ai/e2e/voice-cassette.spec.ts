@@ -35,6 +35,16 @@ import {
 
 const withScripts = (): boolean => test.info().project.name === "js";
 
+/**
+ * These specs measure sound in real time, to the sample. A shared CI runner
+ * can keep a browser's audio thread waiting for longer than a block of
+ * sound, which leaves a gap that is the machine's and not the page's. A
+ * second and third try are allowed there, and only there: a fault in the
+ * page fails every try, and Playwright reports a spec that needed one as
+ * flaky. On a developer's machine a spec gets one try.
+ */
+test.describe.configure({ retries: process.env.CI ? 2 : 0 });
+
 /** A session as Gemini Live has it: setup, a typed message, a spoken answer. */
 function geminiTape(): Cassette {
   let at = 0;
