@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 
 const sites = [
   { slug: "rinsesoft", name: "Rinsesoft", url: "https://rinsesoft.com" },
+  { slug: "wdz", name: "WDZ", url: "https://wdz.dev" },
   {
     slug: "sunridge-counseling",
     name: "Sunridge Counseling",
@@ -13,6 +14,7 @@ const sites = [
     name: "Lateral EMDR",
     url: "https://lateralemdr.com",
   },
+  { slug: "fraktul", name: "Fraktul", url: "https://fraktul.dev" },
   { slug: "bascik", name: "Bascik", url: "https://bascik.dev" },
   { slug: "bascik-shop", name: "Bascik Shop", url: "https://shop.bascik.dev" },
 ];
@@ -99,6 +101,13 @@ test("showcase has real screenshots, working site links, and a submission link",
     "href",
     "https://github.com/bascikdev/bascik/tree/main/docs",
   );
+  const fraktul = cards.filter({
+    has: page.getByRole("heading", { name: "Fraktul", exact: true }),
+  });
+  await expect(fraktul).toContainText("open-source");
+  await expect(
+    fraktul.getByRole("link", { name: "Browse the Fraktul source on GitHub" }),
+  ).toHaveAttribute("href", "https://github.com/fraktul/fraktul");
   await expect(
     page.getByRole("link", { name: "Submit your site on GitHub" }),
   ).toHaveAttribute(

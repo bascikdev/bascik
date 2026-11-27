@@ -4,6 +4,7 @@ import { demoImage, renderMdRange } from "./md-renderer.ts";
 
 export const SHOWCASE_SITES = [
   { slug: "rinsesoft", name: "Rinsesoft", url: "https://rinsesoft.com" },
+  { slug: "wdz", name: "WDZ", url: "https://wdz.dev" },
   {
     slug: "sunridge",
     name: "Sunridge Counseling",
@@ -11,6 +12,7 @@ export const SHOWCASE_SITES = [
   },
   { slug: "dgco", name: "DGCO", url: "https://dgcocpa.com" },
   { slug: "lateral", name: "Lateral EMDR", url: "https://lateralemdr.com" },
+  { slug: "fraktul", name: "Fraktul", url: "https://fraktul.dev" },
   { slug: "bascik", name: "Bascik", url: "https://bascik.dev" },
   { slug: "bascik-shop", name: "Bascik Shop", url: "https://shop.bascik.dev" },
 ] as const;

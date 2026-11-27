@@ -4,7 +4,7 @@ Made with Bascik: real websites built with HTML components, scoped styles, and z
 
 ## New tool. Familiar output.
 
-Choosing a new tool for a production site is a real decision. Bascik is already in production on business websites, a CPA and business consulting firm, an online counseling practice, a SaaS product with a server-rendered dashboard, and an online shop. The sites below, including this one, show it at work.
+Choosing a new tool for a production site is a real decision. Bascik is already in production on business websites, a CPA and business consulting firm, an online counseling practice, a SaaS product with a server-rendered dashboard, an open-source project, and an online shop. The sites below, including this one, show it at work.
 
 You do not have to take the compiler's output on faith. Bascik ships HTML, JavaScript, and CSS to the browser. [Turn off minification](/configuration#minify-byominifier) to inspect the generated files yourself, then use the browser's developer tools to see what is actually running.
 
@@ -14,7 +14,11 @@ Bascik itself is checked with [unit, integration, and end-to-end tests](/interna
 
 ### Rinsesoft
 
-A founder-led practice helping businesses improve operations and build the systems and capacity to grow.
+A process and technology firm that helps owners and executive teams replace manual, people-dependent operations with systems the company owns.
+
+### WDZ
+
+The company behind Rinsesoft and Lateral EMDR, with fifteen years of technology work for its clients.
 
 ### Sunridge Counseling
 
@@ -27,6 +31,12 @@ A CPA and business consulting firm helping clients reach their personal and fina
 ### Lateral EMDR
 
 A SaaS website and dashboard built with Bascik and the Netlify adapter. The dashboard uses stream scripts and server scripts.
+
+### Fraktul
+
+An open-source tool for mapping software. One model file describes a system, and fraktul checks it against the code and draws diagrams you click through, down to a line of source.
+
+[Browse the Fraktul source on GitHub](https://github.com/fraktul/fraktul).
 
 ### Bascik
 
