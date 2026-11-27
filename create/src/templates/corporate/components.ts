@@ -247,6 +247,17 @@ export function timeline(milestones: Milestone[] = MILESTONES): SafeHtml {
   font-size: 0.92rem;
 }
 .field textarea { min-height: 140px; resize: vertical; }
+/* The browser's own arrow ignores padding and sits against the border, so the select draws one inset to match. */
+.field select {
+  appearance: none;
+  padding-right: 3rem;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1rem;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
 .field input:focus-visible,
 .field select:focus-visible,
 .field textarea:focus-visible { outline: 3px solid var(--brand); outline-offset: 1px; }

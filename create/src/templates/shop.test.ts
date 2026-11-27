@@ -33,6 +33,10 @@ const stripRepeatedly = (text: string, pattern: RegExp): string => {
   return text;
 };
 
+/** The select arrow is an SVG written into the stylesheet as a data URI: no image file and no request. */
+const withoutInlineChevron = (css: string): string =>
+  css.replaceAll(/url\("data:image\/svg\+xml,[^"]*"\)/g, "");
+
 const filesFor = (adapter?: Adapter, siteName = SHOP_BRAND): TemplateFile[] =>
   SHOP_TEMPLATE.files({ siteName, adapter });
 
@@ -295,9 +299,12 @@ describe("shop template", () => {
     for (const [path, content] of all) {
       if (path.startsWith("e2e/")) continue;
       expect(content.length, path).toBeGreaterThan(0);
-      expect(/<img\b|url\(|\.(?:jpe?g|webp|gif)\b/.test(content), path).toBe(
-        false,
-      );
+      expect(
+        /<img\b|url\(|\.(?:jpe?g|webp|gif)\b/.test(
+          withoutInlineChevron(content),
+        ),
+        path,
+      ).toBe(false);
     }
   });
 
@@ -350,7 +357,9 @@ describe("shop template", () => {
         expect(name, path).toMatch(/^BASCIK_/);
       }
       // No URL but the docs link in a comment and the schema.org vocabulary.
-      for (const [url] of content.matchAll(/https?:\/\/[^\s"'`)]+/g)) {
+      for (const [url] of withoutInlineChevron(content).matchAll(
+        /https?:\/\/[^\s"'`)]+/g,
+      )) {
         expect(url, path).toMatch(
           /^https:\/\/(?:bascik\.dev\/how-to\/bundling-npm-packages|schema\.org)$/,
         );
@@ -471,6 +480,26 @@ describe("shop template markup", () => {
     const catalog = file("src/components/book-catalog/listing.ts");
     expect(catalog).toContain('<label>Sort by<select name="sort"');
     expect(catalog).toContain('<label>Category<select name="format"');
+    // The select draws its own arrow, inset from the border, in each theme's text color.
+    const styles = file("src/pages/css/styles.css");
+    const rule = /\.filters select \{([^}]*)\}/.exec(styles)?.[1] ?? "";
+    for (const declaration of [
+      "appearance: none",
+      "min-width: 0",
+      "padding-right: 3rem",
+      "background-image: var(--select-chevron)",
+      "background-position: right 1rem center",
+      "text-overflow: ellipsis",
+    ])
+      expect(rule).toContain(declaration);
+    expect(styles.indexOf(".filters select {")).toBeGreaterThan(
+      styles.indexOf(".filters select, .filters button {"),
+    );
+    expect(
+      styles.match(/--select-chevron: url\("data:image\/svg\+xml,/g),
+    ).toHaveLength(3);
+    expect(styles).toContain("stroke='%23252820'");
+    expect(styles.match(/stroke='%23edf1e8'/g)).toHaveLength(2);
     expect(file("src/components/form-field/form-field.html")).toMatch(
       /<label for="input"[^>]*><\/label>[\s\S]*<input id="input" required/,
     );

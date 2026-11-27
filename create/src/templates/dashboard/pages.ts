@@ -49,6 +49,15 @@ export const PAGE_FILES: TemplateFile[] = [
   --radius: 0.75rem;
   --control-radius: 0.45rem;
   --sidebar-width: 15rem;
+
+  /* The arrow of a select, drawn in --color-text. A data URI cannot read a custom property or light-dark(), so each theme has its own. */
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23192822' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 6 4.5 4.5L12.5 6'/%3E%3C/svg%3E");
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23edf4f0' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 6 4.5 4.5L12.5 6'/%3E%3C/svg%3E");
+  }
 }
 
 /* Explicit choices from the theme toggle. Without data-theme the operating system setting applies. */
@@ -58,6 +67,7 @@ export const PAGE_FILES: TemplateFile[] = [
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23edf4f0' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 6 4.5 4.5L12.5 6'/%3E%3C/svg%3E");
 }
 
 *,
@@ -239,6 +249,21 @@ code {
   background: var(--color-bg);
   color: inherit;
   font: inherit;
+}
+
+/* The browser's own arrow ignores padding and sits against the border, so a select draws one inset to match. */
+select.field {
+  appearance: none;
+  /* Its label is a grid or flex item: without a zero minimum a long option widens the select instead of truncating. */
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 3rem;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1rem;
+  text-overflow: ellipsis;
+  cursor: pointer;
 }
 
 /* Pausing transitions while the theme changes prevents a flash across surfaces. */

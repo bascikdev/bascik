@@ -53,6 +53,10 @@ const siteSources = (): [string, string][] =>
     ([path]) => !path.endsWith(".test.ts") && !path.startsWith("e2e/"),
   );
 
+/** The select arrow is an SVG written into the stylesheet as a data URI: no image file and no request. */
+const withoutInlineChevron = (css: string): string =>
+  css.replaceAll(/url\("data:image\/svg\+xml,[^"]*"\)/g, "");
+
 describe("corporate template", () => {
   it("is registered under its name, with the summary the help text shows", () => {
     expect(TEMPLATES).toContain(CORPORATE_TEMPLATE);
@@ -259,7 +263,8 @@ describe("corporate template: house rules", () => {
   });
 
   it("loads no image and nothing from the network", () => {
-    for (const [path, text] of siteSources()) {
+    for (const [path, source] of siteSources()) {
+      const text = withoutInlineChevron(source);
       expect(text, path).not.toMatch(
         /<img\b|<picture\b|url\(|@import|\bfetch\(/,
       );
@@ -528,6 +533,28 @@ describe("corporate template: house rules", () => {
     for (const [path, text] of siteSources()) {
       expect(text, path).not.toMatch(/outline:\s*(none|0)\b/);
     }
+  });
+
+  it("draws the select's arrow itself, inset from the border, in each theme's text color", () => {
+    const styles = read("src/pages/css/styles.css");
+    const rule =
+      /\.field select \{([^}]*)\}/.exec(
+        read("src/components/contact-form/contact-form.css"),
+      )?.[1] ?? "";
+    for (const declaration of [
+      "appearance: none",
+      "padding-right: 3rem",
+      "background-image: var(--select-chevron)",
+      "background-position: right 1rem center",
+      "background-size: 1rem",
+      "text-overflow: ellipsis",
+    ])
+      expect(rule).toContain(declaration);
+    expect(
+      styles.match(/--select-chevron: url\("data:image\/svg\+xml,/g),
+    ).toHaveLength(3);
+    expect(styles).toContain("stroke='%2326313c'");
+    expect(styles.match(/stroke='%23edf0f2'/g)).toHaveLength(2);
   });
 
   it("marks both legal pages as placeholders", () => {

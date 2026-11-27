@@ -235,6 +235,22 @@ Production builds shorten these to hashes. Never hard-code a scoped name. Tests 
 6. **`html`, `body`, and `head` are never renamed:** `html[data-theme="dark"] .card {}` works.
 7. **Declare design tokens once in a global stylesheet; only read them in components** with `var(--token, fallback)`. A `:root {}` block in a component makes a private copy.
 8. **`@font-face` belongs in the global stylesheet**, never in a component.
+9. **A styled `<select>` draws its own arrow.** The browser's arrow ignores padding, so a select given only padding and a border shows it flush against the right border. Keep the native `<select>` and replace only the arrow:
+
+   ```css
+   select {
+     appearance: none;
+     padding-right: 3rem;
+     background-image: var(--select-chevron);
+     background-repeat: no-repeat;
+     background-position: right 1rem center;
+     background-size: 1rem;
+     text-overflow: ellipsis;
+     cursor: pointer;
+   }
+   ```
+
+   `--select-chevron` is a global token holding an inline SVG chevron as a `url("data:image/svg+xml,...")`, stroked in the text color. A data URI cannot read `currentColor`, a custom property, or `light-dark()`, so declare the token once per theme: on `:root`, again inside `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {} }`, and again on `:root[data-theme="dark"]`. Write `background-image` after any `background` shorthand, which would reset it. Inside a flex or grid parent, add `min-width: 0; max-width: 100%` so a long option truncates instead of widening the select.
 
 ## Theming
 

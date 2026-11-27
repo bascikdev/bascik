@@ -15,6 +15,7 @@ Use the repository-only [UI guidance](../.github/skills/bascik-ui/SKILL.md) to s
 - Use data that is clearly illustrative. Do not attribute fictional work, products, quotes, or books to real people or companies.
 - Use plain template slug names, including `shop`, `reports`, and `dashboard`.
 - Use an accessible SVG-only light/dark control with an `aria-label`, no visible button text, and saved preference initialization before paint. At phone width the control is the labeled last row of the menu instead (see "Phone-width navigation"). Preserve the canonical Bascik favicon, not a recolored version.
+- A `<select>` stays a native element and draws its own arrow: `appearance: none`, about `3rem` of right padding, an inline SVG chevron as `background-image` at `right 1rem center` with `background-size: 1rem`, and `text-overflow: ellipsis`, with `min-width: 0` when its parent is a flex or grid item so a long option truncates. The browser's arrow ignores padding and sits against the border. Keep the chevron in a `--select-chevron` token in `styles.css`, stroked in the template's text color, with one value per theme because a data URI cannot read a custom property or `light-dark()`.
 - Inline `src/pages/css/styles.css` with Bascik's `assets.inlineStyles` and omit its stylesheet link. Navigation has no resting underline; keep prose links identifiable.
 
 ## Phone-width navigation
