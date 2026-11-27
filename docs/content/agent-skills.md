@@ -163,15 +163,15 @@ After setting up the files, `npm create bascik` and `bascik init` ask:
 Install the Bascik agent skills for coding assistants (Claude Code, Copilot, Cursor, Codex...)? (Y/n)
 ```
 
-Press Enter, or pass `-y`, and they run the skills CLI for you. They install every skill except the opt-in `bascik-refactor` into `.agents/skills/` and `.claude/skills/` and record them in `skills-lock.json`. The skills come from the release tag that matches the Bascik version being set up, such as `bascikdev/bascik#v1.0.2`, and from the default branch when that tag cannot be found.
+Press Enter, or pass `-y`, and they run the skills CLI for you. They install every skill except the opt-in `bascik-refactor` into `.agents/skills/` and `.claude/skills/` and record them in `skills-lock.json`. The skills come from the release tag that matches the Bascik version being set up, such as `bascikdev/bascik#v1.1.0`, and from the default branch when that tag cannot be found.
 
 Answer `n`, or pass `--no-skills`, to skip it. When you skip it, or the install fails, for example offline, the project is still created and the command to run later is printed, pinned to the same release tag:
 
 ```sh
-npx skills add bascikdev/bascik#v1.0.2 -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-images bascik-migrate bascik-scripts bascik-seo bascik-testing
+npx skills add bascikdev/bascik#v1.1.0 -a universal -a claude-code --copy -y --skill bascik bascik-compatibility bascik-components bascik-config bascik-images bascik-migrate bascik-scripts bascik-seo bascik-testing
 ```
 
-If that tag is not found, run the same command without `#v1.0.2` to install from the default branch.
+If that tag is not found, run the same command without `#v1.1.0` to install from the default branch.
 
 ### Project Brief
 

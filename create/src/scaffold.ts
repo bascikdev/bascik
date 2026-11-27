@@ -16,7 +16,7 @@ import { LANDING_ICONS } from "./templates/landing/icons.js";
  * The `@bascik/bascik` release a new project depends on. The agent skills are
  * installed from the same release's tag, so the two always match.
  */
-export const BASCIK_VERSION = "1.0.2";
+export const BASCIK_VERSION = "1.1.0";
 
 // ─── Templates and adapters ───────────────────────────────────────────────────
 

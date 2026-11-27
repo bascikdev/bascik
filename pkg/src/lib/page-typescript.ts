@@ -30,6 +30,7 @@ import {
   resolveScriptSrcPath,
 } from "./module-specifiers.ts";
 import { getScriptType } from "./script-types.ts";
+import { bundleBrowserImports } from "./browser-imports.ts";
 import type { ServerScriptEntry } from "./server-sidecar.ts";
 import {
   TypeScriptTransformError,
@@ -177,11 +178,16 @@ export const inlinePageTypeScriptScripts = async (
           `(a module script is deferred inline too).`,
       );
     }
-    const compiled = await transformBrowserTypeScript(code, {
+    const stripped = await transformBrowserTypeScript(code, {
       sourcePath: relPath,
       kind: "companion",
       runtime: "browser",
     });
+    const bundled = await bundleBrowserImports(stripped, {
+      sourceFile: filePath,
+      wrap: !isModule,
+    });
+    const compiled = bundled.code;
     if (isModule) {
       const unbundled = unbundledModuleImports(compiled);
       if (unbundled.length)
@@ -195,7 +201,7 @@ export const inlinePageTypeScriptScripts = async (
           `(scripts.typescript) so it has no import/export left.`,
       );
     }
-    dependencies.push(relPath);
+    dependencies.push(relPath, ...bundled.dependencies);
     const tag = open.replace(SRC_ATTR_RE, "");
     // `</script` inside the code would end the element early; `<\/script`
     // means the same in a string, template, regex or comment.

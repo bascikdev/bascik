@@ -9,6 +9,23 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
+## [1.1.0] - 2026-11-27
+
+### Added
+
+- A TypeScript browser script (a component's `.ts` companion, an inline `<script type="text/typescript">`, or a page's own `.ts` script) can now import `.ts` and `.js` files by a relative or `@/` path, as in `import { parseEvent } from "./parse-event.ts"`. Bascik bundles them into the script at build time, so a large component's logic can live in small files that unit tests import directly. Install esbuild in the project (`npm install --save-dev esbuild`) to use it; a script without local imports is emitted as before. See [Importing TypeScript Modules](https://bascik.dev/scoped-javascript#importing-typescript-modules).
+
+### Changed
+
+- `create-bascik` 1.1.3: new projects depend on `@bascik/bascik` `^1.1.0`, so they start with the TypeScript imports below.
+- Agent skills: `bascik-components` says how to style a `<select>`: keep the native element, set `appearance: none`, and draw an inset chevron from a `--select-chevron` token that has one value per theme.
+
+### Fixed
+
+- A Ctrl-C or `SIGTERM` that stops the dev server while its first pages finish compiling no longer prints `✓ N pages transpiled` after `shutting down gracefully…`, which read as the server carrying on.
+- `create-bascik` 1.1.3: the selects in the corporate, shop, and dashboard templates draw their own arrow, 1rem in from the right border, in each theme's text color. The browser's arrow ignores padding, so it sat against the border. A long option now ends in an ellipsis instead of running under the arrow or widening the select past a phone screen.
+- `bascik add <package>/<component>` also copies the files in the folder named after that component, beside it, such as `chat/voice-call/*.ts` next to `chat/voice-call.html`, and the other files in a component's own folder, such as `book-rating/format-rating.ts` beside `book-rating/book-rating.html`. Before, only the files named after the component were copied, so one that imports modules from those folders failed to build. Test files in the folder are left out. See [Sharing Components](https://bascik.dev/how-to/sharing-components).
+
 ## [1.0.2] - 2026-11-25
 
 ### Changed
@@ -208,6 +225,7 @@ Bascik is a build tool for HTML components with automatically scoped CSS and
 JavaScript and no runtime. Start a site with `npm create bascik`, and see
 [Getting Started](https://bascik.dev/getting-started) for the rest.
 
+[1.1.0]: https://github.com/bascikdev/bascik/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/bascikdev/bascik/compare/v1.0.1...v1.0.2
 [create-bascik 1.1.1]: https://github.com/bascikdev/bascik/compare/create-v1.1.0...create-v1.1.1
 [create-bascik 1.1.0]: https://github.com/bascikdev/bascik/compare/create-v1.0.0...create-v1.1.0

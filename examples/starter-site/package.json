@@ -9,7 +9,7 @@
     "check": "bascik --check"
   },
   "dependencies": {
-    "@bascik/bascik": "^1.0.2",
+    "@bascik/bascik": "^1.1.0",
     "marked": "^18.0.14"
   },
   "devDependencies": {

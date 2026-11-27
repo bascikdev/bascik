@@ -1946,7 +1946,9 @@ jobs:
           name: template-preview-${{ matrix.slug }}
           path: ${{ runner.temp }}/template-preview/${{ matrix.slug }}.json
           if-no-files-found: error
-          retention-days: 1
+          # A week, not a day: preview-comment.yml reruns the comment job when a pull request opens after this run, and
+          # that rerun downloads these rows again.
+          retention-days: 7
 
   # Runs after all three uploads, so the summary and the comment always list three URLs from the same commit, followed
   # by one row per template Preview that uploaded (none when the branch changed no template). A run whose commit was no

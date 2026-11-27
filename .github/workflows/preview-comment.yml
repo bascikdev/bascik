@@ -1,0 +1,44 @@
+name: Preview Comment
+
+# CI's push run deploys the branch Previews (the docs, both adapter demos, and the templates) and its last job,
+# Publish Preview URLs, comments their URLs on the branch's open pull request. A pull request opened after that job
+# finished got no comment. When one is opened or reopened, this reruns that job of the branch's newest push run that
+# published Previews (.github/scripts/preview-comment-on-open.mjs). It deploys nothing and needs no secret.
+# Fork pull requests have no branch Previews in this repository and are skipped.
+on:
+  pull_request:
+    types: [opened, reopened]
+
+permissions: {}
+
+concurrency:
+  group: preview-comment-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  rerun-preview-comment:
+    name: Post the branch Previews
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    # The script waits up to 30 minutes for a push run that is still finishing.
+    timeout-minutes: 40
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
+      # One dependency-free script: no install, and no package manager cache (see ci.yml's preview-comment job).
+      - name: Use the .nvmrc Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Rerun the push run's comment job
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: node .github/scripts/preview-comment-on-open.mjs
