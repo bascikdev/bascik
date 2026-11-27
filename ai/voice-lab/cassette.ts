@@ -75,10 +75,10 @@ export function readCassette(text: string): Cassette {
 
 /** Field names whose values identify an account, a session or a person. */
 const SECRET =
-  /token|secret|password|authorization|api[-_]?key|credential|^session_?id$|^user$|email/i;
+  /token|secret|password|authorization|api[-_]?key|credential|^session_?id$|handle$|^user$|email/i;
 /** Text that is a credential wherever it stands. */
 const SECRET_TEXT =
-  /auth_tokens\/[\w-]+|Bearer\s+[\w.~+/-]+=*|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{10,}/g;
+  /auth_tokens\/[\w-]+|\bsess_\w{8,}|Bearer\s+[\w.~+/-]+=*|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{10,}/g;
 
 /** How many bytes a base64 text holds. */
 function base64Bytes(text: string): number {

@@ -5,7 +5,7 @@
  * call must do with it: stay up, play all of the model's voice, show its
  * words, and let everything go at the end.
  *
- * Every cassette in e2e/cassettes/ is played, by the provider its first line
+ * Every cassette in e2e/cassettes/ and e2e/cassettes/live/ is played, by the provider its first line
  * names. To add one, record a session (see voice-lab/README.md):
  *
  *   node voice-lab/record.ts gemini-live --out e2e/cassettes/books.jsonl
@@ -14,7 +14,7 @@
  * cassette to the loudspeaker is tested even with no recording on file.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   readCassette,
@@ -128,12 +128,19 @@ const CASSETTES = join(import.meta.dirname, "cassettes");
 const tapes: { name: string; cassette: Cassette }[] = [
   { name: "a written Gemini Live session", cassette: geminiTape() },
   { name: "a written Azure Voice Live session", cassette: azureTape() },
-  ...readdirSync(CASSETTES)
-    .filter((file) => file.endsWith(".jsonl"))
-    .map((file) => ({
-      name: file,
-      cassette: readCassette(readFileSync(join(CASSETTES, file), "utf8")),
-    })),
+  // Recordings put here by hand, and the ones the live lane leaves in live/.
+  ...["", "live"].flatMap((folder) =>
+    existsSync(join(CASSETTES, folder))
+      ? readdirSync(join(CASSETTES, folder))
+          .filter((file) => file.endsWith(".jsonl"))
+          .map((file) => ({
+            name: join(folder, file),
+            cassette: readCassette(
+              readFileSync(join(CASSETTES, folder, file), "utf8"),
+            ),
+          }))
+      : [],
+  ),
 ];
 
 async function type(page: Page, text: string): Promise<void> {
@@ -148,6 +155,25 @@ async function soundPlayed(page: Page): Promise<number> {
     (total, stretch) => total + stretch.end - stretch.start,
     0,
   );
+}
+
+/** Wait for the model's voice to start, and then for the loudspeaker to go quiet. */
+async function voiceOver(page: Page): Promise<void> {
+  await expect
+    .poll(() => soundPlayed(page), { timeout: 30_000 })
+    .toBeGreaterThan(0);
+  let before = -1;
+  await expect
+    .poll(
+      async () => {
+        const now = await soundPlayed(page);
+        const settled = now === before;
+        before = now;
+        return settled;
+      },
+      { timeout: 60_000, intervals: [700] },
+    )
+    .toBe(true);
 }
 
 /** Whether the model was ever cut in on, which leaves some of its voice unplayed. */
@@ -211,20 +237,11 @@ for (const { name, cassette } of tapes) {
       for (const text of typedIn(cassette)) {
         await type(page, text);
         await expect(page.getByTestId("turn-user").last()).toHaveText(text);
-        await expect.poll(() => soundPlayed(page)).toBeGreaterThan(0);
-        let before = -1;
-        await expect
-          .poll(
-            async () => {
-              const now = await soundPlayed(page);
-              const settled = now === before;
-              before = now;
-              return settled;
-            },
-            { timeout: 60_000, intervals: [700] },
-          )
-          .toBe(true);
+        await voiceOver(page);
       }
+      // A recording the reader only spoke in has nothing to type: its voice
+      // comes when the recording says, seconds after the call is up.
+      if (total > 0) await voiceOver(page);
 
       // The model's voice was played: never more of it than there was (a
       // piece played twice), and not much less. A voice pauses between

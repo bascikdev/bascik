@@ -189,15 +189,19 @@ describe("scrub", () => {
           session_id: "s1",
           client_secret: { value: "x" },
         },
+        created: { id: "sess_EoySsqlqdoboD2Kwm0xwU" },
+        sessionResumptionUpdate: { newHandle: "h4ndle", resumable: true },
         headers: [{ Authorization: "Bearer abc.def" }],
         note: "use auth_tokens/zzz999 or eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N",
         text: "the reader said: my key is fine",
       }),
       "provider",
     );
-    expect(scrubbed).not.toMatch(/s1"|abc\.def|zzz999|eyJhbGci/);
+    expect(scrubbed).not.toMatch(/s1"|abc\.def|zzz999|eyJhbGci|EoySsq|h4ndle/);
     expect(JSON.parse(scrubbed)).toMatchObject({
       session: { id: "kept", session_id: "[removed]" },
+      created: { id: "[removed]" },
+      sessionResumptionUpdate: { newHandle: "[removed]", resumable: true },
       text: "the reader said: my key is fine",
     });
   });

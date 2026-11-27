@@ -78,9 +78,9 @@ Record one:
 GEMINI_API_KEY=... yarn workspace @bascik/ai voice:record gemini-live --out e2e/cassettes/books.jsonl
 ```
 
-This starts a recorder in front of the provider and the demo pointed at the recorder. Open the address the demo prints, hold one call, hang up, and press Ctrl+C. Every `.jsonl` in `e2e/cassettes/` is then played back by `e2e/voice-cassette.spec.ts` on every run: the reader's typed messages are typed again, the provider's messages arrive with their recorded gaps, and the call must stay up, play the model's voice once, show its words and let everything go.
+This starts a recorder in front of the provider and the demo pointed at the recorder. Open the address the demo prints, hold one call, hang up, and press Ctrl+C. Every `.jsonl` in `e2e/cassettes/`, and in `e2e/cassettes/live/`, is then played back by `e2e/voice-cassette.spec.ts` on every run: the reader's typed messages are typed again, the provider's messages arrive with their recorded gaps, and the call must stay up, play the model's voice once, show its words and let everything go.
 
-A cassette keeps the provider's messages whole, its audio included. It does not keep the reader's microphone audio, only its size, and tokens, keys and session ids are replaced before anything is written. What the reader typed and what the model said are in it as text: read a cassette before committing it. A minute of the model's voice is about 4 MB.
+A cassette keeps the provider's messages whole, its audio included. It does not keep the reader's microphone audio, only its size, and tokens, keys, session ids and session handles are replaced before anything is written. What the reader typed and what the model said are in it as text: read a cassette before committing it. A minute of the model's voice is about 4 MB.
 
 ### The live lane
 

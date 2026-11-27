@@ -80,7 +80,7 @@ One lane does not replace `getUserMedia`. The `real-microphone` Playwright proje
 
 A stand-in says what its author thought the provider says. A cassette says what the provider did say: every message of a real session, in order, with the time between them ([`cassette.ts`](https://github.com/bascikdev/bascik/blob/main/ai/voice-lab/cassette.ts)).
 
-Every `.jsonl` file in [`ai/e2e/cassettes/`](https://github.com/bascikdev/bascik/tree/main/ai/e2e/cassettes) is played back on every run. The reader's typed messages are typed again, and the provider's messages arrive with their recorded gaps. The call must stay up, play the model's voice once, show its words, and let go of everything it held.
+Every `.jsonl` file in [`ai/e2e/cassettes/`](https://github.com/bascikdev/bascik/tree/main/ai/e2e/cassettes) and in its `live/` folder, where the live lane saves its calls, is played back on every run. The reader's typed messages are typed again, and the provider's messages arrive with their recorded gaps. The call must stay up, play the model's voice once, show its words, and let go of everything it held.
 
 ### Record a cassette
 
