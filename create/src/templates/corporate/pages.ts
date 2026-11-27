@@ -362,6 +362,7 @@ const DARK_TOKENS = `    --bg:            #14191f;
     --brand-soft:    #392f28;
     --on-brand:      #22272d;
     --danger:        #ffaaa0;
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23edf0f2' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 6 4.5 4.5L12.5 6'/%3E%3C/svg%3E");
     --shadow:        0 14px 36px -28px rgba(0, 0, 0, 0.48);`;
 
 export const CORPORATE_CSS = `/* styles.css: the site's global stylesheet. The design tokens are declared once, on :root, and every component
@@ -389,6 +390,8 @@ export const CORPORATE_CSS = `/* styles.css: the site's global stylesheet. The d
   --on-brand:      #ffffff;
 
   --danger:        #963b37;
+  /* The arrow of a select, drawn in --text. A data URI cannot read a custom property, so each theme has its own. */
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2326313c' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 6 4.5 4.5L12.5 6'/%3E%3C/svg%3E");
   --shadow:        0 14px 36px -28px rgba(37, 43, 48, 0.24);
   --panel:         none;
   --sheen:         none;

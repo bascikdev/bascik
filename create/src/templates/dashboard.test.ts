@@ -800,6 +800,31 @@ describe("the settings form", () => {
     }
   });
 
+  it("draws each select's arrow itself, inset from the border, in each theme's text color", () => {
+    const styles = file("src/pages/css/styles.css");
+    const rule = /\nselect\.field \{([^}]*)\}/.exec(styles)?.[1] ?? "";
+    for (const declaration of [
+      "appearance: none",
+      "min-width: 0",
+      "padding-right: 3rem",
+      "background-image: var(--select-chevron)",
+      "background-position: right 1rem center",
+      "background-size: 1rem",
+      "text-overflow: ellipsis",
+    ])
+      expect(rule).toContain(declaration);
+    expect(
+      styles.match(/--select-chevron: url\("data:image\/svg\+xml,/g),
+    ).toHaveLength(3);
+    expect(styles).toContain("stroke='%23192822'");
+    expect(styles.match(/stroke='%23edf4f0'/g)).toHaveLength(2);
+    for (const path of [
+      "src/components/settings-form/settings-form.html",
+      "src/components/orders-table/orders-table.html",
+    ])
+      expect(file(path), path).toMatch(/<select\s+class="field\b/);
+  });
+
   it("has a live region for the confirmation and an alert for the error state", () => {
     expect(tagWithId(form, "saved")).toContain('role="status"');
     expect(tagWithId(form, "problem")).toContain('role="alert"');

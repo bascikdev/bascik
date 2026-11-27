@@ -25,6 +25,13 @@ html { scroll-padding-top: 76px; }
 html[data-theme="light"] { color-scheme: light; }
 html[data-theme="dark"] { color-scheme: dark; }
 
+/* The arrow of a select, drawn in --text. A data URI cannot read a custom property or light-dark(), so each theme has its own. */
+:root { --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23252820' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 6 4.5 4.5L12.5 6'/%3E%3C/svg%3E"); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23edf1e8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 6 4.5 4.5L12.5 6'/%3E%3C/svg%3E"); }
+}
+:root[data-theme="dark"] { --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23edf1e8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 6 4.5 4.5L12.5 6'/%3E%3C/svg%3E"); }
+
 /* An element's own display rule would otherwise override the hidden attribute. */
 [hidden] { display: none !important; }
 
@@ -67,6 +74,20 @@ html[data-theme="dark"] { color-scheme: dark; }
 .filters { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; margin-block: 24px; }
 .filters label { display: grid; gap: 6px; font-size: 0.88rem; font-weight: 600; }
 .filters select, .filters button { padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--elevated); color: var(--text); font: inherit; }
+/* The browser's own arrow ignores padding and sits against the border, so the select draws one inset to match. */
+.filters select {
+  appearance: none;
+  /* Its label is a grid or flex item: without a zero minimum a long option widens the select instead of truncating. */
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 3rem;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1rem;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
 @media (max-width: 640px) {
   html[data-interactive] [data-testid="site-header-nav-toggle"] { display: flex !important; }
   html[data-interactive] [data-testid="site-header-nav-toggle"][hidden] { visibility: hidden; }
