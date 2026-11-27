@@ -105,8 +105,10 @@
     "components/",
     "!components/**/*.test.ts",
     "LICENSE",
-    "/README.md",
-    "!demo/**"
+    "README.md",
+    "!demo/**",
+    "!e2e/**",
+    "!voice-lab/**"
   ],
   "bascik": {
     "components": "./components"
