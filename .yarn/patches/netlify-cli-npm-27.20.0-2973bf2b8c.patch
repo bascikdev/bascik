@@ -1,0 +1,20 @@
+diff --git a/dist/commands/base-command.js b/dist/commands/base-command.js
+index 128dd2158b1602e178e4b53584a3e2797f700c19..f0dfe3e6b3448142433957086950a556b19aec52 100644
+--- a/dist/commands/base-command.js
++++ b/dist/commands/base-command.js
+@@ -130,7 +130,14 @@ async function selectWorkspace(project, filter) {
+     return selected.path;
+ }
+ async function getRepositoryRoot(cwd) {
+-    const res = await findUp('.git', { cwd, type: 'directory' });
++    // A git worktree's .git is a file that points at the main checkout's
++    // .git folder; searching for folders only would skip it and return the
++    // main checkout as this worktree's repository root.
++    const res = await findUp('.git', { cwd, type: 'directory' }).then(async (dir) => {
++        const file = await findUp('.git', { cwd, type: 'file' });
++        if (!dir || !file) return dir ?? file;
++        return file.length > dir.length ? file : dir;
++    });
+     if (res) {
+         return join(res, '..');
+     }

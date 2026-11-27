@@ -21,6 +21,7 @@
     "glob@npm:^13.0.0": "^14.0.3",
     "glob@npm:^13.0.6": "^14.0.3",
     "minimatch@npm:^10.2.2": "^11.0.3",
+    "netlify-cli@npm:^27.20.0": "patch:netlify-cli@npm%3A^27.20.0#~/.yarn/patches/netlify-cli-npm-27.20.0-2973bf2b8c.patch",
     "minimatch@npm:^10.2.4": "^11.0.3",
     "minimatch@npm:^10.2.6": "^11.0.3",
     "@vscode/test-cli/glob": "^14.0.3",

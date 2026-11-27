@@ -442,6 +442,31 @@ describe("processAllPages – build mode sitemap", () => {
     consoleSpy.mockRestore();
   });
 
+  it("prints no summary line once a shutdown has begun", async () => {
+    // A SIGTERM that lands as the last page finishes: "shutting down" must
+    // stay the last word, not "✓ N pages transpiled".
+    const { markShutdownStarted, resetShutdownStateForTests } =
+      await import("./exit-stoppers.ts");
+    const printed: string[] = [];
+    const consoleSpy = vi
+      .spyOn(console, "log")
+      .mockImplementation((msg: unknown) => {
+        if (typeof msg === "string") printed.push(msg);
+      });
+    (listPages as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    try {
+      await processAllPages();
+      expect(printed.some((line) => line.includes("transpiled"))).toBe(true);
+      printed.length = 0;
+      markShutdownStarted();
+      await processAllPages();
+      expect(printed.filter((line) => line.includes("transpiled"))).toEqual([]);
+    } finally {
+      resetShutdownStateForTests();
+      consoleSpy.mockRestore();
+    }
+  });
+
   it("aggregates page failures with each page path and stage", async () => {
     const pages = ["alpha.html", "beta.html", "gamma.html", "delta.html"].map(
       (name) => `src/pages/${name}`,

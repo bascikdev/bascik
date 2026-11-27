@@ -141,7 +141,7 @@ import type {
   TranspilePageResult,
 } from "./types.ts";
 import { READY_GRACE_MS, WorkerPool } from "./worker-pool.ts";
-import { registerExitStopper } from "./exit-stoppers.ts";
+import { isExitInProgress, registerExitStopper } from "./exit-stoppers.ts";
 
 import {
   PageProcessingError,
@@ -1429,10 +1429,14 @@ export const processAllPages = async (options?: { useWorkers?: boolean }) => {
   // means a cold cache (the first dev boot after a build, or a shared helper
   // edited), all cached means the time went elsewhere. Painted only when
   // present: `styleText` wraps even an empty string in escape codes on a TTY.
+  // A shutdown that began while the last pages finished (a Ctrl-C or SIGTERM
+  // during the first dev build) is the last thing the terminal says: a
+  // success line after "shutting down" would read as the server carrying on.
   const scriptSummary = formatBuildScriptSummary(scriptStats);
-  console.log(
-    `\n${colorOut.green(`✓ ${count} page${count !== 1 ? "s" : ""} transpiled`)} in ${colorOut.bold(formatDuration(elapsed))}${scriptSummary ? colorOut.dim(scriptSummary) : ""}`,
-  );
+  if (!isExitInProgress())
+    console.log(
+      `\n${colorOut.green(`✓ ${count} page${count !== 1 ? "s" : ""} transpiled`)} in ${colorOut.bold(formatDuration(elapsed))}${scriptSummary ? colorOut.dim(scriptSummary) : ""}`,
+    );
 
   if (
     !useWorkers &&

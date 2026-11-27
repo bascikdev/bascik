@@ -22,6 +22,7 @@ it is not `@bascik/bascik`.
 
 ### Fixed
 
+- A Ctrl-C or `SIGTERM` that stops the dev server while its first pages finish compiling no longer prints `✓ N pages transpiled` after `shutting down gracefully…`, which read as the server carrying on.
 - `create-bascik` 1.1.3: the selects in the corporate, shop, and dashboard templates draw their own arrow, 1rem in from the right border, in each theme's text color. The browser's arrow ignores padding, so it sat against the border. A long option now ends in an ellipsis instead of running under the arrow or widening the select past a phone screen.
 - `bascik add <package>/<component>` also copies the files in the folder named after that component, beside it, such as `chat/voice-call/*.ts` next to `chat/voice-call.html`, and the other files in a component's own folder, such as `book-rating/format-rating.ts` beside `book-rating/book-rating.html`. Before, only the files named after the component were copied, so one that imports modules from those folders failed to build. Test files in the folder are left out. See [Sharing Components](https://bascik.dev/how-to/sharing-components).
 
