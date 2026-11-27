@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 
 const sites = [
   { slug: "rinsesoft", name: "Rinsesoft", url: "https://rinsesoft.com" },
+  { slug: "wdz", name: "WDZ", url: "https://wdz.dev" },
   {
     slug: "sunridge-counseling",
     name: "Sunridge Counseling",
@@ -13,6 +14,7 @@ const sites = [
     name: "Lateral EMDR",
     url: "https://lateralemdr.com",
   },
+  { slug: "fraktul", name: "Fraktul", url: "https://fraktul.dev" },
   { slug: "bascik", name: "Bascik", url: "https://bascik.dev" },
   { slug: "bascik-shop", name: "Bascik Shop", url: "https://shop.bascik.dev" },
 ];

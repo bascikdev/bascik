@@ -14,7 +14,11 @@ Bascik itself is checked with [unit, integration, and end-to-end tests](/interna
 
 ### Rinsesoft
 
-A founder-led practice helping businesses improve operations and build the systems and capacity to grow.
+A process and technology firm that helps owners and executive teams replace manual, people-dependent operations with systems the company owns.
+
+### WDZ
+
+The company behind Rinsesoft and Lateral EMDR, with fifteen years of technology work for its clients.
 
 ### Sunridge Counseling
 
@@ -27,6 +31,10 @@ A CPA and business consulting firm helping clients reach their personal and fina
 ### Lateral EMDR
 
 A SaaS website and dashboard built with Bascik and the Netlify adapter. The dashboard uses stream scripts and server scripts.
+
+### Fraktul
+
+A tool for mapping software. One model file describes a system, and fraktul checks it against the code and draws diagrams you click through, down to a line of source.
 
 ### Bascik
 
