@@ -994,7 +994,10 @@ test.describe("voice", () => {
           this.onresult?.({ results: [Object.assign([{ transcript: "Recommend a book" }], { isFinal: true })] });
         }, 20);
       }
-      abort() { this.onend?.(); }
+      abort() {
+        window.__aborted = (window.__aborted ?? 0) + 1;
+        this.onend?.();
+      }
     };
     document.addEventListener("DOMContentLoaded", () => {
       const caption = document.querySelector('[data-testid="chat-voice-caption"]');
@@ -1114,6 +1117,49 @@ test.describe("voice", () => {
       "data-state",
       "listening",
     );
+  });
+
+  test("stops dictation while a voice call is on, so nothing is heard twice, and takes it up again after", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "voice is a script");
+    await page.addInitScript(fakeSpeech);
+    await page.addInitScript(
+      "navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('no', 'NotAllowedError'); };",
+    );
+    await page.reload();
+    await page.getByTestId("chat-voice-summary").click();
+    await page.getByTestId("chat-voice-talk").click();
+    await expect(page.getByTestId("turn-user")).toHaveText("Recommend a book");
+    await settled(page);
+    const aids = page.getByTestId("chat-voice");
+    await expect(aids).toHaveAttribute("data-state", "listening");
+    const abortedBefore = Number(await page.evaluate("window.__aborted ?? 0"));
+    const listenedBefore = Number(await page.evaluate("window.__listening"));
+
+    // A call starts: the browser's own listening stops at once.
+    const toggle = page.getByTestId("voice-call-toggle");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(aids).not.toHaveAttribute("data-state", "listening");
+    expect(Number(await page.evaluate("window.__aborted"))).toBe(
+      abortedBefore + 1,
+    );
+    await expect(page.getByTestId("voice-call-status")).toHaveText(
+      "No microphone: type to talk.",
+    );
+    // And it does not start again under the call.
+    expect(Number(await page.evaluate("window.__listening"))).toBe(
+      listenedBefore,
+    );
+
+    // The call ends: dictation was on, and is on again.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(aids).toHaveAttribute("data-state", "listening");
+    await page.getByTestId("chat-voice-summary").click();
+    await page.getByTestId("chat-voice-talk").click();
+    await expect(aids).not.toHaveAttribute("data-state", "listening");
   });
 });
 

@@ -54,12 +54,21 @@ export function azureVoiceLive(
   let active = false;
   /** The tool calls of the reply being made. */
   let tools: Promise<void>[] = [];
+  /**
+   * The reply being made was cut off, by the reader's voice or by a typed
+   * message. What is still on its way from it is neither played nor shown,
+   * and its end is not the end of the turn that replaced it.
+   */
+  let cut = false;
   return {
     byMeter: false,
     begin: () => {},
     audio: (audio) => send(azureAudio(audio)),
     text(text) {
-      if (active) send({ type: "response.cancel" });
+      if (active) {
+        cut = true;
+        send({ type: "response.cancel" });
+      }
       send(azureUserText(text));
       send({ type: "response.create" });
     },
@@ -70,6 +79,7 @@ export function azureVoiceLive(
           break;
         case "input_audio_buffer.speech_started":
           // The reader cut in, or began a new turn.
+          if (active) cut = true;
           hooks.quiet();
           if (hooks.said().trim()) hooks.endTurn();
           hooks.mark({ hearing: true, thinking: false });
@@ -87,6 +97,7 @@ export function azureVoiceLive(
           break;
         case "response.created": {
           active = true;
+          cut = false;
           hooks.newResponse();
           // A turn can be more than one response: keep their words apart.
           const said = hooks.said();
@@ -94,17 +105,19 @@ export function azureVoiceLive(
           break;
         }
         case "response.audio.delta":
-          if (message.delta) hooks.play(message.delta);
+          if (message.delta && !cut) hooks.play(message.delta);
           break;
         case "response.audio_transcript.delta":
-          if (message.delta) hooks.spoke(message.delta);
+          if (message.delta && !cut) hooks.spoke(message.delta);
           break;
         case "response.audio_timestamp.delta":
-          if (message.text) {
+          if (message.text && !cut) {
             hooks.timedWord(message.text, message.audio_offset_ms ?? 0);
           }
           break;
         case "response.function_call_arguments.done": {
+          // A reply that was cut off does not get to act.
+          if (cut) break;
           const tool = {
             id: message.call_id,
             name: message.name,
@@ -121,6 +134,11 @@ export function azureVoiceLive(
           active = false;
           const called = tools;
           tools = [];
+          if (cut) {
+            // The turn that replaced this reply is already under way.
+            cut = false;
+            break;
+          }
           if (called.length && message.response?.status !== "cancelled") {
             // The model hears the results once its reply is over, and goes on.
             await Promise.all(called);

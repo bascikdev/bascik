@@ -72,7 +72,7 @@ The browser's voices are free and instant, and they sound like a browser. `voice
 </chat-composer>
 ```
 
-Pressing the microphone button connects, turns on the microphone, and the reader talks. The model's voice plays, a caption line follows it, and what each side says appears in the thread. Typing in the composer during a call says the message to the model, so a call also works with no microphone. While a call is on, the button reads End call, and a line above the message box names the provider and its model, says what the call is doing, and carries the captions. The Reading aids step aside: a call has its own voice and captions. When a call ends because the relay or the provider hung up, the reason is shown on that line.
+Pressing the microphone button connects, turns on the microphone, and the reader talks. The model's voice plays, a caption line follows it, and what each side says appears in the thread. Typing in the composer during a call says the message to the model, so a call also works with no microphone. While a call is on, the button reads End call, and a line above the message box names the provider and its model, says what the call is doing, and carries the captions. The Reading aids step aside: a call has its own voice and captions. Dictate stops listening while a call is on, so nothing is sent to the model twice, and listens again when the call ends. When a call ends because the relay or the provider hung up, the reason is shown on that line.
 
 Both components have no box of their own. Their parts are laid out by the composer, so the chat has one box at the bottom of the page and not three. Either one also works outside the composer, as plain elements in the page.
 
@@ -121,6 +121,8 @@ const result = await runVoiceTool(
 // result.output is what to tell the model; result.html is what to show.
 ```
 
+A tool that has not answered after a minute (`VOICE_TOOL_TIMEOUT_MS`) is recorded as failed, with "The tool took too long to answer.", and the `signal` it was given is aborted, so the model is told and the reader is not left waiting. Pass `{ timeoutMs }` as the last argument of `runVoiceTool` or `finishVoiceTool` to change the limit; 0 turns it off.
+
 When the model finishes a turn, `voiceMessages(turn, { reader, model })` gives the messages to store. Words a model spoke are stored as a text part marked `spoken`, and are shown as plain text: a transcript that looks like a tag is still only something that was said.
 
 The repository's demo has the three routes (`api/voice-session.ts`, `api/voice-tool.ts`, `api/voice-turn.ts`) and the `voice-view` page the component reads a call's view from. The view is a page, and not an API response, so that Bascik renders the components in it.
@@ -151,13 +153,19 @@ The cost is that the audio passes through your server, and that the relay needs 
 
 With several servers, the audio stays on the server the browser reached, and the ticket works on any of them once the provider is given a shared store: see [Running on Several Servers](/ai/scaling#the-azure-relay).
 
-When the relay cannot connect to Azure, the call ends with "The voice provider refused the connection. Its key or token may have expired.", and the same line goes to the server's log.
+When the relay cannot connect to Azure, the call ends with "The voice provider refused the connection. Its key or token may have expired." When Azure takes the connection and has not set the session up after `connectTimeoutMs` (15 seconds by default), it ends with "The voice provider did not answer in time." The same line goes to the server's log, followed by Azure's own reason when it gave one. That reason can name the resource, so the browser is never sent it.
+
+Each call holds a connection to Azure, so the relay keeps at most 100 open (`relay.maxCalls`), and at most 3 for one reader (`relay.maxCallsPerOwner`). A call past either is closed as it connects, and the status line says "The voice relay is full. Try again later." or "Too many voice calls are open." The relay also ends the call of a browser that has gone silent or stopped reading. Every option is in [Providers](/ai/providers#voice-azure-voice-live).
 
 `token` takes a Microsoft Entra token for `https://ai.azure.com/.default`, or a function that returns a fresh one, so a server can run with a managed identity and no key at all. The model has to be one Voice Live offers in the resource's region. No model deployment is needed.
 
 ### Approval in a call
 
 A tool that needs the reader's OK works in a call as it does in text. The model says what it wants to do, the approval card appears in the thread, and the model waits on the line. The reader presses Allow or Don't allow, the server runs the tool or does not, and the model is told and says what happened. What runs is the call the model made, not anything sent with the answer.
+
+During a call, an approval card never loads a page, so a second press on a card that was already answered does nothing and the call goes on.
+
+A call that ends while a tool waits for the reader, because the page was closed or the connection dropped, leaves that turn behind. When the next call starts, the turn is stored as it was left and the waiting tool call is stored as denied, so it cannot be approved from the new call.
 
 ### Forms in a call
 
@@ -175,9 +183,14 @@ A form is sent once: it stays on screen as it was answered, and cannot be presse
 A call shows what it is doing, so the reader is never left wondering whether it hears them or is stuck.
 
 - **A level meter.** Once the microphone is on, a few small bars in the status line move with the real microphone signal. They turn the accent color while the level counts as speech. The meter is decoration (`aria-hidden`); it carries `data-level` (0 to 1, two decimals) and `data-speaking` for tests and your own styling. It keeps its room from the moment a call starts, so it moves nothing, and with `prefers-reduced-motion: reduce` the bars still follow the level but without easing. If the reader declines the microphone, there is no meter.
+- **No microphone.** When the reader declines the microphone, when the browser cannot start capturing (the microphone is let go, so the browser does not show it as recording), or when the microphone goes away during a call (a headset is unplugged, permission is taken back), the status line reads `No microphone: type to talk.` and the meter is hidden. The call goes on by typing.
 - **Words as they are said.** The reader's bubble grows while they speak. Gemini streams its transcription; with Azure the bubble grows from the transcription deltas, and the completed text replaces them.
 - **One status at a time.** The status line reads `Waiting for your answer on screen.`, then `Working…`, then `Thinking…`, then `Hearing you…`, then `Listening.`, in that order of precedence. Azure says when the reader starts and stops speaking; for Gemini the meter's level decides, and it does not count the model's own voice coming back through the speakers.
 - **Loading.** From the press until the call is on, the button shows a spinner and `aria-busy="true"`. While a view loads, a placeholder block (`data-testid="voice-call-loading"`, `aria-busy="true"`) holds its place and is removed if the view does not come. A form being sent is marked `aria-busy="true"` and its controls are disabled until the answer comes back.
+- **A call that never comes on.** A call that connects and is not on after 20 seconds ends with "The voice service did not answer." on the status line.
+- **A reply that was cut off.** With Azure Voice Live, when the reader speaks over a reply or types a message during one, audio and words of that reply that arrive after the cut are neither played nor shown, and a tool call it makes is not run.
+- **Sound the browser put to sleep.** A browser can suspend a page's sound, for example when a phone call comes in or the tab rests. The call resumes its sound when there is audio to play and when the page becomes visible again.
+- **A message that cannot be read.** A message from the provider that is not JSON, or audio that cannot be decoded, is skipped. The next one is handled as usual.
 
 ### Captions in a call
 
@@ -189,33 +202,47 @@ Gemini Live sends what the model says as text, in phrases, with no time for each
 
 - **Two providers.** Gemini Live and Azure Voice Live are implemented. A provider is one function, `createSession`, that returns where the browser connects and what it sends first; the browser side speaks one wire protocol per provider. OpenAI's own Realtime API is not implemented.
 - **Sessions are short.** Gemini Live limits an audio session to about 15 minutes, and the Azure relay ends a call after `sessionSeconds` (15 minutes by default). The component does not reconnect.
+- **A slow connection loses microphone audio.** When about five seconds of microphone audio is waiting to be sent, the component sends no more until the connection has caught up. The model hears a gap instead of speech that arrives seconds late.
 - **Client tools are left out.** A tool the reader's browser answers (`client: true`) is not offered in a call.
 - **A call costs money while it is open.** Audio in and out is billed by the provider for as long as the call lasts.
 - **Echo.** The microphone hears the speakers. The browser's echo cancellation is on, and headphones are better.
+
+How a call is tested as sound, with nobody at a microphone, and what those tests do not cover, is on [Testing Voice](/ai/testing-voice).
 
 ### How much a call stores
 
 A call's tool calls and views are kept in the shared store until the turn ends, and each turn is then stored in the conversation. Both are bounded, so a model, a provider, or a browser that sends too much cannot grow them without end:
 
-| Limit                  | Value                            | What happens past it                                                                                                                                                                                            |
-| :--------------------- | :------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Parts in one turn      | 64 (`MAX_VOICE_PARTS`)           | The next `show` or tool call fails, and the model is told the turn holds too much.                                                                                                                              |
-| Characters in one turn | 512,000 (`MAX_VOICE_TURN_CHARS`) | The same. A tool's output that would take the turn past it is stored as "(too long to keep)"; the model still gets the whole output.                                                                            |
-| Views kept             | 64 (`MAX_VOICE_VIEWS`)           | The oldest view is deleted. The thread on screen keeps it; a reload shows it from the stored message.                                                                                                           |
-| Speech in one turn     | 8,000 characters for each side   | The rest is cut.                                                                                                                                                                                                |
-| One conversation       | 2 MB (`maxConversationBytes`)    | A voice turn or a typed message that would take it past this is refused with 413, "This conversation is full", and a tool call in a conversation already full is told so. The reader starts a new conversation. |
+| Limit                  | Value                                        | What happens past it                                                                                                                                                                                            |
+| :--------------------- | :------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Parts in one turn      | 64 (`MAX_VOICE_PARTS`)                       | The next `show` or tool call fails, and the model is told the turn holds too much.                                                                                                                              |
+| Characters in one turn | 512,000 (`MAX_VOICE_TURN_CHARS`)             | The same. A tool's output that would take the turn past it is stored as "(too long to keep)"; the model still gets the whole output.                                                                            |
+| Views kept             | 64 (`MAX_VOICE_VIEWS`)                       | The oldest view is deleted. The thread on screen keeps it; a reload shows it from the stored message.                                                                                                           |
+| Speech in one turn     | 8,000 characters for each side               | The rest is cut.                                                                                                                                                                                                |
+| A tool's result        | 100,000 characters (`MAX_VOICE_TOOL_OUTPUT`) | What the model is told is cut to fit and ends with "(The result was too long. This is the start of it.)". A relay drops a longer result whole, and the model would wait for it.                                 |
+| Call ids remembered    | 256 (`MAX_VOICE_CALL_IDS`)                   | The oldest ids of turns already stored are forgotten.                                                                                                                                                           |
+| Turn ids remembered    | 64                                           | The oldest are forgotten.                                                                                                                                                                                       |
+| One conversation       | 2 MB (`maxConversationBytes`)                | A voice turn or a typed message that would take it past this is refused with 413, "This conversation is full", and a tool call in a conversation already full is told so. The reader starts a new conversation. |
 
 Typed messages and voice turns count against the same `maxConversationBytes`. Set it in `createChat` options.
 
 ### Call ids
 
-A tool call is recorded under the provider's id. An id of 1 to 64 letters, digits, `_`, or `-` is kept as it is; any other is mapped to one made from its SHA-256 hash (`voiceCallId`), so two calls with one raw id are always the same call. A second call with an id already used in the turn, `show` included, is refused with "already called", and its view never replaces the first one. The browser refuses a tool call with no id instead of posting it.
+A tool call is recorded under the provider's id. An id of 1 to 64 letters, digits, `_`, or `-` is kept as it is; any other is mapped to one made from its SHA-256 hash (`voiceCallId`), so two calls with one raw id are always the same call. An id is used once in a call, across turns: a second call with an id already used, `show` included, is refused with "already called", and its view never replaces the first one. The ids of turns already stored are remembered for this, the last 256 of them (`MAX_VOICE_CALL_IDS`), so a tool call the provider sends again after its turn was stored does not run a second time. The browser refuses a tool call with no id instead of posting it.
 
 A call still running or approved when its turn is stored is stored as failed, "ended with the call". What it returns later is told to the model but recorded in no turn, even a later turn with a call of the same id.
+
+### Turn ids
+
+The `voice-turn` route takes an optional `turn` form field that names the turn: 1 to 64 letters, digits, `_`, or `-`. A turn whose id was already stored is answered 204 and stored once, so sending a turn again is safe. Any other value is ignored, and the turn is stored as one with no id.
+
+The component names every turn and sends it with `keepalive`, so a turn still reaches the server when the reader leaves the page in the middle of a call. When the request fails or the server answers with a 5xx status, it is sent once more a second later.
 
 ### No voice provider
 
 `voiceTool` and `voiceTurn` answer 404 when `createChat` has no `voice` option, as `voiceSession` does, and `voiceView` answers nothing.
+
+The three voice routes, like the kit's other form routes, refuse a POST sent by another site's page with 403: see [Server Kit](/ai/server-kit#handlers).
 
 When `voice` is a function that picks a provider by name, the voice handlers serve only a conversation it opened a voice session for: `voiceSession` marks the conversation in the shared store when the picked provider hands out a ticket, and the mark lasts two hours after the call last used it. A picker that answers null for every request leaves `voiceTool` and `voiceTurn` answering 404 and `voiceView` answering nothing, so no tool runs and no turn is stored. A call's tool calls and turns go to the conversation open when the call started; opening another conversation during a call that a picker started makes them answer 404 until a new call starts there.
 

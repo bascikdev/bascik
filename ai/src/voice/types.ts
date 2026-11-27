@@ -22,6 +22,12 @@ export interface VoiceSessionConfig {
   system: string;
   /** The tools the model may call, usually `voiceTools(...)`. */
   tools: readonly Tool[];
+  /**
+   * Whose session this is, when the caller knows: the chat kit passes the
+   * reader. A provider with a relay uses it to limit how many calls one
+   * reader has open.
+   */
+  owner?: string;
 }
 
 /** A speech-to-speech provider: it turns a session's config into a ticket. */
@@ -44,10 +50,16 @@ export interface VoiceTurn {
    */
   views?: string[];
   /**
-   * The call ids recorded since the last turn was stored, `show` calls
-   * included, so a second call with one id is refused.
+   * The call ids recorded, `show` calls included, so a second call with one
+   * id is refused: this turn's, and the last `MAX_VOICE_CALL_IDS` of the
+   * turns stored before it.
    */
   calls?: string[];
+  /**
+   * The ids of the turns stored last, as the browser named them, so a turn
+   * that is sent twice is stored once.
+   */
+  stored?: string[];
   /**
    * How many turns were stored before this one. A call that finishes after
    * its turn was stored is not recorded in a later one.

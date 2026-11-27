@@ -231,4 +231,78 @@ describe("events from Azure Voice Live", () => {
     await canceled.wire.receive({ type: "response.done" });
     expect(canceled.calls.at(-1)).toEqual(["endTurn"]);
   });
+
+  test("a reply the reader cut in on plays, shows and does nothing more", async () => {
+    const { wire, calls, socket } = fake();
+    await wire.receive({ type: "response.created" });
+    await wire.receive({ type: "response.audio.delta", delta: "AAA=" });
+    await wire.receive({ type: "input_audio_buffer.speech_started" });
+    calls.length = 0;
+    // What was already on its way when the reader spoke.
+    await wire.receive({ type: "response.audio.delta", delta: "BBB=" });
+    await wire.receive({ type: "response.audio_transcript.delta", delta: "x" });
+    await wire.receive({
+      type: "response.audio_timestamp.delta",
+      text: "x",
+      audio_offset_ms: 900,
+    });
+    await wire.receive({
+      type: "response.function_call_arguments.done",
+      call_id: "c1",
+      name: "place_hold",
+    });
+    await wire.receive({
+      type: "response.done",
+      response: { status: "cancelled" },
+    });
+    // Nothing of it reached the call, and its end did not end the reader's turn.
+    expect(calls).toEqual([]);
+    expect(socket.sent).toEqual([]);
+
+    // The reply to what the reader said is played as any other.
+    await wire.receive({ type: "response.created" });
+    await wire.receive({ type: "response.audio.delta", delta: "CCC=" });
+    await wire.receive({ type: "response.done" });
+    expect(calls.map(([name]) => name)).toEqual([
+      "newResponse",
+      "play",
+      "endTurn",
+    ]);
+  });
+
+  test("a reply that had finished before the reader spoke is not cut", async () => {
+    const { wire, calls } = fake();
+    await wire.receive({ type: "response.created" });
+    await wire.receive({ type: "response.done" });
+    await wire.receive({ type: "input_audio_buffer.speech_started" });
+    calls.length = 0;
+    await wire.receive({ type: "response.created" });
+    await wire.receive({ type: "response.audio.delta", delta: "AAA=" });
+    expect(calls.map(([name]) => name)).toEqual(["newResponse", "play"]);
+  });
+
+  test("a typed message replaces the reply being made, and keeps its own turn", async () => {
+    const { wire, calls } = fake();
+    await wire.receive({ type: "response.created" });
+    wire.text("Something else");
+    calls.length = 0;
+    await wire.receive({ type: "response.audio.delta", delta: "AAA=" });
+    await wire.receive({
+      type: "response.done",
+      response: { status: "cancelled" },
+    });
+    // The canceled reply's end is not the end of the typed message's turn.
+    expect(calls).toEqual([]);
+    await wire.receive({ type: "response.created" });
+    await wire.receive({
+      type: "response.audio_transcript.delta",
+      delta: "Sure.",
+    });
+    await wire.receive({ type: "response.done" });
+    expect(calls.map(([name]) => name)).toEqual([
+      "newResponse",
+      "spoke",
+      "endTurn",
+    ]);
+  });
 });

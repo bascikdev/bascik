@@ -5,6 +5,7 @@
  * not a general WebSocket server: no extensions, no compression, and a
  * binary message is read as text.
  */
+import { isUtf8 } from "node:buffer";
 import { createHash } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -30,6 +31,35 @@ const FIRST_ROOM_BYTES = 4096;
 /** The room of a frame none of whose payload has arrived yet. */
 const NO_ROOM = Buffer.alloc(0);
 const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+/** `AcceptOptions.idleMs` when it is not given. */
+const IDLE_MS = 45_000;
+/** `AcceptOptions.maxUnsentBytes` when it is not given. */
+const MAX_BACKLOG_BYTES = 8_000_000;
+/** `AcceptOptions.closeGraceMs` when it is not given, and how long a refused upgrade is kept. */
+const CLOSE_GRACE_MS = 2000;
+/** A close frame's payload is at most 125 bytes: the code and this much reason. */
+const MAX_REASON_BYTES = 123;
+
+export interface AcceptOptions {
+  /**
+   * How long the other side may send nothing, not even the pong that
+   * answers a ping, before the connection is ended (default 45 000). 0
+   * turns the guard off.
+   */
+  idleMs?: number;
+  /** How often the server pings (default a third of `idleMs`). */
+  pingMs?: number;
+  /**
+   * How much may wait to be sent before the connection is ended: the other
+   * side has stopped reading (default 8 000 000).
+   */
+  maxUnsentBytes?: number;
+  /**
+   * How long the other side has to hang up after a close before the socket
+   * is destroyed (default 2000).
+   */
+  closeGraceMs?: number;
+}
 
 export interface ServerSocket {
   /**
@@ -44,6 +74,52 @@ export interface ServerSocket {
   onClose: () => void;
   readonly open: boolean;
 }
+
+/**
+ * The close codes one side may send (RFC 6455, section 7.4): not the ones
+ * kept for "no code" and "no close frame" (1005, 1006, 1015), and nothing
+ * under 1000.
+ */
+const sendableCloseCode = (code: number): boolean =>
+  (code >= 1000 && code <= 1003) ||
+  (code >= 1007 && code <= 1011) ||
+  (code >= 3000 && code <= 4999);
+
+/** A close frame's payload: the code, and a reason cut to fit, on a whole character. */
+function closeBody(code: number, reason: string): Buffer {
+  // A code that may not be sent is left out: a close with no payload is valid.
+  if (!sendableCloseCode(code)) return NO_ROOM;
+  let said = Buffer.from(reason.slice(0, 100), "utf8");
+  if (said.length > MAX_REASON_BYTES) {
+    let end = MAX_REASON_BYTES;
+    while (end > 0 && (said[end]! & 0xc0) === 0x80) end--;
+    said = said.subarray(0, end);
+  }
+  const body = Buffer.alloc(2 + said.length);
+  body.writeUInt16BE(code, 0);
+  said.copy(body, 2);
+  return body;
+}
+
+/**
+ * Destroy a socket that was ended, once the other side has had `graceMs` to
+ * hang up. An ended socket stays open until the other side closes too, and
+ * one that never does would be held for ever.
+ */
+function destroyAfter(socket: Duplex, graceMs: number): void {
+  if (socket.destroyed) return;
+  const timer = setTimeout(() => socket.destroy(), graceMs);
+  // Some hosts hand back a plain number, which has nothing to unref.
+  (timer as { unref?: () => void }).unref?.();
+  socket.once("close", () => clearTimeout(timer));
+}
+
+const STATUS_TEXT: Record<number, string> = {
+  401: "Unauthorized",
+  403: "Forbidden",
+  429: "Too Many Requests",
+  503: "Service Unavailable",
+};
 
 /** One unmasked frame, as a server sends it. */
 export function encodeFrame(payload: Buffer, opcode = 0x1): Buffer {
@@ -65,25 +141,48 @@ export function encodeFrame(payload: Buffer, opcode = 0x1): Buffer {
   return Buffer.concat([header, payload]);
 }
 
-/** Refuse an upgrade request with a plain HTTP answer. */
-export function refuseUpgrade(socket: Duplex, status: number): void {
-  const text = status === 401 ? "Unauthorized" : "Bad Request";
+/**
+ * Refuse an upgrade request with a plain HTTP answer. The socket is
+ * destroyed `graceMs` later if the client has not closed it by then.
+ */
+export function refuseUpgrade(
+  socket: Duplex,
+  status: number,
+  graceMs: number = CLOSE_GRACE_MS,
+): void {
+  if (socket.destroyed) return;
+  const text = STATUS_TEXT[status] ?? "Bad Request";
   socket.end(
     `HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
   );
+  destroyAfter(socket, graceMs);
 }
 
 /**
  * Answer an HTTP upgrade request and return the open socket, or null when
- * the request is not a WebSocket handshake (it is refused with a 400).
- * Pass the `head` of the server's `upgrade` event: frames a client sends
- * in the same read as its handshake arrive there, not as socket data.
+ * the request is not a WebSocket handshake (it is refused with a 400) or the
+ * client has already gone. Pass the `head` of the server's `upgrade` event:
+ * frames a client sends in the same read as its handshake arrive there, not
+ * as socket data.
  */
 export function acceptWebSocket(
   request: IncomingMessage,
   socket: Duplex,
   head?: Buffer,
+  options: AcceptOptions = {},
 ): ServerSocket | null {
+  const {
+    idleMs = IDLE_MS,
+    maxUnsentBytes = MAX_BACKLOG_BYTES,
+    closeGraceMs = CLOSE_GRACE_MS,
+  } = options;
+  const pingMs = options.pingMs ?? Math.max(1, Math.floor(idleMs / 3));
+  // A client that reset the connection while the caller was deciding gets
+  // no socket: there is no one to answer.
+  if (socket.destroyed || !socket.writable) {
+    socket.destroy();
+    return null;
+  }
   const key = request.headers["sec-websocket-key"];
   if (
     typeof key !== "string" ||
@@ -98,10 +197,21 @@ export function acceptWebSocket(
   );
 
   let open = true;
+  let heardAt = Date.now();
+  let beat: ReturnType<typeof setInterval> | undefined;
   const shut = (): void => {
     if (!open) return;
     open = false;
+    clearInterval(beat);
     connection.onClose();
+  };
+  /** Send a close frame, end this side, and give the other side a moment to end its own. */
+  const finish = (body: Buffer): void => {
+    socket.end(encodeFrame(body, 0x8));
+    shut();
+    // Reading goes on, so the other side's own end is seen.
+    socket.resume();
+    destroyAfter(socket, closeGraceMs);
   };
   const connection: ServerSocket = {
     onMessage: () => {},
@@ -110,19 +220,16 @@ export function acceptWebSocket(
       return open;
     },
     send(text, binary = false) {
-      if (open) {
-        socket.write(
-          encodeFrame(Buffer.from(text, "utf8"), binary ? 0x2 : 0x1),
-        );
+      if (!open) return;
+      socket.write(encodeFrame(Buffer.from(text, "utf8"), binary ? 0x2 : 0x1));
+      // The other side has stopped reading: nothing more is kept for it.
+      if (socket.writableLength > maxUnsentBytes) {
+        socket.destroy();
+        shut();
       }
     },
     close(code = 1000, reason = "") {
-      if (!open) return;
-      const body = Buffer.alloc(2 + Buffer.byteLength(reason.slice(0, 100)));
-      body.writeUInt16BE(code, 0);
-      body.write(reason.slice(0, 100), 2);
-      socket.end(encodeFrame(body, 0x8));
-      shut();
+      if (open) finish(closeBody(code, reason));
     },
   };
 
@@ -157,6 +264,8 @@ export function acceptWebSocket(
   let pieces: Buffer[] = [];
   let size = 0;
   let inMessage = false;
+  /** Whether the message arriving is text, which has to be valid UTF-8. */
+  let isText = false;
 
   /** How long the header is, once its first two bytes are known. */
   const headerLength = (): number => {
@@ -235,12 +344,22 @@ export function acceptWebSocket(
     const body =
       payload.length === length ? payload : payload.subarray(0, length);
     if (opcode === 0x8) {
-      socket.end(encodeFrame(body.subarray(0, 2), 0x8));
-      shut();
+      // A close says nothing, or a code it may send and a reason in UTF-8
+      // (RFC 6455, sections 5.5.1 and 7.4). The answer is the code alone.
+      if (length === 1) {
+        connection.close(1002, "Bad close frame");
+      } else if (length >= 2 && !sendableCloseCode(body.readUInt16BE(0))) {
+        connection.close(1002, "Bad close code");
+      } else if (length > 2 && !isUtf8(body.subarray(2))) {
+        connection.close(1007, "Invalid UTF-8");
+      } else {
+        finish(Buffer.from(body.subarray(0, 2)));
+      }
       return;
     }
     if (opcode === 0x9) socket.write(encodeFrame(body, 0xa));
     if (opcode >= 0x8) return;
+    if (!inMessage) isText = opcode === 0x1;
     pieces.push(body);
     size += length;
     inMessage = true;
@@ -250,6 +369,12 @@ export function acceptWebSocket(
       pieces = [];
       size = 0;
       inMessage = false;
+      // Checked on the whole message, so a character split between two
+      // pieces is read as the one character it is.
+      if (isText && !isUtf8(whole)) {
+        connection.close(1007, "Invalid UTF-8");
+        return;
+      }
       connection.onMessage(whole.toString("utf8"));
     }
   };
@@ -321,11 +446,30 @@ export function acceptWebSocket(
   };
   if (early) process.nextTick(readEarly);
   socket.on("data", (chunk: Buffer) => {
+    heardAt = Date.now();
     readEarly();
     read(chunk);
     keepUp();
   });
   socket.on("close", shut);
   socket.on("error", shut);
+  // An upgraded socket stays half open when the client ends its side with
+  // no close frame: that is the end of the connection too.
+  socket.on("end", () => {
+    shut();
+    socket.destroy();
+  });
+  if (idleMs > 0) {
+    // A client that vanished sends nothing, not even the pong a ping asks for.
+    beat = setInterval(() => {
+      if (Date.now() - heardAt >= idleMs) {
+        connection.close(1001, "Idle");
+        socket.destroy();
+      } else {
+        socket.write(encodeFrame(NO_ROOM, 0x9));
+      }
+    }, pingMs);
+    (beat as { unref?: () => void }).unref?.();
+  }
   return connection;
 }

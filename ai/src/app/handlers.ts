@@ -25,7 +25,7 @@ import {
   badRequest,
   conversationFull,
 } from "./errors.ts";
-import { field, localPath, messageFrom } from "./forms.ts";
+import { crossSite, field, localPath, messageFrom } from "./forms.ts";
 import { MAX_MESSAGE, NO_STORE, SEARCH_LIMIT } from "./limits.ts";
 import type { Chat } from "./types.ts";
 
@@ -150,6 +150,9 @@ export function chatHandlers(
   };
 
   const stop: Chat["stop"] = async (request) => {
+    // Stop reads no form, so it checks where the request came from itself.
+    const refused = crossSite(request);
+    if (refused) return refused;
     // Only the reader's own conversation: its id in a cookie is not enough.
     const conversation = await load(sessions.identify(request));
     const stopped = conversation !== null && (await stopTurn(conversation.id));

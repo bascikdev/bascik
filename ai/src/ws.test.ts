@@ -1,10 +1,17 @@
-import { createServer, type IncomingMessage } from "node:http";
-import { connect, type AddressInfo } from "node:net";
+import fc from "fast-check";
+import { createServer, type IncomingMessage, type Server } from "node:http";
+import { connect, type AddressInfo, type Socket } from "node:net";
 import { Duplex } from "node:stream";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { acceptWebSocket, type ServerSocket } from "./ws.ts";
+import {
+  acceptWebSocket,
+  encodeFrame,
+  refuseUpgrade,
+  type AcceptOptions,
+  type ServerSocket,
+} from "./ws.ts";
 
 /** A masked frame, as a browser sends it. */
 function clientFrame(payload: Buffer, opcode = 0x1, final = true): Buffer {
@@ -395,5 +402,455 @@ describe("acceptWebSocket", () => {
       for (const socket of upgraded) socket.destroy();
       await new Promise((resolve) => server.close(resolve));
     }
+  });
+});
+
+describe("the frame codec", () => {
+  /** The payload of the close frame the server ended with. */
+  const closePayload = (ended: Buffer[]): Buffer | undefined => {
+    const frame = ended[0];
+    if (!frame || (frame[0]! & 0x0f) !== 0x8) return undefined;
+    return frame.subarray(2);
+  };
+  const closeWith = (code: number, reason = ""): Buffer => {
+    const body = Buffer.alloc(2 + Buffer.byteLength(reason));
+    body.writeUInt16BE(code, 0);
+    body.write(reason, 2);
+    return clientFrame(body, 0x8);
+  };
+
+  it("reads a close frame the same at every place it can be split", () => {
+    const frame = closeWith(1000, "bye");
+    for (let at = 1; at < frame.length; at++) {
+      const { socket, ended, connection } = open();
+      socket.emit("data", frame.subarray(0, at));
+      expect(connection.open, `split at ${at}`).toBe(true);
+      socket.emit("data", frame.subarray(at));
+      expect(connection.open, `split at ${at}`).toBe(false);
+      // The answer is the code alone.
+      expect(ended, `split at ${at}`).toEqual([
+        Buffer.from([0x88, 0x02, 0x03, 0xe8]),
+      ]);
+    }
+  });
+
+  it("answers a ping the same at every place it can be split", () => {
+    const frame = clientFrame(Buffer.from("hi"), 0x9);
+    for (let at = 1; at < frame.length; at++) {
+      const { socket, sent } = open();
+      sent.length = 0;
+      socket.emit("data", frame.subarray(0, at));
+      expect(sent, `split at ${at}`).toEqual([]);
+      socket.emit("data", frame.subarray(at));
+      expect(sent, `split at ${at}`).toEqual([
+        encodeFrame(Buffer.from("hi"), 0xa),
+      ]);
+    }
+  });
+
+  it("answers a close that has one byte of payload with 1002, not with that byte", () => {
+    const { socket, ended } = open();
+    socket.emit("data", clientFrame(Buffer.from([0x03]), 0x8));
+    expect(closeCode(ended)).toBe(1002);
+  });
+
+  it("answers a close with no payload with one of its own", () => {
+    const { socket, ended } = open();
+    socket.emit("data", clientFrame(Buffer.alloc(0), 0x8));
+    expect(ended).toEqual([Buffer.from([0x88, 0x00])]);
+  });
+
+  it.each([1000, 1001, 1002, 1003, 1007, 1008, 1009, 1010, 1011, 3000, 4999])(
+    "answers close code %i with the same code",
+    (code) => {
+      const { socket, ended } = open();
+      socket.emit("data", closeWith(code, "why"));
+      expect(closeCode(ended)).toBe(code);
+      expect(closePayload(ended)).toHaveLength(2);
+    },
+  );
+
+  it.each([0, 999, 1004, 1005, 1006, 1012, 1015, 2999, 5000, 65_535])(
+    "answers close code %i, which may not be sent, with 1002",
+    (code) => {
+      const { socket, ended } = open();
+      socket.emit("data", closeWith(code));
+      expect(closeCode(ended)).toBe(1002);
+    },
+  );
+
+  it("answers a close whose reason is not UTF-8 with 1007", () => {
+    const { socket, ended } = open();
+    socket.emit(
+      "data",
+      clientFrame(Buffer.from([0x03, 0xe8, 0xff, 0xfe]), 0x8),
+    );
+    expect(closeCode(ended)).toBe(1007);
+  });
+
+  it.each([
+    ["a byte no character has", [0xff]],
+    ["a character cut short", [0x68, 0xc3]],
+    ["half of a surrogate pair", [0xed, 0xa0, 0x80]],
+    ["an overlong slash", [0xc0, 0xaf]],
+  ])("closes with 1007 on text with %s", (_name, bytes) => {
+    const { socket, ended, messages } = open();
+    socket.emit("data", clientFrame(Buffer.from(bytes)));
+    expect(messages).toEqual([]);
+    expect(closeCode(ended)).toBe(1007);
+  });
+
+  it("reads a character split between two pieces of a message", () => {
+    for (const text of ["café", "日本語", "a 😀 b"]) {
+      const bytes = Buffer.from(text);
+      for (let at = 1; at < bytes.length; at++) {
+        const { socket, ended, messages } = open();
+        socket.emit(
+          "data",
+          Buffer.concat([
+            clientFrame(bytes.subarray(0, at), 0x1, false),
+            clientFrame(bytes.subarray(at), 0x0, true),
+          ]),
+        );
+        expect(messages, `${text} split at ${at}`).toEqual([text]);
+        expect(ended).toEqual([]);
+      }
+    }
+  });
+
+  it("closes with 1007 when the pieces of a text message are not UTF-8 together", () => {
+    const { socket, ended, messages } = open();
+    socket.emit(
+      "data",
+      Buffer.concat([
+        clientFrame(Buffer.from([0xe6, 0x97]), 0x1, false),
+        clientFrame(Buffer.from("x"), 0x0, true),
+      ]),
+    );
+    expect(messages).toEqual([]);
+    expect(closeCode(ended)).toBe(1007);
+  });
+
+  it.each([
+    ["a frame with no mask", () => encodeFrame(Buffer.from("plain")), 1002],
+    [
+      "a reserved bit",
+      () => {
+        const frame = clientFrame(Buffer.from("x"));
+        frame[0]! |= 0x40;
+        return frame;
+      },
+      1002,
+    ],
+    [
+      "a 64-bit length over the cap",
+      () => {
+        const header = Buffer.alloc(14);
+        header[0] = 0x81;
+        header[1] = 0x80 | 127;
+        header.writeBigUInt64BE(2n ** 40n, 2);
+        return header;
+      },
+      1009,
+    ],
+    [
+      "a 64-bit length with its top bit set",
+      () => {
+        const header = Buffer.alloc(14);
+        header[0] = 0x82;
+        header[1] = 0x80 | 127;
+        header.writeBigUInt64BE(2n ** 63n, 2);
+        return header;
+      },
+      1009,
+    ],
+  ])("closes on %s", (_name, frame, code) => {
+    const { socket, ended, messages } = open();
+    socket.emit("data", frame());
+    expect(messages).toEqual([]);
+    expect(closeCode(ended)).toBe(code);
+  });
+
+  it("sends no code it may not send, and a reason that fits a close frame", () => {
+    const none = open();
+    none.connection.close(1005, "nothing");
+    expect(none.ended).toEqual([Buffer.from([0x88, 0x00])]);
+
+    const long = open();
+    long.connection.close(1000, "é".repeat(100));
+    const payload = closePayload(long.ended)!;
+    expect(payload.length).toBeLessThanOrEqual(125);
+    expect(payload.readUInt16BE(0)).toBe(1000);
+    // Cut on a whole character.
+    expect(payload.subarray(2).toString()).toBe("é".repeat(61));
+  });
+
+  it("reads the same messages however the bytes are cut into reads", () => {
+    const message = fc.oneof(
+      fc.string(),
+      fc.constantFrom("", "café", "日本語", "a 😀 b", "x".repeat(300)),
+    );
+    /** One message, as the pieces it is sent in and the pings between them. */
+    const sending = fc.record({
+      text: message,
+      cuts: fc.array(fc.nat(), { maxLength: 3 }),
+      ping: fc.boolean(),
+    });
+    fc.assert(
+      fc.property(
+        fc.array(sending, { maxLength: 6 }),
+        fc.array(fc.integer({ min: 1, max: 40 }), { minLength: 1 }),
+        (sendings, sizes) => {
+          const frames: Buffer[] = [];
+          let pings = 0;
+          for (const { text, cuts, ping } of sendings) {
+            const bytes = Buffer.from(text);
+            const at = [
+              ...new Set(cuts.map((cut) => cut % (bytes.length + 1))),
+            ].sort((a, b) => a - b);
+            const edges = [0, ...at, bytes.length];
+            for (let index = 0; index + 1 < edges.length; index++) {
+              const last = index + 2 === edges.length;
+              frames.push(
+                clientFrame(
+                  bytes.subarray(edges[index], edges[index + 1]),
+                  index === 0 ? 0x1 : 0x0,
+                  last,
+                ),
+              );
+              if (ping && !last) {
+                frames.push(clientFrame(Buffer.from("p"), 0x9));
+                pings++;
+              }
+            }
+          }
+          const stream = Buffer.concat(frames);
+          const { socket, sent, ended, messages } = open();
+          sent.length = 0;
+          let offset = 0;
+          for (let turn = 0; offset < stream.length; turn++) {
+            const size = sizes[turn % sizes.length]!;
+            socket.emit("data", stream.subarray(offset, offset + size));
+            offset += size;
+          }
+          expect(messages).toEqual(sendings.map(({ text }) => text));
+          expect(sent).toHaveLength(pings);
+          expect(ended).toEqual([]);
+        },
+      ),
+    );
+  });
+});
+
+describe("a connection's end, over a real socket", () => {
+  const HANDSHAKE =
+    "GET / HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n";
+  let server: Server;
+  const upgraded: Duplex[] = [];
+  const clients: Socket[] = [];
+
+  /** A server that hands each upgrade to `onUpgrade`; answers its port. */
+  async function serving(
+    onUpgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void,
+  ): Promise<number> {
+    server = createServer();
+    server.on("upgrade", (request, socket, head) => {
+      socket.on("error", () => {});
+      upgraded.push(socket);
+      onUpgrade(request, socket, head);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    return (server.address() as AddressInfo).port;
+  }
+
+  /** A server that accepts every upgrade; answers its port and its connections. */
+  async function accepting(
+    options?: AcceptOptions,
+  ): Promise<{ port: number; accepted: ServerSocket[]; closes: number[] }> {
+    const accepted: ServerSocket[] = [];
+    const closes: number[] = [];
+    const port = await serving((request, socket, head) => {
+      const connection = acceptWebSocket(request, socket, head, options)!;
+      connection.onClose = () => closes.push(Date.now());
+      accepted.push(connection);
+    });
+    return { port, accepted, closes };
+  }
+
+  /**
+   * A client that has shaken hands. It stays half open when the server
+   * ends its side, as a client that has stopped paying attention does.
+   */
+  async function shaken(
+    port: number,
+  ): Promise<{ client: Socket; received: Buffer[]; closed: Promise<void> }> {
+    const client = connect({ port, host: "127.0.0.1", allowHalfOpen: true });
+    clients.push(client);
+    client.on("error", () => {});
+    const closed = new Promise<void>((resolve) =>
+      client.once("close", () => resolve()),
+    );
+    await new Promise<void>((resolve) => client.once("connect", resolve));
+    client.write(HANDSHAKE);
+    const answer = await new Promise<Buffer>((resolve) =>
+      client.once("data", resolve),
+    );
+    const received: Buffer[] = [];
+    // Frames can follow the handshake's answer in one read.
+    const rest = answer.subarray(answer.indexOf("\r\n\r\n") + 4);
+    if (rest.length) received.push(rest);
+    client.on("data", (chunk: Buffer) => received.push(chunk));
+    return { client, received, closed };
+  }
+
+  /** Whether the server's `close` finishes, which it does once no socket is left. */
+  const serverCloses = (): Promise<boolean> =>
+    Promise.race([
+      new Promise<boolean>((resolve) => server.close(() => resolve(true))),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1500)),
+    ]);
+
+  afterEach(async () => {
+    for (const client of clients.splice(0)) client.destroy();
+    for (const socket of upgraded.splice(0)) socket.destroy();
+    if (server.listening) {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  it("notices a client that ends its side with no close frame", async () => {
+    const { port, accepted, closes } = await accepting();
+    const { client, closed } = await shaken(port);
+    await expect.poll(() => accepted.length).toBe(1);
+    client.end();
+    await expect.poll(() => accepted[0]!.open, { timeout: 2000 }).toBe(false);
+    expect(closes).toHaveLength(1);
+    // The server's side is gone too, so the client's socket closes.
+    await closed;
+    expect(upgraded[0]!.destroyed).toBe(true);
+  });
+
+  it("pings, and ends a connection that sends nothing back", async () => {
+    const { port, accepted, closes } = await accepting({
+      idleMs: 200,
+      pingMs: 40,
+    });
+    const started = Date.now();
+    const { client, received } = await shaken(port);
+    // This client holds its own side open, so it sees the server's end.
+    await new Promise((resolve) => client.once("end", resolve));
+    expect(accepted[0]!.open).toBe(false);
+    expect(upgraded[0]!.destroyed).toBe(true);
+    expect(closes).toHaveLength(1);
+    expect(closes[0]! - started).toBeGreaterThanOrEqual(150);
+    const all = Buffer.concat(received);
+    // Pings first, then a close that says why.
+    expect(all.subarray(0, 2)).toEqual(Buffer.from([0x89, 0x00]));
+    expect(all.includes(Buffer.from("Idle"))).toBe(true);
+  });
+
+  it("keeps a connection that answers its pings", async () => {
+    const { port, accepted } = await accepting({ idleMs: 200, pingMs: 40 });
+    const { client } = await shaken(port);
+    let pongs = 0;
+    client.on("data", (chunk: Buffer) => {
+      // Each read here is whole ping frames, two bytes each.
+      for (let at = 0; at + 1 < chunk.length; at += 2) {
+        if (chunk[at] === 0x89) {
+          client.write(clientFrame(Buffer.alloc(0), 0xa));
+          pongs++;
+        }
+      }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(pongs).toBeGreaterThan(2);
+    expect(accepted[0]!.open).toBe(true);
+  });
+
+  it("sets no timer for a connection with the idle guard off", async () => {
+    const { port, accepted } = await accepting({ idleMs: 0 });
+    const { received } = await shaken(port);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(received).toEqual([]);
+    expect(accepted[0]!.open).toBe(true);
+  });
+
+  it("destroys a refused upgrade the client never closes, so the server can stop", async () => {
+    const port = await serving((_request, socket) =>
+      refuseUpgrade(socket, 401, 50),
+    );
+    const client = connect({ port, host: "127.0.0.1", allowHalfOpen: true });
+    clients.push(client);
+    client.on("error", () => {});
+    const answer = new Promise<string>((resolve) =>
+      client.once("data", (chunk: Buffer) => resolve(chunk.toString())),
+    );
+    client.write(HANDSHAKE);
+    expect(await answer).toContain("401 Unauthorized");
+    // The client does nothing more, and holds its side open.
+    expect(await serverCloses()).toBe(true);
+    expect(upgraded[0]!.destroyed).toBe(true);
+  });
+
+  it("destroys a closed connection the client never closes, so the server can stop", async () => {
+    const { port, accepted } = await accepting({ closeGraceMs: 50 });
+    const { received } = await shaken(port);
+    await expect.poll(() => accepted.length).toBe(1);
+    accepted[0]!.close(1000, "Done");
+    await expect
+      .poll(() => Buffer.concat(received).includes(Buffer.from("Done")))
+      .toBe(true);
+    expect(await serverCloses()).toBe(true);
+    expect(upgraded[0]!.destroyed).toBe(true);
+  });
+
+  it("destroys a connection whose client closed it and never hung up", async () => {
+    const { port, accepted } = await accepting({ closeGraceMs: 50 });
+    const { client } = await shaken(port);
+    const body = Buffer.from([0x03, 0xe8]);
+    client.write(clientFrame(body, 0x8));
+    await expect.poll(() => accepted[0]?.open).toBe(false);
+    expect(await serverCloses()).toBe(true);
+  });
+
+  it("ends a connection whose client stops reading, before much is kept for it", async () => {
+    const { port, accepted } = await accepting({ maxUnsentBytes: 1_000_000 });
+    const { client } = await shaken(port);
+    await expect.poll(() => accepted.length).toBe(1);
+    client.pause();
+    const connection = accepted[0]!;
+    const socket = upgraded[0]!;
+    const piece = "a".repeat(64_000);
+    let most = 0;
+    // Up to 190 MB, were it all kept.
+    for (let count = 0; count < 3000 && connection.open; count++) {
+      connection.send(piece);
+      most = Math.max(most, socket.writableLength);
+      if (count % 20 === 0) await settle();
+    }
+    expect(connection.open).toBe(false);
+    expect(socket.destroyed).toBe(true);
+    // One message past the cap at most.
+    expect(most).toBeLessThan(1_000_000 + 2 * 64_010);
+  });
+
+  it("gives no socket for a client that reset the connection before it was accepted", async () => {
+    let answered: ServerSocket | null | undefined;
+    const port = await serving((request, socket, head) => {
+      // The caller was busy, as a relay is while it looks a ticket up.
+      socket.once("close", () => {
+        answered = acceptWebSocket(request, socket, head);
+      });
+    });
+    const client = connect(port, "127.0.0.1");
+    clients.push(client);
+    client.on("error", () => {});
+    await new Promise<void>((resolve) => client.once("connect", resolve));
+    client.write(HANDSHAKE);
+    await expect.poll(() => upgraded.length).toBe(1);
+    client.resetAndDestroy();
+    await expect.poll(() => answered, { timeout: 2000 }).toBe(null);
   });
 });

@@ -30,6 +30,34 @@ export interface GeminiLiveOptions {
   wsBase?: string;
   /** Replace `fetch`, for a test. */
   fetch?: typeof fetch;
+  /**
+   * How long the provider has to answer the request for a token, body
+   * included, in milliseconds (default 15 000).
+   */
+  timeoutMs?: number;
+}
+
+/** The most of the provider's answer that is read. A token's is a few hundred bytes. */
+const MAX_ANSWER_BYTES = 64_000;
+
+/** The answer's body as text, or null when it is longer than `MAX_ANSWER_BYTES`. */
+async function boundedText(response: Response): Promise<string | null> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let seen = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    seen += value.byteLength;
+    if (seen > MAX_ANSWER_BYTES) {
+      // The rest is not read: the connection is let go.
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
 }
 
 const HTTP_BASE = "https://generativelanguage.googleapis.com";
@@ -103,6 +131,7 @@ export function geminiLiveVoice(
     sessionSeconds = 900,
     httpBase = HTTP_BASE,
     wsBase = WS_BASE,
+    timeoutMs = 15_000,
   } = options;
   const send = options.fetch ?? fetch;
   return {
@@ -112,8 +141,17 @@ export function geminiLiveVoice(
       if (!apiKey) throw new Error("No Gemini API key is set.");
       const at = (seconds: number): string =>
         new Date(Date.now() + seconds * 1000).toISOString();
+      // One limit for the whole answer: a provider that takes the request
+      // and says nothing, or never finishes its body, does not hold the reader.
+      const signal = AbortSignal.timeout(timeoutMs);
+      const late = (error: unknown): never => {
+        throw signal.aborted
+          ? new Error("The voice provider did not answer in time.")
+          : error;
+      };
       const response = await send(`${httpBase}/v1beta/auth_tokens`, {
         method: "POST",
+        signal,
         headers: {
           "x-goog-api-key": apiKey,
           "content-type": "application/json",
@@ -124,11 +162,15 @@ export function geminiLiveVoice(
           expireTime: at(sessionSeconds),
           bidiGenerateContentSetup: geminiLiveSetup(config, { model, voice }),
         }),
-      });
-      const body = (await response.json().catch(() => ({}))) as {
-        name?: string;
-        error?: { message?: string };
-      };
+      }).catch(late);
+      const text = await boundedText(response).catch(late);
+      let body: { name?: string; error?: { message?: string } } = {};
+      try {
+        const parsed: unknown = JSON.parse(text ?? "");
+        if (typeof parsed === "object" && parsed !== null) body = parsed;
+      } catch {
+        // Not JSON, or too long to read: answered below by its status.
+      }
       if (!response.ok || !body.name) {
         throw new Error(
           `The voice provider answered ${response.status}${body.error?.message ? `: ${body.error.message.slice(0, 300)}` : ""}`,

@@ -25,8 +25,10 @@
  */
 export {
   finishVoiceTool,
+  MAX_VOICE_TOOL_OUTPUT,
   runVoiceTool,
   startVoiceTool,
+  VOICE_TOOL_TIMEOUT_MS,
 } from "./voice/tool-calls.ts";
 export {
   FILL_TOOL,
@@ -35,6 +37,7 @@ export {
   voiceTools,
 } from "./voice/tools.ts";
 export {
+  MAX_VOICE_CALL_IDS,
   MAX_VOICE_PARTS,
   MAX_VOICE_TURN_CHARS,
   MAX_VOICE_VIEWS,

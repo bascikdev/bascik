@@ -16,6 +16,9 @@
     "demo/src/lib/**/*",
     "demo/src/api/**/*",
     "stress/**/*",
-    "e2e/**/*"
+    "e2e/**/*",
+    "voice-lab/**/*",
+    "live/**/*",
+    "playwright*.config.ts"
   ]
 }

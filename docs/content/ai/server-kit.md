@@ -84,6 +84,10 @@ Memory, conversation search, attachments, and running on several servers each ha
 
 A form posted with `voice=1` gets JSON `{ say }`. It contains the message text. The handler adds nothing to the conversation. The call stores its own turns.
 
+Every handler that reads a form, and `stop` and `voiceSession`, refuses a POST that another site's page sent, with 403 and "This request came from another site." The browser says where a request came from: a `Sec-Fetch-Site` header of `cross-site` is refused, and without that header an `Origin` that is not this host (as `Host`, `X-Forwarded-Host`, or the request's URL names it) is refused. A request with neither header is not a browser's, and goes on.
+
+`voiceTurn` takes an optional `turn` field that names the turn, so the same turn sent twice is stored once: see [Voice & Captions](/ai/voice#turn-ids). `voiceSession` also answers 502 when the turn an earlier call left behind cannot be stored.
+
 ### The host's context
 
 Every handler, and `thread`, takes an optional last argument: the host's context, `{ waitUntil?: (promise: Promise<unknown>) => void }`. When a request starts a reply, the kit calls `waitUntil` with the promise that settles once the reply is stored, so a host that ends a request's work when its response is sent (Cloudflare Workers, Netlify Functions) keeps writing the reply after the reader leaves. Cloudflare's `ExecutionContext` is one, and is called as a method, so pass it as it is.

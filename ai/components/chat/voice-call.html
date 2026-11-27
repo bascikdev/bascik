@@ -362,7 +362,8 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       path: string,
       fields: Record<string, string>,
       signal?: AbortSignal,
-    ): Promise<Response> => postForm(app, path, fields, signal);
+      keepalive = false,
+    ): Promise<Response> => postForm(app, path, fields, signal, fetch, keepalive);
 
     /* ---- The thread: what was said and shown, as it happens ---- */
 
@@ -395,6 +396,9 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
           const id = callOf(form);
           const answer = (event.submitter as HTMLButtonElement | null)?.value;
           const decide = id !== undefined && call?.waiting.get(id);
+          // While a call is on, an approval card never loads a page: a second
+          // press, after the first was taken, would end the call.
+          if (call && isApproval(form)) event.preventDefault();
           if (!decide || !answer) return;
           event.preventDefault();
           event.stopPropagation();
@@ -437,7 +441,10 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         ask: (fields) =>
           busy(current, async () => {
             const answer = (await (await post("/api/voice-tool", fields)).json()) as ToolAnswer;
-            if (answer.view) await showView(tool.id);
+            // The tool has run. A view that cannot be drawn does not undo
+            // that, and the model must not be told the tool failed. A view
+            // for a call that has ended has no reply to go in.
+            if (answer.view && current === call) await showView(tool.id).catch(() => {});
             return answer;
           }),
         wait: (id) =>
@@ -469,7 +476,15 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
 
     function play(base64: string): void {
       if (!call) return;
-      const samples = decodePcm16(base64);
+      let samples: Float32Array;
+      try {
+        samples = decodePcm16(base64);
+      } catch {
+        // A piece that is not audio is left out; the next one is played.
+        return;
+      }
+      if (!samples.length) return;
+      wake(call);
       const buffer = call.playback.createBuffer(1, samples.length, 24_000);
       buffer.getChannelData(0).set(samples);
       const source = call.playback.createBufferSource();
@@ -484,6 +499,22 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       call.sources.add(source);
       source.onended = () => call?.sources.delete(source);
     }
+
+    /**
+     * A browser can put sound to sleep: a phone call comes in, the tab rests.
+     * Nothing plays and nothing is heard until it is woken, so a call wakes
+     * its sound whenever it has some to play, and when the page is looked at again.
+     */
+    function wake(current: Call): void {
+      for (const context of [current.playback, current.capture]) {
+        if (context && context.state !== "running" && context.state !== "closed") {
+          void context.resume().catch(() => {});
+        }
+      }
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (call && document.visibilityState === "visible") wake(call);
+    });
 
     /** The reader cut in: stop talking at once. */
     function quiet(): void {
@@ -546,26 +577,73 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       requestAnimationFrame(() => drawMeter(current));
     }
 
+    /** Microphone sound waiting to be sent, in bytes: about five seconds of it. */
+    const MAX_UNSENT = 220_000;
+
+    /** There is no microphone, or no longer: say so, and show no level. */
+    function noMicrophone(current: Call): void {
+      if (current === call) {
+        meter.hidden = true;
+        delete meter.dataset.on;
+      }
+      current.speaking = false;
+      current.level = 0;
+      mark({ base: "No microphone: type to talk.", hearing: false }, current);
+    }
+
     async function listen(current: Call): Promise<void> {
-      const node = await openMicrophone(current, () => current === call);
+      const node = await openMicrophone(
+        current,
+        () => current === call,
+        () => noMicrophone(current),
+      );
       if (!node) return;
       const chunks = pcmChunker();
       meter.dataset.on = "";
       requestAnimationFrame(() => drawMeter(current));
       node.port.onmessage = ({ data }: MessageEvent<Float32Array>) => {
         measure(current, chunks.add(data));
-        if (current.socket.readyState !== WebSocket.OPEN) return;
+        // Taken whether or not it can be sent, so what waits never grows.
         const chunk = chunks.take();
-        if (chunk !== null) current.wire.audio(chunk);
+        if (chunk === null || current.socket.readyState !== WebSocket.OPEN) return;
+        // A connection that cannot keep up gets no more until it has caught
+        // up: sound the model would hear seconds late is worse than a gap.
+        if (current.socket.bufferedAmount > MAX_UNSENT) return;
+        current.wire.audio(chunk);
       };
     }
 
     /* ---- The call ---- */
 
+    /** A name for one turn, so the server stores it once however often it is sent. */
+    const turnId = (): string =>
+      typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+    /**
+     * Send a turn to be stored. It is sent even when the page is being left,
+     * and once more when the first try did not get through: the turn's name
+     * keeps a second arrival from being a second turn.
+     */
+    function storeTurn(fields: Record<string, string>, tries = 2): void {
+      post("/api/voice-turn", fields, undefined, true).then(
+        (response) => {
+          if (response.status >= 500 && tries > 1) retry();
+        },
+        () => {
+          if (tries > 1) retry();
+        },
+      );
+      function retry(): void {
+        setTimeout(() => storeTurn(fields, tries - 1), 1000);
+      }
+    }
+
     /** Store what was said, and start the next turn with a clean slate. */
     function endTurn(): void {
       if (reader.trim() || said.trim() || reply) {
-        void post("/api/voice-turn", { reader, model: said });
+        storeTurn({ reader, model: said, turn: turnId() });
       }
       reader = said = "";
       readerBubble = reply = saidText = null;
@@ -580,12 +658,10 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       toggle.removeAttribute("aria-busy");
       mark({ base: "Connected. Type to talk." }, current);
       listen(current).then(
-        () => mark({ base: "Listening." }, current),
-        () => {
-          // The reader declined: there is no level to show.
-          meter.hidden = true;
-          mark({ base: "No microphone: type to talk." }, current);
-        },
+        // A microphone that went away while it was being opened is not listening.
+        () => current.microphone && mark({ base: "Listening." }, current),
+        // The reader declined, or this browser cannot capture: there is no level to show.
+        () => noMicrophone(current),
       );
     }
 
@@ -620,11 +696,25 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       isCurrent: () => current === call,
     });
 
-    async function onMessage(current: Call, event: MessageEvent): Promise<void> {
-      const text = typeof event.data === "string" ? event.data : await (event.data as Blob).text();
-      const message = JSON.parse(text);
+    const decoder = new TextDecoder();
+
+    /**
+     * One message from the provider. It is read at once, so messages are
+     * acted on in the order they came; one that cannot be read is left out,
+     * and the call goes on.
+     */
+    function onMessage(current: Call, event: MessageEvent): void {
       if (current !== call) return;
-      await current.wire.receive(message);
+      let message: unknown;
+      try {
+        message = JSON.parse(
+          typeof event.data === "string" ? event.data : decoder.decode(event.data as ArrayBuffer),
+        );
+      } catch {
+        return;
+      }
+      if (typeof message !== "object" || message === null) return;
+      current.wire.receive(message).catch(() => {});
     }
 
     function hangUp(why = ""): void {
@@ -643,6 +733,9 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       pressed(false);
       delete document.documentElement.dataset.genuiCall;
     }
+
+    /** How long a call may take to be on, once its connection is asked for. */
+    const CONNECT_WITHIN = 20_000;
 
     /** The call that is being started: its session is asked for, and not yet answered. */
     let starting: AbortController | null = null;
@@ -704,9 +797,18 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         provider.textContent = providerLabel(ticket);
         // Other voices on the page stay quiet while a call is on.
         document.documentElement.dataset.genuiCall = "on";
+        // Binary frames arrive as bytes, which are read without waiting.
+        current.socket.binaryType = "arraybuffer";
         if (current.socket.readyState === WebSocket.OPEN) current.wire.begin();
         else current.socket.onopen = () => current.wire.begin();
-        current.socket.onmessage = (event) => void onMessage(current, event);
+        current.socket.onmessage = (event) => onMessage(current, event);
+        // A provider that takes the connection and then says nothing is not
+        // waited for for ever.
+        setTimeout(() => {
+          if (current === call && toggle.getAttribute("aria-busy") === "true") {
+            hangUp("The voice service did not answer.");
+          }
+        }, CONNECT_WITHIN);
         current.socket.onclose = (event) => {
           // A relay or a provider can say why it hung up.
           if (current === call) hangUp(closeReason(event.reason));

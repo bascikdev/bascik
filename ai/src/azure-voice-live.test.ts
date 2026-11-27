@@ -1,5 +1,5 @@
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
-import { connect, type AddressInfo } from "node:net";
+import { connect, type AddressInfo, type Socket } from "node:net";
 import type { Duplex } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -528,6 +528,262 @@ describe("azureVoiceLiveVoice", () => {
     expect((await ended).reason).toBe(
       "The voice provider is not keeping up with the call.",
     );
+  }, 20_000);
+
+  /**
+   * A browser as bare bytes: it shakes hands with the relay and then does
+   * only what the test says. It holds its side open when the relay ends.
+   */
+  const raws: Socket[] = [];
+  afterEach(() => {
+    for (const socket of raws.splice(0)) socket.destroy();
+  });
+  async function rawBrowser(
+    url: string,
+  ): Promise<{ socket: Socket; answer: Promise<string> }> {
+    const { port, pathname, search } = new URL(url);
+    const socket = connect({
+      port: Number(port),
+      host: "127.0.0.1",
+      allowHalfOpen: true,
+    });
+    raws.push(socket);
+    socket.on("error", () => {});
+    await new Promise<void>((resolve) => socket.once("connect", resolve));
+    const answer = new Promise<string>((resolve) =>
+      socket.once("data", (chunk: Buffer) => resolve(chunk.toString())),
+    );
+    socket.write(
+      `GET ${pathname}${search} HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n`,
+    );
+    return { socket, answer };
+  }
+
+  /** Whether `closing` finishes in time. */
+  const finishes = (closing: Promise<void>): Promise<boolean> =>
+    Promise.race([
+      closing.then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000)),
+    ]);
+
+  it("closes although a browser holds a refused or an ended socket open", async () => {
+    upstream = await startUpstream();
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      relay: { closeGraceMs: 50 },
+    });
+    const { url } = await provider.createSession(config);
+    const refused = await rawBrowser(url.replace(/ticket=.*/, "ticket=nope"));
+    expect(await refused.answer).toContain("401");
+    const held = await rawBrowser(url);
+    expect(await held.answer).toContain("101");
+    await until(() => upstream.connections.length === 1);
+    // Neither browser hangs up, now or when the relay stops.
+    const closing = provider.close();
+    provider = null;
+    expect(await finishes(closing)).toBe(true);
+    // The call's connection to the provider went with it.
+    await until(() => !upstream.connections[0]!.socket.open);
+  });
+
+  it("does not connect to the provider for a browser that left while its ticket was looked up", async () => {
+    upstream = await startUpstream();
+    const inner = inProcessShared();
+    let release = (): void => {};
+    const looking = new Promise<void>((resolve) => (release = resolve));
+    let taking = 0;
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      shared: {
+        ...inner,
+        async take(key) {
+          taking++;
+          await looking;
+          return inner.take(key);
+        },
+      },
+    });
+    const { url } = await provider.createSession(config);
+    const { socket } = await rawBrowser(url);
+    await until(() => taking === 1);
+    socket.resetAndDestroy();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(upstream.connections).toEqual([]);
+  });
+
+  /**
+   * A provider that turns every connection away, and counts them as they
+   * connect: one the relay starts and drops is counted too.
+   */
+  async function startRefusingUpstream(): Promise<{ seen: () => number }> {
+    let seen = 0;
+    const server = createServer();
+    server.on("connection", () => seen++);
+    server.on("upgrade", (_request, socket) => {
+      socket.on("error", () => {});
+      socket.end(
+        "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n",
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    upstream = { base: `ws://127.0.0.1:${port}`, server, connections: [] };
+    return { seen: () => seen };
+  }
+
+  it("does not try the provider again for a browser that hung up meanwhile", async () => {
+    const { seen } = await startRefusingUpstream();
+    provider = azureVoiceLiveVoice({ apiKey: "k", wsBase: upstream.base });
+    const call = browser((await provider.createSession(config)).url);
+    await until(() => seen() > 0);
+    // Within the wait before the second try.
+    call.socket.close();
+    await call.closed;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const before = seen();
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(seen()).toBe(before);
+  });
+
+  it("tells the reader when the provider takes the connection and says nothing", async () => {
+    const server = createServer();
+    const held: Duplex[] = [];
+    server.on("upgrade", (request, socket, head) => {
+      socket.on("error", () => {});
+      held.push(socket);
+      acceptWebSocket(request, socket, head);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    upstream = { base: `ws://127.0.0.1:${port}`, server, connections: [] };
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      provider = azureVoiceLiveVoice({
+        apiKey: "k",
+        wsBase: upstream.base,
+        connectTimeoutMs: 150,
+      });
+      const started = Date.now();
+      const call = browser((await provider.createSession(config)).url);
+      const ended = (await call.closed) as CloseEvent;
+      expect(ended.reason).toBe("The voice provider did not answer in time.");
+      expect(Date.now() - started).toBeGreaterThanOrEqual(140);
+      expect(logged).toHaveBeenCalledWith(
+        "[azure-voice-live] The voice provider did not answer in time.",
+      );
+      // The provider's side is let go too.
+      await until(() => held.every((socket) => socket.destroyed));
+    } finally {
+      logged.mockRestore();
+      for (const socket of held) socket.destroy();
+    }
+  });
+
+  it("keeps the provider's own reason for hanging up in the server's log", async () => {
+    upstream = await startUpstream();
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      provider = azureVoiceLiveVoice({ apiKey: "k", wsBase: upstream.base });
+      const call = browser((await provider.createSession(config)).url);
+      await until(() => call.messages.length > 0);
+      upstream.connections[0]!.socket.close(
+        1011,
+        "Quota exceeded for resource books-prod-eastus",
+      );
+      const ended = (await call.closed) as CloseEvent;
+      expect(ended.reason).toBe("The voice provider hung up.");
+      expect(logged.mock.calls.flat().join("\n")).toContain(
+        "books-prod-eastus",
+      );
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it("closes a call past the most the relay has open, until one ends", async () => {
+    upstream = await startUpstream();
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      relay: { maxCalls: 1 },
+    });
+    const first = browser((await provider.createSession(config)).url);
+    await until(() => first.messages.length > 0);
+    const second = browser((await provider.createSession(config)).url);
+    const ended = (await second.closed) as CloseEvent;
+    expect(ended.code).toBe(1008);
+    expect(ended.reason).toBe("The voice relay is full. Try again later.");
+    expect(upstream.connections).toHaveLength(1);
+
+    first.socket.close();
+    await first.closed;
+    await until(() => !upstream.connections[0]!.socket.open);
+    const third = browser((await provider.createSession(config)).url);
+    await until(() => third.messages.length > 0);
+  });
+
+  it("closes a call past the most one owner has open, and takes another owner's", async () => {
+    upstream = await startUpstream();
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      relay: { maxCallsPerOwner: 1 },
+    });
+    const mine = { ...config, owner: "reader-1" };
+    const first = browser((await provider.createSession(mine)).url);
+    await until(() => first.messages.length > 0);
+    const second = browser((await provider.createSession(mine)).url);
+    const ended = (await second.closed) as CloseEvent;
+    expect(ended.code).toBe(1008);
+    expect(ended.reason).toBe("Too many voice calls are open.");
+    const theirs = browser(
+      (await provider.createSession({ ...config, owner: "reader-2" })).url,
+    );
+    await until(() => theirs.messages.length > 0);
+    expect(upstream.connections).toHaveLength(2);
+
+    // The owner's count goes down when their call ends.
+    first.socket.close();
+    await first.closed;
+    await until(() => !upstream.connections[0]!.socket.open);
+    const again = browser((await provider.createSession(mine)).url);
+    await until(() => again.messages.length > 0);
+  });
+
+  it("ends a call whose browser stops reading what the provider sends", async () => {
+    upstream = await startUpstream();
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      relay: { maxUnsentBytes: 500_000 },
+    });
+    const { socket, answer } = await rawBrowser(
+      (await provider.createSession(config)).url,
+    );
+    await answer;
+    socket.pause();
+    await until(() => upstream.connections[0]?.received.length === 1);
+    const from = upstream.connections[0]!.socket;
+    const delta = JSON.stringify({
+      type: "response.audio.delta",
+      delta: "A".repeat(64_000),
+    });
+    // Up to about 190 MB, read by no one.
+    for (let count = 0; count < 3000 && from.open; count++) {
+      from.send(delta);
+      if (count % 10 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
+    }
+    await until(() => !from.open);
   }, 20_000);
 
   it("says what is missing before it gives a ticket", async () => {

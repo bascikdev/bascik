@@ -6,6 +6,9 @@
  */
 import { createServer } from "node:http";
 import { acceptWebSocket, refuseUpgrade } from "../src/ws.ts";
+import { playCassette } from "../voice-lab/cassette.ts";
+import { createLab, labCommand, labVoicePieces } from "./fake-lab.ts";
+import type { LabCommand } from "./fake-lab.ts";
 
 const PORT = Number(process.argv[2] ?? 4481);
 /** How long the reader "speaks", and how long the model then thinks, in milliseconds. */
@@ -21,7 +24,18 @@ const BOOKS = [
   `<ask-button say="Hold a copy of Shipping Small Changes">Hold the short one</ask-button>`,
 ].join("\n");
 
-const server = createServer((_request, response) => {
+/**
+ * A tool call's id. A provider never gives the same one twice, and the
+ * server refuses one it has seen, so each is numbered.
+ */
+let calls = 0;
+const callId = (name: string): string => `call_${name}_${++calls}`;
+
+/** What the voice lab specs read and steer (see fake-lab.ts). */
+const lab = createLab();
+
+const server = createServer(async (request, response) => {
+  if (await lab.http(request, response)) return;
   response.statusCode = 404;
   response.end();
 });
@@ -40,6 +54,12 @@ server.on("upgrade", (request, socket) => {
   }
   const client = acceptWebSocket(request, socket);
   if (!client) return;
+  // A test gave a recorded session: it is played, and the script is not.
+  const tape = lab.cassette();
+  if (tape) {
+    void playCassette(tape, client, { longestGap: 1500 });
+    return;
+  }
   const send = (message: unknown): void => client.send(JSON.stringify(message));
 
   let ready = false;
@@ -115,12 +135,73 @@ server.on("upgrade", (request, socket) => {
     }, 1500);
   };
 
+  const session = lab.session();
+  /** Stops the lab voice that is being sent, when one is. */
+  let stopSpeaking: (() => number) | null = null;
+  let speakingId = "";
+  let lateOnCut = false;
+
+  /** What a typed "lab:" message asks for (see fake-lab.ts). */
+  const runLab = (command: LabCommand): void => {
+    if (command.kind === "close") {
+      client.close(command.code, command.reason);
+      return;
+    }
+    if (command.kind === "garbage") {
+      client.send("{ this is not JSON");
+      send({ type: "response.audio.delta", delta: "@@not base64@@" });
+      send({ type: "error", error: { message: "A provider error." } });
+    }
+    const speaking =
+      command.kind === "speak"
+        ? command
+        : { seconds: 3, late: false, slow: false };
+    lateOnCut = speaking.late;
+    const response_id = `resp_${++responses}`;
+    speakingId = response_id;
+    send({ type: "response.created", response: { id: response_id } });
+    send({
+      type: "response.audio_transcript.delta",
+      response_id,
+      delta: "The lab voice speaks.",
+    });
+    let sent = 0;
+    stopSpeaking = session.speak(
+      speaking,
+      (delta) => {
+        send({ type: "response.audio.delta", response_id, delta });
+        // A connection that is cut: no close frame, no reason, mid-sentence.
+        if (command.kind === "drop" && ++sent === 5) {
+          stopSpeaking?.();
+          stopSpeaking = null;
+          socket.destroy();
+        }
+      },
+      () => {
+        // The voice is sent well before it has been played: the reply is
+        // done, and a reader who speaks while it plays still cuts in.
+        send({
+          type: "response.done",
+          response: { id: response_id, status: "completed" },
+        });
+        setTimeout(() => {
+          stopSpeaking = null;
+        }, speaking.seconds * 1000).unref();
+      },
+    );
+  };
+
   /** One scripted turn, by what was asked. */
   const answer = (asked: string): void => {
+    const command = labCommand(asked);
+    if (command) {
+      runLab(command);
+      return;
+    }
     if (/press/i.test(asked)) {
       // The reader said their answer: the form on screen is sent for them.
       respond("", {
-        id: "call_fill",
+        id: callId("fill"),
         name: "fill_form",
         args: { press: "hold the short one" },
       });
@@ -133,11 +214,11 @@ server.on("upgrade", (request, socket) => {
       respond(
         "",
         {
-          id: "call_hold",
+          id: callId("hold"),
           name: "place_hold",
           args: { title: "The Quiet Network" },
         },
-        { id: "call_fill", name: "fill_form", args: { press: "Allow" } },
+        { id: callId("fill"), name: "fill_form", args: { press: "Allow" } },
       );
       afterTool = () => {
         const [blocked, result] = toolResults;
@@ -147,7 +228,7 @@ server.on("upgrade", (request, socket) => {
     }
     if (/hold/i.test(asked)) {
       respond("I can hold that for you.", {
-        id: "call_hold",
+        id: callId("hold"),
         name: "place_hold",
         args: { title: "The Quiet Network" },
       });
@@ -155,7 +236,7 @@ server.on("upgrade", (request, socket) => {
       return;
     }
     respond("Here are two books from the shelf.", {
-      id: "call_show",
+      id: callId("show"),
       name: "show",
       args: { markup: BOOKS },
     });
@@ -209,9 +290,47 @@ server.on("upgrade", (request, socket) => {
       return;
     }
     if (message.type === "input_audio_buffer.append") {
+      if (!message.audio) return;
+      const pcm = Buffer.from(message.audio, "base64");
+      const loud = session.hear(pcm);
+      if (loud && stopSpeaking) {
+        // The reader cut in: the provider says so, and cancels its reply.
+        session.note("cut");
+        const left = stopSpeaking();
+        stopSpeaking = null;
+        send({ type: "input_audio_buffer.speech_started" });
+        if (lateOnCut) {
+          // Pieces that were already on their way still arrive.
+          for (const delta of labVoicePieces(0.5)) {
+            send({
+              type: "response.audio.delta",
+              response_id: speakingId,
+              delta,
+            });
+          }
+          send({
+            type: "response.audio_transcript.delta",
+            response_id: speakingId,
+            delta: " Stale words.",
+          });
+        }
+        // A reply that had not finished is canceled; one that had is not sent twice.
+        if (left > 0) {
+          send({
+            type: "response.done",
+            response: { id: speakingId, status: "cancelled" },
+          });
+        }
+        // The reader's few words are over a moment later.
+        setTimeout(
+          () => send({ type: "input_audio_buffer.speech_stopped" }),
+          800,
+        ).unref();
+        return;
+      }
       // The first sound from the microphone is "heard" as one sentence.
-      if (heardAudio || !message.audio) return;
-      if (Buffer.from(message.audio, "base64").length < 1000) return;
+      if (!lab.canned() || heardAudio) return;
+      if (pcm.length < 1000) return;
       heardAudio = true;
       send({ type: "input_audio_buffer.speech_started" });
       for (const delta of ["Recommend ", "a book"]) {

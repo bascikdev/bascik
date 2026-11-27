@@ -363,6 +363,9 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
 
     function listen(): void {
       if (!Recognition || recognizer || !settings.talk) return;
+      // A voice call hears the reader itself: two listeners would send
+      // everything said to the model twice.
+      if (document.documentElement.dataset.genuiCall) return;
       const input = document.querySelector<HTMLTextAreaElement>(
         '[data-testid="chat-composer-input"]',
       );
@@ -453,6 +456,12 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
       if (calling) {
         aids.hidden = true;
         summary.setAttribute("aria-expanded", "false");
+        // Neither listening nor speaking goes on under the call.
+        recognizer?.abort();
+        hush();
+      } else {
+        // The call is over: a reader who had dictation on has it again.
+        listen();
       }
     }).observe(document.documentElement, {
       attributes: true,

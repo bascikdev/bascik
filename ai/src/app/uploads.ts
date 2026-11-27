@@ -7,7 +7,7 @@ import { checkUploads, refusedPage, resolveLimits } from "../files.ts";
 import type { FilePart } from "../model.ts";
 import type { ChatBase, ChatUploads } from "./context.ts";
 import { badRequest } from "./errors.ts";
-import { readForm } from "./forms.ts";
+import { crossSite, readForm } from "./forms.ts";
 import { MULTIPART_ROOM, NO_STORE } from "./limits.ts";
 import type { Session } from "./sessions.ts";
 
@@ -25,6 +25,9 @@ export function chatUploads(base: ChatBase): ChatUploads {
     request: Request,
     notAForm: string,
   ): Promise<FormData | Response> => {
+    // Every form changes something: another site's page may not send one.
+    const refused = crossSite(request);
+    if (refused) return refused;
     const form = await readForm(request, maxBodyBytes);
     if (form === "not a form") return badRequest(notAForm);
     if (form === "too large") {

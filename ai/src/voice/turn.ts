@@ -29,6 +29,12 @@ export const MAX_VOICE_TURN_CHARS = 512_000;
 /** The most shown views kept for one conversation's voice calls; the oldest go first. */
 export const MAX_VOICE_VIEWS = 64;
 
+/**
+ * The most call ids remembered from turns already stored, newest last, so a
+ * call sent again after its turn was stored is refused, not run again.
+ */
+export const MAX_VOICE_CALL_IDS = 256;
+
 /** Whether `turn` has room for one more part. */
 export const roomFor = (turn: VoiceTurn, part: MessagePart): boolean =>
   turn.parts.length < MAX_VOICE_PARTS &&
@@ -83,7 +89,8 @@ export function noteVoiceView(turn: VoiceTurn, call: string): string[] {
 /**
  * End a voice turn: the messages to store for it. What the reader said, then
  * one assistant message with what the model said, called, and showed. A call
- * the reader never answered is stored as refused.
+ * the reader never answered is stored as refused. The turn's call ids are
+ * kept (the last `MAX_VOICE_CALL_IDS`): an id is used once in a call.
  */
 export function voiceMessages(
   turn: VoiceTurn,
@@ -112,7 +119,8 @@ export function voiceMessages(
     messages.push({ role: "assistant", content: spoken, parts });
   }
   turn.parts = [];
-  turn.calls = [];
+  // The ids stay, so a call that is sent again is known. Only the oldest go.
+  turn.calls = (turn.calls ?? []).slice(-MAX_VOICE_CALL_IDS);
   turn.round = (turn.round ?? 0) + 1;
   return messages;
 }
