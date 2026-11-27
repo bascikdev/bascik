@@ -116,7 +116,7 @@ bascik init --no-skills  # skip the agent skills
 
 - creates `src/pages/index.html` and `src/components/`
 - adds `node_modules/`, `dist/`, `node_modules/.cache/bascik/`, and the generated TLS files `bascik-privkey.pem` and `bascik-cert.pem` to `.gitignore`, keeping the file's line endings
-- adds `"type": "module"`, the `dev` and `build` scripts, and the `@bascik/bascik` dependency to `package.json`; the dependency is a caret range on the running version (such as `^1.0.2`) and is skipped when `dependencies` or `devDependencies` already lists it
+- adds `"type": "module"`, the `dev` and `build` scripts, and the `@bascik/bascik` dependency to `package.json`; the dependency is a caret range on the running version (such as `^1.1.0`) and is skipped when `dependencies` or `devDependencies` already lists it
 - sets up VS Code and writes the `AGENTS.md` and `CLAUDE.md` [project brief](/agent-skills#project-brief)
 - asks whether to install the [agent skills](/agent-skills#new-projects) at the installed Bascik version
 
