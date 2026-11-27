@@ -105,7 +105,7 @@
     "components/",
     "!components/**/*.test.ts",
     "LICENSE",
-    "README.md",
+    "/README.md",
     "!demo/**"
   ],
   "bascik": {
