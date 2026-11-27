@@ -873,7 +873,8 @@ describe("listComponents – companion scripts", () => {
       )
       .mockResolvedValueOnce(
         Buffer.from(
-          "import { message } from './helper.ts';\nconsole.log(message);\n",
+          // A URL import: relative and @/ imports are bundled away first.
+          "import { message } from 'https://example.com/helper.js';\nconsole.log(message);\n",
         ),
       );
 

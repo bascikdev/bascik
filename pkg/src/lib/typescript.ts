@@ -849,7 +849,8 @@ export const browserScriptSyntaxError = async (
  * a module is inlined into a page: a relative (`./`, `../`) or `@/`
  * specifier, which would resolve against the page's URL instead of the
  * source file, and any TypeScript file, which Bascik never publishes. A
- * `/`-rooted path and a full URL to JavaScript are left alone.
+ * `/`-rooted path and a full URL to JavaScript are left alone. Run on a
+ * module after `bundleBrowserImports`, only a TypeScript URL can be left.
  */
 export const unbundledModuleImports = (code: string): string[] =>
   findModuleSpecifiers(code)
@@ -876,9 +877,9 @@ export const unbundledImportError = (
   new TypeScriptTransformError(
     `[bascik] error: "${sourcePath}" (inlined from <script type="module" src="${src}"> at ${where}) ` +
       `imports ${specifiers.map((s) => `"${s}"`).join(", ")}. Bascik inlines the compiled module into the page ` +
-      `and does not bundle its imports, so the browser would request ${specifiers.length === 1 ? "that file" : "those files"} ` +
-      `from the page's URL and fail. Bundle the module with esbuild (a scripts.typescript function, or a ` +
-      `pipeline.exec step that writes a .js file), or import a published JavaScript URL such as "/js/util.js".`,
+      `and bundles only its relative and @/ imports, so the browser would request ${specifiers.length === 1 ? "that file" : "those files"} ` +
+      `and could not run TypeScript. Import the file by a relative or @/ path so Bascik bundles it, ` +
+      `or import a published JavaScript URL such as "/js/util.js".`,
   );
 
 /** Resolve `scripts.typescript`, defaulting to the built-in strip. */
@@ -1110,7 +1111,14 @@ const throwModuleSyntaxError = (sourcePath: string): never => {
 export const transformTypeScriptScriptTags = async (
   html: string,
   sourceFile: string,
-  options: { diagnose?: boolean } = {},
+  options: {
+    diagnose?: boolean;
+    /**
+     * Runs on each marked block's compiled JavaScript before the module
+     * syntax check, to bundle the block's local imports.
+     */
+    afterCompile?: (code: string) => Promise<string>;
+  } = {},
 ): Promise<string> => {
   if (!/<script\b/i.test(html)) return html;
   const diagnose = options.diagnose ?? true;
@@ -1202,14 +1210,16 @@ export const transformTypeScriptScriptTags = async (
   }
   if (!ops.length) return html;
 
+  const afterCompile = options.afterCompile;
   const compiled = await Promise.all(
-    ops.map(({ body }) =>
-      transformBrowserTypeScript(body, {
+    ops.map(async ({ body }) => {
+      const code = await transformBrowserTypeScript(body, {
         sourcePath: sourceFile,
         kind: "inline",
         runtime: "browser",
-      }),
-    ),
+      });
+      return afterCompile ? afterCompile(code) : code;
+    }),
   );
   // A `type="text/typescript"` block always comes out as a classic script
   // (the `type` attribute is removed below), so static `import`/`export`

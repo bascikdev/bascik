@@ -9,6 +9,16 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
+## [Unreleased]
+
+### Added
+
+- A TypeScript browser script (a component's `.ts` companion, an inline `<script type="text/typescript">`, or a page's own `.ts` script) can now import `.ts` and `.js` files by a relative or `@/` path, as in `import { parseEvent } from "./parse-event.ts"`. Bascik bundles them into the script at build time, so a large component's logic can live in small files that unit tests import directly. Install esbuild in the project (`npm install --save-dev esbuild`) to use it; a script without local imports is emitted as before. See [Importing TypeScript Modules](https://bascik.dev/scoped-javascript#importing-typescript-modules).
+
+### Fixed
+
+- `bascik add <package>/<component>` also copies the files in the folder named after that component, beside it, such as `chat/voice-call/*.ts` next to `chat/voice-call.html`, and the other files in a component's own folder, such as `book-rating/format-rating.ts` beside `book-rating/book-rating.html`. Before, only the files named after the component were copied, so one that imports modules from those folders failed to build. Test files in the folder are left out. See [Sharing Components](https://bascik.dev/how-to/sharing-components).
+
 ## [1.0.2] - 2026-11-25
 
 ### Changed

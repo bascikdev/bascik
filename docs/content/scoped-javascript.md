@@ -101,9 +101,9 @@ count.addEventListener("click", () => {
 
 **A page's own `.ts` script.** A page's `<script src="app.ts">` (or `.mts`) is compiled the same way and inlined in place of the reference, its other attributes kept, since Bascik never publishes `.ts` files. An inline classic script ignores `defer` and `async`, so a classic tag with either fails the build naming the tag's line: remove the attribute and put the tag at the end of `<body>`, or mark it `type="module"`, which is deferred inline too. A `src` that is a URL, or a project with `scripts.typescript: false`, is left as written. In dev, editing the `.ts` file rebuilds and reloads the page.
 
-**Imports in a `.ts` module.** Bascik inlines a `type="module"` `.ts` script (a page's own or a component's companion) without bundling it, so the browser would resolve its imports against the page's URL. An import of a relative, `@/`, or `.ts` path therefore fails the build, naming the tag and the import. Bundle the module with esbuild (a `scripts.typescript` function, or a `pipeline.exec` step that writes a `.js` file), or import a published JavaScript URL such as `/js/util.js`.
+**Imports in a TypeScript script.** A TypeScript browser script (a `.ts` companion, a `text/typescript` block, or a page's own `.ts` script) can import modules by a relative or `@/` path, and Bascik bundles them into the script. See [Importing TypeScript Modules](#importing-typescript-modules).
 
-**Imports in a JavaScript component script.** The same holds for a plain `.js`/`.mjs` companion or inline `<script>` in a component: Bascik does not bundle or publish what it imports. A relative `import` or dynamic `import("./extra.js")` resolves against the page URL, so the browser's request fails at runtime. The build prints a warning naming the file, line, and specifier. Put the imported file in `public/` and import its published URL (`import("/js/extra.js")`), or bundle the script first.
+**Imports in a JavaScript component script.** A plain `.js`/`.mjs` companion or inline `<script>` in a component is inlined without bundling. A relative `import` or dynamic `import("./extra.js")` in it resolves against the page URL, so the browser's request fails at runtime. The build prints a warning naming the file, line, and specifier. Write the script in TypeScript so Bascik bundles its imports, or put the imported file in `public/` and import its published URL (`import("/js/extra.js")`).
 
 **Inline blocks marked as TypeScript.** For a short inline script, opt in with the `text/typescript` MIME type. Bascik strips the types and emits an ordinary `<script>`; the `type` attribute is removed in the output:
 
@@ -117,11 +117,11 @@ count.addEventListener("click", () => {
 
 **Ordinary `<script>` blocks are JavaScript.** Browsers do not execute TypeScript in an unmarked `<script>`, so Bascik leaves those blocks byte-for-byte on the JavaScript path and never changes their meaning. The same holds for `<script type="module">` and the other JavaScript types. When it can positively identify erasable TypeScript syntax in one, the build logs a warning that names the file and points to the two supported paths above; for a module script, that is a companion `.ts` referenced with `<script type="module" src="name.ts">`, since a `text/typescript` block is always a classic script. Valid JavaScript is never rewritten or warned about.
 
-The pipeline order is fixed: TypeScript strip, then scoping (IIFE wrapping, selector rewriting, `//# sourceURL`), then optional `minify.js`. The minifier only ever receives valid JavaScript, so `minify.js: true` and custom minifiers such as esbuild or terser work unchanged on TypeScript-authored components. The strip preserves line structure, so DevTools line numbers still match the `.ts` source.
+The pipeline order is fixed: TypeScript strip, then scoping (IIFE wrapping, selector rewriting, `//# sourceURL`), then optional `minify.js`. The minifier only ever receives valid JavaScript, so `minify.js: true` and custom minifiers such as esbuild or terser work unchanged on TypeScript-authored components. The strip preserves line structure, so DevTools line numbers still match the `.ts` source, except in a script that [imports modules](#importing-typescript-modules), whose bundled code comes first.
 
 > **Erasable syntax only by default.** The default compiler is Node's strip-only TypeScript mode (Node 24.21+), which removes annotations, interfaces, type aliases, `as` casts, `!` non-null assertions, and `import type`. Non-erasable syntax (`enum`, parameter properties, namespaces with runtime code) fails the build with the offending file path. Use the erasable equivalents (`as const` objects instead of `enum`), or plug in your own compiler.
 
-**Module-shaped `.ts` needs `type="module"`.** Stripping types never removes `import`/`export` declarations, they are valid JavaScript on their own. A classic `<script src="counter.ts">` (no `type` attribute) is scoped and IIFE-wrapped, and `import`/`export` are illegal inside a classic script, so the build fails fast with an actionable error naming the file. An `.mts` companion follows the same rule: the `.m` tells Node.js and TypeScript the file is a module, but the browser only reads the `<script>` tag. Fix it one of two ways: add `type="module"` to the referencing `<script>` tag (native ES modules are never IIFE-wrapped, so module syntax is left alone), or bundle the file first with esbuild, Rolldown, swc, or another tool so no `import`/`export` remains. This applies to inline `type="text/typescript"` blocks the same way, since those are always classic scripts.
+**Module-shaped `.ts` needs `type="module"`.** Stripping types never removes `import`/`export` declarations, they are valid JavaScript on their own. A classic `<script src="counter.ts">` (no `type` attribute) is scoped and IIFE-wrapped, and `import`/`export` are illegal inside a classic script, so the build fails fast with an actionable error naming the file. Relative and `@/` imports are bundled first and never count (see [Importing TypeScript Modules](#importing-typescript-modules)); the error is for an `export`, or an import of a URL or package. An `.mts` companion follows the same rule: the `.m` tells Node.js and TypeScript the file is a module, but the browser only reads the `<script>` tag. Fix it one of two ways: add `type="module"` to the referencing `<script>` tag (native ES modules are never IIFE-wrapped, so module syntax is left alone), or bundle the file first with esbuild, Rolldown, swc, or another tool so no `import`/`export` remains. This applies to inline `type="text/typescript"` blocks the same way, since those are always classic scripts.
 
 > **Need to bundle client dependencies?** Bascik intentionally leaves third-party client module bundling to dedicated tools. See the how-to guide on [Bundling npm Packages](/how-to/bundling-npm-packages) for setting up esbuild or Rolldown with `pipeline.exec`.
 
@@ -182,6 +182,54 @@ The Output is the page's `<body>` as `bascik --build` writes it: the reference i
   //# sourceURL=src/pages/counter.ts
 </script>
 ```
+
+## Importing TypeScript Modules
+
+A TypeScript browser script can import other modules by a relative path (`./`, `../`) or through the `@/` alias ([`scripts.importRoot`](/configuration#scriptsimportroot)). Bascik bundles those files into the script at build time, so a large component can keep its pure logic (parsing, formatting, state rules) in small `.ts` files that unit tests import directly. This works in a component's `.ts` companion, an inline `<script type="text/typescript">`, and a page's own `<script src="app.ts">`, classic or `type="module"`, in dev and in `--build` and `--server`.
+
+```html
+<!-- src/components/book-rating/book-rating.html -->
+<output id="rating">pending</output>
+<script type="text/typescript">
+  import { formatRating } from "./format-rating.ts";
+  const rating = document.getElementById("rating") as HTMLOutputElement;
+  rating.textContent = formatRating("Kindred", 4);
+</script>
+```
+
+```ts
+// src/components/book-rating/format-rating.ts
+export const formatRating = (title: string, stars: number): string =>
+  `${title}: ${Math.min(5, Math.max(0, stars))}/5`;
+```
+
+```ts
+// src/components/book-rating/format-rating.test.ts
+import { expect, test } from "vitest";
+import { formatRating } from "./format-rating.ts";
+
+test("caps the rating at 5", () => {
+  expect(formatRating("Kindred", 9)).toBe("Kindred: 5/5");
+});
+```
+
+Bascik bundles the imports with [esbuild](https://esbuild.github.io/), which it loads only when a script imports a local file. Install it in the project once:
+
+```sh
+npm install --save-dev esbuild
+```
+
+Without it, the build fails naming the script and its imports.
+
+- **What is bundled.** `.ts`, `.mts`, `.js` and `.mjs` files reached by a relative or `@/` import, and the files they import in turn. Each `.ts` file goes through the same [`scripts.typescript`](/configuration#scriptstypescript) compiler as the script, so the erasable-only rule (or your own compiler) applies to it too. A missing file, or a local import of another kind of file (`.json`, `.css`), fails the build naming the file and line.
+- **What stays as written.** A full URL, a `/`-rooted path such as `/js/util.js`, and a package name are the browser's to load. A `type="module"` script may keep them; a classic script cannot, and fails the build as above.
+- **Scoping.** The bundled code becomes part of the script, so it is scoped like the script's own code: id and class strings it passes to DOM methods are rewritten for each instance. Keep DOM lookups in the component's script and pass elements to the helpers.
+- **Scope of names.** A component script is wrapped in a function as usual. A page's own classic script that imports modules is wrapped in one too, so neither its names nor the helpers' become page globals.
+- **Nothing new is published.** The imported files are not copied to the output, the browser makes no extra request, and the [CSP hashes](/scripts/security#csp-and-request-time-components) cover the bundled script as they cover any inline script. A script with no local import is emitted exactly as before.
+- **Dev reload.** Editing an imported file rebuilds and reloads every page whose scripts bundle it. A file outside the components and pages folders (an `@/` helper in `src/lib/`, say) also needs to be in [`pipeline.watchPaths`](/watch-paths).
+- **Lines.** The bundled modules come before the script's own code, so DevTools line numbers in such a script count from the bundle, not the `.ts` source.
+
+A component package can ship its helper modules: [`bascik add`](/cli#adding-components-with-bascik-add) copies every `.ts` file in the component's folder.
 
 ## Multiple Script Blocks
 
