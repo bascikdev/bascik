@@ -322,6 +322,27 @@ test("the docs app answers from the real docs and stays on its own page", async 
   expect(await links.count()).toBeGreaterThan(2);
 });
 
+test("a reply is one stack: the page spaces its parts, not each component", async ({
+  page,
+}) => {
+  await page.goto("/docs");
+  await page.getByTestId("chat-sidebar-new").click();
+  await send(page, "How do I stream rows from a slow source?");
+  const turn = page.getByTestId("turn-live");
+  const links = turn.getByTestId("doc-link");
+  // A component has no outer margin of its own.
+  await expect(links.first()).toHaveCSS("margin-bottom", "0px");
+  // Links to the pages an answer came from sit close, as one group.
+  const first = (await links.nth(0).boundingBox())!;
+  const second = (await links.nth(1).boundingBox())!;
+  expect(second.y - (first.y + first.height)).toBeCloseTo(4, 0);
+  // Prose keeps a measure narrower than the thread.
+  const thread = (await page.getByTestId("chat-thread").boundingBox())!;
+  const reply = (await turn.boundingBox())!;
+  expect(reply.width).toBeLessThanOrEqual(42 * 16);
+  expect(reply.width).toBeLessThanOrEqual(thread.width);
+});
+
 test("the data app runs SQL and renders a chart and a table", async ({
   page,
 }) => {
@@ -422,8 +443,9 @@ test("a review is validated item by item and every answer is recorded", async ({
   await live.getByTestId("fact-check-note").fill("The emailed receipt counts.");
   await live.getByTestId("fact-check-confirm").click();
   await settled(page);
-  await expect(page.getByTestId("turn-user").last()).toContainText(
-    "Decision on returns-window (fact): confirmed",
+  // The thread shows what was pressed and the note, not the record sent.
+  await expect(page.getByTestId("turn-user").last()).toHaveText(
+    "Correct\nThe emailed receipt counts.",
   );
 
   // An open rule: pick a branch.
@@ -470,8 +492,8 @@ test("a review is validated item by item and every answer is recorded", async ({
     await deck.getByTestId("fact-swipe-done").click();
   }
   await settled(page);
-  await expect(page.getByTestId("turn-user").last()).toContainText(
-    "Decision on quick-facts (facts): reviewed",
+  await expect(page.getByTestId("turn-user").last()).toHaveText(
+    "2 right, 1 wrong",
   );
   await expect(live).toContainText("I will not quote sale-items");
 
@@ -1819,6 +1841,36 @@ test.describe("memory", () => {
     await page.getByTestId("chat-sidebar-memory").click();
     await expect(page.getByTestId("memory-list")).toBeVisible();
   }
+
+  test("the memory page names its app and has a way back to it", async ({
+    page,
+  }) => {
+    await openMemory(page);
+    await expect(page.getByTestId("memory-scope")).toHaveText(
+      "Memory for Bookshop",
+    );
+    // The app the memory belongs to stays marked in the sidebar.
+    await expect(page.getByTestId("chat-sidebar-app").first()).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    await expect(page.getByTestId("chat-sidebar-memory")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    const back = page.getByTestId("memory-back");
+    await expect(back).toHaveText("Back to Bookshop");
+    await back.click();
+    await expect(page).toHaveURL(/\/$/);
+
+    await page.goto("/docs");
+    await openMemory(page);
+    await expect(page.getByTestId("memory-back")).toHaveText(
+      "Back to Ask the docs",
+    );
+    await page.getByTestId("memory-back").click();
+    await expect(page).toHaveURL(/\/docs$/);
+  });
 
   test("a reply shows what was remembered, and a new conversation uses it", async ({
     page,

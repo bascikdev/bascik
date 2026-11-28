@@ -1,5 +1,5 @@
 <!-- @bascik
-A spoken conversation with a speech-to-speech model: the reader talks, the model answers aloud, and what it shows arrives in the thread as components. Captions follow the voice a few words at a time, with the current word in bold. It speaks two providers' protocols, named by the ticket: gemini-live and azure-voice-live. Optional and all script. It needs three routes of yours: /api/voice-session for a ticket, /api/voice-tool to run the model's tool calls, and /api/voice-turn to store what was said, and a /voice-view page that renders what a call shows. The app prop is sent to them. Put it inside the composer (`<chat-composer><voice-call /></chat-composer>`): its button joins the composer's row, and its caption and status are a line above the message box. It also works on its own, next to the composer.
+A spoken conversation with a speech-to-speech model: the reader talks, the model answers aloud, and what it shows arrives in the thread as components. Captions follow the voice a few words at a time, with the current word in bold, and the same word is marked in the answer in the thread. The reader can mute the microphone and stay in the call. A call nobody speaks on asks whether anyone is there, and then ends: `idle-seconds` (default 120, 0 for never) and `idle-warning-seconds` (default 30) set how long each takes. It speaks two providers' protocols, named by the ticket: gemini-live and azure-voice-live. Optional and all script. It needs three routes of yours: /api/voice-session for a ticket, /api/voice-tool to run the model's tool calls, and /api/voice-turn to store what was said, and a /voice-view page that renders what a call shows. The app prop is sent to them. Put it inside the composer (`<chat-composer><voice-call /></chat-composer>`): its button joins the composer's row, and its caption and status are a line above the message box. It also works on its own, next to the composer.
 -->
 <style>
   /* The component has no box of its own: its parts are laid out by whatever
@@ -68,8 +68,8 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
   }
   /* A view on its way: a block where it will go. */
   .skeleton {
-    min-block-size: 6rem;
-    margin-block: 0.5rem;
+    min-block-size: 3rem;
+    margin: 0;
     border-radius: var(--radius);
     background: var(--bg);
     animation: pulse-block 1.4s ease-in-out infinite;
@@ -121,6 +121,80 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     padding-inline: 0.8rem;
     background: var(--accent);
     color: var(--on-accent);
+  }
+  /* The word being said, marked in the answer in the thread. A highlight
+     takes only color and decoration; the page can restyle it by this name. */
+  ::highlight(voice-call-word) {
+    background-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  }
+  @media (forced-colors: active) {
+    ::highlight(voice-call-word) {
+      background-color: Highlight;
+      color: HighlightText;
+    }
+  }
+  /* The microphone, off and on again, while the call goes on. */
+  .mute {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 2.75rem;
+    block-size: 2.75rem;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .mute[hidden],
+  .stay[hidden] {
+    display: none;
+  }
+  .mute:hover {
+    background: var(--bg);
+    color: var(--text);
+  }
+  .mute:focus-visible,
+  .stay:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* Muted is said by the icon's stroke through it, not by color alone. */
+  .mute .slash {
+    display: none;
+  }
+  .mute[aria-pressed="true"] {
+    background: var(--bg);
+    color: var(--text);
+  }
+  .mute[aria-pressed="true"] .slash {
+    display: inline;
+  }
+  .mute-label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .meter[data-muted] {
+    opacity: 0.35;
+  }
+  /* The answer to "Still there?". */
+  .stay {
+    min-block-size: 2.75rem;
+    padding: 0 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .stay:hover {
+    background: var(--bg);
   }
   .icon {
     inline-size: 1.15rem;
@@ -194,7 +268,14 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     }
   }
 </style>
-<div id="call" class="call" hidden data-testid="voice-call">
+<div
+  id="call"
+  class="call"
+  hidden
+  data-testid="voice-call"
+  data-bascik-attr-data-idle-seconds="idle-seconds"
+  data-bascik-attr-data-idle-warning-seconds="idle-warning-seconds"
+>
   <div class="strip">
     <p id="provider" class="provider" data-testid="voice-call-provider"></p>
     <p
@@ -225,6 +306,15 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       aria-hidden="true"
       data-testid="voice-call-caption"
     ></p>
+    <button
+      id="stay"
+      class="stay"
+      type="button"
+      hidden
+      data-testid="voice-call-stay"
+    >
+      Stay on the call
+    </button>
   </div>
   <button
     id="toggle"
@@ -254,9 +344,42 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     ></span>
     <span id="label" class="label">Voice call</span>
   </button>
+  <button
+    id="mute"
+    class="mute"
+    type="button"
+    hidden
+    aria-pressed="false"
+    title="Mute microphone"
+    data-testid="voice-call-mute"
+  >
+    <svg
+      class="icon"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      aria-hidden="true"
+    >
+      <rect x="5.5" y="1.5" width="5" height="8" rx="2.5" />
+      <path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2" />
+      <path class="slash" d="M2 2l12 12" />
+    </svg>
+    <span class="mute-label">Mute microphone</span>
+  </button>
   <input id="app" type="hidden" data-bascik-attr-value="app" />
   <script type="text/typescript">
-    import { barTransform, decodePcm16, isPlaying, measureSpeech, pcmChunker } from "./voice-call/audio.ts";
+    import {
+      barTransform,
+      CHUNK,
+      decodePcm16,
+      isPlaying,
+      measureSpeech,
+      MUTE_TAIL,
+      pcmChunker,
+      silentChunk,
+    } from "./voice-call/audio.ts";
     import { azureVoiceLive } from "./voice-call/azure-voice-live.ts";
     import {
       captionAt,
@@ -266,16 +389,24 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       newTimeline,
       scheduleAudio,
       silent,
+      spokenRange,
       timedWord as placeWord,
       voicing,
     } from "./voice-call/captions.ts";
-    import { callOf, fillForm, formGet, isApproval, openForm, sendForm } from "./voice-call/forms.ts";
+    import { callOf, fillForm, formGet, isApproval, openForm, sendForm, toldText } from "./voice-call/forms.ts";
     import type { SentForm } from "./voice-call/forms.ts";
     import { geminiLive } from "./voice-call/gemini-live.ts";
-    import { closeCall, openMicrophone } from "./voice-call/microphone.ts";
+    import { aliveDue, idleLimits, idlePhase } from "./voice-call/idle.ts";
+    import type { IdleLimits } from "./voice-call/idle.ts";
+    import { closeCall, muteMicrophone, openMicrophone } from "./voice-call/microphone.ts";
+    import { closePieces, hear, readerText } from "./voice-call/reader.ts";
+    import type { ReaderPiece } from "./voice-call/reader.ts";
     import { fetchView, postForm, viewHolder } from "./voice-call/requests.ts";
     import {
       closeReason,
+      LISTENING,
+      MUTED,
+      NOBODY_SPOKE,
       providerLabel,
       sessionFailure,
       statusText,
@@ -289,6 +420,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       Ticket,
       ToolAnswer,
       ToolRequest,
+      Voiced,
       WireHooks,
     } from "./voice-call/types.ts";
 
@@ -300,6 +432,8 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     const provider = document.getElementById("provider")!;
     const meter = document.getElementById("meter")!;
     const bars = [...meter.children] as HTMLElement[];
+    const mute = document.getElementById("mute")!;
+    const stay = document.getElementById("stay")!;
     /** The button says what pressing it does. */
     const pressed = (on: boolean): void => {
       toggle.setAttribute("aria-pressed", String(on));
@@ -350,6 +484,9 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     }
 
     /** The turn being spoken: its words, its audio, and where it is drawn. */
+    const heardPieces: ReaderPiece[] = [];
+    /** Utterances of turns that are over or were replaced: words of theirs that come late are no turn's. */
+    const closedPieces = new Set<string>();
     let reader = "";
     let said = "";
     let readerBubble: HTMLElement | null = null;
@@ -382,13 +519,27 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       readerBubble.textContent = reader.trim();
     }
 
+    /** The reader's turn is `text`, typed or pressed: whatever was heard before it is replaced. */
+    function wrote(text: string): void {
+      closePieces(heardPieces, closedPieces);
+      hear(heardPieces, text);
+      reader = text;
+      showReader();
+      touch();
+    }
+
     function showReply(): HTMLElement {
       if (!reply) {
         reply = document.createElement("div");
         reply.className = "turn-assistant";
         reply.dataset.testid = "turn-voice";
+        // What the voice says, as a paragraph: the same as a stored turn's.
+        const words = document.createElement("p");
+        words.className = "spoken";
+        words.dataset.testid = "voice-call-said";
         saidText = document.createTextNode("");
-        reply.append(saidText);
+        words.append(saidText);
+        reply.append(words);
         // An approval card in a spoken reply is answered in the call, not by
         // a page load: the model is waiting on the line for the result.
         reply.addEventListener("submit", (event) => {
@@ -460,13 +611,14 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
 
     const answerTool = (tool: ToolRequest): Promise<string> => {
       mark({ thinking: false });
+      touch();
       return routeTool(tool, {
         fillForm: (args) =>
           fillForm(
             args,
             openForm(thread()),
             (form, button) => sendForm(form, button, (job) => busy(call, job)),
-            (say) => heard(reader.trim() ? `\n${say}` : say),
+            answeredForm,
           ),
         runTool: serverTool,
       });
@@ -493,6 +645,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       const now = call.playback.currentTime;
       if (call.nextAt < now) call.nextAt = now + 0.05;
       mark({ thinking: false });
+      touch();
       scheduleAudio(timeline, call.nextAt, buffer.duration);
       source.start(call.nextAt);
       call.nextAt += buffer.duration;
@@ -513,7 +666,10 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       }
     }
     document.addEventListener("visibilitychange", () => {
-      if (call && document.visibilityState === "visible") wake(call);
+      if (!call || document.visibilityState !== "visible") return;
+      wake(call);
+      // A page that slept through its limit ends as soon as it is looked at.
+      checkIdle(call);
     });
 
     /** The reader cut in: stop talking at once. */
@@ -523,12 +679,64 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       if (call) call.nextAt = 0;
       timeline.voiced = silent(false);
       resetResponse(timeline);
+      clearWord();
+    }
+
+    /* ---- The word being said, marked in the answer in the thread ---- */
+
+    /** Where the turn being voiced is written: the text in the thread, and where its words begin in it. */
+    let spokenIn: { voiced: Voiced; node: Text; offset: number } | null = null;
+    /** The answer that carries the mark, so a test and a style can tell. */
+    let spokenHolder: HTMLElement | null = null;
+    // A highlight marks text without changing it, so nothing is read out
+    // again. A browser without highlights still has the caption.
+    // The page has one highlight of this name, whatever number of calls it holds.
+    const marks =
+      typeof Highlight === "function" && CSS.highlights
+        ? (CSS.highlights.get("voice-call-word") ?? new Highlight())
+        : null;
+    if (marks && !CSS.highlights.has("voice-call-word")) CSS.highlights.set("voice-call-word", marks);
+    const wordRange = document.createRange();
+
+    function clearWord(): void {
+      marks?.delete(wordRange);
+      if (spokenHolder) {
+        delete spokenHolder.dataset.spokenWord;
+        delete spokenHolder.dataset.spokenAt;
+      }
+      spokenHolder = null;
+    }
+
+    /** Mark the word of `frame` in the thread, or nothing when there is none. */
+    function markWord(frame: ReturnType<typeof captionAt>): void {
+      if (!marks) return;
+      const { node, offset } = spokenIn ?? {};
+      const where =
+        frame && node?.isConnected && spokenIn!.voiced === timeline.voiced
+          ? spokenRange(timeline.voiced, frame)
+          : null;
+      const start = where ? offset! + where.start : 0;
+      const end = where ? Math.min(node!.length, offset! + where.end) : 0;
+      const holder = node?.parentElement;
+      if (!where || !holder || start >= end) {
+        if (spokenHolder) clearWord();
+        return;
+      }
+      if (holder === spokenHolder && holder.dataset.spokenAt === String(start) && wordRange.endOffset === end) return;
+      clearWord();
+      wordRange.setStart(node!, start);
+      wordRange.setEnd(node!, end);
+      marks.add(wordRange);
+      holder.dataset.spokenWord = node!.data.slice(start, end);
+      holder.dataset.spokenAt = String(start);
+      spokenHolder = holder;
     }
 
     /** Draw the word being spoken, a frame at a time, for as long as the call is on. */
     function captions(): void {
       if (!call) return;
       const frame = captionAt(timeline.voiced, call.playback.currentTime);
+      markWord(frame);
       if (!frame) {
         caption.replaceChildren();
         delete caption.dataset.key;
@@ -588,8 +796,122 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       }
       current.speaking = false;
       current.level = 0;
+      current.muted = false;
+      current.muteTail = 0;
+      if (current === call) hideMute();
       mark({ base: "No microphone: type to talk.", hearing: false }, current);
     }
+
+    /**
+     * Put a button away, and keep the keyboard's place when it had it. While
+     * a call is on, that place is never the button that ends it: a key meant
+     * for the button that went away would hang up.
+     */
+    function putAway(button: HTMLElement): void {
+      if (document.activeElement === button) {
+        const next = !call
+          ? toggle
+          : button !== mute && !mute.hidden
+            ? mute
+            : document.querySelector<HTMLElement>('[data-testid="chat-composer"] textarea');
+        next?.focus();
+      }
+      button.hidden = true;
+    }
+
+    function hideMute(): void {
+      putAway(mute);
+      mute.setAttribute("aria-pressed", "false");
+      meter.removeAttribute("data-muted");
+    }
+
+    /**
+     * Switch the microphone off or on. Off, nothing the reader says is sent:
+     * a few seconds of silence follow their last sound, so the provider hears
+     * them stop, and then nothing at all until it is on again.
+     */
+    function setMuted(current: Call, on: boolean): void {
+      if (!current.microphone || current.muted === on) return;
+      current.muted = on;
+      muteMicrophone(current, on);
+      current.muteTail = on ? MUTE_TAIL : 0;
+      current.level = 0;
+      current.speaking = false;
+      current.quietAt = 0;
+      if (current === call) {
+        mute.setAttribute("aria-pressed", String(on));
+        meter.toggleAttribute("data-muted", on);
+      }
+      touch(current);
+      mark({ base: on ? MUTED : LISTENING, hearing: false }, current);
+    }
+    mute.addEventListener("click", () => {
+      if (call) setMuted(call, !call.muted);
+    });
+
+    /* ---- A call nobody is speaking on: asked about, then ended ---- */
+
+    let limits: IdleLimits = idleLimits({});
+    let idleCheck: ReturnType<typeof setInterval> | undefined;
+
+    /** Something happened on the call: it is in use. */
+    function touch(current: Call | null = call): void {
+      if (!current) return;
+      current.activeAt = performance.now();
+      // The provider cannot see all that is use here, so it is told, now and then.
+      if (aliveDue(current.activeAt, current.aliveAt)) {
+        current.aliveAt = current.activeAt;
+        current.wire.alive();
+      }
+      if (!current.idle) return;
+      current.idle = false;
+      if (current === call) {
+        putAway(stay);
+        refresh();
+      }
+    }
+
+    /** Two short notes, for a reader who is not looking at the page. */
+    function chime(current: Call): void {
+      wake(current);
+      const at = current.playback.currentTime;
+      [660, 880].forEach((pitch, note) => {
+        const tone = current.playback.createOscillator();
+        const level = current.playback.createGain();
+        tone.frequency.value = pitch;
+        level.gain.setValueAtTime(0.0001, at + note * 0.18);
+        level.gain.exponentialRampToValueAtTime(0.08, at + note * 0.18 + 0.02);
+        level.gain.exponentialRampToValueAtTime(0.0001, at + note * 0.18 + 0.16);
+        tone.connect(level).connect(current.playback.destination);
+        tone.start(at + note * 0.18);
+        tone.stop(at + note * 0.18 + 0.17);
+      });
+    }
+
+    function checkIdle(current: Call): void {
+      if (current !== call) return;
+      // The reader or the model speaking, a tool running, an answer awaited on screen: in use.
+      if (
+        isPlaying(current) ||
+        current.hearing ||
+        current.working > 0 ||
+        current.thinking ||
+        current.waiting.size
+      ) {
+        touch(current);
+        return;
+      }
+      const phase = idlePhase(performance.now(), current.activeAt, limits);
+      if (phase === "over") {
+        hangUp(NOBODY_SPOKE);
+      } else if (phase === "warning" && !current.idle) {
+        current.idle = true;
+        stay.hidden = false;
+        chime(current);
+        refresh();
+      }
+    }
+    stay.addEventListener("click", () => touch());
 
     async function listen(current: Call): Promise<void> {
       const node = await openMicrophone(
@@ -599,9 +921,24 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       );
       if (!node) return;
       const chunks = pcmChunker();
+      /** Samples that have gone by since the last piece of silence was sent. */
+      let silence = 0;
       meter.dataset.on = "";
       requestAnimationFrame(() => drawMeter(current));
       node.port.onmessage = ({ data }: MessageEvent<Float32Array>) => {
+        if (current.muted) {
+          // Nothing from the microphone is kept, measured or sent.
+          chunks.reset();
+          if (current.muteTail <= 0) return;
+          silence += data.length;
+          while (silence >= CHUNK && current.muteTail > 0) {
+            silence -= CHUNK;
+            current.wire.audio(silentChunk());
+            if (--current.muteTail === 0) current.wire.pause();
+          }
+          return;
+        }
+        silence = 0;
         measure(current, chunks.add(data));
         // Taken whether or not it can be sent, so what waits never grows.
         const chunk = chunks.take();
@@ -640,12 +977,35 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       }
     }
 
+    /** What each form sent in this turn said to the model, by the reader piece that shows it. */
+    const formsSaid = new Map<string, string>();
+
+    /**
+     * A sent form is the reader's answer. The thread shows its label as
+     * their turn, or nothing; what it said is kept for the model.
+     */
+    function answeredForm(sent: SentForm): void {
+      const piece = `sent-form:${formsSaid.size}`;
+      formsSaid.set(piece, sent.say);
+      const shown = sent.show ?? sent.say;
+      heard(shown && reader.trim() ? `\n${shown}` : shown, piece, true);
+    }
+
     /** Store what was said, and start the next turn with a clean slate. */
     function endTurn(): void {
-      if (reader.trim() || said.trim() || reply) {
-        storeTurn({ reader, model: said, turn: turnId() });
+      // The model's history keeps what a form said; `show` is what the thread showed.
+      const told = formsSaid.size ? toldText(heardPieces, formsSaid) : reader;
+      if (told.trim() || said.trim() || reply) {
+        storeTurn({
+          reader: told,
+          model: said,
+          turn: turnId(),
+          ...(told.trim() === reader.trim() ? {} : { show: reader.trim() }),
+        });
       }
       reader = said = "";
+      closePieces(heardPieces, closedPieces);
+      formsSaid.clear();
       readerBubble = reply = saidText = null;
       mark({ thinking: false });
       // The next thing said starts a new caption; this one plays out.
@@ -659,24 +1019,56 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       mark({ base: "Connected. Type to talk." }, current);
       listen(current).then(
         // A microphone that went away while it was being opened is not listening.
-        () => current.microphone && mark({ base: "Listening." }, current),
+        () => {
+          if (!current.microphone) return;
+          if (current === call) mute.hidden = false;
+          mark({ base: LISTENING }, current);
+        },
         // The reader declined, or this browser cannot capture: there is no level to show.
         () => noMicrophone(current),
       );
     }
 
-    function heard(text: string, whole = false): void {
-      reader = whole ? text : reader + text;
+    function heard(text: string, piece = "", whole = false): void {
+      hear(heardPieces, text, piece, whole);
+      reader = readerText(heardPieces);
+      // An utterance whose words have not come yet shows nothing.
+      if (!reader.trim() && !readerBubble) return;
       showReader();
+      touch();
       // Words that arrive after the reader stopped are an answer being waited for.
       if (call?.wire.byMeter && !call.speaking && !said.trim()) mark({ thinking: true });
     }
 
     function spoke(text: string): void {
-      said += text;
-      voicing(timeline).text += text;
       showReply();
-      saidText!.data = said;
+      const turn = voicing(timeline);
+      // Where this turn's voice begins in the answer's text, for the mark.
+      if (spokenIn?.voiced !== turn) spokenIn = { voiced: turn, node: saidText!, offset: said.length };
+      said += text;
+      turn.text += text;
+      // Added, not rewritten: a mark in the text stays where it is.
+      saidText!.appendData(text);
+      touch();
+    }
+
+    /** How much of a reply must have played for the reader to have heard it, in seconds. */
+    const HEARD_AFTER = 0.5;
+
+    /**
+     * The reader spoke over the reply. One they had not heard yet, and that
+     * shows nothing, is taken back: the model was answering a pause.
+     */
+    function dropReply(): boolean {
+      // Its words are its one child; anything more is something it shows.
+      if (!call || !reply || reply.childElementCount > 1) return false;
+      const voiced = timeline.voiced;
+      const played = voiced.open && voiced.seconds > 0 ? call.playback.currentTime - voiced.start : 0;
+      if (played > HEARD_AFTER) return false;
+      reply.remove();
+      reply = saidText = null;
+      said = "";
+      return true;
     }
 
     /** What a provider's messages do to `current` (see types.ts). */
@@ -685,7 +1077,11 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       answerTool,
       mark: (patch) => mark(patch, current),
       quiet,
-      heard,
+      heard: (text, piece, whole) => {
+        if (!piece || !closedPieces.has(piece)) heard(text, piece, whole);
+      },
+      dropReply,
+      active: () => touch(current),
       play,
       spoke,
       timedWord: (text, ms) => placeWord(timeline, text, ms),
@@ -723,7 +1119,16 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       call = null;
       endTurn();
       closeCall(ending);
+      clearInterval(idleCheck);
+      clearWord();
+      spokenIn = null;
+      // The next call's clock starts again: nothing of this one's voice is left to caption.
+      timeline.voiced = silent(false);
+      resetResponse(timeline);
+      hideMute();
+      putAway(stay);
       caption.replaceChildren();
+      delete caption.dataset.key;
       status.textContent = why;
       meter.hidden = true;
       delete meter.dataset.on;
@@ -784,12 +1189,19 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
           level: 0,
           speaking: false,
           quietAt: 0,
+          muted: false,
+          muteTail: 0,
+          activeAt: performance.now(),
+          idle: false,
+          aliveAt: performance.now(),
         } as Call;
         current.wire =
           ticket.protocol === "azure-voice-live"
             ? azureVoiceLive(current, hooksFor(current))
             : geminiLive(current, ticket.setup, hooksFor(current));
+        timeline.voiced = silent(false);
         resetResponse(timeline);
+        closedPieces.clear();
         call = current;
         // The call has its own audio now, and the attempt is over.
         playback = null;
@@ -814,6 +1226,10 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
           if (current === call) hangUp(closeReason(event.reason));
         };
         requestAnimationFrame(captions);
+        // Read now, so a page can set them before a call.
+        limits = idleLimits(root.dataset);
+        clearInterval(idleCheck);
+        idleCheck = setInterval(() => checkIdle(current), 1000);
       } catch {
         // A press that canceled this attempt has already said what there is to say.
         if (attempt.signal.aborted) return;
@@ -845,9 +1261,8 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         event.preventDefault();
         event.stopImmediatePropagation();
         quiet();
-        if (reader.trim() || said.trim()) endTurn();
-        reader = text;
-        showReader();
+        if (reader.trim() || said.trim() || formsSaid.size) endTurn();
+        wrote(text);
         call.wire.text(text);
         mark({ thinking: true });
         form.reset();
@@ -868,11 +1283,9 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         void sendForm(form, event.submitter, (job) => busy(call, job)).then((sent: SentForm | null) => {
           if (!sent || current !== call) return;
           quiet();
-          if (reader.trim() || said.trim()) endTurn();
-          if (!sent.hidden) {
-            reader = sent.say;
-            showReader();
-          }
+          if (reader.trim() || said.trim() || formsSaid.size) endTurn();
+          answeredForm(sent);
+          touch(current);
           current.wire.text(sent.say);
           mark({ thinking: true }, current);
         });

@@ -10,6 +10,7 @@ import type { Duplex } from "node:stream";
 import { inProcessShared } from "../shared.ts";
 import type { VoiceTicket } from "../voice.ts";
 import { acceptWebSocket, refuseUpgrade, type ServerSocket } from "../ws.ts";
+import { pauseMsOf, turnSettingsOf } from "../voice/pause.ts";
 import { azureVoiceLiveSession, relayedClientEvent } from "./protocol.ts";
 import type { AzureVoiceLiveOptions, AzureVoiceLiveProvider } from "./types.ts";
 
@@ -31,7 +32,24 @@ const MAX_UPSTREAM_BUFFERED_BYTES = 4_000_000;
 const HUNG_UP = "The voice provider hung up.";
 const REFUSED =
   "The voice provider refused the connection. Its key or token may have expired.";
+const REFUSED_SETUP = "The voice provider refused the call's settings.";
+const NOBODY_SPOKE = "The call ended because nobody spoke.";
 const NO_ANSWER = "The voice provider did not answer in time.";
+/** The longest wait a timer takes. A longer one would fire at once. */
+const MAX_TIMER_MS = 2_147_483_647;
+
+/**
+ * A limit given in seconds, as a timer's wait in milliseconds. One no timer
+ * can hold, infinity included, is null: the limit is never reached. Anything
+ * that is not a number is a mistake the developer is told of.
+ */
+function limitMs(name: string, seconds: number): number | null {
+  if (typeof seconds !== "number" || Number.isNaN(seconds) || seconds < 0) {
+    throw new TypeError(`${name} must be a number of seconds, 0 or more.`);
+  }
+  const ms = seconds * 1000;
+  return ms > MAX_TIMER_MS ? null : ms;
+}
 
 interface Ticket {
   session: Record<string, unknown>;
@@ -53,9 +71,16 @@ export function azureVoiceLiveVoice(
     apiVersion = "2026-04-10",
     startWithinSeconds = 60,
     sessionSeconds = 900,
+    callIdleSeconds = 300,
     connectTimeoutMs = 15_000,
     relay = {},
   } = options;
+  // A setting that cannot be used is told to the developer now, not to a reader later.
+  pauseMsOf(options.pauseMs);
+  const turnDetection = turnSettingsOf("turnDetection", options.turnDetection);
+  const sessionMs = limitMs("sessionSeconds", sessionSeconds);
+  /** How long a call may be quiet, or null for any time: 0 is never too. */
+  const callIdleMs = limitMs("callIdleSeconds", callIdleSeconds) || null;
   const {
     maxCalls = 100,
     maxCallsPerOwner = 3,
@@ -103,9 +128,18 @@ export function azureVoiceLiveVoice(
     let retry: ReturnType<typeof setTimeout> | undefined;
     /** The wait for the provider to say the session is set up. */
     let answer: ReturnType<typeof setTimeout> | undefined;
+    /** The wait for someone to speak. */
+    let quiet: ReturnType<typeof setTimeout> | undefined;
     const { owner } = ticket;
+    /** Someone spoke, or something was said: the call is in use. */
+    const inUse = (): void => {
+      clearTimeout(quiet);
+      if (ended || callIdleMs === null) return;
+      quiet = setTimeout(() => end(NOBODY_SPOKE), callIdleMs);
+    };
     const end = (reason: string): void => {
       clearTimeout(limit);
+      clearTimeout(quiet);
       clearTimeout(retry);
       clearTimeout(answer);
       calls.delete(hangUp);
@@ -119,16 +153,21 @@ export function azureVoiceLiveVoice(
       if (upstream && upstream.readyState <= WebSocket.OPEN) upstream.close();
     };
     const hangUp = (): void => end("The server is stopping.");
-    const limit = setTimeout(
-      () => end("The call reached its time limit."),
-      sessionSeconds * 1000,
-    );
+    const limit =
+      sessionMs === null
+        ? undefined
+        : setTimeout(() => end("The call reached its time limit."), sessionMs);
     calls.add(hangUp);
+    inUse();
     if (owner !== undefined) callsOf.set(owner, (callsOf.get(owner) ?? 0) + 1);
     browser.onClose = () => end("");
     browser.onMessage = (raw) => {
       const event = relayedClientEvent(raw);
       if (!event) return;
+      // A typed message or a tool's result is the call in use; the microphone's sound alone is not.
+      if (event.type !== "input_audio_buffer.append") inUse();
+      // The page saying the call is in use is for the relay, not the provider.
+      if (event.type === "call.active") return;
       const message = JSON.stringify(event);
       if (early) {
         earlyBytes += message.length;
@@ -210,6 +249,23 @@ export function azureVoiceLiveVoice(
         const raw = String(event.data);
         // Only the kind of message is read here; the rest passes as it came.
         const type = /"type"\s*:\s*"([^"]+)"/.exec(raw.slice(0, 200))?.[1];
+        if (
+          type === "input_audio_buffer.speech_started" ||
+          type === "response.created" ||
+          type === "response.audio.delta"
+        ) {
+          inUse();
+        }
+        if (type === "error" && early !== null) {
+          // The provider refused the session's setup: there will be no call.
+          over = true;
+          clearTimeout(answer);
+          console.error(
+            `[azure-voice-live] ${REFUSED_SETUP} It said: ${raw.slice(0, 400)}`,
+          );
+          end(REFUSED_SETUP);
+          return;
+        }
         if (type === "session.created") {
           socket.send(
             JSON.stringify({ type: "session.update", session: ticket.session }),
@@ -309,7 +365,11 @@ export function azureVoiceLiveVoice(
       }
       const id = randomUUID();
       const ticket: Ticket = {
-        session: azureVoiceLiveSession(config, { voice }),
+        session: azureVoiceLiveSession(config, {
+          voice,
+          pauseMs: options.pauseMs,
+          turnDetection,
+        }),
         ...(config.owner === undefined ? {} : { owner: config.owner }),
       };
       await tickets.set(

@@ -63,6 +63,83 @@ describe("azureVoiceLiveSession", () => {
   });
 });
 
+describe("when the reader's turn is over", () => {
+  const detection = (options: {
+    pauseMs?: number;
+    turnDetection?: Record<string, unknown>;
+  }): unknown =>
+    azureVoiceLiveSession(config, { voice: "marin", ...options })
+      .turn_detection;
+
+  it("waits 800 ms of silence by default, judged by meaning as well", () => {
+    expect(detection({})).toEqual({
+      type: "azure_semantic_vad",
+      silence_duration_ms: 800,
+    });
+  });
+
+  it("waits as long as it is told, within a fifth of a second and three", () => {
+    expect(detection({ pauseMs: 1200 })).toMatchObject({
+      silence_duration_ms: 1200,
+    });
+    expect(detection({ pauseMs: 1 })).toMatchObject({
+      silence_duration_ms: 200,
+    });
+    expect(detection({ pauseMs: 60_000 })).toMatchObject({
+      silence_duration_ms: 3000,
+    });
+    expect(detection({ pauseMs: 650.4 })).toMatchObject({
+      silence_duration_ms: 650,
+    });
+  });
+
+  it("lays the provider's own settings over the default", () => {
+    expect(
+      detection({
+        turnDetection: {
+          type: "azure_semantic_vad_multilingual",
+          remove_filler_words: true,
+          end_of_utterance_detection: { model: "semantic_detection_v1" },
+        },
+      }),
+    ).toEqual({
+      type: "azure_semantic_vad_multilingual",
+      silence_duration_ms: 800,
+      remove_filler_words: true,
+      end_of_utterance_detection: { model: "semantic_detection_v1" },
+    });
+    expect(
+      detection({ turnDetection: { silence_duration_ms: 400 } }),
+    ).toMatchObject({ silence_duration_ms: 400 });
+  });
+
+  it("gives OpenAI's own detection no wait, which it does not take", () => {
+    expect(
+      detection({ turnDetection: { type: "semantic_vad", eagerness: "low" } }),
+    ).toEqual({ type: "semantic_vad", eagerness: "low" });
+  });
+
+  it("tells the developer of a pause that is not a number, when the provider is made", () => {
+    expect(() => azureVoiceLiveVoice({ pauseMs: Number.NaN })).toThrow(
+      /pauseMs/,
+    );
+    expect(() =>
+      azureVoiceLiveVoice({ pauseMs: "soon" as unknown as number }),
+    ).toThrow(/pauseMs/);
+  });
+
+  it("tells the developer of turn detection that is not an object, when the provider is made", () => {
+    for (const given of [null, ["server_vad"], "server_vad", 5]) {
+      expect(() =>
+        azureVoiceLiveVoice({
+          turnDetection: given as unknown as Record<string, unknown>,
+        }),
+      ).toThrow(/turnDetection must be an object/);
+    }
+    expect(() => azureVoiceLiveVoice({ turnDetection: {} })).not.toThrow();
+  });
+});
+
 describe("relayedClientEvent", () => {
   const relayed = (event: unknown): unknown =>
     relayedClientEvent(JSON.stringify(event));
@@ -89,6 +166,17 @@ describe("relayedClientEvent", () => {
       type: "conversation.item.create",
       item: { type: "function_call_output", call_id: "call_1", output: "ok" },
     });
+  });
+
+  it("takes the page's word that the call is in use, and nothing sent with it", () => {
+    expect(
+      relayed({
+        type: "call.active",
+        session: { instructions: "Mine." },
+        audio: "AAAA",
+        item: { type: "message" },
+      }),
+    ).toEqual({ type: "call.active" });
   });
 
   it("makes every typed message the reader's, whatever role it claims", () => {
@@ -397,6 +485,213 @@ describe("azureVoiceLiveVoice", () => {
     await until(() => open.messages.length > 0);
     await provider.close();
     await open.closed;
+  });
+
+  it("ends a call nobody speaks on: the microphone's sound alone does not keep it", async () => {
+    upstream = await startUpstream();
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      callIdleSeconds: 0.4,
+    });
+    const quiet = browser((await provider.createSession(config)).url);
+    await until(() => quiet.messages.length > 0);
+    const hum = setInterval(() => {
+      if (quiet.socket.readyState !== WebSocket.OPEN) return;
+      quiet.socket.send(
+        JSON.stringify({ type: "input_audio_buffer.append", audio: "AAAA" }),
+      );
+    }, 50);
+    try {
+      const ended = (await quiet.closed) as CloseEvent;
+      expect(ended.reason).toBe("The call ended because nobody spoke.");
+    } finally {
+      clearInterval(hum);
+    }
+  });
+
+  it("keeps a call that is in use: speech heard, a reply, a typed message", async () => {
+    upstream = await startUpstream();
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      callIdleSeconds: 0.4,
+    });
+    const used = browser((await provider.createSession(config)).url);
+    await until(() => used.messages.length > 0);
+    let over = false;
+    void used.closed.then(() => {
+      over = true;
+    });
+    const provider_ = upstream.connections[0]!.socket;
+    const wait = (ms: number): Promise<void> =>
+      new Promise((resolve) => setTimeout(resolve, ms));
+    // Each of these, a little before the limit, starts the wait again.
+    for (const event of [
+      { from: "provider", type: "input_audio_buffer.speech_started" },
+      { from: "provider", type: "response.created" },
+      { from: "provider", type: "response.audio.delta" },
+      { from: "browser", type: "response.create" },
+    ]) {
+      await wait(250);
+      expect(over).toBe(false);
+      if (event.from === "provider") {
+        provider_.send(JSON.stringify({ type: event.type }));
+      } else {
+        used.socket.send(JSON.stringify({ type: event.type }));
+      }
+    }
+    await wait(250);
+    expect(over).toBe(false);
+    const ended = (await used.closed) as CloseEvent;
+    expect(ended.reason).toBe("The call ended because nobody spoke.");
+  });
+
+  it("keeps a call the page says is in use, and tells the provider nothing of it", async () => {
+    upstream = await startUpstream();
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      callIdleSeconds: 0.4,
+    });
+    const used = browser((await provider.createSession(config)).url);
+    // Said before the provider is ready too: it is not kept for it.
+    await new Promise<void>((resolve) => {
+      used.socket.onopen = () => resolve();
+    });
+    used.socket.send(JSON.stringify({ type: "call.active", audio: "AAAA" }));
+    await until(() => used.messages.length > 0);
+    let over = false;
+    void used.closed.then(() => {
+      over = true;
+    });
+    for (let said = 0; said < 4; said++) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(over).toBe(false);
+      used.socket.send(JSON.stringify({ type: "call.active" }));
+    }
+    // What is sent after it arrives after it: nothing was held back.
+    used.socket.send(JSON.stringify({ type: "response.cancel" }));
+    const received = upstream.connections[0]!.received;
+    await until(() => received.some((m) => m.type === "response.cancel"));
+    expect(received.map((message) => message.type)).toEqual([
+      "session.update",
+      "response.cancel",
+    ]);
+    const ended = (await used.closed) as CloseEvent;
+    expect(ended.reason).toBe("The call ended because nobody spoke.");
+  });
+
+  it("sets the call up with the developer's pause and turn detection", async () => {
+    upstream = await startUpstream();
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      pauseMs: 1200,
+      turnDetection: { threshold: 0.4 },
+    });
+    const call = browser((await provider.createSession(config)).url);
+    await until(() => call.messages.length > 0);
+    expect(
+      (upstream.connections[0]!.received[0] as { session?: unknown }).session,
+    ).toMatchObject({
+      turn_detection: {
+        type: "azure_semantic_vad",
+        silence_duration_ms: 1200,
+        threshold: 0.4,
+      },
+    });
+  });
+
+  it("takes a limit no timer can hold as never, and tells the developer of one that is not a number", async () => {
+    upstream = await startUpstream();
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      callIdleSeconds: Infinity,
+      sessionSeconds: 3_000_000,
+    });
+    const open = browser((await provider.createSession(config)).url);
+    await until(() => open.messages.length > 0);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(open.socket.readyState).toBe(WebSocket.OPEN);
+    await provider.close();
+
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      callIdleSeconds: 3_000_000,
+      sessionSeconds: Infinity,
+    });
+    const long = browser((await provider.createSession(config)).url);
+    await until(() => long.messages.length > 0);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(long.socket.readyState).toBe(WebSocket.OPEN);
+
+    for (const name of ["callIdleSeconds", "sessionSeconds"]) {
+      for (const given of [Number.NaN, -1, "300"]) {
+        expect(() =>
+          azureVoiceLiveVoice({ [name]: given as unknown as number }),
+        ).toThrow(new RegExp(`${name} must be a number of seconds`));
+      }
+    }
+  });
+
+  it("never ends a quiet call when the limit is 0", async () => {
+    upstream = await startUpstream();
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      callIdleSeconds: 0,
+    });
+    const open = browser((await provider.createSession(config)).url);
+    await until(() => open.messages.length > 0);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(open.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("ends the call at once when the provider refuses its settings", async () => {
+    const refusing = createServer();
+    refusing.on("upgrade", (request, socket, head) => {
+      socket.on("error", () => {});
+      const accepted = acceptWebSocket(request, socket, head)!;
+      accepted.onMessage = (text) => {
+        if (JSON.parse(text).type === "session.update") {
+          accepted.send(
+            JSON.stringify({
+              type: "error",
+              error: { message: "Unknown turn detection." },
+            }),
+          );
+        }
+      };
+      accepted.send(JSON.stringify({ type: "session.created" }));
+    });
+    await new Promise<void>((resolve) =>
+      refusing.listen(0, "127.0.0.1", resolve),
+    );
+    upstream = {
+      base: `ws://127.0.0.1:${(refusing.address() as AddressInfo).port}`,
+      server: refusing,
+      connections: [],
+    };
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    provider = azureVoiceLiveVoice({
+      apiKey: "k",
+      wsBase: upstream.base,
+      turnDetection: { type: "no_such_detection" },
+      // Far longer than the test: it is the refusal that ends the call.
+      connectTimeoutMs: 60_000,
+    });
+    const refused = browser((await provider.createSession(config)).url);
+    const ended = (await refused.closed) as CloseEvent;
+    expect(ended.reason).toBe(
+      "The voice provider refused the call's settings.",
+    );
+    // What the provider said goes to the server's log, not to the reader.
+    expect(refused.messages).toEqual([]);
+    expect(logged.mock.calls.join(" ")).toContain("Unknown turn detection.");
+    logged.mockRestore();
   });
 
   it("tries a refused connection once more, then says the provider refused", async () => {

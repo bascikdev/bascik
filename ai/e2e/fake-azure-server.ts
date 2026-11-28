@@ -7,7 +7,13 @@
 import { createServer } from "node:http";
 import { acceptWebSocket, refuseUpgrade } from "../src/ws.ts";
 import { playCassette } from "../voice-lab/cassette.ts";
-import { createLab, labCommand, labVoicePieces } from "./fake-lab.ts";
+import {
+  createLab,
+  labCommand,
+  labVoicePieces,
+  LATE,
+  PAUSED,
+} from "./fake-lab.ts";
 import type { LabCommand } from "./fake-lab.ts";
 
 const PORT = Number(process.argv[2] ?? 4481);
@@ -143,6 +149,83 @@ server.on("upgrade", (request, socket) => {
 
   /** What a typed "lab:" message asks for (see fake-lab.ts). */
   const runLab = (command: LabCommand): void => {
+    if (command.kind === "paused") {
+      // The typed command is a turn of its own, answered and over.
+      respond("Ready.");
+      const heard = (item_id: string, transcript: string): void =>
+        send({
+          type: "conversation.item.input_audio_transcription.completed",
+          item_id,
+          content_index: 0,
+          transcript,
+        });
+      // Then the order a real session has when the reader pauses: the first
+      // utterance is committed and answered, and the reader goes on.
+      setTimeout(() => {
+        send({ type: "input_audio_buffer.speech_started", item_id: "item_a" });
+        send({ type: "input_audio_buffer.speech_stopped", item_id: "item_a" });
+        send({ type: "input_audio_buffer.committed", item_id: "item_a" });
+        const first = `resp_${++responses}`;
+        send({ type: "response.created", response: { id: first } });
+        heard("item_a", PAUSED.first);
+        if (command.early) {
+          // Its words come well ahead of its sound.
+          send({
+            type: "response.audio_transcript.delta",
+            response_id: first,
+            delta: PAUSED.early,
+          });
+        }
+        send({ type: "input_audio_buffer.speech_started", item_id: "item_b" });
+        send({
+          type: "response.done",
+          response: { id: first, status: "cancelled" },
+        });
+        send({ type: "input_audio_buffer.speech_stopped", item_id: "item_b" });
+        send({ type: "input_audio_buffer.committed", item_id: "item_b" });
+        const second = `resp_${++responses}`;
+        send({ type: "response.created", response: { id: second } });
+        heard("item_b", PAUSED.second);
+        send({
+          type: "response.audio_transcript.delta",
+          response_id: second,
+          delta: PAUSED.answer,
+        });
+        send({
+          type: "response.audio.delta",
+          response_id: second,
+          delta: SECOND,
+        });
+        send({
+          type: "response.done",
+          response: { id: second, status: "completed" },
+        });
+      }, 400).unref();
+      return;
+    }
+    if (command.kind === "hearing" || command.kind === "latewords") {
+      // The typed command is a turn of its own, answered, played and over.
+      respond("Ready.");
+      const late = command.kind === "latewords";
+      setTimeout(() => {
+        send({ type: "input_audio_buffer.speech_started", item_id: "item_l" });
+        // A reader who goes on speaking: nothing more comes while they do.
+        if (!late) return;
+        send({ type: "input_audio_buffer.speech_stopped", item_id: "item_l" });
+        send({ type: "input_audio_buffer.committed", item_id: "item_l" });
+        respond(LATE.answer);
+        // Their words are written down after the short answer is over.
+        setTimeout(() => {
+          send({
+            type: "conversation.item.input_audio_transcription.completed",
+            item_id: "item_l",
+            content_index: 0,
+            transcript: LATE.words,
+          });
+        }, 300).unref();
+      }, 1500).unref();
+      return;
+    }
     if (command.kind === "close") {
       client.close(command.code, command.reason);
       return;
@@ -260,6 +343,7 @@ server.on("upgrade", (request, socket) => {
         instructions?: string;
         tools?: { name: string }[];
         input_audio_sampling_rate?: number;
+        turn_detection?: { silence_duration_ms?: number };
         output_audio_timestamp_types?: string[];
       };
       item?: {
@@ -275,6 +359,8 @@ server.on("upgrade", (request, socket) => {
         !session?.instructions ||
         !session.tools?.some((tool) => tool.name === "show") ||
         session.input_audio_sampling_rate !== 16_000 ||
+        // How long a pause ends the reader's turn is always said.
+        !Number.isInteger(session.turn_detection?.silence_duration_ms) ||
         session.output_audio_timestamp_types?.[0] !== "word"
       ) {
         send({ type: "error", error: { message: "Bad session." } });
@@ -289,6 +375,7 @@ server.on("upgrade", (request, socket) => {
       send({ type: "error", error: { message: "No session yet." } });
       return;
     }
+    if (message.type === "input_audio_buffer.clear") session.note("clear");
     if (message.type === "input_audio_buffer.append") {
       if (!message.audio) return;
       const pcm = Buffer.from(message.audio, "base64");

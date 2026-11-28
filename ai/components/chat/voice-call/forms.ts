@@ -3,6 +3,8 @@
  * them in with what the reader said. The component finds the elements and
  * passes them here; the choice of what to fill and press is `planFill`.
  */
+import { readerText } from "./reader.ts";
+import type { ReaderPiece } from "./reader.ts";
 
 /** Text as compared: lower case, letters and digits, single spaces. */
 export const plain = (text: string | null | undefined): string =>
@@ -160,10 +162,103 @@ export const controlName = (
     ? plain(control.textContent)
     : plain(control.labels?.[0]?.textContent);
 
-/** What a sent form answered: words for the model, and whether the reader sees them. */
+/** What a form says about how its answer is shown, as read from the page. */
+export interface AnswerFacts {
+  /** The form's own `show` field, when it has one. */
+  show?: string;
+  /** The form's `data-answer`: "message", "label", or nothing. */
+  mode?: string;
+  /** The words on the button that sent the form. */
+  pressed?: string;
+  /** Whether that button has a name, so that its value is the answer. */
+  named: boolean;
+  /** The words beside the picked option named `text`. */
+  chosen?: string;
+  /** Whether the reader wrote the message themselves, in a box named `text`. */
+  typed?: boolean;
+}
+
+const words = (text: string | null | undefined): string | undefined =>
+  text?.replace(/\s+/g, " ").trim() || undefined;
+
+/**
+ * What the thread shows for a form's message in place of the message, or
+ * undefined when the message itself is shown. The form's own `show` field
+ * wins: its text, or nothing when it is empty. Without one, a button that
+ * carries the answer (it has a name) shows its words. `data-answer="message"`
+ * on the form shows the message, and `"label"` shows the picked option's
+ * words, or the button's.
+ */
+export function shownAnswer(facts: AnswerFacts): string | undefined {
+  if (facts.show !== undefined) return facts.show.trim();
+  if (facts.mode === "message") return undefined;
+  if (facts.mode === "label") {
+    return words(facts.chosen) ?? words(facts.pressed);
+  }
+  // Words the reader wrote are their turn: a button's label does not replace them.
+  return facts.named && !facts.typed ? words(facts.pressed) : undefined;
+}
+
+/** `shownAnswer` for a form on the page, sent by `submitter` as `body`. */
+export function shownFor(
+  form: HTMLFormElement,
+  submitter: HTMLElement | null,
+  body: FormData,
+): string | undefined {
+  const own = body.get("show");
+  const picked = controlsOf(form).find(
+    (control): control is HTMLInputElement =>
+      control instanceof HTMLInputElement &&
+      control.type === "radio" &&
+      control.name === "text" &&
+      control.checked,
+  );
+  const button = submitter instanceof HTMLButtonElement ? submitter : null;
+  const mode = formGet(form, "dataset").answer;
+  const pressed = button?.textContent;
+  const chosen = picked?.labels?.[0]?.textContent;
+  return shownAnswer({
+    ...(typeof own === "string" ? { show: own } : {}),
+    ...(mode === undefined ? {} : { mode }),
+    ...(pressed == null ? {} : { pressed }),
+    named: Boolean(button?.name),
+    ...(chosen == null ? {} : { chosen }),
+    typed: controlsOf(form).some(
+      (control) =>
+        (control instanceof HTMLTextAreaElement ||
+          (control instanceof HTMLInputElement &&
+            !["hidden", "radio", "checkbox"].includes(control.type))) &&
+        control.name === "text" &&
+        control.value.trim() !== "",
+    ),
+  });
+}
+
+/**
+ * What a sent form answered: `say` is for the model, and `show` is what the
+ * thread shows as the reader's turn in its place (empty for nothing). With
+ * no `show`, the thread shows `say`.
+ */
 export interface SentForm {
   say: string;
-  hidden: boolean;
+  show?: string;
+}
+
+/**
+ * A reader's turn as the model reads it. `pieces` is the turn as the thread
+ * shows it, and `told` has, by piece id, what each form sent in the turn
+ * said: its piece shows the form's label, and reads as what the form said.
+ */
+export function toldText(
+  pieces: readonly ReaderPiece[],
+  told: ReadonlyMap<string, string>,
+): string {
+  return readerText(
+    pieces.map((piece) => {
+      const say = told.get(piece.id);
+      return say === undefined ? piece : { id: piece.id, text: `\n${say}` };
+    }),
+  ).trim();
 }
 
 /**
@@ -179,6 +274,8 @@ export async function sendForm(
 ): Promise<SentForm | null> {
   // Read before the controls are disabled: a disabled control is not sent.
   const body = new FormData(form, submitter);
+  const shown = shownFor(form, submitter, body);
+  if (shown !== undefined) body.set("show", shown);
   body.set("voice", "1");
   const locked = controlsOf(form).filter(
     (control): control is Control => "disabled" in control && !control.disabled,
@@ -188,7 +285,7 @@ export async function sendForm(
   // A form is not part of this component's template, so it is dimmed here.
   style.cssText += ";opacity:0.7;cursor:progress";
   for (const control of locked) control.disabled = true;
-  let answer: { say?: unknown; hidden?: unknown } | null = null;
+  let answer: { say?: unknown; show?: unknown } | null = null;
   try {
     answer = await run(async () => {
       const response = await fetch(formGet(form, "action"), {
@@ -198,7 +295,7 @@ export async function sendForm(
       return response.ok
         ? ((await response.json().catch(() => null)) as {
             say?: unknown;
-            hidden?: unknown;
+            show?: unknown;
           } | null)
         : null;
     });
@@ -219,13 +316,15 @@ export async function sendForm(
   note.style.cssText = "margin:0;font-size:0.8125rem;font-weight:600";
   note.textContent = pressed ? `Answered: ${pressed}` : "Answered";
   Element.prototype.append.call(form, note);
-  // A record in a fixed shape is for the model; the reader's own words are theirs.
-  return { say: answer.say.trim(), hidden: answer.hidden === true };
+  // A record in a fixed shape is for the model; the thread shows its label.
+  return typeof answer.show === "string"
+    ? { say: answer.say.trim(), show: answer.show.trim() }
+    : { say: answer.say.trim() };
 }
 
 /**
  * The model fills in `form` with what the reader said, and presses it.
- * `send` sends it; `answered` shows what was sent as the reader's words.
+ * `send` sends it; `answered` shows what was sent as the reader's turn.
  */
 export async function fillForm(
   input: unknown,
@@ -234,7 +333,7 @@ export async function fillForm(
     form: HTMLFormElement,
     button: HTMLButtonElement,
   ) => Promise<SentForm | null>,
-  answered: (say: string) => void,
+  answered: (sent: SentForm) => void,
 ): Promise<string> {
   if (!form) return "Error: there is no form on the screen to fill in.";
   const { boxes, options, buttons } = formControls(form);
@@ -258,6 +357,6 @@ export async function fillForm(
   const sent = await send(form, buttons[outcome.press]!);
   if (!sent) return "Error: the form could not be sent.";
   // What was sent is the reader's answer, and is shown and stored as theirs.
-  if (!sent.hidden) answered(sent.say);
+  answered(sent);
   return `Sent for the reader: ${sent.say}\nThis is the reader's answer, sent and recorded. Nothing more will arrive for it: carry on now with what comes next.`;
 }

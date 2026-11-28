@@ -390,6 +390,21 @@ const SAMPLES: Record<string, string[]> = {
       swipe("The Hobbit", "Tolkien's there-and-back-again tale."),
       swipe("Persuasion", "Austen's quiet second chance."),
     ),
+    tag(
+      "swipe-deck",
+      {
+        question: "Would you lend these to a friend?",
+        hint: "Pick an answer on the card, or swipe it.",
+        radios: "show",
+        yes: "Lend",
+        no: "Hold",
+      },
+      swipe(
+        "Kindred",
+        "Octavia Butler's novel of a woman pulled into the past.",
+      ),
+      swipe("Hamlet", "Shakespeare's prince of Denmark."),
+    ),
   ],
   "text-field": [
     tag(

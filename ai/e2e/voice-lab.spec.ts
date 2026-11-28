@@ -20,7 +20,7 @@ import {
   soundStretches,
   speechLike,
 } from "../voice-lab/signal.ts";
-import { labVoice, VOICE_RATE } from "./fake-lab.ts";
+import { labVoice, LATE, PAUSED, VOICE_RATE } from "./fake-lab.ts";
 import {
   heard,
   installLab,
@@ -454,6 +454,359 @@ for (const provider of ["gemini-live", "azure-voice-live"]) {
           page.getByTestId("turn-assistant").locator(".spoken"),
         ).toHaveText("The lab voice speaks.", { timeout: 1000 });
       }).toPass({ timeout: 15_000 });
+    });
+
+    /* ---- Mute: in the call, and unheard ---- */
+
+    const mute = (page: Page) => page.getByTestId("voice-call-mute");
+
+    test("sends the provider nothing the reader says while muted, and all of it after", async ({
+      page,
+    }) => {
+      await expect(mute(page)).toBeHidden();
+      await startCall(page);
+      await expect(
+        page.getByRole("button", { name: "Mute microphone", pressed: false }),
+      ).toBeVisible();
+      const atPress = (await heard(provider)).sizes.length;
+      // By keyboard, as by pointer.
+      await mute(page).focus();
+      await page.keyboard.press("Space");
+      await expect(mute(page)).toHaveAttribute("aria-pressed", "true");
+      await expect(status(page)).toHaveText(
+        "Muted. The model cannot hear you.",
+      );
+      expect(await labCount(page, "enabledTracks()")).toBe(0);
+      // Silence follows the press for longer than the longest pause a
+      // provider can be told to wait (3 s), and then nothing at all.
+      await page.waitForTimeout(4200);
+      const before = await heard(provider);
+      await speak(page, READER);
+      await page.waitForTimeout(3600);
+      const during = await heard(provider);
+      expect(during.sizes.length).toBe(before.sizes.length);
+      const tail = before.sizes.length - atPress;
+      measured("pieces sent after the mute", tail, "pieces");
+      expect(tail).toBeGreaterThanOrEqual(32);
+      expect(tail).toBeLessThanOrEqual(38);
+      // None of the reader's sentence is in what the provider has.
+      expect(rms(during.samples)).toBeLessThan(0.002);
+      const told = during.events.map((event) => event.type);
+      if (provider === "gemini-live") {
+        // The provider is told the microphone's sound has ended, once.
+        expect(told.filter((type) => type === "audioStreamEnd")).toHaveLength(
+          1,
+        );
+      } else {
+        expect(told).not.toContain("clear");
+      }
+      // The level shows nothing of a voice the model cannot hear.
+      await expect(page.getByTestId("voice-call-meter")).toHaveAttribute(
+        "data-level",
+        "0.00",
+      );
+      await expect(status(page)).not.toHaveText("Hearing you…");
+
+      await mute(page).click();
+      await expect(mute(page)).toHaveAttribute("aria-pressed", "false");
+      await expect(status(page)).toHaveText("Listening.");
+      expect(await labCount(page, "enabledTracks()")).toBe(1);
+      await page.waitForTimeout(300);
+      await speak(page, READER);
+      await page.waitForTimeout(3600);
+      const after = await heard(provider);
+      const since = after.samples.subarray(during.samples.length);
+      const match = captured(since);
+      measured(
+        "capture worst quarter second after unmuting",
+        match.worst,
+        "of 1",
+      );
+      expect(match.gain).toBeGreaterThan(0.85);
+      expect(match.gain).toBeLessThan(1.15);
+      await toggle(page).click();
+      await expectAllLetGo(page);
+    });
+
+    test("a muted reader does not cut the model off, and can still type", async ({
+      page,
+    }) => {
+      await startCall(page);
+      await mute(page).click();
+      await type(page, "lab:speak 4");
+      await playedFor(page, 1);
+      await speak(page, CUT_IN);
+      await playedOut(page);
+      const out = await played(page);
+      const stretches = soundStretches(out.samples, out.sampleRate);
+      expect(stretches).toHaveLength(1);
+      expect(stretches[0]!.end - stretches[0]!.start).toBeGreaterThan(3.5);
+      const told = (await heard(provider)).events.map((event) => event.type);
+      expect(told).not.toContain("cut");
+      // The line goes back to saying the reader is muted.
+      await expect(status(page)).toHaveText(
+        "Muted. The model cannot hear you.",
+      );
+      await toggle(page).click();
+      await expectAllLetGo(page);
+    });
+
+    test("hanging up while muted lets everything go, and the next call is not muted", async ({
+      page,
+    }) => {
+      await startCall(page);
+      await mute(page).focus();
+      await page.keyboard.press("Enter");
+      await expect(mute(page)).toHaveAttribute("aria-pressed", "true");
+      await toggle(page).click();
+      await expectAllLetGo(page);
+      await expect(mute(page)).toBeHidden();
+      // The keyboard's place went to the button that is still there.
+      await expect(toggle(page)).toBeFocused();
+      await startCall(page);
+      await expect(mute(page)).toHaveAttribute("aria-pressed", "false");
+      // The lab's microphone takes a moment to carry sound into a second
+      // call on one page: the sentence is said once it does.
+      await page.waitForTimeout(1000);
+      await speak(page, READER);
+      await page.waitForTimeout(3600);
+      const got = await heard(provider);
+      captured(got.samples);
+      await toggle(page).click();
+      await expectAllLetGo(page);
+    });
+
+    test("a microphone that goes away while muted is said to be gone", async ({
+      page,
+    }) => {
+      await startCall(page);
+      await mute(page).click();
+      await page.evaluate("window.__voiceLab.unplug()");
+      await expect(status(page)).toHaveText("No microphone: type to talk.");
+      await expect(mute(page)).toBeHidden();
+      await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
+      await toggle(page).click();
+      await expectAllLetGo(page);
+    });
+
+    /* ---- A reader who pauses mid-question ---- */
+
+    for (const early of [false, true]) {
+      test(`keeps a question said in two parts as one turn${early ? ", and takes back a reply nobody heard" : ""}`, async ({
+        page,
+      }) => {
+        const stored: string[] = [];
+        page.on("request", (request) => {
+          if (!request.url().endsWith("/api/voice-turn")) return;
+          const reader = /name="reader"\r\n\r\n([\s\S]*?)\r\n--/.exec(
+            request.postData() ?? "",
+          );
+          stored.push(
+            reader?.[1] ??
+              new URLSearchParams(request.postData() ?? "").get("reader") ??
+              "",
+          );
+        });
+        await startCall(page);
+        await type(page, `lab:paused${early ? " yep" : ""}`);
+        const whole = `${PAUSED.first} ${PAUSED.second}`;
+        await expect(page.getByTestId("turn-user").last()).toHaveText(whole);
+        await expect(page.getByTestId("turn-voice").last()).toContainText(
+          PAUSED.answer,
+        );
+        // The command, then the question: two turns of the reader's, and an
+        // answer to each. The reply that was cut off is not one of them.
+        await expect(page.getByTestId("turn-user")).toHaveCount(2);
+        await expect(page.getByTestId("turn-voice")).toHaveCount(2);
+        await expect(page.getByTestId("chat-thread")).not.toContainText(
+          PAUSED.early,
+        );
+        // And it is stored as it is shown.
+        await expect.poll(() => stored).toContain(whole);
+        await toggle(page).click();
+        await expectAllLetGo(page);
+      });
+    }
+
+    /* ---- The word being said, marked in the answer ---- */
+
+    test("marks the word being said in the answer, and nothing once the voice is over", async ({
+      page,
+    }) => {
+      await startCall(page);
+      await page.evaluate(() => {
+        const seen: string[] = [];
+        (window as unknown as { __spoken: string[] }).__spoken = seen;
+        new MutationObserver((changes) => {
+          for (const change of changes) {
+            const word = (change.target as HTMLElement).dataset.spokenWord;
+            if (word && seen.at(-1) !== word) seen.push(word);
+          }
+        }).observe(document.body, {
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["data-spoken-word"],
+        });
+      });
+      await type(page, "lab:speak 3");
+      const reply = page.getByTestId("turn-voice").last();
+      const said = reply.getByTestId("voice-call-said");
+      await expect(said).toHaveAttribute("data-spoken-word", /\S/);
+      // It is a mark on the answer's own text: the same word, in that answer.
+      const mark = await page.evaluate(() => {
+        const range = [...(CSS.highlights.get("voice-call-word") ?? [])][0] as
+          Range | undefined;
+        const holder = range?.startContainer.parentElement;
+        return {
+          text: range?.toString(),
+          word: holder?.dataset.spokenWord,
+          at: holder?.dataset.testid,
+          elements: holder?.childElementCount,
+        };
+      });
+      expect(mark.text).toBe(mark.word);
+      expect(mark.at).toBe("voice-call-said");
+      // Nothing was put into the answer to do it.
+      expect(mark.elements).toBe(0);
+      await playedOut(page);
+      await expect(said).not.toHaveAttribute("data-spoken-word");
+      expect(
+        await page.evaluate(
+          () => CSS.highlights.get("voice-call-word")?.size ?? 0,
+        ),
+      ).toBe(0);
+      // Each word of the sentence had its turn. Where the provider does not
+      // time its words the place is estimated from how much has played, and
+      // can step back a word while the voice is still arriving.
+      const seen = (await page.evaluate("window.__spoken")) as string[];
+      expect([...new Set(seen)].join(" ")).toBe("The lab voice speaks.");
+      await expect(reply).toHaveText("The lab voice speaks.");
+      await toggle(page).click();
+      await expectAllLetGo(page);
+    });
+
+    /* ---- A call nobody is speaking on ---- */
+
+    /** Set how soon a quiet call asks, and how soon after that it ends, before it starts. */
+    const idleAfter = (page: Page, seconds: string, warning = "2") =>
+      page.getByTestId("voice-call").evaluate(
+        (call, [idle, warn]) => {
+          (call as HTMLElement).dataset.idleSeconds = idle;
+          (call as HTMLElement).dataset.idleWarningSeconds = warn;
+        },
+        [seconds, warning],
+      );
+    const stay = (page: Page) => page.getByTestId("voice-call-stay");
+
+    test("asks whether anyone is there, and ends a call nobody speaks on", async ({
+      page,
+    }) => {
+      await idleAfter(page, "2");
+      await startCall(page);
+      await expect(stay(page)).toBeHidden();
+      await expect(status(page)).toHaveText(
+        "Still there? The call is about to end.",
+        { timeout: 6000 },
+      );
+      await expect(stay(page)).toBeVisible();
+      await expect(status(page)).toHaveText(
+        "The call ended because nobody spoke.",
+        { timeout: 6000 },
+      );
+      await expect(toggle(page)).toHaveAttribute("aria-pressed", "false");
+      await expect(stay(page)).toBeHidden();
+      await expectAllLetGo(page);
+    });
+
+    test("stays on when the reader says so, or when the model speaks", async ({
+      page,
+    }) => {
+      await idleAfter(page, "2", "3");
+      await startCall(page);
+      await expect(stay(page)).toBeVisible({ timeout: 6000 });
+      await stay(page).click();
+      await expect(stay(page)).toBeHidden();
+      await expect(status(page)).toHaveText("Listening.");
+      // A voice on the line is the call in use for as long as it plays.
+      await type(page, "lab:speak 5");
+      await playedFor(page, 4);
+      await expect(stay(page)).toBeHidden();
+      await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
+      // Quiet again, it asks again; a muted call is asked the same.
+      await mute(page).click();
+      await expect(stay(page)).toBeVisible({ timeout: 10_000 });
+      await mute(page).click();
+      await expect(stay(page)).toBeHidden();
+      await toggle(page).click();
+      await expectAllLetGo(page);
+    });
+
+    test("does not ask while the reader is speaking", async ({ page }) => {
+      test.skip(provider !== "azure-voice-live", "the stand-in for it");
+      await idleAfter(page, "2", "1");
+      await startCall(page);
+      await type(page, "lab:hearing");
+      await expect(status(page)).toHaveText("Hearing you…", {
+        timeout: 10_000,
+      });
+      await page.waitForTimeout(4500);
+      await expect(status(page)).toHaveText("Hearing you…");
+      await expect(stay(page)).toBeHidden();
+      await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
+      await toggle(page).click();
+      await expectAllLetGo(page);
+    });
+
+    test("words written down after their turn was over do not start the next one", async ({
+      page,
+    }) => {
+      test.skip(provider !== "azure-voice-live", "the stand-in for it");
+      await startCall(page);
+      await type(page, "lab:latewords");
+      await expect(page.getByTestId("voice-call-said").last()).toHaveText(
+        LATE.answer,
+        { timeout: 10_000 },
+      );
+      await page.waitForTimeout(1000);
+      await expect(
+        page.getByTestId("turn-user").filter({ hasText: LATE.words }),
+      ).toHaveCount(0);
+      await type(page, "lab:speak 1");
+      await expect(page.getByTestId("turn-user").last()).toHaveText(
+        "lab:speak 1",
+      );
+      await toggle(page).click();
+      await expectAllLetGo(page);
+    });
+
+    test("a second call does not start with the first call's caption", async ({
+      page,
+    }) => {
+      const caption = page.getByTestId("voice-call-caption");
+      await startCall(page);
+      await type(page, "lab:speak 8");
+      await playedFor(page, 1);
+      await expect(caption).not.toBeEmpty();
+      await toggle(page).click();
+      await expectAllLetGo(page);
+      await startCall(page);
+      for (let checks = 0; checks < 6; checks++) {
+        await expect(caption).toBeEmpty();
+        await expect(caption).not.toHaveAttribute("data-key");
+        await page.waitForTimeout(250);
+      }
+      await toggle(page).click();
+      await expectAllLetGo(page);
+    });
+
+    test("never asks when the limit is 0", async ({ page }) => {
+      await idleAfter(page, "0", "1");
+      await startCall(page);
+      await page.waitForTimeout(4000);
+      await expect(stay(page)).toBeHidden();
+      await expect(status(page)).toHaveText("Listening.");
+      await toggle(page).click();
+      await expectAllLetGo(page);
     });
   });
 }

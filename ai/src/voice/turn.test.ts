@@ -5,6 +5,7 @@ import {
   MAX_VOICE_TURN_CHARS,
   newVoiceTurn,
   roomFor,
+  voiceMessages,
 } from "./turn.ts";
 
 const shown = (text: string): MessagePart => ({ type: "text", text });
@@ -32,5 +33,38 @@ describe("roomFor", () => {
     expect(roomFor(turn, shown("y".repeat(MAX_VOICE_TURN_CHARS / 2)))).toBe(
       false,
     );
+  });
+});
+
+describe("voiceMessages with what the thread shows", () => {
+  const COMMAND = "Decision on returns-window (fact): unsure";
+
+  it("keeps a pressed form's label beside what the form said", () => {
+    expect(
+      voiceMessages(newVoiceTurn(), {
+        reader: ` ${COMMAND} `,
+        model: "",
+        show: " Not sure ",
+      }),
+    ).toEqual([{ role: "user", content: COMMAND, show: "Not sure" }]);
+  });
+
+  it("keeps an empty label, and none that is the words themselves", () => {
+    expect(
+      voiceMessages(newVoiceTurn(), { reader: COMMAND, model: "", show: "" }),
+    ).toEqual([{ role: "user", content: COMMAND, show: "" }]);
+    expect(
+      voiceMessages(newVoiceTurn(), {
+        reader: "Hello",
+        model: "",
+        show: "Hello",
+      }),
+    ).toEqual([{ role: "user", content: "Hello" }]);
+  });
+
+  it("stores no reader message for a label with nothing said", () => {
+    expect(
+      voiceMessages(newVoiceTurn(), { reader: "", model: "", show: "Hi" }),
+    ).toEqual([]);
   });
 });

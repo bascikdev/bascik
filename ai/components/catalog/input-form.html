@@ -1,9 +1,9 @@
 <!-- @bascik
-A short form the reader fills in, with a title and a submit button label. Put one text-field inside per value you need. The answers are sent back as the reader's next message, one "name: value" line per field. Use it when you need several values at once.
+A short form the reader fills in, with a title and a submit button label. Put one text-field inside per value you need. The answers are sent back as the reader's next message, one "name: value" line per field. Use it when you need several values at once. Do not name a field text, app, voice, show or fields; those names are reserved.
 -->
 <style>
   .form {
-    margin: 0.75rem 0;
+    margin: 0;
   }
   .set {
     display: grid;
@@ -31,6 +31,7 @@ A short form the reader fills in, with a title and a submit button label. Put on
   }
 </style>
 <form class="form" method="post" action="/api/send" data-testid="input-form">
+  <input type="hidden" name="fields" value="message" />
   <fieldset class="set">
     <legend class="title" data-bascik-prop-title>Details</legend>
     <span data-bascik-slot></span>

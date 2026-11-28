@@ -11,7 +11,7 @@ import type { WireHooks } from "./types.ts";
 /** A socket that keeps what is sent, and hooks that record each call in order. */
 function fake(answer = async (): Promise<string> => "done") {
   const calls: unknown[][] = [];
-  const state = { said: "", current: true };
+  const state = { said: "", current: true, unheard: false };
   const socket = {
     readyState: WebSocket.OPEN as number,
     sent: [] as unknown[],
@@ -30,6 +30,8 @@ function fake(answer = async (): Promise<string> => "done") {
     mark: log("mark"),
     quiet: log("quiet"),
     heard: log("heard"),
+    dropReply: () => (log("dropReply")(), state.unheard),
+    active: log("active"),
     play: log("play"),
     spoke: log("spoke"),
     timedWord: log("timedWord"),
@@ -103,16 +105,140 @@ describe("events from Azure Voice Live", () => {
     await wire.receive({ type: "input_audio_buffer.speech_started" });
     expect(calls).toEqual([
       ["quiet"],
+      ["heard", "", "utterance-1"],
       ["mark", { hearing: true, thinking: false }],
+      ["active"],
     ]);
     calls.length = 0;
     state.said = "Dawn is";
     await wire.receive({ type: "input_audio_buffer.speech_started" });
     expect(calls).toEqual([
+      ["dropReply"],
       ["quiet"],
       ["endTurn"],
+      ["heard", "", "utterance-2"],
       ["mark", { hearing: true, thinking: false }],
+      ["active"],
     ]);
+  });
+
+  test("a reply the reader spoke over before hearing it does not end their turn", async () => {
+    const { wire, calls, state } = fake();
+    state.said = "Yep,";
+    state.unheard = true;
+    await wire.receive({
+      type: "input_audio_buffer.speech_started",
+      item_id: "item_b",
+    });
+    expect(calls.map(([name]) => name)).toEqual([
+      "dropReply",
+      "quiet",
+      "heard",
+      "mark",
+      "active",
+    ]);
+    expect(calls).toContainEqual(["heard", "", "item_b"]);
+  });
+
+  test("the end of a reply that was cut off, arriving after the next began, ends nothing", async () => {
+    const { wire, calls } = fake();
+    await wire.receive({ type: "response.created", response: { id: "r1" } });
+    await wire.receive({ type: "input_audio_buffer.speech_started" });
+    await wire.receive({ type: "response.created", response: { id: "r2" } });
+    calls.length = 0;
+    await wire.receive({
+      type: "response.audio_transcript.delta",
+      response_id: "r1",
+      delta: "stale",
+    });
+    await wire.receive({
+      type: "response.done",
+      response: { id: "r1", status: "cancelled" },
+    });
+    expect(calls).toEqual([]);
+    await wire.receive({
+      type: "response.audio_transcript.delta",
+      response_id: "r2",
+      delta: "fresh",
+    });
+    await wire.receive({
+      type: "response.done",
+      response: { id: "r2", status: "completed" },
+    });
+    expect(calls).toEqual([["spoke", "fresh"], ["endTurn"]]);
+  });
+
+  test("the tool calls of a reply that was replaced are not the next reply's", async () => {
+    const { socket, wire, calls } = fake();
+    await wire.receive({ type: "response.created", response: { id: "r1" } });
+    await wire.receive({
+      type: "response.function_call_arguments.done",
+      response_id: "r1",
+      call_id: "c1",
+      name: "search",
+      arguments: "{}",
+    });
+    await wire.receive({ type: "input_audio_buffer.speech_started" });
+    await wire.receive({ type: "response.created", response: { id: "r2" } });
+    await wire.receive({
+      type: "response.done",
+      response: { id: "r1", status: "cancelled" },
+    });
+    calls.length = 0;
+    socket.sent.length = 0;
+    await wire.receive({
+      type: "response.audio_transcript.delta",
+      response_id: "r2",
+      delta: "Hello.",
+    });
+    await wire.receive({
+      type: "response.done",
+      response: { id: "r2", status: "completed" },
+    });
+    expect(calls).toEqual([["spoke", "Hello."], ["endTurn"]]);
+    expect(socket.sent).toEqual([]);
+  });
+
+  test("a call in use is said to the relay, and to nobody else", () => {
+    const { socket, wire } = fake();
+    wire.alive();
+    expect(socket.sent).toEqual([{ type: "call.active" }]);
+  });
+
+  test("a reader who pauses says one turn in two utterances, and neither replaces the other", async () => {
+    const { wire, calls } = fake();
+    const said = (item_id: string, transcript: string) =>
+      wire.receive({
+        type: "conversation.item.input_audio_transcription.completed",
+        item_id,
+        transcript,
+      });
+    await wire.receive({
+      type: "input_audio_buffer.speech_started",
+      item_id: "item_a",
+    });
+    await wire.receive({ type: "response.created" });
+    await said("item_a", "Tell me about the AI package.");
+    // The reader goes on before the model has said anything.
+    await wire.receive({
+      type: "input_audio_buffer.speech_started",
+      item_id: "item_b",
+    });
+    await wire.receive({
+      type: "response.done",
+      response: { status: "cancelled" },
+    });
+    await wire.receive({ type: "response.created" });
+    await said("item_b", "How does that work?");
+    const heard = calls.filter(([name]) => name === "heard");
+    expect(heard).toEqual([
+      ["heard", "", "item_a"],
+      ["heard", "Tell me about the AI package.", "item_a", true],
+      ["heard", "", "item_b"],
+      ["heard", "How does that work?", "item_b", true],
+    ]);
+    // The reply that was cut off did not end the turn.
+    expect(calls.some(([name]) => name === "endTurn")).toBe(false);
   });
 
   test("speech stopping waits for the model", async () => {
@@ -121,7 +247,13 @@ describe("events from Azure Voice Live", () => {
     expect(calls).toEqual([["mark", { hearing: false, thinking: true }]]);
   });
 
-  test("the reader's words: deltas add, the completed text replaces", async () => {
+  test("muting sends nothing: the silence that follows ends the reader's turn", () => {
+    const { wire, socket } = fake();
+    wire.pause();
+    expect(socket.sent).toEqual([]);
+  });
+
+  test("the reader's words: deltas add, the completed text replaces its own utterance", async () => {
     const { wire, calls } = fake();
     await wire.receive({
       type: "conversation.item.input_audio_transcription.delta",
@@ -135,8 +267,8 @@ describe("events from Azure Voice Live", () => {
       transcript: "Tell me",
     });
     expect(calls).toEqual([
-      ["heard", "Tell"],
-      ["heard", "Tell me", true],
+      ["heard", "Tell", "utterance-0"],
+      ["heard", "Tell me", "utterance-0", true],
     ]);
   });
 

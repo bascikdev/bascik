@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
+  CHUNK,
+  MUTE_TAIL,
+  silentChunk,
   QUIET_FOR,
   barTransform,
   decodePcm16,
@@ -84,5 +87,28 @@ describe("the meter and playback", () => {
   test("is playing while queued audio is ahead of the clock", () => {
     expect(isPlaying({ playback: { currentTime: 1 }, nextAt: 2 })).toBe(true);
     expect(isPlaying({ playback: { currentTime: 2 }, nextAt: 2 })).toBe(false);
+  });
+});
+
+describe("muting", () => {
+  test("a chunk of silence is a tenth of a second of zeros", () => {
+    const samples = decodePcm16(silentChunk());
+    expect(samples).toHaveLength(CHUNK);
+    expect(samples.every((sample) => sample === 0)).toBe(true);
+    // Longer than the longest pause a call can be set up with (3000 ms).
+    expect((MUTE_TAIL * CHUNK) / 16).toBeGreaterThan(3000);
+    expect((MUTE_TAIL * CHUNK) / 16).toBeLessThanOrEqual(3500);
+  });
+
+  test("reset forgets what was captured before the microphone was switched off", () => {
+    const chunks = pcmChunker(4);
+    chunks.add(new Float32Array([0.5, 0.5, 0.5]));
+    chunks.reset();
+    chunks.add(new Float32Array([0.25, 0.25, 0.25, 0.25]));
+    const taken = decodePcm16(chunks.take()!);
+    expect(taken).toHaveLength(4);
+    expect([...taken].every((sample) => Math.abs(sample - 0.25) < 0.001)).toBe(
+      true,
+    );
   });
 });

@@ -159,7 +159,9 @@ export interface Chat {
   /**
    * Add the reader's message to their open conversation (a new one when none
    * is open) and store it. The conversation's first message titles it, unless
-   * `title` does. Tool calls still waiting for the reader are refused.
+   * `title` does. `show` is what the thread shows in place of the text (a
+   * label for a message that is a record; empty for nothing), while the model
+   * still reads the text. Tool calls still waiting for the reader are refused.
    * Rejects with `ConversationFullError` when the message would take the
    * conversation past `maxConversationBytes`; answer it with 413 (the `send`
    * handler does).
@@ -167,7 +169,7 @@ export interface Chat {
   addMessage(
     session: Session,
     text: string,
-    options?: { title?: string; files?: FilePart[] },
+    options?: { title?: string; files?: FilePart[]; show?: string },
   ): Promise<Conversation>;
   /** A 303 to the page, remembering the open conversation: a form POST ends in a GET, so reload is safe. */
   redirect(session: Session, conversationId: string): Response;

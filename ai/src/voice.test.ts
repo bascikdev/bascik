@@ -90,6 +90,16 @@ describe("voiceTools and voicePrompt", () => {
     expect(prompt).toContain(`the ${SHOW_TOOL} tool`);
     expect(prompt).toContain(`<book-card title="…">content</book-card>`);
   });
+
+  it("tells a speaking model its words are printed, and to leave the detail to the screen", () => {
+    const prompt = voicePrompt(catalog);
+    expect(prompt).toContain("printed on the screen");
+    expect(prompt).toContain("at most two short sentences");
+    expect(prompt).toContain("web addresses");
+    expect(prompt).toContain("do not read out or summarize");
+    const show = voiceTools([]).find((tool) => tool.name === SHOW_TOOL)!;
+    expect(JSON.stringify(show.inputSchema)).toContain("No prose.");
+  });
 });
 
 describe("runVoiceTool", () => {
@@ -369,6 +379,36 @@ describe("fill_form", () => {
 describe("geminiLiveVoice", () => {
   const config = { system: "Be brief.", tools: voiceTools(tools) };
 
+  it("locks in how long a pause ends the reader's turn: 800 ms by default", () => {
+    const input = (options: object): unknown =>
+      geminiLiveSetup(config, { model: "models/m", ...options })
+        .realtimeInputConfig;
+    expect(input({})).toEqual({
+      automaticActivityDetection: { silenceDurationMs: 800 },
+    });
+    expect(input({ pauseMs: 1200 })).toEqual({
+      automaticActivityDetection: { silenceDurationMs: 1200 },
+    });
+    // The provider's own settings are laid over it, and keep the wait.
+    expect(
+      input({
+        realtimeInput: {
+          activityHandling: "NO_INTERRUPTION",
+          automaticActivityDetection: {
+            endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
+          },
+        },
+      }),
+    ).toEqual({
+      activityHandling: "NO_INTERRUPTION",
+      automaticActivityDetection: {
+        silenceDurationMs: 800,
+        endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
+      },
+    });
+    expect(() => geminiLiveVoice({ pauseMs: Number.NaN })).toThrow(/pauseMs/);
+  });
+
   it("locks the model, the prompt, and the tools into the session setup", () => {
     const setup = geminiLiveSetup(config, {
       model: "models/m",
@@ -449,6 +489,33 @@ describe("geminiLiveVoice", () => {
       setup: { model: "models/gemini-3.8-live" },
     });
     expect(JSON.stringify(ticket)).not.toContain("secret-key");
+
+    // The developer's pause and the provider's own settings are in the setup the token locks in.
+    await geminiLiveVoice({
+      apiKey: "secret-key",
+      fetch: fake,
+      pauseMs: 1200,
+      realtimeInput: { activityHandling: "NO_INTERRUPTION" },
+    }).createSession(config);
+    const setup = (
+      requests.at(-1)!.body as {
+        bidiGenerateContentSetup: { realtimeInputConfig: unknown };
+      }
+    ).bidiGenerateContentSetup;
+    expect(setup.realtimeInputConfig).toEqual({
+      activityHandling: "NO_INTERRUPTION",
+      automaticActivityDetection: { silenceDurationMs: 1200 },
+    });
+  });
+
+  it("tells the developer of settings that are not an object, when the provider is made", () => {
+    for (const given of [null, ["NO_INTERRUPTION"], "NO_INTERRUPTION"]) {
+      expect(() =>
+        geminiLiveVoice({
+          realtimeInput: given as unknown as Record<string, unknown>,
+        }),
+      ).toThrow(/realtimeInput must be an object/);
+    }
   });
 
   it("fails with the provider's words, and without a key says so", async () => {

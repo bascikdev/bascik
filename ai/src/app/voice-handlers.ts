@@ -266,6 +266,9 @@ export function chatVoiceHandlers(
     const session = sessions.identify(request);
     const reader = field(form, "reader");
     const model = field(form, "model");
+    // What the thread shows for the reader's words, when a form they pressed
+    // told the model something else.
+    const show = field(form, "show");
     // The browser may name the turn, so the same turn sent twice (a retry
     // after a lost answer) is stored once.
     const named = field(form, "turn");
@@ -287,6 +290,7 @@ export function chatVoiceHandlers(
         return voiceMessages(turn, {
           reader: reader.slice(0, MAX_SPEECH),
           model: model.slice(0, MAX_SPEECH),
+          ...(show === undefined ? {} : { show: show.slice(0, MAX_SPEECH) }),
         });
       });
       // Stored already, or nothing to store.

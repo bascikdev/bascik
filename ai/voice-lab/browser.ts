@@ -115,6 +115,11 @@ export const VOICE_LAB = String.raw`(() => {
   lab.liveTracks = () =>
     lab.tracks.filter((track) => track.readyState === "live").length;
 
+  /** How many of them are switched on: a muted microphone is open, and off. */
+  lab.enabledTracks = () =>
+    lab.tracks.filter((track) => track.readyState === "live" && track.enabled)
+      .length;
+
   /* ---- The loudspeaker ---- */
 
   const TAP = URL.createObjectURL(

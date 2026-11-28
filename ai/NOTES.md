@@ -185,7 +185,7 @@ What it showed:
 What it did not test:
 
 - **A real microphone.** The browser tests give the component a synthetic tone as its microphone and a stand-in provider (`e2e/fake-live-server.ts`). The headless browser's own fake microphone hung on this machine. Nobody has spoken to it yet.
-- **Interruption, echo, and long sessions.** The code stops playback when the provider says the reader cut in. That path has only been read, not exercised.
+- **Interruption, echo, and long sessions.** The code stops playback when the provider says the reader cut in. That path has only been read, not exercised. (The voice lab has since measured it with stand-in providers, as the barge-in stop: see `voice-lab/README.md`.)
 - **OpenAI's own Realtime API.** It would be a third `VoiceProvider` and a wire protocol close to Azure's.
 
 ### Azure Voice Live, and a relay
@@ -207,6 +207,10 @@ A call can fill in a form. The first real conversation, on the review demo, ende
 The voice controls also moved into the composer. `chat-voice` and `voice-call` have no box of their own (`display: contents`): each puts a button in the composer's row, and captions, call status, and the reading-aid controls are a line inside the same box.
 
 Not tested with Azure: a real microphone, interruption, the service's echo cancellation and noise suppression (they are turned on, and nothing was said into them), a session that reaches its time limit on the real service, and a key in place of the token.
+
+A reader who pauses was the next thing real calls showed. The provider took a pause for thought as the end of a turn and answered it, the reader went on, and the thread kept only the second half of what they said: Azure's completed transcript for the second utterance replaced the words of the first. Three changes came of it. A turn's words are kept per utterance (`components/chat/voice-call/reader.ts`), so a transcript corrects its own utterance only. A reply the reader spoke over before half a second of it had played, and that showed nothing, is taken back, and their turn goes on. And both providers take `pauseMs` (800 by default) with a pass-through for their own turn detection settings. A live check on 2026-11-27, `gpt-realtime-2` on API version `2026-04-10`: `end_of_utterance_detection: { model: "smart_end_of_turn_detection" }` was accepted, the text-based `semantic_detection_v1` was refused, and `{ type: "semantic_vad", eagerness: "low" }` and `remove_filler_words` were accepted. That is one observation. A refused setting used to leave the reader waiting for the connect timeout; the relay now ends the call at once and says so.
+
+The same calls added a mute button, a question before an idle call ends, and the spoken word marked in the answer. The stand-ins test all of them (`lab:paused`, the mute and idle specs in `e2e/voice-lab.spec.ts`). Not tested on a real service: whether a provider bills anything for a muted, open call, and how each provider's own detector behaves at the edges of `pauseMs`.
 
 ## A UI layer without a client framework
 

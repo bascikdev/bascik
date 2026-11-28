@@ -95,4 +95,30 @@ describe("matchOf", () => {
     const [[from, to]] = found!.match.marks as [[number, number]];
     expect(snippet.slice(from, to)).toBe("Beloved");
   });
+
+  test("matches and prints what the thread shows for a message, never what it hides", () => {
+    const answered = conversation([
+      {
+        role: "user",
+        content: "Decision on returns-window (fact): unsure",
+        show: "Not sure",
+      },
+      { role: "assistant", content: "Recorded." },
+      { role: "user", content: "secret command", show: "" },
+    ]);
+    const found = matchOf(answered, ["not", "sure"]);
+    expect(found?.count).toBe(2);
+    expect(found?.match.snippet).toBe("Not sure");
+    expect(matchOf(answered, ["unsure"])).toBeNull();
+    expect(matchOf(answered, ["returns-window"])).toBeNull();
+    expect(matchOf(answered, ["secret"])).toBeNull();
+  });
+
+  test("an assistant message is matched by its text, whatever it carries", () => {
+    const found = matchOf(
+      conversation([{ role: "assistant", content: "Dune", show: "Hidden" }]),
+      ["dune"],
+    );
+    expect(found?.match.snippet).toBe("Dune");
+  });
 });

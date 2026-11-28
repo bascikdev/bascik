@@ -69,6 +69,40 @@ export async function loadVoice(
   );
 }
 
+/** A number of milliseconds from the environment, or nothing. */
+export function pauseFrom(
+  name: string,
+  value: string | undefined,
+): number | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  const ms = Number(value);
+  if (!Number.isFinite(ms)) {
+    throw new Error(`${name} must be a number of milliseconds.`);
+  }
+  return ms;
+}
+
+/** A provider's own settings, as JSON in the environment, or nothing. */
+export function settingsFrom(
+  name: string,
+  value: string | undefined,
+): Record<string, unknown> | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed)
+    ) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Said below.
+  }
+  throw new Error(`${name} must be a JSON object.`);
+}
+
 /**
  * The providers this server is set up for, Azure first. Made once: the Azure
  * one runs a relay, which has to outlive a request.
@@ -85,6 +119,11 @@ function voiceProviders(): Promise<VoiceProvider[]> {
         azureVoiceLiveVoice({
           model: env.AZURE_VOICE_LIVE_MODEL,
           voice: env.AZURE_VOICE_LIVE_VOICE,
+          pauseMs: pauseFrom("VOICE_PAUSE_MS", env.VOICE_PAUSE_MS),
+          turnDetection: settingsFrom(
+            "AZURE_VOICE_LIVE_TURN_DETECTION",
+            env.AZURE_VOICE_LIVE_TURN_DETECTION,
+          ),
           // With no key and no token given, a developer's own Azure sign-in.
           ...(env.AZURE_VOICE_LIVE_API_KEY || env.AZURE_VOICE_LIVE_TOKEN
             ? {}
@@ -105,6 +144,11 @@ function voiceProviders(): Promise<VoiceProvider[]> {
       providers.push(
         geminiLiveVoice({
           model: env.GEMINI_LIVE_MODEL,
+          pauseMs: pauseFrom("VOICE_PAUSE_MS", env.VOICE_PAUSE_MS),
+          realtimeInput: settingsFrom(
+            "GEMINI_LIVE_REALTIME_INPUT",
+            env.GEMINI_LIVE_REALTIME_INPUT,
+          ),
           // A test points these at a stand-in for the provider.
           httpBase: env.GEMINI_LIVE_HTTP,
           wsBase: env.GEMINI_LIVE_WS,

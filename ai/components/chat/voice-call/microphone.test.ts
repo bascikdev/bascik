@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { closeCall, dropMicrophone, openMicrophone } from "./microphone.ts";
+import {
+  closeCall,
+  dropMicrophone,
+  muteMicrophone,
+  openMicrophone,
+} from "./microphone.ts";
 import type { Call } from "./types.ts";
 
 /** A microphone track that remembers whether it was stopped. */
@@ -154,5 +159,22 @@ describe("closeCall", () => {
     expect(playbackClosed).toBe(true);
     expect(track.readyState).toBe("ended");
     expect(contexts[0]!.closed).toBe(true);
+  });
+});
+
+describe("muteMicrophone", () => {
+  test("switches every audio track off, and on again", () => {
+    const tracks = [{ enabled: true }, { enabled: true }];
+    const call = {
+      microphone: { getAudioTracks: () => tracks },
+    } as unknown as Call;
+    muteMicrophone(call, true);
+    expect(tracks.map((track) => track.enabled)).toEqual([false, false]);
+    muteMicrophone(call, false);
+    expect(tracks.map((track) => track.enabled)).toEqual([true, true]);
+  });
+
+  test("does nothing for a call with no microphone", () => {
+    expect(() => muteMicrophone({} as Call, true)).not.toThrow();
   });
 });

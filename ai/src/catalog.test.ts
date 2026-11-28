@@ -99,4 +99,23 @@ describe("catalogPrompt", () => {
     );
     expect(catalogPrompt(new Map())).not.toContain("is drawn");
   });
+
+  it("tells the model not to repeat a component in prose", () => {
+    expect(catalogPrompt(new Map())).toContain(
+      "do not repeat in text what it shows",
+    );
+  });
+
+  it("sends links to a component only when one takes an href", () => {
+    const link = describeComponent(
+      "doc-link.html",
+      `<a data-bascik-attr-href="href"><span data-bascik-prop-title></span></a>`,
+    )!;
+    const linked = catalogPrompt(new Map([[link.name, link]]));
+    expect(linked).toContain("never write a URL or a path to a page as text");
+    expect(linked).toContain("a component that has an href");
+    const plain = catalogPrompt(new Map());
+    expect(plain).not.toContain("a component that has an href");
+    expect(plain).toContain("do not write a URL unless the reader asks");
+  });
 });

@@ -4,6 +4,7 @@
  * field kept to a path on this site, and the check that a request that
  * changes something was not sent by another site's page.
  */
+import { MAX_SHOWN } from "./limits.ts";
 
 /**
  * A path on this site: one slash first, never `//host` or `/\host`, and no
@@ -64,16 +65,51 @@ export const field = (form: FormData, name: string): string | undefined => {
   return typeof value === "string" ? value : undefined;
 };
 
-/** A form with a `text` field sends that; any other form sends `Label: value` lines. */
+/**
+ * Whether every field of a form is the reader's answer, under a name the
+ * form's author did not choose: an input-form, whose fields the model names.
+ * The form says so with a hidden `fields` field of `message`, ahead of the
+ * rest. A posted `show` or `text` field looks the same whoever named it, so
+ * only this tells them apart: without it, both are the author's. With it,
+ * neither is: each is sent as a line of the message like any other field,
+ * and none replaces the message or what the thread shows for it.
+ */
+export const allAnswers = (form: FormData): boolean =>
+  form.get("fields") === "message";
+
+/**
+ * What the thread shows for a form's message, when the form says: its `show`
+ * field. Undefined when it has none, and the message itself is shown; empty
+ * when nothing is to be shown. A form whose fields are all answers never says.
+ */
+export function shownFrom(form: FormData): string | undefined {
+  if (allAnswers(form)) return undefined;
+  const show = form.get("show");
+  return typeof show === "string" ? show.trim().slice(0, MAX_SHOWN) : undefined;
+}
+
+/**
+ * A form with a `text` field sends that; any other form sends `Label: value`
+ * lines. A form whose fields are all answers sends every one as a line.
+ */
 export function messageFrom(form: FormData): string {
-  const text = form.get("text");
+  const answers = allAnswers(form);
+  const text = answers ? null : form.get("text");
   if (typeof text === "string") return text.trim();
   const lines: string[] = [];
+  // The first `fields` value is the form's own; a later one is an answer.
+  let marker = answers;
   for (const [name, value] of form) {
-    // `app` names which chat the form is for, and `voice` how to answer it.
+    if (marker && name === "fields") {
+      marker = false;
+      continue;
+    }
+    // `app` names which chat the form is for, `voice` how to answer it, and
+    // `show` what the thread shows for the message.
     if (
       name !== "app" &&
       name !== "voice" &&
+      (answers || name !== "show") &&
       typeof value === "string" &&
       value.trim()
     ) {

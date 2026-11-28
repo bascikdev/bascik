@@ -102,10 +102,10 @@ export interface CaptionFrame {
  */
 export function captionAt(voiced: Voiced, now: number): CaptionFrame | null {
   const timed = voiced.words.length > 0;
-  const text = voiced.text.trim();
+  const spans = timed ? [] : wordSpans(voiced.text);
   const words = timed
     ? voiced.words.map((word) => word.text)
-    : text.split(/\s+/).filter(Boolean);
+    : spans.map((span) => voiced.text.slice(span.start, span.end));
   const elapsed = now - voiced.start;
   if (!words.length || voiced.seconds === 0 || elapsed > voiced.seconds + 0.4) {
     return null;
@@ -116,11 +116,14 @@ export function captionAt(voiced: Voiced, now: number): CaptionFrame | null {
       if (word.at <= elapsed) index = at;
     });
   } else {
-    const position = Math.max(0, elapsed / voiced.seconds) * text.length;
-    for (let at = 0, word = 0; word < words.length; word++) {
-      if (at <= position) index = word;
-      at += words[word]!.length + 1;
-    }
+    // How far into the text, from its first word to its last, the voice is.
+    const first = spans[0]!.start;
+    const position =
+      first +
+      Math.max(0, elapsed / voiced.seconds) * (spans.at(-1)!.end - first);
+    spans.forEach((span, at) => {
+      if (span.start <= position) index = at;
+    });
   }
   return { words, index, timed };
 }
@@ -147,4 +150,78 @@ export function captionParts(
     if (offset + start !== index) return [`${word} `];
     return [{ current: word }, " "];
   });
+}
+
+/** Writing that puts no spaces between its words. */
+const UNSPACED =
+  /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Thai}\p{sc=Lao}\p{sc=Khmer}\p{sc=Myanmar}]/u;
+
+let segmenter: Intl.Segmenter | undefined;
+
+/**
+ * Where each word of `text` is: the offsets of every run that is not white
+ * space. A run in a script that is written without spaces is divided into
+ * its words, where the browser can tell them; a mark of punctuation stays
+ * with the word beside it.
+ */
+export function wordSpans(text: string): { start: number; end: number }[] {
+  const spans: { start: number; end: number }[] = [];
+  for (const run of text.matchAll(/\S+/g)) {
+    const end = run.index + run[0].length;
+    if (!UNSPACED.test(run[0]) || typeof Intl.Segmenter !== "function") {
+      spans.push({ start: run.index, end });
+      continue;
+    }
+    segmenter ??= new Intl.Segmenter(undefined, { granularity: "word" });
+    /** Where the word being gathered starts, and whether a word of this run is out. */
+    let start = run.index;
+    let begun = false;
+    for (const piece of segmenter.segment(run[0])) {
+      const pieceEnd = run.index + piece.index + piece.segment.length;
+      if (piece.isWordLike) {
+        spans.push({ start, end: pieceEnd });
+        begun = true;
+      } else if (begun) {
+        spans.at(-1)!.end = pieceEnd;
+      } else {
+        // Punctuation that opens the run goes with the word after it.
+        continue;
+      }
+      start = pieceEnd;
+    }
+    // A run with no word in it is one span.
+    if (!begun) spans.push({ start: run.index, end });
+  }
+  return spans;
+}
+
+const inked = (text: string): number => text.replace(/\s/g, "").length;
+
+/**
+ * Where the word being said is in the turn's text, as offsets into
+ * `voiced.text`, or null when the text does not reach that far yet. A word
+ * the provider timed is found by counting the characters, white space left
+ * out, of the timed words before it: the provider's words and its text do
+ * not break in the same places (a quotation mark comes as a word of its own).
+ */
+export function spokenRange(
+  voiced: Voiced,
+  frame: CaptionFrame,
+): { start: number; end: number } | null {
+  if (!frame.timed) return wordSpans(voiced.text)[frame.index] ?? null;
+  let before = 0;
+  for (let at = 0; at < frame.index; at++) {
+    before += inked(voiced.words[at]!.text);
+  }
+  const length = inked(voiced.words[frame.index]?.text ?? "");
+  if (!length) return null;
+  let seen = 0;
+  let start = -1;
+  for (let at = 0; at < voiced.text.length; at++) {
+    if (/\s/.test(voiced.text[at]!)) continue;
+    if (seen === before) start = at;
+    seen++;
+    if (start >= 0 && seen === before + length) return { start, end: at + 1 };
+  }
+  return null;
 }

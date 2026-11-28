@@ -3,7 +3,7 @@
  * query's words, what was said in a conversation, where the words are, and
  * the snippet to show.
  */
-import { partsOf } from "../model.ts";
+import { partsOf, shownOf } from "../model.ts";
 import type { Conversation, SearchMatch } from "./types.ts";
 
 /** A query is cut to this many characters. */
@@ -37,11 +37,19 @@ export function wordsOf(query: string): string[] {
   return [...new Set(words.filter(Boolean))].slice(0, MAX_WORDS);
 }
 
-/** What was said in a conversation: the reader's words, and the model's. Never a tool call. */
+/**
+ * What was said in a conversation: the reader's words as the thread shows
+ * them, and the model's. Never a tool call, and never a message the thread
+ * shows other words for.
+ */
 function saidIn(conversation: Conversation): string[] {
   return conversation.messages.flatMap((message) =>
-    partsOf(message)
-      .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    (message.role === "user" && message.show !== undefined
+      ? [shownOf(message)]
+      : partsOf(message).flatMap((part) =>
+          part.type === "text" ? [part.text] : [],
+        )
+    )
       .map((text) => text.replace(/\s+/g, " ").trim())
       .filter(Boolean),
   );

@@ -1,5 +1,5 @@
 <!-- @bascik
-One card in a swipe-deck. title is the item's name and must be unique within the deck. The content is a short description of the item: a sentence or two, or a component such as a source quote. Never put a form or a button inside. Always used inside swipe-deck. Do not use the titles text, app or voice.
+One card in a swipe-deck. title is the item's name and must be unique within the deck. The content is a short description of the item: a sentence or two, or a component such as a source quote. Never put a form or a button inside. Always used inside swipe-deck. Do not use the titles text, app, voice or show.
 -->
 <style>
   .card {
@@ -31,6 +31,7 @@ One card in a swipe-deck. title is the item's name and must be unique within the
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-block-size: 2.75rem;
     padding: 0.4rem 0.9rem;
     border: 1px solid var(--border);
     border-radius: 999px;
@@ -38,6 +39,9 @@ One card in a swipe-deck. title is the item's name and must be unique within the
   }
   .answer:has(:checked) {
     border-color: var(--accent);
+  }
+  .card[data-answers="hidden"] .answers {
+    display: none;
   }
 </style>
 <fieldset class="card" data-testid="swipe-card">

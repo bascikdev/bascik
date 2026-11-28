@@ -18,17 +18,29 @@ export const providerLabel = (ticket: {
   label?: string;
 }): string => ticket.label ?? PROVIDERS[ticket.protocol] ?? "";
 
-/** Approval waits, then work, then thinking, then hearing, then listening. */
+/** What the line says while the microphone is on, and while it is muted. */
+export const LISTENING = "Listening.";
+export const MUTED = "Muted. The model cannot hear you.";
+/** What the reader is asked when nobody has spoken for a while, and told when the call ends for it. */
+export const STILL_THERE = "Still there? The call is about to end.";
+export const NOBODY_SPOKE = "The call ended because nobody spoke.";
+
+/**
+ * Approval waits, then work, then the question whether anyone is there,
+ * then thinking, then hearing, then listening.
+ */
 export const statusText = (call: CallStatus): string =>
   call.waiting.size
     ? "Waiting for your answer on screen."
     : call.working > 0
       ? "Working…"
-      : call.thinking
-        ? "Thinking…"
-        : call.hearing
-          ? "Hearing you…"
-          : call.base;
+      : call.idle
+        ? STILL_THERE
+        : call.thinking
+          ? "Thinking…"
+          : call.hearing
+            ? "Hearing you…"
+            : call.base;
 
 /** Why a call could not start, from the session route's HTTP status. */
 export const sessionFailure = (status: number): string =>

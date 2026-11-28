@@ -66,6 +66,16 @@ export function dropMicrophone(current: Call): void {
   current.capture = undefined;
 }
 
+/**
+ * Switch a call's microphone off or on, at its source: a muted track gives
+ * silence, and the browser shows that nothing is being recorded.
+ */
+export function muteMicrophone(current: Call, muted: boolean): void {
+  for (const track of current.microphone?.getAudioTracks() ?? []) {
+    track.enabled = !muted;
+  }
+}
+
 /** Let go of everything a call holds: its socket, audio and microphone. */
 export function closeCall(ending: Call): void {
   for (const decide of ending.waiting.values()) decide("deny");

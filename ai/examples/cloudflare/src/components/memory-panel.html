@@ -1,11 +1,35 @@
 <!-- @bascik
-What the assistant remembers about the reader, read from their ReaderData object on every request. Each memory is a memory-item with a Forget button; the html helper escapes the text, so nothing saved is ever drawn as markup.
+What the assistant remembers about the reader, read from their ReaderData object on every request, under a link back to the chat. Each memory is a memory-item with a Forget button; the html helper escapes the text, so nothing saved is ever drawn as markup.
 -->
 <style>
   .panel {
     flex: 1;
     min-block-size: 0;
     overflow-y: auto;
+  }
+  /* The same column as the list under it. */
+  .top {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    align-items: baseline;
+    justify-content: space-between;
+    max-inline-size: 46rem;
+    margin-inline: auto;
+    padding-block-start: 1rem;
+    font-size: 0.875rem;
+  }
+  .back {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 2.75rem;
+    color: inherit;
+    font-weight: 600;
+    text-underline-offset: 0.2em;
+  }
+  .back:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 </style>
 <div class="panel" data-testid="memory-panel">
@@ -19,7 +43,12 @@ What the assistant remembers about the reader, read from their ReaderData object
       context: RequestContext,
     ) {
       const memories = await chatOf(context).chat.memories(request);
-      yield html`<memory-list
+      yield html`<nav class="top" aria-label="Memory">
+          <a class="back" href="/" data-testid="memory-back"
+            >Back to Bookshop</a
+          >
+        </nav>
+        <memory-list
         >${memories.map(
           (memory) =>
             html`<memory-item

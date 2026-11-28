@@ -88,17 +88,26 @@ export function noteVoiceView(turn: VoiceTurn, call: string): string[] {
 
 /**
  * End a voice turn: the messages to store for it. What the reader said, then
- * one assistant message with what the model said, called, and showed. A call
+ * one assistant message with what the model said, called, and showed. `show`
+ * is what the thread shows for the reader's message when that is not what
+ * the model was told: the label of a form they pressed, or nothing. A call
  * the reader never answered is stored as refused. The turn's call ids are
  * kept (the last `MAX_VOICE_CALL_IDS`): an id is used once in a call.
  */
 export function voiceMessages(
   turn: VoiceTurn,
-  said: { reader: string; model: string },
+  said: { reader: string; model: string; show?: string },
 ): ChatMessage[] {
   const messages: ChatMessage[] = [];
   const reader = said.reader.trim();
-  if (reader) messages.push({ role: "user", content: reader });
+  const show = said.show?.trim();
+  if (reader) {
+    messages.push({
+      role: "user",
+      content: reader,
+      ...(show !== undefined && show !== reader ? { show } : {}),
+    });
+  }
   const spoken = said.model.trim();
   const parts: MessagePart[] = [
     ...(spoken ? [{ type: "text" as const, text: spoken, spoken: true }] : []),

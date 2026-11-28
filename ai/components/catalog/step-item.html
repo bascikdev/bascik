@@ -5,29 +5,33 @@ One step inside a step-list: a short title, and a sentence or two of detail as c
   .step {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 0.1rem 0.75rem;
+    gap: 0.1rem 0.6rem;
     counter-increment: step;
   }
+  /* The number is an outline, so a list of steps does not outweigh the
+     words beside it. */
   .step::before {
     content: counter(step);
     grid-row: span 2;
     display: grid;
     place-items: center;
-    inline-size: 1.6rem;
-    block-size: 1.6rem;
+    inline-size: 1.375rem;
+    block-size: 1.375rem;
+    border: 1px solid var(--border);
     border-radius: 999px;
-    background: var(--accent);
-    color: var(--on-accent);
-    font-size: 0.8125rem;
-    font-weight: 650;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
   }
   .title {
+    font-size: 0.9375rem;
     font-weight: 600;
   }
   .detail {
     grid-column: 2;
     color: var(--muted);
-    font-size: 0.9375rem;
+    font-size: var(--text-small, 0.875rem);
   }
 </style>
 <li class="step" data-testid="step-item">

@@ -21,19 +21,20 @@ The first three need no key, no device and no network. They measure sound in rea
 
 Every lab spec reports its numbers with the run (`--reporter=list` or the HTML report shows them as `measured` annotations), so a slow drift is seen before it is a failure.
 
-| Measurement              | How it is taken                                                                                                                      | Limit                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
-| Capture match            | A known signal is said into the microphone. The provider's copy is lined up with it and compared, whole and in every quarter second. | Over 0.95 in every quarter second |
-| Capture clock slip       | How far any quarter second had to be moved to match. Two sound clocks differ by a few samples; a lost block is 8 ms.                 | Under 4 ms                        |
-| Capture gain             | The copy's loudness over the original's.                                                                                             | 0.85 to 1.15                      |
-| Capture pace             | Seconds of sound received over seconds passed. A page that captured at 48 kHz and said 16 would send three times too much.           | 0.93 to 1.07                      |
-| Playback match           | The provider sends a known voice. What the page sends to the loudspeaker is recorded sample for sample and compared.                 | Over 0.99 of 1                    |
-| Playback gaps and clicks | One stretch of sound as long as the voice, and no jump between samples larger than the voice's own.                                  | None                              |
-| Barge-in stop            | From the reader's first sound into the microphone to the last sample of the model's voice out of the loudspeaker.                    | Under 700 ms                      |
-| Hang-up stop             | From the press to the last sample played.                                                                                            | Under 300 ms                      |
-| Nothing held             | Live microphone tracks, open audio contexts and open sockets after a call ends, however it ended.                                    | 0, 0 and 0                        |
-| Word error rate (live)   | The provider's own transcript of a spoken sentence against the sentence.                                                             | At most 34%                       |
-| Answer starts (live)     | From the end of the reader's sentence to the model's first sound.                                                                    | Under 10 s                        |
+| Measurement              | How it is taken                                                                                                                                                         | Limit                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Capture match            | A known signal is said into the microphone. The provider's copy is lined up with it and compared, whole and in every quarter second.                                    | Over 0.95 in every quarter second                                        |
+| Capture clock slip       | How far any quarter second had to be moved to match. Two sound clocks differ by a few samples; a lost block is 8 ms.                                                    | Under 4 ms                                                               |
+| Capture gain             | The copy's loudness over the original's.                                                                                                                                | 0.85 to 1.15                                                             |
+| Capture pace             | Seconds of sound received over seconds passed. A page that captured at 48 kHz and said 16 would send three times too much.                                              | 0.93 to 1.07                                                             |
+| Playback match           | The provider sends a known voice. What the page sends to the loudspeaker is recorded sample for sample and compared.                                                    | Over 0.99 of 1                                                           |
+| Playback gaps and clicks | One stretch of sound as long as the voice, and no jump between samples larger than the voice's own.                                                                     | None                                                                     |
+| Barge-in stop            | From the reader's first sound into the microphone to the last sample of the model's voice out of the loudspeaker.                                                       | Under 700 ms                                                             |
+| Hang-up stop             | From the press to the last sample played.                                                                                                                               | Under 300 ms                                                             |
+| Nothing held             | Live microphone tracks, open audio contexts and open sockets after a call ends, however it ended.                                                                       | 0, 0 and 0                                                               |
+| Nothing sent while muted | The reader mutes, and a known signal is said into the microphone. The pieces the provider received are counted before and after, and what it has is measured for sound. | 10 to 16 pieces of silence after the press, then none; level under 0.002 |
+| Word error rate (live)   | The provider's own transcript of a spoken sentence against the sentence.                                                                                                | At most 34%                                                              |
+| Answer starts (live)     | From the end of the reader's sentence to the model's first sound.                                                                                                       | Under 10 s                                                               |
 
 On a developer laptop the stand-in lanes measure a barge-in stop of 50 to 100 ms and a hang-up stop under 30 ms. Those are the page's own share: the provider's time to notice speech is added in a real call, which the live lane measures.
 
@@ -49,20 +50,26 @@ On a developer laptop the stand-in lanes measure a barge-in stop of 50 to 100 ms
 
 `browser.ts` is a script a spec adds to the page (`installLab(page)`). It replaces `getUserMedia` with a stream the test plays sound into on cue: `say(page, samples, rate)`. The page still opens a capture context, resamples, measures the level, cuts the sound into pieces and sends them, as it does a real microphone's. The test can also deny the microphone, delay the answer, and unplug it mid-call.
 
+The lab counts the microphone tracks a page holds: `liveTracks()` is how many are open, and `enabledTracks()` how many of those are switched on. A muted microphone is open, and off, so the mute specs expect `enabledTracks()` to be 0 while the call is muted and 1 once it is not.
+
+A call says it is listening as soon as the microphone is open, and the first sound through a newly opened one can be clipped, by more on a slow machine. So a spec speaks with `speakTo(provider)` in `e2e/voice-lab.spec.ts`, which waits until the stand-in has had a second of the room's quiet (ten pieces) before it calls `say`.
+
 The same script records everything the page sends to an audio output, with an audio worklet, by sample position. `played(page)` gives it back with the time its first sample was played, so a test can say when the model's voice started and stopped to within a few milliseconds.
 
 ### Stand-in providers a test can steer
 
-`e2e/fake-live-server.ts` (Gemini Live) and `e2e/fake-azure-server.ts` (Azure Voice Live) keep the microphone audio they receive, and `GET /__lab/heard` gives it to the test. A typed message that starts with `lab:` steers a session:
+`e2e/fake-live-server.ts` (Gemini Live) and `e2e/fake-azure-server.ts` (Azure Voice Live) keep the microphone audio they receive, and `GET /__lab/heard` gives it to the test, with the session's `events`: what else it was told. The Gemini stand-in notes `audioStreamEnd` (sent once when the reader mutes) and the Azure one notes `clear` (which a mute must not send). Both refuse a session whose setup has no whole number for how long a pause ends the reader's turn (`silenceDurationMs`, `silence_duration_ms`). A typed message that starts with `lab:` steers a session:
 
-| Message              | What the stand-in does                                                   |
-| -------------------- | ------------------------------------------------------------------------ |
-| `lab:speak 4`        | Says four seconds of a known voice, and stops if the reader cuts in      |
-| `lab:late 4`         | The same, and a few pieces still arrive after the cut (Azure)            |
-| `lab:slow 2`         | Sends the voice slower than it plays                                     |
-| `lab:drop`           | Starts speaking, then cuts the connection with no close frame            |
-| `lab:close 1011 Why` | Closes with that code and reason                                         |
-| `lab:garbage`        | Sends a frame that is not JSON and audio that is not base64, then speaks |
+| Message              | What the stand-in does                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `lab:speak 4`        | Says four seconds of a known voice, and stops if the reader cuts in                                                      |
+| `lab:late 4`         | The same, and a few pieces still arrive after the cut (Azure)                                                            |
+| `lab:slow 2`         | Sends the voice slower than it plays                                                                                     |
+| `lab:drop`           | Starts speaking, then cuts the connection with no close frame                                                            |
+| `lab:close 1011 Why` | Closes with that code and reason                                                                                         |
+| `lab:garbage`        | Sends a frame that is not JSON and audio that is not base64, then speaks                                                 |
+| `lab:paused`         | Hears a reader who pauses mid-question: two utterances, and a reply to the first that is cut off before it says anything |
+| `lab:paused yep`     | The same, and the reply to the first had begun ("Yep,") but none of it had been heard                                    |
 
 ### The browser's real capture
 
@@ -108,6 +115,15 @@ const got = await heard(provider); // what the provider received
 ```
 
 Then assert on `findSignal`, `soundStretches`, `largestJump` and `rms` from `signal.ts`. Add a `lab:` message to the stand-ins when a test needs the provider to do something new.
+
+A spec of a call nobody speaks on sets short limits before the call starts, on the element's dataset, which the call reads when it starts:
+
+```ts
+await page.getByTestId("voice-call").evaluate((call) => {
+  (call as HTMLElement).dataset.idleSeconds = "2";
+  (call as HTMLElement).dataset.idleWarningSeconds = "2";
+});
+```
 
 ## What the lab does not test
 

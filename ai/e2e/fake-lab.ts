@@ -19,6 +19,15 @@
  *   lab:drop           start speaking, then cut the connection with no goodbye
  *   lab:close 1011 Why close with that code and reason
  *   lab:garbage        send a frame that is not JSON, then speak
+ *   lab:paused         hear a reader who pauses mid-question: two utterances,
+ *                      and a reply to the first that is cut off before it
+ *                      says anything
+ *   lab:paused yep     the same, and the reply to the first had begun
+ *                      ("Yep,") but none of it had been heard
+ *   lab:hearing        hear a reader who starts to speak and does not stop
+ *                      (Azure; the other stand-in only answers)
+ *   lab:latewords      hear a reader, answer them, and write their words down
+ *                      only after the answer is over (Azure; as above)
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readCassette } from "../voice-lab/cassette.ts";
@@ -52,7 +61,24 @@ export type LabCommand =
   | { kind: "speak"; seconds: number; late: boolean; slow: boolean }
   | { kind: "drop" }
   | { kind: "close"; code: number; reason: string }
-  | { kind: "garbage" };
+  | { kind: "garbage" }
+  | { kind: "paused"; early: boolean }
+  | { kind: "hearing" }
+  | { kind: "latewords" };
+
+/** What the reader says in `lab:paused`, in its two utterances, and the answer. */
+export const PAUSED = {
+  first: "Tell me about the AI package.",
+  second: "How does that work?",
+  early: "Yep,",
+  answer: "It is a package of components.",
+} as const;
+
+/** What the reader says in `lab:latewords`, and the answer that is over before it is written down. */
+export const LATE = {
+  words: "A question that took long to write down.",
+  answer: "Okay.",
+} as const;
 
 export function labCommand(text: string): LabCommand | null {
   const [, name, rest = ""] = /^lab:(\w+)\s*(.*)$/s.exec(text.trim()) ?? [];
@@ -74,6 +100,12 @@ export function labCommand(text: string): LabCommand | null {
     }
     case "garbage":
       return { kind: "garbage" };
+    case "paused":
+      return { kind: "paused", early: rest.trim() === "yep" };
+    case "hearing":
+      return { kind: "hearing" };
+    case "latewords":
+      return { kind: "latewords" };
     default:
       return null;
   }

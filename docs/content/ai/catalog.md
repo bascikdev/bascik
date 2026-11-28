@@ -118,6 +118,8 @@ Know its limits before you turn it on:
 
 A component that talks back is a `<form method="post">`. `ask-button` is a one-click suggestion, `choice-form` is a single-choice question, and `input-form` collects several values. Each posts to a route of yours that stores the message and redirects to the page, which streams the next reply. None needs a client script, and each is a form any browser, screen reader, or browsing agent already understands.
 
+What a form sends is written for the model, and it is not always what the reader should see as their own turn. A form can say what the thread shows in its place with a `show` field: a label, or nothing. `swipe-deck` does this: the model gets a line for each card, and the thread shows one line. See [What the thread shows for a form](/ai/server-kit#what-the-thread-shows-for-a-form).
+
 ## Share a catalog
 
 A catalog is a folder of components, so it is shared the way components are. To publish one, make it a [component package](/how-to/publishing-components): a `bascik.components` field that points at the folder. A reader copies it in with [`bascik add`](/how-to/sharing-components) and passes the folder it landed in to `readCatalog`:

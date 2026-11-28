@@ -11,7 +11,7 @@ import type { WireHooks } from "./types.ts";
 /** A socket that keeps what is sent, and hooks that record each call in order. */
 function fake(answer = async (): Promise<string> => "done") {
   const calls: unknown[][] = [];
-  const state = { said: "", reply: false };
+  const state = { said: "", reply: false, unheard: false };
   const socket = {
     readyState: WebSocket.OPEN as number,
     sent: [] as unknown[],
@@ -30,6 +30,8 @@ function fake(answer = async (): Promise<string> => "done") {
     mark: log("mark"),
     quiet: log("quiet"),
     heard: log("heard"),
+    dropReply: () => (log("dropReply")(), state.unheard),
+    active: log("active"),
     play: log("play"),
     spoke: log("spoke"),
     timedWord: log("timedWord"),
@@ -139,7 +141,7 @@ describe("messages from Gemini Live", () => {
     });
     expect(calls).toEqual([
       ["quiet"],
-      ["heard", "Tell me about Dawn"],
+      ["heard", "Tell me about Dawn", "utterance-0"],
       ["play", "A"],
       ["play", "B"],
       ["spoke", "Dawn is"],
@@ -162,14 +164,175 @@ describe("messages from Gemini Live", () => {
     expect(nothing.calls).toEqual([["endTurn"]]);
   });
 
-  test("a turn that only called tools is not over", async () => {
-    const { socket, hooks, calls, state } = fake();
-    state.reply = true;
-    state.said = "  ";
-    await geminiLive({ socket }, {}, hooks).receive({
-      serverContent: { turnComplete: true },
+  /** A tool whose answer the test gives when it chooses. */
+  function slowTool() {
+    let give!: (result: string) => void;
+    const answer = new Promise<string>((resolve) => (give = resolve));
+    return { answer: () => answer, give };
+  }
+  const toolCall = {
+    toolCall: { functionCalls: [{ id: "a", name: "list_books", args: {} }] },
+  };
+  const ends = (calls: unknown[][]) =>
+    calls.filter(([name]) => name === "endTurn").length;
+
+  test("the turn the provider calls complete straight after a tool call is not over", async () => {
+    const tool = slowTool();
+    const { socket, hooks, calls } = fake(tool.answer);
+    const wire = geminiLive({ socket }, {}, hooks);
+    // The order of a real session: the call, then complete, then the answer.
+    await wire.receive({
+      serverContent: { inputTranscription: { text: "What is a good book?" } },
     });
-    expect(calls).toEqual([]);
+    const answering = wire.receive(toolCall);
+    await wire.receive({ serverContent: { generationComplete: true } });
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(ends(calls)).toBe(0);
+    tool.give("Two books.");
+    await answering;
+    expect(socket.sent).toHaveLength(1);
+    // The model speaks of what the tool said, and that ends the turn.
+    await wire.receive({
+      serverContent: { outputTranscription: { text: "Try this." } },
+    });
+    expect(ends(calls)).toBe(0);
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(ends(calls)).toBe(1);
+    expect(calls.at(-1)).toEqual(["endTurn"]);
+  });
+
+  test("a model that spoke and then called a tool has not ended its turn either", async () => {
+    const tool = slowTool();
+    const { socket, hooks, calls, state } = fake(tool.answer);
+    const wire = geminiLive({ socket }, {}, hooks);
+    await wire.receive({
+      serverContent: { outputTranscription: { text: "I can hold that." } },
+    });
+    state.said = "I can hold that.";
+    state.reply = true;
+    const answering = wire.receive(toolCall);
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(ends(calls)).toBe(0);
+    tool.give("Held.");
+    await answering;
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(ends(calls)).toBe(1);
+  });
+
+  test("a tool answered before the provider calls the turn complete does not end it", async () => {
+    const { socket, hooks, calls, state } = fake();
+    const wire = geminiLive({ socket }, {}, hooks);
+    await wire.receive(toolCall);
+    state.reply = true;
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(ends(calls)).toBe(0);
+    // The model says nothing more: its next complete turn is the end.
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(ends(calls)).toBe(1);
+  });
+
+  test("a turn is not ended while a tool waits for the reader, whatever is said meanwhile", async () => {
+    const tool = slowTool();
+    const { socket, hooks, calls, state } = fake(tool.answer);
+    const wire = geminiLive({ socket }, {}, hooks);
+    const answering = wire.receive(toolCall);
+    await wire.receive({ serverContent: { turnComplete: true } });
+    // The reader asks something while the question is on screen, and is answered.
+    await wire.receive({
+      serverContent: { inputTranscription: { text: "Is it long?" } },
+    });
+    await wire.receive({
+      serverContent: { outputTranscription: { text: "Not very." } },
+    });
+    state.said = "Not very.";
+    state.reply = true;
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(ends(calls)).toBe(0);
+    tool.give("Allowed.");
+    await answering;
+    await wire.receive({
+      serverContent: { outputTranscription: { text: " It is held." } },
+    });
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(ends(calls)).toBe(1);
+  });
+
+  test("a tool that fails does not keep the turn open for ever", async () => {
+    const { socket, hooks, calls } = fake(async () => {
+      throw new Error("no answer");
+    });
+    const wire = geminiLive({ socket }, {}, hooks);
+    await expect(wire.receive(toolCall)).rejects.toThrow("no answer");
+    await wire.receive({ serverContent: { turnComplete: true } });
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(ends(calls)).toBe(1);
+  });
+
+  test("a cut with no turn open holds nothing: the next turn ends as usual", async () => {
+    const { socket, hooks, calls, state } = fake();
+    const wire = geminiLive({ socket }, {}, hooks);
+    // A turn that is complete, and stored, while its voice still plays.
+    await wire.receive({
+      serverContent: { outputTranscription: { text: "answer one" } },
+    });
+    state.said = "answer one";
+    state.reply = true;
+    await wire.receive({ serverContent: { turnComplete: true } });
+    state.said = "";
+    state.reply = false;
+    calls.length = 0;
+    // The reader speaks over it: the provider says so, and no more.
+    await wire.receive({ serverContent: { interrupted: true } });
+    await wire.receive({
+      serverContent: { inputTranscription: { text: "two" } },
+    });
+    await wire.receive({
+      serverContent: { outputTranscription: { text: "answer two" } },
+    });
+    state.said = "answer two";
+    state.reply = true;
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(calls.map(([name]) => name)).toEqual([
+      "quiet",
+      "heard",
+      "spoke",
+      "endTurn",
+    ]);
+  });
+
+  test("a cut before the model has said anything holds the reader's turn open", async () => {
+    const { socket, hooks, calls } = fake();
+    const wire = geminiLive({ socket }, {}, hooks);
+    await wire.receive({
+      serverContent: { inputTranscription: { text: "Cool, so you're the" } },
+    });
+    await wire.receive({ serverContent: { interrupted: true } });
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(ends(calls)).toBe(0);
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(ends(calls)).toBe(1);
+  });
+
+  test("what is heard after typed words is another utterance", async () => {
+    const { socket, hooks, calls } = fake();
+    const wire = geminiLive({ socket }, {}, hooks);
+    await wire.receive({
+      serverContent: { inputTranscription: { text: "spoken" } },
+    });
+    wire.text("typed");
+    await wire.receive({
+      serverContent: { inputTranscription: { text: "spoken next" } },
+    });
+    expect(calls).toEqual([
+      ["heard", "spoken", "utterance-0"],
+      ["heard", "spoken next", "utterance-1"],
+    ]);
+  });
+
+  test("a call in use is not said to the provider", () => {
+    const { socket, hooks } = fake();
+    geminiLive({ socket }, {}, hooks).alive();
+    expect(socket.sent).toEqual([]);
   });
 
   test("a message with nothing known in it does nothing", async () => {
@@ -177,5 +340,59 @@ describe("messages from Gemini Live", () => {
     await geminiLive({ socket }, {}, hooks).receive({ usageMetadata: {} });
     expect(calls).toEqual([]);
     expect(socket.sent).toEqual([]);
+  });
+
+  test("muting tells the provider the microphone's sound has ended", () => {
+    const { socket, hooks } = fake();
+    geminiLive({ socket }, {}, hooks).pause();
+    expect(socket.sent).toEqual([{ realtimeInput: { audioStreamEnd: true } }]);
+  });
+
+  test("the provider hearing a voice is the call in use", async () => {
+    const { socket, hooks, calls } = fake();
+    const wire = geminiLive({ socket }, {}, hooks);
+    await wire.receive({ voiceActivity: { type: "ACTIVITY_START" } });
+    await wire.receive({ voiceActivity: { type: "ACTIVITY_END" } });
+    expect(calls).toEqual([["active"]]);
+  });
+
+  test("a reply the reader spoke over before hearing it does not end their turn", async () => {
+    const { socket, hooks, calls, state } = fake();
+    const wire = geminiLive({ socket }, {}, hooks);
+    await wire.receive({
+      serverContent: { inputTranscription: { text: "Cool, so you're the" } },
+    });
+    state.said = "Yep,";
+    state.reply = true;
+    state.unheard = true;
+    await wire.receive({ serverContent: { interrupted: true } });
+    state.said = "";
+    state.reply = false;
+    await wire.receive({ serverContent: { turnComplete: true } });
+    await wire.receive({
+      serverContent: {
+        inputTranscription: { text: "assistant for the shop?" },
+      },
+    });
+    expect(calls).toEqual([
+      ["heard", "Cool, so you're the", "utterance-0"],
+      ["dropReply"],
+      ["quiet"],
+      ["heard", "assistant for the shop?", "utterance-1"],
+    ]);
+    // The next complete turn ends as usual.
+    state.said = "I am.";
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(calls.at(-1)).toEqual(["endTurn"]);
+  });
+
+  test("a reply the reader heard some of is a turn of its own", async () => {
+    const { socket, hooks, calls, state } = fake();
+    const wire = geminiLive({ socket }, {}, hooks);
+    state.said = "Here are two books";
+    state.reply = true;
+    await wire.receive({ serverContent: { interrupted: true } });
+    await wire.receive({ serverContent: { turnComplete: true } });
+    expect(calls).toEqual([["dropReply"], ["quiet"], ["endTurn"]]);
   });
 });

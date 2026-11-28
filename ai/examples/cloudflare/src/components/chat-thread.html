@@ -5,7 +5,7 @@ The conversation: the turns so far, then the reply being written. The same two s
   <!-- 1. The conversation so far, or the welcome when there is none. -->
   <script data-bascik-stream type="text/typescript">
     import { html, raw } from "@bascik/bascik/html";
-    import { filesOf, partsOf, renderMessage } from "@bascik/ai";
+    import { filesOf, partsOf, renderMessage, shownOf } from "@bascik/ai";
     import { formatSize, isImageType } from "@bascik/ai/files";
     import { WELCOME as app, chatOf } from "@/lib/chat.ts";
     import type { RequestContext } from "@/lib/env.ts";
@@ -76,8 +76,10 @@ The conversation: the turns so far, then the reply being written. The same two s
               )}
             </ul>`;
           }
-          if (message.content) {
-            yield html`<p class="turn-user" data-testid="turn-user">${message.content}</p>`;
+          // What the reader sees of their turn: a pressed form shows its label.
+          const shown = shownOf(message);
+          if (shown) {
+            yield html`<p class="turn-user" data-testid="turn-user">${shown}</p>`;
           }
           continue;
         }

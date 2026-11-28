@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { plain, planFill } from "./forms.ts";
+import { plain, planFill, shownAnswer, toldText } from "./forms.ts";
 import type { ControlNames } from "./forms.ts";
 
 describe("plain", () => {
@@ -110,5 +110,82 @@ describe("planFill", () => {
           'Error: no button or option says "go". This form has buttons: unnamed. text boxes: unnamed.',
       },
     });
+  });
+});
+
+describe("shownAnswer", () => {
+  test("shows the words on a button that carries the answer", () => {
+    expect(
+      shownAnswer({ named: true, pressed: "\n      Not sure\n    " }),
+    ).toBe("Not sure");
+    // A button with no name only sends the form: the message is shown.
+    expect(shownAnswer({ named: false, pressed: "Send" })).toBeUndefined();
+    expect(shownAnswer({ named: true })).toBeUndefined();
+  });
+
+  test("lets the form's own show field win: its text, or nothing", () => {
+    expect(
+      shownAnswer({ show: " Kept 2 of 3 ", named: true, pressed: "Done" }),
+    ).toBe("Kept 2 of 3");
+    expect(shownAnswer({ show: "", named: true, pressed: "Done" })).toBe("");
+    expect(shownAnswer({ show: "", mode: "message", named: false })).toBe("");
+  });
+
+  test("shows the message when the form asks for it", () => {
+    expect(
+      shownAnswer({ mode: "message", named: true, pressed: "Save answer" }),
+    ).toBeUndefined();
+  });
+
+  test("shows the picked option's words, or the button's, when asked for the label", () => {
+    expect(
+      shownAnswer({
+        mode: "label",
+        named: false,
+        pressed: "Send",
+        chosen: " Short enough\n for a weekend ",
+      }),
+    ).toBe("Short enough for a weekend");
+    expect(
+      shownAnswer({ mode: "label", named: false, pressed: "Hold it" }),
+    ).toBe("Hold it");
+    expect(shownAnswer({ mode: "label", named: false })).toBeUndefined();
+  });
+
+  test("keeps markup and replacement tokens as the text they are", () => {
+    expect(shownAnswer({ named: true, pressed: "<b>$1</b> $&" })).toBe(
+      "<b>$1</b> $&",
+    );
+  });
+});
+
+describe("toldText", () => {
+  const COMMAND = "Decision on returns-window (fact): unsure";
+
+  test("reads a pressed form as what it said, not as its label", () => {
+    const told = new Map([["sent-form:0", COMMAND]]);
+    expect(toldText([{ id: "sent-form:0", text: "Not sure" }], told)).toBe(
+      COMMAND,
+    );
+    // A form that shows nothing is still told to the model.
+    expect(toldText([{ id: "sent-form:0", text: "" }], told)).toBe(COMMAND);
+  });
+
+  test("keeps the words said around a form the model pressed", () => {
+    const told = new Map([["sent-form:0", COMMAND]]);
+    expect(
+      toldText(
+        [
+          { id: "u1", text: "I am not sure about that one" },
+          { id: "sent-form:0", text: "\nNot sure" },
+          { id: "u2", text: "next please" },
+        ],
+        told,
+      ),
+    ).toBe(`I am not sure about that one\n${COMMAND} next please`);
+  });
+
+  test("is the turn as it was heard when no form was sent", () => {
+    expect(toldText([{ id: "", text: " Hello " }], new Map())).toBe("Hello");
   });
 });

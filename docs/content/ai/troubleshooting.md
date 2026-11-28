@@ -16,6 +16,12 @@ Where: `ai/src/azure-voice-live/provider.ts`
 What it means: The provider cannot build a connection URL because no WebSocket base or endpoint was configured.
 What to do: Set the `wsBase` option or provide an HTTP endpoint that can be converted to a WebSocket URL.
 
+### pauseMs must be a number of milliseconds.
+
+Where: `ai/src/voice/pause.ts`
+What it means: `geminiLiveVoice` or `azureVoiceLiveVoice` was given a `pauseMs` that is not a finite number, such as the result of parsing an empty environment variable. The provider throws when it is made.
+What to do: Pass a number of milliseconds, or leave `pauseMs` out for the default of 800. A number outside 200 to 3000 is not an error; it is brought into that range.
+
 ### No Gemini API key is set.
 
 Where: `ai/src/gemini-live.ts`
@@ -53,6 +59,12 @@ What to do: Verify the API key and model name. The message may indicate a quota 
 Where: `ai/src/azure-voice-live/provider.ts`
 What it means: The WebSocket connection to Azure Voice Live was refused before it could be established. This often happens when credentials are invalid or expired.
 What to do: Check that the Azure Voice Live key or token is valid and not expired.
+
+### The voice provider refused the call's settings.
+
+Where: `ai/src/azure-voice-live/provider.ts`
+What it means: Azure Voice Live answered the session's setup with an error, so the relay ended the call as it started. The usual cause is a `turnDetection` setting the model does not take. The server's log has this line followed by "It said:" and Azure's own message, which names the setting.
+What to do: Read the log, then remove or change that setting. Which settings a model takes is the provider's to say: see [Providers](/ai/providers#voice-how-long-a-pause-ends-a-turn).
 
 ### The voice provider hung up.
 
@@ -339,6 +351,30 @@ What to do: Ensure the memory ID is correct.
 Where: `ai/components/chat/voice-call.html`
 What it means: The reader declined the microphone, the browser could not start capturing, or the microphone went away during the call (unplugged, or permission taken back). The call is still on.
 What to do: Type in the composer to talk to the model. To speak, allow the microphone for the site and start a new call.
+
+### Muted. The model cannot hear you.
+
+Where: `ai/components/chat/voice-call.html`
+What it means: The reader pressed the mute button. The microphone is switched off and no audio is sent; the call is still on, and the model's voice still plays.
+What to do: Press the button again to speak, or type in the composer.
+
+### Still there? The call is about to end.
+
+Where: `ai/components/chat/voice-call.html`
+What it means: Nothing has happened on the call for `idle-seconds` (120 by default). The call ends after `idle-warning-seconds` more (30 by default).
+What to do: Press "Stay on the call", speak, or type. To change the times, set the two props on `voice-call`; `idle-seconds` of 0 never asks.
+
+### The call ended because nobody spoke.
+
+Where: `ai/components/chat/voice-call.html`, `ai/src/azure-voice-live/provider.ts`
+What it means: The call was ended because it was not in use. The component ends it when its question, "Still there?", goes unanswered. The Azure relay ends it when nobody has spoken for `callIdleSeconds` (300 by default), whatever the page does. Sound in the microphone does not count as speaking.
+What to do: Start a new call. If calls end while readers are still on them, raise `idle-seconds` on the component or `callIdleSeconds` on the provider: see [A call nobody is speaking on](/ai/voice#a-call-nobody-is-speaking-on).
+
+### The model answers before I finish speaking
+
+Where: `ai/src/voice/pause.ts`
+What it means: The provider took a pause for the end of the reader's turn. A reply the reader speaks over before they heard it is taken back, and their words stay one turn, but the model has still been interrupted.
+What to do: Raise `pauseMs` on the voice provider (800 by default, up to 3000). With Azure Voice Live, also try end-of-utterance detection through `turnDetection`, which judges by what was said and not by silence alone. See [Providers](/ai/providers#voice-how-long-a-pause-ends-a-turn).
 
 ### The voice service did not answer.
 

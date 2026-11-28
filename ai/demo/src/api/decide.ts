@@ -8,14 +8,20 @@
 // The decision is appended to the visitor's log as one line of JSON, and added
 // to the conversation as the reviewer's message, so the model sees it too.
 //
+// That message is a record in a fixed shape, not something the reviewer wrote,
+// so the thread shows what they pressed in its place ("Not sure"), with their
+// note: the message's `show`.
+//
 // During a voice call (voice=1) the decision is recorded the same way, and
-// the answer is { "say": "...", "hidden": true }: the reviewer's message, for
-// the call to say to the speech model. It is a record in a fixed shape and
-// not something the reviewer wrote, so the call does not show it as theirs.
+// the answer is { "say": "...", "show": "..." }: the reviewer's message, for
+// the call to say to the speech model, and what the call shows and stores as
+// their turn.
 import { ConversationFullError, newConversation } from "@bascik/ai/app";
 import { appFor, chatFor } from "../lib/chat.ts";
 import {
+  branchFrom,
   decisionFrom,
+  decisionLabel,
   decisionMessage,
   recordDecision,
 } from "../lib/review.ts";
@@ -26,6 +32,7 @@ export const POST = async (request: Request): Promise<Response> => {
   if (!decision) {
     return new Response("Not a review decision.", { status: 400 });
   }
+  const show = decisionLabel(decision, branchFrom(form, decision));
   const chat = chatFor(appFor(request, "review"));
   const session = chat.session(request);
   if (form.get("voice") === "1") {
@@ -36,7 +43,7 @@ export const POST = async (request: Request): Promise<Response> => {
     await chat.save(session, conversation);
     await recordDecision(session.reader, conversation.id, decision);
     return Response.json(
-      { say: decisionMessage(decision), hidden: true },
+      { say: decisionMessage(decision), show },
       { headers: { "cache-control": "no-store" } },
     );
   }
@@ -44,6 +51,7 @@ export const POST = async (request: Request): Promise<Response> => {
   try {
     conversation = await chat.addMessage(session, decisionMessage(decision), {
       title: `Review: ${decision.item}`,
+      show,
     });
   } catch (error) {
     // A full conversation is the reader's to start again, not a server error.

@@ -7,7 +7,7 @@ The conversation: the turns so far, then the reply being written. Its two stream
        a live reply. -->
   <script data-bascik-stream type="text/typescript">
     import { html, raw } from "@bascik/bascik/html";
-    import { filesOf, partsOf, renderMessage } from "@bascik/ai";
+    import { filesOf, partsOf, renderMessage, shownOf } from "@bascik/ai";
     import { formatSize, isImageType } from "@bascik/ai/files";
     import { appFor, chatFor } from "@/lib/chat.ts";
 
@@ -80,8 +80,10 @@ The conversation: the turns so far, then the reply being written. Its two stream
               )}
             </ul>`;
           }
-          if (message.content) {
-            yield html`<p class="turn-user" data-testid="turn-user">${message.content}</p>`;
+          // What the reader sees of their turn: a pressed form shows its label.
+          const shown = shownOf(message);
+          if (shown) {
+            yield html`<p class="turn-user" data-testid="turn-user">${shown}</p>`;
           }
           continue;
         }

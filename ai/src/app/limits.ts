@@ -9,7 +9,9 @@ export const SEARCH_LIMIT = 20;
 
 /** A message the reader sends is kept to this many characters. */
 export const MAX_MESSAGE = 4000;
-/** What a voice session stores of one turn's speech. */
+/** What the thread shows for a form's message, when that is not the message, is kept to this many. */
+export const MAX_SHOWN = 2000;
+/** What a voice session stores of one turn's speech, and of what the thread shows for it. */
 export const MAX_SPEECH = 8000;
 /** A voice tool call's input, as sent. */
 export const MAX_TOOL_INPUT = 64_000;

@@ -8,6 +8,7 @@
  * cannot change what the session may do.
  */
 import type { Tool, ToolInputSchema } from "./model.ts";
+import { pauseMsOf, turnSettingsOf } from "./voice/pause.ts";
 import type {
   VoiceProvider,
   VoiceSessionConfig,
@@ -21,6 +22,19 @@ export interface GeminiLiveOptions {
   model?: string;
   /** One of the provider's voice names. Left out, the provider picks. */
   voice?: string;
+  /**
+   * How long the reader may be silent before their turn is taken as over,
+   * in milliseconds (default 800, from 200 to 3000). Higher waits through a
+   * pause for thought; lower answers sooner.
+   */
+  pauseMs?: number;
+  /**
+   * The provider's own `realtimeInputConfig`, laid over the default
+   * (`{ automaticActivityDetection: { silenceDurationMs: pauseMs } }`):
+   * `automaticActivityDetection.endOfSpeechSensitivity`, `activityHandling`,
+   * `turnCoverage`, and the rest. The token locks it in with the prompt.
+   */
+  realtimeInput?: Record<string, unknown>;
   /** How long a ticket may be used to start a session, in seconds (default 60). */
   startWithinSeconds?: number;
   /** How long a session may last, in seconds (default 900, the provider's own limit for audio). */
@@ -95,8 +109,14 @@ function declaration(tool: Tool): Record<string, unknown> {
 /** The session setup the token locks in. */
 export function geminiLiveSetup(
   config: VoiceSessionConfig,
-  options: { model: string; voice?: string },
+  options: {
+    model: string;
+    voice?: string;
+    pauseMs?: number;
+    realtimeInput?: Record<string, unknown>;
+  },
 ): Record<string, unknown> {
+  const detection = options.realtimeInput?.automaticActivityDetection;
   return {
     model: options.model,
     generationConfig: {
@@ -118,6 +138,16 @@ export function geminiLiveSetup(
     // What each side says, as text: the captions and the stored conversation.
     inputAudioTranscription: {},
     outputAudioTranscription: {},
+    // How long a pause ends the reader's turn.
+    realtimeInputConfig: {
+      ...options.realtimeInput,
+      automaticActivityDetection: {
+        silenceDurationMs: pauseMsOf(options.pauseMs),
+        ...(typeof detection === "object" && detection !== null
+          ? detection
+          : {}),
+      },
+    },
   };
 }
 
@@ -133,6 +163,9 @@ export function geminiLiveVoice(
     wsBase = WS_BASE,
     timeoutMs = 15_000,
   } = options;
+  // A setting that cannot be used is told to the developer now, not to a reader later.
+  const pauseMs = pauseMsOf(options.pauseMs);
+  const realtimeInput = turnSettingsOf("realtimeInput", options.realtimeInput);
   const send = options.fetch ?? fetch;
   return {
     protocol: "gemini-live",
@@ -160,7 +193,12 @@ export function geminiLiveVoice(
           uses: 1,
           newSessionExpireTime: at(startWithinSeconds),
           expireTime: at(sessionSeconds),
-          bidiGenerateContentSetup: geminiLiveSetup(config, { model, voice }),
+          bidiGenerateContentSetup: geminiLiveSetup(config, {
+            model,
+            voice,
+            pauseMs,
+            realtimeInput,
+          }),
         }),
       }).catch(late);
       const text = await boundedText(response).catch(late);

@@ -74,12 +74,22 @@ export interface ChatMessage {
   /** An assistant message's parts, in order. Absent on a message that is only text. */
   parts?: MessagePart[];
   /**
+   * On a reader's message: what the thread shows in place of `content`, such
+   * as the label of the button they pressed. The model still reads `content`.
+   * Empty: the thread shows nothing for this message.
+   */
+  show?: string;
+  /**
    * Set on an assistant message whose turn is not over: `reader` while a
    * tool call waits for the reader (an approval, or a client tool's result), `model` once every call is answered and
    * the model has to be asked again.
    */
   awaiting?: "reader" | "model";
 }
+
+/** What the thread shows for a message: its `show` when it has one, or its text. */
+export const shownOf = (message: ChatMessage): string =>
+  message.show ?? message.content;
 
 /** The parts of a message, whether or not it was stored with any. */
 export const partsOf = (message: ChatMessage): MessagePart[] =>

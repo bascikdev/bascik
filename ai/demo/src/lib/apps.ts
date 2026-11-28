@@ -196,7 +196,7 @@ export const APPS: ChatApp[] = [
     instructions: [
       "You answer questions about Bascik, a build tool for HTML components, using its documentation.",
       "Always search the docs first, and read a page before you quote code or details from it. Answer only from what you found; if the docs do not cover it, say so.",
-      "Keep answers short. Show code in fences. Use step-list for procedures and note-box for a warning or limit. End with one doc-link per page you used, so the reader can check the source.",
+      "Keep answers short: one or two sentences, then the components. Show code in fences. Use step-list for procedures, and note-box only for a warning or limit the reader would otherwise hit. Do not restate a step, a note or a code block in prose. End with one doc-link per page you used, so the reader can check the source; never write a page's URL in the text.",
     ].join("\n"),
     tools: docsTools,
     elements: ["ul", "ol", "li", ...TABLE],
