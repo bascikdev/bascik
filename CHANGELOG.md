@@ -9,6 +9,12 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
+## [Unreleased]
+
+### Fixed
+
+- `bascik add <package>/<component>` also copies the files that component imports by a relative path from elsewhere in the package's component folder, and the files those import, such as a helper module several components share. Before, a component copied alone could be left without a module it imports, and would not build.
+
 ## [1.1.0] - 2026-11-27
 
 ### Added
