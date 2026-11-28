@@ -1,0 +1,121 @@
+<!-- @bascik
+The sidebar's layout: a column for whatever a page puts beside the chat, with a foot that stays at the bottom. It holds no data and no script. On a wide screen it is a column that scrolls by itself. On a narrow one (720px and under) it is a bar above the chat with one labeled control, and its content opens under that bar and closes again; it is a `details` element, so that works with no JavaScript.
+
+Props, both optional: `menu-label` (the text of the control a narrow screen shows; "Menu") and `open` (write `data-bascik-prop-open="open"` on a page that should load with the content showing on a narrow screen, such as a page of search results; a wide screen always shows it). A script can decide `open` per request; a sidebar written in a page or a template cannot, so it carries the plain attribute `data-show-found` instead: on a narrow screen it then shows whole, without its control, for as long as it holds search results (a `search-results` part, or any element marked `data-chat-part="found"`). Use one or the other.
+
+Slots:
+- the default slot: the sections, top to bottom in the order the page writes them, such as `chat-new`, `chat-search`, `conversation-list` and a page's own links.
+- `foot`: what stays at the bottom, under a rule, such as `model-picker` and a link to the reader's memory. Unfilled, it takes no room. Fill it with a wrapper element: `<template data-bascik-slot="foot">…</template>`.
+
+Around it: a page that gives it a column on a wide screen and a row above the chat on a narrow one. For a body that is a grid: `grid-template-columns: 16rem minmax(0, 1fr)`, and at `max-width: 720px` one column with `grid-template-rows: auto minmax(0, 1fr)`. It is marked `data-chat-part="sidebar"`: the client runtime (`chat-enhance`) replaces it with the answer's sidebar after each reply and leaves it open or closed as the reader had it; a page load closes it on a narrow screen. It can sit inside or beside the `data-chat` element. A form in it that must load a page carries `data-genui="native"`, as `chat-new`, `conversation-item`, `search-result` and `model-picker` do, so the client runtime leaves it to the browser. It reads the theme tokens `--surface`, `--border` and `--accent`.
+
+A browser without `::details-content` (before 2025) cannot show a closed `details`, so there the wide screen keeps the control too.
+-->
+<style>
+  /* Everywhere: a bar whose content opens under its control. */
+  .sidebar {
+    max-block-size: 75dvh;
+    border-block-end: 1px solid var(--border);
+    background: var(--surface);
+    overflow-y: auto;
+  }
+  /* The control stays in view while the open content scrolls. */
+  .toggle {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+    /* A target a finger can hit, whatever the page's line height. */
+    box-sizing: border-box;
+    min-block-size: 2.75rem;
+    padding: 0.625rem 1rem;
+    background: var(--surface);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0.25rem 1rem 1rem;
+  }
+  .foot {
+    display: grid;
+    gap: 0.75rem;
+    margin-block-start: auto;
+    padding-block-start: 0.75rem;
+    border-block-start: 1px solid var(--border);
+  }
+  .foot:empty {
+    display: none;
+  }
+  /* A wide screen: a column beside the chat. */
+  @media not all and (max-width: 720px) {
+    .sidebar {
+      max-block-size: none;
+      border-block-end: 0;
+      border-inline-end: 1px solid var(--border);
+    }
+    /* The content always shows and the control is gone: the sections and
+       the foot are laid out by the column itself. */
+    @supports selector(::details-content) {
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1rem;
+      }
+      .drawer,
+      .body {
+        display: contents;
+      }
+      .drawer::details-content {
+        display: contents;
+        content-visibility: visible;
+      }
+      .toggle {
+        display: none;
+      }
+    }
+  }
+  /* A narrow screen, on a sidebar written with data-show-found: while it
+     holds search results the content shows and the control is gone, since
+     the results are what the page was loaded for. Clearing the search, or
+     opening a result, loads a page without them. */
+  @media (max-width: 720px) {
+    @supports selector(::details-content) {
+      .sidebar[data-show-found]:has([data-chat-part="found"])
+        .drawer::details-content {
+        content-visibility: visible;
+      }
+      .sidebar[data-show-found]:has([data-chat-part="found"]) .toggle {
+        display: none;
+      }
+      .sidebar[data-show-found]:has([data-chat-part="found"]) .body {
+        padding-block-start: 1rem;
+      }
+    }
+  }
+</style>
+<aside class="sidebar" data-chat-part="sidebar" data-testid="chat-sidebar">
+  <details
+    class="drawer"
+    data-bascik-attr-open="open"
+    data-testid="chat-sidebar-drawer"
+  >
+    <summary
+      class="toggle"
+      data-testid="chat-sidebar-toggle"
+      data-bascik-prop-menu-label
+    >
+      Menu
+    </summary>
+    <!-- The foot is written on one line, with nothing around its slot: an
+         unfilled one is then empty, and takes no room. -->
+    <!-- prettier-ignore -->
+    <div class="body"><span data-bascik-slot></span><footer class="foot" data-testid="chat-sidebar-foot"><span data-bascik-slot="foot"></span></footer></div>
+  </details>
+</aside>

@@ -1,8 +1,9 @@
 /*
  * voice-call's requests to the app's own routes: a form post that names the
- * app, and the /voice-view page that holds what a tool call shows. A view's
- * scripts are made again here, since a script parsed elsewhere does not run.
+ * app, and the page that holds what a tool call shows. A view's scripts are
+ * made again here, since a script parsed elsewhere does not run.
  */
+import { partIn } from "../chat-root/parts.ts";
 
 /** POST `fields` and the app's name to `path`, as a form. */
 export function postForm(
@@ -25,24 +26,23 @@ export function postForm(
   });
 }
 
-/** Where the view of one tool call is rendered. */
-export const viewUrl = (app: string, id: string): string =>
-  `/voice-view?app=${encodeURIComponent(app)}&call=${encodeURIComponent(id)}`;
+/** Where the view of one tool call is rendered: the view page at `route`, asked for that app and call. */
+export const viewUrl = (route: string, app: string, id: string): string =>
+  `${route}${route.includes("?") ? "&" : "?"}app=${encodeURIComponent(app)}&call=${encodeURIComponent(id)}`;
 
 /** The view a call showed, as the server renders it, or null when there is none. */
 export async function fetchView(
+  route: string,
   app: string,
   id: string,
 ): Promise<Element | null> {
-  const response = await fetch(viewUrl(app, id));
+  const response = await fetch(viewUrl(route, app, id));
   if (!response.ok) return null;
   const page = new DOMParser().parseFromString(
     await response.text(),
     "text/html",
   );
-  // A data attribute is not renamed per instance, so it can be selected as written.
-  // bascik-ignore js-attribute-selector
-  return page.querySelector('[data-testid="voice-view"]');
+  return partIn(page, "view");
 }
 
 /**

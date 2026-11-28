@@ -4,7 +4,7 @@ A reader can attach images and files to a message. The model receives them, and 
 
 ## The smallest setup
 
-Give the chat a file store, put one route in front of it, and turn attachments on in the composer.
+Give the chat a file store, put one route in front of it, and put `chat-attach` in the message box. `chat-app`'s default message box has it already, so with the one tag only the first two steps are yours.
 
 ```ts
 import { createChat } from "@bascik/ai/app";
@@ -24,24 +24,52 @@ export const GET = chat.file;
 ```
 
 ```html
-<chat-composer data-bascik-prop-enctype="multipart/form-data" />
+<chat-composer enctype="multipart/form-data">
+  <span data-bascik-slot="start"><chat-attach /></span>
+</chat-composer>
 ```
 
-`send` now accepts `multipart/form-data` with a `files` field, stores each file under the reader, and puts file parts on the message. `file` serves one back with `GET /api/file?id=<id>`. Without the `files` option, uploads are ignored and the chat behaves as before. Without the `enctype` prop, the composer shows no Attach button.
+`send` now accepts `multipart/form-data` with a `files` field, stores each file under the reader, and puts file parts on the message. `file` serves one back with `GET /api/file?id=<id>`. Without the `files` option, uploads are ignored and the chat behaves as before, so a chat with no file store should leave `chat-attach` out: the reader could pick a file that goes nowhere.
+
+Two details of that markup matter:
+
+- **`enctype` is an attribute on the composer's tag, not a prop.** It lands on the form, which is what makes a browser send the files with scripts off. With scripts on, `chat-attach` sets it when it is missing; with scripts off and no `enctype`, only the file names are sent.
+- **`chat-attach` is wrapped in an element that names the slot.** `<chat-attach data-bascik-slot="start" />` does not land in the slot, and nothing is reported.
+
+`chat-attach` is its own part, so it also works in a form of your own: it finds the form with `closest("form")`.
+
+### Limits in the picker
+
+`chat-attach` takes the limits as props, so the reader is told before sending. The server checks every file again whatever these say, so keep them the same as `fileLimits`:
+
+```html
+<chat-composer enctype="multipart/form-data">
+  <span data-bascik-slot="start">
+    <chat-attach
+      data-bascik-prop-max-bytes="1048576"
+      data-bascik-prop-max-files="2"
+      data-bascik-prop-max-total="2097152"
+      data-bascik-prop-types="image/png,image/jpeg,application/pdf"
+    />
+  </span>
+</chat-composer>
+```
+
+`max-bytes` and `max-total` are bytes. `types` also sets the file picker's `accept` at build time, so it applies with scripts off, and prints one build line, "Attribute binding conflict … prop wins", which is the prop replacing the default list. Without props the limits are the server kit's defaults, listed under [Safety rules and limits](#safety-rules-and-limits).
 
 ## What the reader sees
 
 The Attach button is a `<label>` for a real `<input type="file" name="files" multiple>`, so it works with JavaScript off: the reader picks files, presses Send, and the page reloads with the message in the thread.
 
-With scripts on, the composer adds:
+With scripts on, `chat-attach` adds:
 
 - chosen files as removable chips with a name and a size, and a small preview for an image
 - a check before sending for what can be known without the bytes (the type, the size, the count), in the same words the server uses
-- paste and drag-and-drop of files onto the composer
+- paste into the message box, and drag-and-drop of files onto the form
 
 In the thread, an image is a thumbnail that opens the full image, and any other file is a labeled link with its name and size. The `chat-attachment` component draws one of these, and a file name is always shown as escaped text.
 
-A refused upload does not lose what the reader typed. With scripts on, the message appears in the composer and the text and files stay where they are. With scripts off, the server answers with a short page that gives the reason, repeats the text so it can be copied, and links back to the chat.
+A refused upload does not lose what the reader typed. With scripts on, the reason appears on a line above the message box (`chat-attach`'s notice) and the text and files stay where they are. With scripts off, the server answers with a short page that gives the reason, repeats the text so it can be copied, and links back to the chat.
 
 ## What the model receives
 

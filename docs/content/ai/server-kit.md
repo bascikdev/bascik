@@ -8,7 +8,7 @@ The smallest complete setup creates one chat with a memory store and the require
 
 ```ts
 // src/lib/chat.ts
-import { createChat, memoryStore } from "@bascik/ai/app";
+import { createChat, memoryStore, type ChatProject } from "@bascik/ai/app";
 import type { Catalog, Model } from "@bascik/ai";
 
 declare const catalog: Catalog;
@@ -20,7 +20,12 @@ export const chat = createChat({
   model: () => model,
   system: "You are a helpful assistant.",
 });
+
+// What the chat parts on a page read.
+export default { chat } satisfies ChatProject;
 ```
+
+The default export is for the [chat parts](/ai/chat-parts): the data parts (`chat-turns`, `chat-conversations` and the rest) import `@/lib/chat.ts` and read the project from it, so this file's path and its default export are a convention. The named `chat` is for your own route files and scripts; the examples on these pages import it.
 
 > **Note:** The memory store is for tests, demos, and a first try.
 > Use `fileStore` for one server, or write a `ConversationStore` for a database.
@@ -34,7 +39,7 @@ export const POST = chat.send;
 
 The same one-line form works for the other handlers: `export const POST = chat.approve;`, `export const POST = chat.answer;`, `export const POST = chat.stop;`, `export const POST = chat.open;`, `export const POST = chat.voiceSession;`, `export const POST = chat.voiceTool;`, and `export const POST = chat.voiceTurn;`.
 
-Each handler is a web standard request handler, so you can put it on any route. The chat components post to `/api/send`, `/api/approve`, `/api/result`, `/api/stop`, `/api/voice-session`, `/api/voice-tool`, and `/api/voice-turn`, so those are the paths to use unless you edit the components.
+Each handler is a web standard request handler, so you can put it on any route. The chat components post to `/api/send`, `/api/stop`, `/api/open`, `/api/file`, `/api/approve`, `/api/result`, `/api/forget`, `/api/voice-session`, `/api/voice-tool`, and `/api/voice-turn` by default. A project with other paths sets a prop and edits no component (see [Routes are props](/ai/chat-parts#routes-are-props)). Send, open, approve and forget are the `route` prop of the part that posts there. Stop is `stop-route` on `chat-composer`. The voice routes are `session-route`, `tool-route` and `turn-route` on `voice-call`. The file path is `routes.file` in the project module, or the `href` of a `chat-attachment` you print yourself. `/api/result` is the path your own client tool components post to, and no package part does. The exception is the five catalog forms a model writes (`ask-button`, `choice-form`, `choice-pair`, `input-form` and `swipe-deck`), which post to `/api/send` with no prop: keep that path, or edit the `action` in your copies.
 
 ## Options
 
@@ -176,7 +181,7 @@ Without it, nothing changes: on Node the reply runs on in the process. Only the 
 
 ## Pages
 
-A page calls `chat.thread(request)` to get the open conversation and the reply being written, if any. It returns `session`, `messages`, and `turn`.
+The `chat-turns` part does what this section describes, so a page that uses it, or `chat-app`, writes none of it. A page with a thread of its own calls `chat.thread(request)` to get the open conversation and the reply being written, if any. It returns `session`, `messages`, and `turn`.
 
 ```ts
 const state = await chat.thread(request);
@@ -328,7 +333,38 @@ export const loginSessions: ChatSessions = {
 };
 ```
 
+## Functions for page scripts
+
+`@bascik/ai/app` also exports what the chat's data parts print, one function per part. Each data part's script is one call, and a component of your own can make the same call:
+
+```html
+<script data-bascik-server type="text/typescript">
+  import { conversationList } from "@bascik/ai/app";
+
+  export default (request: Request, context: unknown) =>
+    conversationList(import("@/lib/chat.ts"), request, context);
+</script>
+```
+
+| Function             | For             | What it answers                                                                                      |
+| :------------------- | :-------------- | :--------------------------------------------------------------------------------------------------- |
+| `storedTurns`        | A stream script | The conversation so far, one piece per message, or `chat-welcome` when there is none.                |
+| `liveTurn`           | A stream script | The reply being written: the writing marker, the reply, the done marker. Nothing when there is none. |
+| `conversationList`   | A server script | `conversation-list` with one `conversation-item` each.                                               |
+| `conversationSearch` | A server script | `chat-search`, and `search-results` when the address has `?q=`.                                      |
+| `modelMenu`          | A server script | `model-picker`, or nothing when the project lists no models.                                         |
+| `memoryList`         | A server script | `memory-list` with one `memory-item` each.                                                           |
+| `chatProject`        | Any script      | The `ChatProject` of this request, checked.                                                          |
+
+Each takes the project first, then the request and the host's context. The project is what `import("@/lib/chat.ts")` returns (the promise, so a missing module can be reported), the module itself, or its default export. Every value a reader or a model wrote reaches the page as text.
+
+The types are exported beside them: `ChatProject`, `ChatProjectSource` (the project, or a function of the request that returns it), `ChatProjectModule`, `ChatWelcome`, `ModelMenu`, `ModelOption`, `ChatRoutes` and `ChatWords`. [Chat Parts](/ai/chat-parts#change-what-the-chat-says) describes each value of `ChatProject`.
+
+When the module is missing, or its default export is not a project, the function throws with what to create: see [Troubleshooting](/ai/troubleshooting#chat-parts).
+
 ## More than one chat on a site
+
+The chat parts pick the chat for a request through the project module: its default export can be a function `(request, context) => ChatProject`, which returns the chat of the app the request is for, with that app's `app` id, welcome and models. Each app has its own page: `chat-app` with its `sidebar` and `composer` slots filled by parts that carry that app's `data-bascik-prop-app`, because a prop written in a page is fixed at build time and the `chat-new` and `chat-composer` that `chat-app` writes post no `app`. The module's function returns the chat for the app that the request's path names.
 
 The demo runs several apps on one site. It keeps one `Chat` for each app id. Each app gets its own `id`, store directory, and page. The store directory is `.data/<app.id>`.
 

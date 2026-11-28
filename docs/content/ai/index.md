@@ -4,7 +4,7 @@ Bascik AI is the AI interface for Bascik. It consists of three parts: Chat, Gene
 
 ## Three parts
 
-**Chat** is the full interface, including the message box, thread, tool approval, memory, conversation search, attachments, and the server kit behind it. See [Quick Start](/ai/quick-start), [Server Kit (Chat)](/ai/server-kit), [Tools & Approval (Chat)](/ai/tools), [Memory (Chat)](/ai/memory), [Client Runtime (Chat)](/ai/client-runtime), [Conversation Search (Chat)](/ai/conversation-search), [Attachments (Chat)](/ai/attachments), and [Running on Several Servers (Chat)](/ai/scaling).
+**Chat** is the full interface, including the message box, thread, tool approval, memory, conversation search, attachments, and the server kit behind it. It is made of parts you assemble, and `<chat-app />` is all of them in one tag. See [Quick Start](/ai/quick-start), [Chat Parts](/ai/chat-parts), [Server Kit (Chat)](/ai/server-kit), [Tools & Approval (Chat)](/ai/tools), [Memory (Chat)](/ai/memory), [Client Runtime (Chat)](/ai/client-runtime), [Conversation Search (Chat)](/ai/conversation-search), [Attachments (Chat)](/ai/attachments), and [Running on Several Servers (Chat)](/ai/scaling).
 
 **Generative UI** allows the model to show components from your catalog, rendered on the server as real HTML. See [Catalog (Generative UI)](/ai/catalog).
 
@@ -50,7 +50,8 @@ The reader gets the prose as it is written, then each component as finished mark
 | Client runtime | An optional script that sends forms with `fetch` and streams the answer into the open page                                       | [Client Runtime](/ai/client-runtime)                      |
 | Voice          | Optional scripts that read replies aloud with word-by-word captions, or hold a spoken conversation with a speech-to-speech model | [Voice & Captions](/ai/voice)                             |
 | Search         | Finds words in a reader's past conversations with a plain form, and lets the model look there too                                | [Conversation Search](/ai/conversation-search)            |
-| Components     | A starter catalog and the chat's own pieces, copied into your project with `bascik add`                                          | [Quick Start](/ai/quick-start)                            |
+| Components     | A starter catalog and the chat's own parts, copied into your project with `bascik add`                                           | [Components](/ai/components)                              |
+| Chat parts     | The whole chat in one tag, the parts it is made of, and the contract they share                                                  | [Chat Parts](/ai/chat-parts)                              |
 | Providers      | Configures the AI providers used by the system                                                                                   | [Providers](/ai/providers)                                |
 | Server Kit     | Provides the server-side infrastructure for Chat                                                                                 | [Server Kit (Chat)](/ai/server-kit)                       |
 | Memory         | Manages persistent memory for Chat                                                                                               | [Memory (Chat)](/ai/memory)                               |

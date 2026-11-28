@@ -167,8 +167,8 @@ What to do: Read the reason shown on the page. Adjust the file or message and tr
 ### refused
 
 Where: `ai/components/chat/chat-enhance.html`
-What it means: The client detected that the server refused an attachment. The reason is shown in the composer notice.
-What to do: Read the notice in the chat composer for the specific reason.
+What it means: The client runtime saw the server refuse an attachment. The reason is written on `chat-attach`'s notice line, above the message box, and the composer keeps the text and the files. In a chat with no notice (a composer without `chat-attach`), the form is sent again the ordinary way and the server's page gives the reason.
+What to do: Read the notice for the specific reason.
 
 ### not a page
 
@@ -179,14 +179,82 @@ What to do: This is a client-side error. Check the server logs for the underlyin
 ### no thread in the answer
 
 Where: `ai/components/chat/chat-enhance.html`
-What it means: The HTML response from the server did not contain a chat thread element.
-What to do: This is a client-side error. Check the server logs for the underlying issue.
+What it means: The page the server answered with held no element marked `data-chat-part="thread"`. The form's route redirected to a page that is not the chat.
+What to do: If the form is meant to load another page, mark it `data-genui="native"`. Otherwise check the `page` option of `createChat`, which is where the handlers send the reader back, and the server's log.
 
 ### no thread
 
 Where: `ai/components/chat/chat-enhance.html`
-What it means: The client could not find the chat thread element in the DOM before sending.
-What to do: This is a client-side error. Ensure the chat component is correctly mounted.
+What it means: The client runtime found no thread for the form that was sent: its `data-chat` element holds no element marked `data-chat-part="thread"`. The form is then sent the ordinary way.
+What to do: Put the form and `chat-thread` inside the same `data-chat` element.
+
+## Chat parts
+
+### @bascik/ai: the chat parts read this project's chat from src/lib/chat.ts, and it could not be loaded: <reason>
+
+Where: `ai/src/app/page-parts.ts`, in the server's log
+What it means: A data part (`chat-turns`, `chat-conversations`, `chat-find`, `chat-models` or `chat-memories`, and so `chat-app`) imported `@/lib/chat.ts` and the import failed. The file is missing, or it threw while loading; the reason follows the colon. The log goes on: "Create src/lib/chat.ts with a default export that holds your chat", with an example.
+What to do: Create `src/lib/chat.ts` whose default export is `{ chat }` with the chat `createChat` made, as in the [Quick Start](/ai/quick-start#the-project-module). If your chat lives in another file, change the `import("@/lib/chat.ts")` line in your copy of each data part.
+
+### @bascik/ai: the default export of src/lib/chat.ts is not a chat project
+
+Where: `ai/src/app/page-parts.ts`, in the server's log
+What it means: The module loaded, and its default export is not an object with a `chat` made by `createChat`, nor a function of the request that returns one. The usual causes are a default export that is the chat itself, `export default chat`, and a function that returns something else. A module with only a named `chat` export is not one of them: it loads, with every default.
+What to do: Make the default export an object that holds the chat, `export default { chat };`. A named `chat` export can stay beside it for your route files.
+
+### This chat is not set up yet. The server's log says what is missing.
+
+Where: `ai/src/app/page-parts.ts`, shown in the thread (`data-testid="chat-setup-failed"`)
+What it means: `chat-turns` could not load the project module, so the thread shows this line in place of the conversation. It is for the developer: no reader of a working project sees it. A page that also holds a data part in the sidebar may answer 500 instead, because that part's server script failed first.
+What to do: Read the server's log for one of the two messages above.
+
+### A part rendered nothing
+
+Where: a page that uses a data part
+What it means: Some data parts print nothing on purpose. `chat-models` prints nothing until the project module lists `models`. `conversation-list` is hidden beside search results. `chat-conversations` leaves out a conversation with no message yet, so a new project shows an empty list. `chat-voice` and `voice-call` show nothing with scripts off.
+What to do: Check the part's condition in [Components](/ai/components#data-parts). If the whole page is empty or shows "This chat is not set up yet", see the entries above.
+
+### A part placed in a named slot does not show there
+
+Where: a page that fills a slot of `chat-app`, `chat-composer`, `chat-sidebar` or another part
+What it means: The slot name was written on the component's own tag, as in `<chat-attach data-bascik-slot="start" />` or `<chat-sidebar data-bascik-slot="sidebar">`. On this version of Bascik that does not fill the slot, and nothing is reported: the part lands in the default slot or is dropped, and the slot keeps its default content.
+What to do: Wrap the part in an element that carries the name: `<span data-bascik-slot="start"><chat-attach /></span>`, or `<template data-bascik-slot="sidebar">…</template>`.
+
+### A form in the chat that should load a page is fetched instead
+
+Where: a form of your own inside the `data-chat` element, with `chat-enhance` on the page
+What it means: The client runtime takes every `method="post"` form inside the `data-chat` element. It sent the form with `fetch` and read the answer as a reply. When the answer is the chat page, its thread is put into the open page and the address does not change. When the answer has no thread, the runtime gives up and sends the form again the ordinary way, so the route is posted to twice. With `chat-app` the sidebar is inside the `data-chat` element, so this applies to forms there too.
+What to do: Add `data-genui="native"` to the form. See [Which forms it takes](/ai/client-runtime#which-forms-it-takes).
+
+### The Stop button does not show
+
+Where: `chat-composer`
+What it means: Stop takes Send's place while the composer's `data-chat` element has `data-genui="streaming"`, which the client runtime writes. Three things keep that from happening. The page has no `chat-enhance`: a reply then streams as a page load, and the browser's own stop button ends it. The composer is outside the `data-chat` element while the page has one, so the state is written where the composer's rule does not look. Or the composer is your own markup, which has no Stop rule.
+What to do: Put `chat-enhance`, the composer and the thread inside one `data-chat` element. In a composer of your own, mark the button `data-chat-part="stop"` so the runtime takes its click, give it a `formaction` for the stop route, and show it with a rule on `[data-chat][data-genui="streaming"]`.
+
+### A part's styles do not apply to its content
+
+Where: a component of your own that styles slotted or streamed content
+What it means: Bascik renames the classes a component's stylesheet declares, in that component's own markup only. Content that a page slots in, that a stream or server script prints, or that another part's script builds in the browser keeps its class names as written, so a rule such as `.thread .reply` no longer matches it.
+What to do: Start the rule at the component's own class and select the content by attribute, or by element inside `:is()`: `.thread [data-reply]`. See [Style a part of your own](/ai/chat-parts#style-a-part-of-your-own).
+
+### Attribute binding conflict … prop wins
+
+Where: the build output, once for each use of the part; or the dev server's log on a page request, marked "in server-script output"
+What it means: A prop replaced a default attribute that the part's template carries, such as a `route` prop over `action="/api/send"`. That is how the route, placeholder and label props work, so the line is expected and the prop's value is used. The dev server's line comes from a value in the project module (`words.searchPlaceholder`, `words.conversations`, `words.searchClear` or a `routes` entry) replacing a default in what a data part prints.
+What to do: Nothing. The parts whose props print it are listed under [Routes are props](/ai/chat-parts#routes-are-props).
+
+### A build fails on an import of chat-root/parts.ts
+
+Where: a project that added one chat part with `bascik add @bascik/ai/<part>`
+What it means: `chat-enhance`, `chat-attach`, `chat-voice` and `voice-call` import a module they share, `chat/chat-root/parts.ts`. On this version of Bascik, adding a single part may copy the part and its own folder and leave that shared module out.
+What to do: Run `npx bascik add @bascik/ai` to copy the whole package, and delete the parts you do not use. If the build names esbuild instead, install it: `npm install --save-dev esbuild`.
+
+### The sidebar's search results are hidden on a phone
+
+Where: a `chat-sidebar` written in a page or a template, holding `chat-find`
+What it means: At 720px and under the sidebar loads closed, and a search is a page load, so the results are behind the Menu control.
+What to do: Add `data-show-found="true"` to the `chat-sidebar` tag. A sidebar printed by a script can set `data-bascik-prop-open="open"` on a search page in its place. See [Narrow screens](/ai/chat-parts#narrow-screens).
 
 ## Tools and approval
 

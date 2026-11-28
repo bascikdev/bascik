@@ -49,8 +49,17 @@ describe("postForm", () => {
 
 describe("viewUrl", () => {
   test("names the app and the call, escaped", () => {
-    expect(viewUrl("books & more", "call/1")).toBe(
+    expect(viewUrl("/voice-view", "books & more", "call/1")).toBe(
       "/voice-view?app=books%20%26%20more&call=call%2F1",
+    );
+  });
+
+  test("is built on the route it is given, also one that has a query", () => {
+    expect(viewUrl("https://example.com/shop/call-view", "books", "c1")).toBe(
+      "https://example.com/shop/call-view?app=books&call=c1",
+    );
+    expect(viewUrl("/view?theme=dark", "books", "c1")).toBe(
+      "/view?theme=dark&app=books&call=c1",
     );
   });
 });

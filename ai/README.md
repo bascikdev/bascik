@@ -11,9 +11,9 @@ npm i @bascik/ai
 npx bascik add @bascik/ai
 ```
 
-The package has two parts: functions you import, and components you copy. [`bascik add`](https://bascik.dev/how-to/sharing-components) copies the components into `src/components/`, where they are your files to read and change. `catalog/` holds the components a model may write, and `chat/` holds the chat's own pieces (composer, voice, tool approval).
+The package has two parts: functions you import, and components you copy. [`bascik add`](https://bascik.dev/how-to/sharing-components) copies the components into `src/components/`, where they are your files to read and change. `catalog/` holds the components a model may write, and `chat/` holds the chat's own parts: the layout parts (thread, composer, sidebar), the data parts that read your chat, and `chat-app`, which is all of them put together.
 
-Requires Node 24.21 or newer and `@bascik/bascik` 1.0.2 or newer. The voice components (`chat-voice`, `voice-call`) import TypeScript modules from the folders beside them, which Bascik bundles with esbuild: install it in the project that builds them (`npm install --save-dev esbuild`).
+Requires Node 24.21 or newer and `@bascik/bascik` 1.0.2 or newer. Some chat components (`chat-enhance`, `chat-attach`, `chat-voice`, `voice-call`, and so `chat-app`, which holds the first two) import TypeScript modules from the folders beside them, which Bascik bundles with esbuild: install it in the project that builds them (`npm install --save-dev esbuild`).
 
 ## Minimal example
 
@@ -54,6 +54,63 @@ A page with a form and a stream script. The model here is a scripted stand-in th
 </div>
 ```
 
+## The whole chat in one tag
+
+`chat-app` is the sidebar, the message box and the conversation, assembled from the other parts. A page whose body is that one tag is a working chat:
+
+```html
+<!-- src/pages/index.html -->
+<head>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="expect" href="#thread-ready" blocking="render" />
+</head>
+<body>
+  <chat-app />
+</body>
+```
+
+The stylesheet defines the theme tokens the parts read (`--bg`, `--surface`, `--border`, `--text`, `--muted`, `--accent`, `--on-accent`, `--radius` and `--fg`), and the `rel="expect"` link holds the first paint until the stored conversation is parsed.
+
+The data parts inside `chat-app` read your chat from one module, `src/lib/chat.ts`, whose default export is `{ chat }` with the chat `createChat` made. The same object takes your `welcome`, `models`, `routes` and `words` (the `ChatProject` type from `@bascik/ai/app`):
+
+```ts
+// src/lib/chat.ts
+import { createChat, memoryStore, type ChatProject } from "@bascik/ai/app";
+
+const chat = createChat({ store: memoryStore(), catalog, model, system });
+
+export default {
+  chat,
+  welcome: { heading: "What are you reading next?" },
+} satisfies ChatProject;
+```
+
+Each route the parts post to is one line in its own file: `send`, `stop` and `open`, and `file` for attachments.
+
+```ts
+// src/api/send.ts
+import project from "../lib/chat.ts";
+
+export const POST = project.chat.send;
+```
+
+From there, three steps take you as far as you need:
+
+- **Change what a part says:** add a value to the module's default export.
+- **Change a part:** fill `chat-app`'s `sidebar` or `composer` slot with your own, inside a wrapper element. A slot replaces the whole part.
+
+  ```html
+  <chat-app>
+    <template data-bascik-slot="composer">
+      <chat-composer><chat-voice /></chat-composer>
+    </template>
+  </chat-app>
+  ```
+
+- **Change the layout:** copy the template of `chat-app.html` into your page. It is nothing but the parts, and every part works alone.
+
+The parts are grouped as the frame (`chat-app`, `chat-thread`, `chat-sidebar`, `chat-enhance`), the data parts (`chat-turns`, `chat-conversations`, `chat-find`, `chat-models`, `chat-memories`), the message box (`chat-composer`, `chat-attach`, `chat-voice`, `voice-call`), the sidebar's controls, and memory. Each part's file starts with a comment that gives its props, slots and what it needs around it. [`examples/starter`](https://github.com/bascikdev/bascik/tree/main/ai/examples/starter) is the smallest project that does this, with a scripted model, so it runs with no key. [Chat Parts](https://bascik.dev/ai/chat-parts) has the rest.
+
 For a real model, replace the stand-in:
 
 ```ts
@@ -83,7 +140,9 @@ const model = anthropicModel();
 
 ## Learn more
 
-- [Quick Start](https://bascik.dev/ai/quick-start): install, stream a reply, and make it a chat.
+- [Quick Start](https://bascik.dev/ai/quick-start): install, and get a working chat from one tag.
+- [Chat Parts](https://bascik.dev/ai/chat-parts): change the one tag, assemble the parts yourself, and the contract they share.
+- [Components](https://bascik.dev/ai/components): every catalog component and chat part, with its props and slots.
 - [Server Kit](https://bascik.dev/ai/server-kit): the server-side infrastructure for Chat.
 - [Catalog](https://bascik.dev/ai/catalog): the components a model may write, and how to add your own.
 - [Tools](https://bascik.dev/ai/tools): let a model call your functions, with approval where you want it.

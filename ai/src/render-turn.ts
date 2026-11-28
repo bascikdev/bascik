@@ -78,7 +78,7 @@ export function renderMessage(
         : part.type === "tool"
           ? renderToolPart(part, catalog, options, budget)
           : part.spoken
-            ? `<p class="spoken">${esc(part.text)}</p>`
+            ? `<p class="spoken" data-spoken>${esc(part.text)}</p>`
             : renderText(part.text, catalog, options, budget),
     )
     .join("");

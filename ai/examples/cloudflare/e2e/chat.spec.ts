@@ -88,6 +88,29 @@ test("a memory is saved with the reader's OK and used in a new conversation", as
   await expect(page.getByTestId("memory-item")).toHaveCount(1);
 });
 
+test("on a narrow screen the sidebar opens from its control, and a conversation closes it", async ({
+  page,
+}) => {
+  await send(page, "Recommend a book");
+  await page.getByTestId("chat-sidebar-new").click();
+  await expect(page.getByTestId("chat-welcome")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const toggle = page.getByTestId("chat-sidebar-toggle");
+  const item = page.getByTestId("chat-sidebar-item");
+  await expect(toggle).toBeVisible();
+  await expect(item).toBeHidden();
+  await toggle.click();
+  await expect(page.getByTestId("chat-sidebar-memory")).toBeVisible();
+  await expect(page.getByTestId("chat-composer")).toBeInViewport({ ratio: 1 });
+  // The form is the browser's to send: the page it loads is closed again.
+  await item.click();
+  await expect(page.getByTestId("turn-user")).toHaveText("Recommend a book");
+  await expect(page.getByTestId("chat-sidebar-drawer")).not.toHaveAttribute(
+    "open",
+  );
+  await expect(item).toBeHidden();
+});
+
 test("search finds an earlier conversation", async ({ page }) => {
   await send(page, "Recommend a book");
   await page.getByTestId("chat-sidebar-new").click();

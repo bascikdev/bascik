@@ -1,0 +1,43 @@
+<!-- @bascik
+The turns of a conversation, read from the project's chat on every request, for the default slot of `chat-thread`: the stored turns, or the welcome when there are none; the marker that ends them; then the reply being written. A data part: its two stream scripts are one call each to `storedTurns` and `liveTurn` from `@bascik/ai/app`, so the page streams as the model writes, with no JavaScript in the browser. It has no element of its own: what it prints are the thread's children.
+
+The project module: `src/lib/chat.ts`, imported as `@/lib/chat.ts` (the `@/` root is your project's `src/`, wherever this file is). Its default export is the project, `{ chat }` with the chat `createChat` made, or a function `(request, context) => project` for a site with several chats or a platform that hands the chat its bindings. Beside `chat`, this part reads `welcome` (`{ heading, tagline, note, suggestions }`: what an empty conversation shows; `false` for none), `routes.file` (where an attached file is served; `/api/file`), `words.earlier` (a function of the count, for the link to older messages; "Show 12 earlier messages") and `host` (the platform's `waitUntil`). The module's other values are for the other data parts: `app`, `page`, `models`, `routes` (`open`, `model`, `forget`, `file`: where the printed parts post, when not their defaults) and `words` (what the printed parts say, when not English); each part's reference names the ones it reads. A project whose chat lives elsewhere changes the two import lines in its copy. Without the module the thread says, in English, that the chat is not set up, and the server's log says what to create: that line is for the developer, and no reader of a working project sees it.
+
+Props and slots: none. A request-time script receives no props, so what it would take comes from the project module. For a welcome written as markup, set `welcome: false` and put your own `chat-welcome` beside this part in the thread.
+
+Around it: `chat-thread`, inside a `data-chat` element. The marker carries `id="thread-ready"`: put `<link rel="expect" href="#thread-ready" blocking="render" />` in the page's head, so the first paint has the whole conversation. A page shows the last 40 messages, with a link to the rest. It prints `chat-welcome`, `ask-button` and `chat-attachment` tags, so the project needs those components.
+-->
+<!-- 1. The conversation so far, or the welcome when there is none. -->
+<script data-bascik-stream type="text/typescript">
+  import { storedTurns } from "@bascik/ai/app";
+
+  export default (request: Request, context: unknown) =>
+    storedTurns(import("@/lib/chat.ts"), request, context);
+</script>
+
+<!-- The stored conversation ends here. The page's <link rel="expect"> names
+     this element, so the browser's first paint already has the whole
+     conversation and nothing moves as the page loads. -->
+<span
+  id="thread-ready"
+  class="thread-ready"
+  data-chat-part="ready"
+  data-bascik-preserve="id"
+  data-testid="chat-thread-ready"
+></span>
+
+<!-- 2. The reply being written, when there is one. -->
+<div
+  class="turn-assistant live"
+  data-chat-part="turn"
+  data-role="assistant"
+  data-live
+  data-testid="turn-live"
+>
+  <script data-bascik-stream type="text/typescript">
+    import { liveTurn } from "@bascik/ai/app";
+
+    export default (request: Request, context: unknown) =>
+      liveTurn(import("@/lib/chat.ts"), request, context);
+  </script>
+</div>

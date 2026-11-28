@@ -164,6 +164,7 @@ export const NAV: NavSection[] = [
     pages: [
       { href: "/ai", label: "Overview" },
       { href: "/ai/quick-start", label: "Quick Start" },
+      { href: "/ai/chat-parts", label: "Chat Parts" },
       { href: "/ai/how-to", label: "How-To Guides" },
       { href: "/ai/server-kit", label: "Server Kit" },
       { href: "/ai/catalog", label: "Catalog" },

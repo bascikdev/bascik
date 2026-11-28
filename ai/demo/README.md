@@ -21,6 +21,8 @@ Visitors can try:
 - Reading aids: The docs app can show step lists, note boxes, and links to source pages.
 - Component gallery at `/gallery`: Every catalog component on one page, under a bar that stays in view with a link back to the app you came from.
 
+Each chat page is the package's `<chat-app>` with two parts replaced: the `sidebar` slot holds the demo's `site-menu` (the package's `chat-sidebar` with the app links around the data parts), and the `composer` slot holds a `chat-composer` with `chat-attach` and the voice parts. The memory page is not a chat, so it uses the parts directly: `site-menu` beside its own column, which holds `chat-memories`. The data parts read each app's chat from the default export of `src/lib/chat.ts`. `/parts` and the pages under `/fixtures/` show each part alone; the browser tests read them.
+
 The foot of the sidebar holds what is not a conversation: the model, a Memory link to what the open app remembers (that page has a link back to the app), and the link to the component gallery.
 
 ## Run it

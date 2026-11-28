@@ -16,7 +16,7 @@ describe("mermaidFence", () => {
   it("draws a mermaid fence as one inline SVG", () => {
     const html = draw(`Before\n\n\`\`\`mermaid\n${FLOW}\n\`\`\`\nAfter`);
     expect(html).toMatch(
-      /^Before<div><\/div><figure class="diagram" data-testid="diagram"><svg [\s\S]*<\/svg><\/figure>After$/,
+      /^Before<div><\/div><figure class="diagram" data-diagram data-testid="diagram"><svg [\s\S]*<\/svg><\/figure>After$/,
     );
     expect(nodes(html)).toEqual(["Start", "Ready?", "Ship"]);
     expect(html).not.toContain("flowchart TD");

@@ -1,121 +1,28 @@
 <!-- @bascik
-The message box. A plain form that posts to /api/send, so sending works with no JavaScript. Anything put inside the tag joins the row before the Send button, which is where chat-voice and voice-call go. Set data-bascik-prop-enctype="multipart/form-data" to take attachments: the form then sends files, and an Attach button (a label for a file input, so it works with no JavaScript) appears. With scripts on, chosen files show as removable chips with a preview, are checked against the limits before sending, and can also be pasted or dropped. Limits are read from data-bascik-prop-max-bytes, max-files, max-total and types (comma-separated media types) when set; they default to the server's own defaults, and the server enforces them either way.
+The message box: a plain form with a textarea and a Send button, so sending works with no JavaScript. With scripts on, Enter sends and Shift+Enter adds a line; with the client runtime (`chat-enhance`) a Stop button takes Send's place while this chat's reply streams. It holds no attachments, no voice and no model picker of its own: those are parts a page puts in its slots.
+
+Props, all optional: `app` (sent with every message as the `app` field), `route` (where the form posts; `/api/send`), `stop-route` (where Stop posts; `/api/stop`), `placeholder` ("Ask a question…"), `label` (the message box's name for a screen reader; "Message"), `send-label` ("Send"), `stop-label` ("Stop") and `autofocus` (write `data-bascik-prop-autofocus="autofocus"` on the one composer of a page that takes the keyboard when the page opens; without it none does, and any value turns it on). Setting `route`, `stop-route`, `placeholder` or `label` prints one build line each, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant. Any other attribute on the tag lands on the form: write `enctype="multipart/form-data"` there for a form that sends files.
+
+Slots, each optional, and an unfilled one takes no room:
+- `above`: a line above the message box, for a status or a note. A status that comes and goes carries the `hidden` attribute while it has nothing to say: the line takes no room while every element in it is hidden. The same holds for `below`.
+- `start`: before the message box, which is where `chat-attach` goes.
+- the default slot: between the message box and Send, which is where `chat-voice` and `voice-call` go.
+- `below`: a row under the message box, for a note or a control sent with the message. It is inside the message form, so a part that is a form itself, as `model-picker` is, cannot go here.
+A named slot is filled by a wrapper element, never by the attribute on a component's own tag: `<chat-composer><span data-bascik-slot="start"><chat-attach /></span><chat-voice /></chat-composer>`.
+
+Lines: a part in any slot can put an element of its own on a full line above or below the message box by marking it `data-chat-line="above"` or `data-chat-line="below"`. Two more values place a line among those above: `data-chat-line="top"` is the first line of all, which is where captions go, and `data-chat-line="near"` is the last, next to the message box, which is where controls that a button in the row opens go. Lines of the same kind stack in source order. The marked element must be a child of the part's root, and that root must have no box (`display: contents`), so the line is laid out by the composer; `chat-attach`, `chat-voice` and `voice-call` are written this way.
+
+Around it: a `data-chat` element that also holds the thread. The client runtime writes `data-genui="streaming"` on that element while its reply streams, and this part shows Stop from it, so with two chats on a page only the one that is streaming shows Stop; on a page with no `data-chat` element the state is read from `<html>`. Stop is a submit button that carries its route as `formaction`; the client runtime takes its click, so the form is never sent there. Its parts are marked `data-chat-part`: `composer` (the form), `input`, `send` and `stop`. A part may set `data-dragging` on the form while files are dragged over it. It reads the theme tokens `--border`, `--radius`, `--surface`, `--accent`, `--on-accent` and `--muted`.
 -->
 <style>
-  /* Shown only on a form that sends files. */
-  .attach {
-    position: relative;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    inline-size: 2.5rem;
-    block-size: 2.5rem;
-    border-radius: var(--radius);
-    color: var(--muted);
-    cursor: pointer;
-  }
-  .composer[enctype] .attach {
-    display: inline-flex;
-  }
-  .attach:hover,
-  .attach:has(.picker:focus-visible) {
-    background: var(--bg);
-    color: var(--accent);
-  }
-  .attach:has(.picker:focus-visible) {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-  /* The paperclip is drawn here, so the label's text is its name alone. */
-  .attach::before {
-    content: "+";
-    font-size: 1.5rem;
-    line-height: 1;
-  }
-  .name,
-  .picker {
-    position: absolute;
-    inline-size: 1px;
-    block-size: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  .composer[data-dragging] {
-    border-color: var(--accent);
-    border-style: dashed;
-  }
-  .notice {
-    order: -2;
-    flex: 0 0 100%;
-    margin: 0;
-    padding: 0.15rem 0.4rem;
-    color: light-dark(#b3261e, #f2b8b5);
-    font-size: 0.875rem;
-  }
-  .notice[hidden] {
-    display: none;
-  }
-  .chips {
-    order: -2;
-    flex: 0 0 100%;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  .chips:empty {
-    display: none;
-  }
-  .chip {
-    display: inline-flex;
-    gap: 0.4rem;
-    align-items: center;
-    max-inline-size: 100%;
-    padding: 0.2rem 0.3rem 0.2rem 0.4rem;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: var(--bg);
-    font-size: 0.8125rem;
-  }
-  .preview {
-    inline-size: 1.75rem;
-    block-size: 1.75rem;
-    border-radius: 4px;
-    object-fit: cover;
-  }
-  .chip-name {
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .chip-size {
-    color: var(--muted);
-    white-space: nowrap;
-  }
-  .chip-remove {
-    padding: 0 0.4rem;
-    border: 0;
-    border-radius: 999px;
-    background: transparent;
-    color: var(--muted);
-    font: inherit;
-    cursor: pointer;
-  }
-  .chip-remove:hover,
-  .chip-remove:focus-visible {
-    color: var(--accent);
-  }
-
   .composer {
     display: flex;
-    /* A component in the row can add a line of its own above the box. */
+    /* A line above or below the box is an item that takes a whole row. */
     flex-wrap: wrap;
     gap: 0.5rem 0.25rem;
     align-items: end;
+    /* Its padding and border are inside the width it fills, on any page. */
+    box-sizing: border-box;
     max-inline-size: 46rem;
     inline-size: 100%;
     margin-inline: auto;
@@ -127,8 +34,54 @@ The message box. A plain form that posts to /api/send, so sending works with no 
   .composer:focus-within {
     border-color: var(--accent);
   }
+  .composer[data-dragging] {
+    border-color: var(--accent);
+    border-style: dashed;
+  }
+  /* The lines: the composer's own two regions, and any element a slotted
+     part marks as one. */
+  .composer [data-chat-line] {
+    flex: 0 0 100%;
+  }
+  .composer [data-chat-line="top"] {
+    order: -3;
+  }
+  .composer [data-chat-line="above"] {
+    order: -2;
+  }
+  .composer [data-chat-line="near"] {
+    order: -1;
+  }
+  .composer [data-chat-line="below"] {
+    order: 1;
+  }
+  .above,
+  .below {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.6rem;
+    align-items: center;
+    padding-inline: 0.4rem;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  /* A region with nothing to show takes no row: an unfilled one, and one
+     whose every element is hidden. */
+  .above:empty,
+  .below:empty,
+  .above:has(> [hidden]):not(:has(> :not([hidden]))),
+  .below:has(> [hidden]):not(:has(> :not([hidden]))) {
+    display: none;
+  }
+  /* These two regions have no box: what is slotted into them joins the row
+     of the message box, and its lines join the lines. */
+  .start,
+  .actions {
+    display: contents;
+  }
   .input {
     flex: 1 1 10rem;
+    box-sizing: border-box;
     min-block-size: 2.5rem;
     max-block-size: 12rem;
     padding: 0.5rem 0.6rem;
@@ -151,73 +104,74 @@ The message box. A plain form that posts to /api/send, so sending works with no 
     cursor: pointer;
     margin-inline-start: 0.25rem;
   }
+  /* While this chat's reply streams, Stop takes Send's place. The state is
+     on the chat's own element, or on <html> for a page that marks no chat. */
+  [data-chat][data-genui="streaming"] .stop,
+  html[data-genui="streaming"]:not(:has([data-chat])) .stop {
+    display: inline-block;
+  }
+  [data-chat][data-genui="streaming"] .send:not(.stop),
+  html[data-genui="streaming"]:not(:has([data-chat])) .send:not(.stop) {
+    display: none;
+  }
 </style>
 <form
-  id="composer"
   class="composer"
   method="post"
   action="/api/send"
-  data-bascik-attr-enctype="enctype"
-  data-bascik-attr-data-max-bytes="max-bytes"
-  data-bascik-attr-data-max-files="max-files"
-  data-bascik-attr-data-max-total="max-total"
-  data-bascik-attr-data-types="types"
+  data-bascik-attr-action="route"
+  data-chat-part="composer"
   data-testid="chat-composer"
 >
   <input type="hidden" name="app" data-bascik-attr-value="app" />
-  <p
-    id="notice"
-    class="notice"
-    role="alert"
-    hidden
-    data-testid="chat-composer-notice"
-  ></p>
-  <ul id="chips" class="chips" data-testid="chat-composer-files"></ul>
-  <template id="chip">
-    <li class="chip" data-testid="chat-composer-file">
-      <img class="preview" alt="" hidden />
-      <span class="chip-name"></span>
-      <span class="chip-size"></span>
-      <button
-        class="chip-remove"
-        type="button"
-        data-testid="chat-composer-file-remove"
-      >
-        &times;
-      </button>
-    </li>
-  </template>
-  <label class="attach" for="files" data-testid="chat-composer-attach">
-    <span class="name">Attach files</span>
-    <input
-      id="files"
-      class="picker"
-      type="file"
-      name="files"
-      multiple
-      accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/markdown,text/csv"
-      data-testid="chat-composer-files-input"
-    />
-  </label>
+  <!-- A region is written on one line, with nothing around its slot: an
+       unfilled one is then empty, and takes no room. -->
+  <!-- prettier-ignore -->
+  <div class="above" data-chat-line="above"><span data-bascik-slot="above"></span></div>
+  <div class="start"><span data-bascik-slot="start"></span></div>
   <textarea
     id="input"
     class="input"
     name="text"
     rows="1"
     required
-    autofocus
+    data-bascik-attr-autofocus="autofocus"
     placeholder="Ask a question…"
+    data-bascik-attr-placeholder="placeholder"
     aria-label="Message"
+    data-bascik-attr-aria-label="label"
+    data-chat-part="input"
     data-testid="chat-composer-input"
   ></textarea>
-  <div data-bascik-slot></div>
-  <button class="send" data-testid="chat-composer-send">Send</button>
-  <!-- Shown by chat-enhance while a reply streams; never without a script. -->
-  <button class="send" type="button" hidden data-testid="chat-composer-stop">
+  <div class="actions"><span data-bascik-slot></span></div>
+  <button
+    class="send"
+    data-chat-part="send"
+    data-testid="chat-composer-send"
+    data-bascik-prop-send-label
+  >
+    Send
+  </button>
+  <!-- Shown while a reply streams, which takes the client runtime: never
+       without a script. Its route is here so that the site's base applies;
+       the runtime takes the click and posts there itself. -->
+  <button
+    class="send stop"
+    type="submit"
+    hidden
+    formnovalidate
+    formaction="/api/stop"
+    data-bascik-attr-formaction="stop-route"
+    data-chat-part="stop"
+    data-testid="chat-composer-stop"
+    data-bascik-prop-stop-label
+  >
     Stop
   </button>
-  <!-- The only client script in the app, and it is optional: Enter sends,
-       Shift+Enter adds a line. Without it the Send button still works. -->
+  <!-- prettier-ignore -->
+  <div class="below" data-chat-line="below"><span data-bascik-slot="below"></span></div>
+  <!-- Optional: Enter sends, Shift+Enter adds a line. Without it the Send
+       button still works. -->
   <script>
     const input = document.getElementById("input");
     input.addEventListener("keydown", (event) => {
@@ -225,207 +179,6 @@ The message box. A plain form that posts to /api/send, so sending works with no 
         event.preventDefault();
         input.form.requestSubmit();
       }
-    });
-  </script>
-  <!-- Attachments, also optional: without it the file input still sends
-       whatever it holds, and the server checks every file. -->
-  <script type="text/typescript">
-    const form = document.getElementById("composer") as HTMLFormElement;
-    const picker = document.getElementById("files") as HTMLInputElement;
-    const chips = document.getElementById("chips") as HTMLElement;
-    const notice = document.getElementById("notice") as HTMLElement;
-    const chipTemplate = document.getElementById("chip") as HTMLTemplateElement;
-    const input = document.getElementById("input") as HTMLTextAreaElement;
-    const MB = 1024 * 1024;
-    const KNOWN: Record<string, string> = {
-      "image/png": "PNG",
-      "image/jpeg": "JPEG",
-      "image/webp": "WebP",
-      "image/gif": "GIF",
-      "application/pdf": "PDF",
-      "text/plain": "plain text",
-      "text/markdown": "Markdown",
-      "text/csv": "CSV",
-    };
-    const BY_EXTENSION: Record<string, string> = {
-      png: "image/png",
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      webp: "image/webp",
-      gif: "image/gif",
-      pdf: "application/pdf",
-      txt: "text/plain",
-      md: "text/markdown",
-      markdown: "text/markdown",
-      csv: "text/csv",
-    };
-    const number = (value: string | undefined, fallback: number): number => {
-      const parsed = Number(value);
-      return value && Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-    };
-    const maxBytes = number(form.dataset.maxBytes, 5 * MB);
-    const maxFiles = number(form.dataset.maxFiles, 4);
-    const maxTotal = number(form.dataset.maxTotal, 10 * MB);
-    const types = form.dataset.types
-      ? form.dataset.types.split(",").map((type) => type.trim())
-      : Object.keys(KNOWN);
-    if (form.dataset.types) picker.accept = types.join(",");
-
-    const size = (bytes: number): string =>
-      bytes >= MB
-        ? `${Number((bytes / MB).toFixed(1))} MB`
-        : bytes >= 1024
-          ? `${Number((bytes / 1024).toFixed(1))} KB`
-          : `${bytes} B`;
-
-    /** The type a file claims: what the browser said, or its extension. */
-    const claimed = (file: File): string =>
-      file.type.split(";")[0]!.toLowerCase() ||
-      BY_EXTENSION[file.name.split(".").pop()!.toLowerCase()] ||
-      "";
-
-    /**
-     * The server's name check (`claimsMarkup` in files.ts): the extension is
-     * read without invisible characters or trailing dots and spaces, both as
-     * sent and as `cleanName` will store it.
-     */
-    const bare = (name: string): string =>
-      name.replace(/[\p{Cc}\p{Cf}]/gu, "").replace(/[\s.]+$/u, "");
-    const stored = (name: string): string =>
-      [
-        ...(name.split(/[\\/]/).pop() ?? "")
-          .replace(
-            // eslint-disable-next-line no-control-regex
-            /[\u0000-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]/g,
-            " ",
-          )
-          .replace(/\s+/g, " ")
-          .trim(),
-      ]
-        .slice(0, 120)
-        .join("")
-        .trim();
-    const markupName = (name: string): boolean =>
-      /\.(html?|xhtml|svg|svgz|xml)$/i.test(bare(name)) ||
-      /\.(html?|xhtml|svg|svgz|xml)$/i.test(bare(stored(name)));
-
-    let chosen: File[] = [];
-    const previews = new Map<File, string>();
-
-    /** The same words the server says (see `refusals` in files.ts), for what can be known before sending. */
-    function problem(file: File): string | null {
-      const name = file.name.split(/[\\/]/).pop() || "file";
-      if (chosen.length >= maxFiles) {
-        return `You can attach up to ${maxFiles} file${maxFiles === 1 ? "" : "s"} to one message.`;
-      }
-      const type = claimed(file);
-      if (
-        /^(text\/html|application\/xhtml\+xml|image\/svg\+xml|text\/xml|application\/xml)$/.test(type) ||
-        markupName(file.name)
-      ) {
-        return `"${name}" cannot be attached: HTML and SVG files are not allowed.`;
-      }
-      if (!types.includes(type)) {
-        return `"${name}" cannot be attached: that type of file is not allowed. Allowed types: ${types.map((one) => KNOWN[one] ?? one).join(", ")}.`;
-      }
-      if (file.size === 0) return `"${name}" is empty.`;
-      if (file.size > maxBytes) {
-        return `"${name}" is too large (${size(file.size)}). Each file can be up to ${size(maxBytes)}.`;
-      }
-      const total = chosen.reduce((sum, one) => sum + one.size, file.size);
-      if (total > maxTotal) {
-        return `These files are too large together (${size(total)}). One message can carry up to ${size(maxTotal)}.`;
-      }
-      return null;
-    }
-
-    function say(message: string): void {
-      notice.textContent = message;
-      notice.hidden = !message;
-    }
-
-    /** Make the file input hold exactly the chosen files, and draw them. */
-    function show(): void {
-      const held = new DataTransfer();
-      for (const file of chosen) held.items.add(file);
-      picker.files = held.files;
-      for (const [file, url] of previews) {
-        if (!chosen.includes(file)) {
-          URL.revokeObjectURL(url);
-          previews.delete(file);
-        }
-      }
-      chips.replaceChildren(
-        ...chosen.map((file) => {
-          const chip = (chipTemplate.content.cloneNode(true) as DocumentFragment)
-            .firstElementChild as HTMLElement;
-          chip.querySelector<HTMLElement>(".chip-name")!.textContent = file.name;
-          chip.querySelector<HTMLElement>(".chip-size")!.textContent = size(file.size);
-          if (claimed(file).startsWith("image/")) {
-            let url = previews.get(file);
-            if (!url) previews.set(file, (url = URL.createObjectURL(file)));
-            const preview = chip.querySelector<HTMLImageElement>(".preview")!;
-            preview.src = url;
-            preview.hidden = false;
-          }
-          const remove = chip.querySelector<HTMLButtonElement>(".chip-remove")!;
-          remove.setAttribute("aria-label", `Remove ${file.name}`);
-          remove.addEventListener("click", () => {
-            chosen = chosen.filter((one) => one !== file);
-            say("");
-            show();
-            input.focus();
-          });
-          return chip;
-        }),
-      );
-    }
-
-    function add(files: Iterable<File>): void {
-      let refused = "";
-      for (const file of files) {
-        const why = problem(file);
-        if (why) refused ||= why;
-        else chosen.push(file);
-      }
-      say(refused);
-      show();
-    }
-
-    // A chosen file replaces the input's own list; keep what was chosen before.
-    picker.addEventListener("change", () => {
-      const fresh = [...(picker.files ?? [])].filter((file) => !chosen.includes(file));
-      picker.files = new DataTransfer().files;
-      add(fresh);
-    });
-    input.addEventListener("paste", (event) => {
-      const pasted = [...(event.clipboardData?.files ?? [])];
-      if (form.hasAttribute("enctype") && pasted.length) {
-        event.preventDefault();
-        add(pasted);
-      }
-    });
-    form.addEventListener("dragover", (event) => {
-      if (form.hasAttribute("enctype") && event.dataTransfer?.types.includes("Files")) {
-        event.preventDefault();
-        form.dataset.dragging = "";
-      }
-    });
-    form.addEventListener("dragleave", () => {
-      delete form.dataset.dragging;
-    });
-    form.addEventListener("drop", (event) => {
-      delete form.dataset.dragging;
-      if (form.hasAttribute("enctype") && event.dataTransfer?.files.length) {
-        event.preventDefault();
-        add(event.dataTransfer.files);
-      }
-    });
-    // Sent (or reset): the files are gone from the form, and their previews with them.
-    form.addEventListener("reset", () => {
-      chosen = [];
-      say("");
-      show();
     });
   </script>
 </form>

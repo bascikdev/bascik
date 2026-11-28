@@ -1,5 +1,11 @@
 <!-- @bascik
-Asks the reader to allow or refuse a tool call before it runs. Written by the app for a tool part that is waiting for approval, never by a model. A plain form: the two buttons post the answer to /api/approve.
+Asks the reader to allow or refuse a tool call before it runs. Written by the app for a tool part that is waiting for approval, never by a model. A plain form: each of its two buttons posts the answer as `verdict` (`approve` or `deny`), so it works with no JavaScript.
+
+Props: `action` (what the tool would do, as the card's title; "Run a tool" without it), `call` (the tool call's id, posted as `call`), `app` (posted as `app`) and `route` (where the answer posts; `/api/approve` without it). Setting `route` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
+
+Slot: the default slot is the details of the call, as `dt` and `dd` pairs.
+
+Around it: a reply in the thread. Inside a `data-chat` element the client runtime sends the form and streams the answer in; during a voice call `voice-call` answers it on the call, with no request to this route. It reads the theme tokens `--accent`, `--on-accent`, `--radius`, `--surface`, `--muted`, `--border` and `--bg`, and `--text-small` when it is set.
 -->
 <style>
   .card {
@@ -61,6 +67,7 @@ Asks the reader to allow or refuse a tool call before it runs. Written by the ap
   class="card"
   method="post"
   action="/api/approve"
+  data-bascik-attr-action="route"
   data-testid="tool-approval"
 >
   <input type="hidden" name="app" data-bascik-attr-value="app" />

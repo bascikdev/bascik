@@ -1,5 +1,11 @@
 <!-- @bascik
-One match in a list of search results: the conversation's title, and what was found in it, which goes inside the tag (the matched words in mark). A plain form that posts the conversation's id to /api/open, the way a conversation list does, so it works with no JavaScript. Put it in an ol. Written by the app from stored text, never by a model.
+One match in a list of search results: the conversation's title, and what was found in it. A plain form that posts the conversation's id, the way a conversation list does, so it works with no JavaScript. Written by the app from stored text, never by a model.
+
+Props: `conversation` (the conversation's id, posted as `id`), `title` (its title; "Conversation" without it), `app` (posted as `app`) and `route` (where the form posts; `/api/open` without it). Setting `route` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
+
+Slot: the default slot is what was found, with the matched words in `mark`, which the browser highlights in its own colors.
+
+Around it: `search-results`, or an `ol` or a `ul` of your own; its root is a list item. The form carries `data-genui="native"`: it must load a page, so the client runtime (`chat-enhance`) leaves it to the browser, also inside a `data-chat` element. It reads the theme tokens `--radius`, `--bg` and `--muted`.
 -->
 <style>
   .result {
@@ -44,9 +50,19 @@ One match in a list of search results: the conversation's title, and what was fo
     background: var(--accent);
     color: var(--on-accent);
   }
+  @media (pointer: coarse) {
+    .open {
+      min-block-size: 2.75rem;
+    }
+  }
 </style>
 <li class="result" data-testid="search-result">
-  <form method="post" action="/api/open">
+  <form
+    method="post"
+    action="/api/open"
+    data-bascik-attr-action="route"
+    data-genui="native"
+  >
     <input type="hidden" name="app" data-bascik-attr-value="app" />
     <input type="hidden" name="id" data-bascik-attr-value="conversation" />
     <button class="open" data-testid="search-result-open">

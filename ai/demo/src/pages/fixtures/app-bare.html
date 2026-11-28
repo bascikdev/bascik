@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bascik Chat: chat-app with no sidebar</title>
+    <meta
+      name="description"
+      content="A fixture for the browser specs: chat-app with its sidebar slot emptied."
+    />
+    <meta name="robots" content="noindex" />
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="expect" href="#thread-ready" blocking="render" />
+  </head>
+  <body>
+    <!-- For e2e/chat-app.spec.ts: an empty wrapper leaves the sidebar out,
+         and the chat takes the whole width. -->
+    <chat-app>
+      <template data-bascik-slot="sidebar"></template>
+    </chat-app>
+  </body>
+</html>

@@ -10,7 +10,7 @@
          component fetches this page and moves the view into the thread. It is
          a page, and not an API response, so that Bascik renders the
          components in it, with their styles and scripts. -->
-    <div data-testid="voice-view">
+    <div data-chat-part="view" data-testid="voice-view">
       <script data-bascik-server type="text/typescript">
         import { raw } from "@bascik/bascik/html";
         import { appFor, chatFor } from "@/lib/chat.ts";

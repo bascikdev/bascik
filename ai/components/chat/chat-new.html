@@ -1,0 +1,41 @@
+<!-- @bascik
+The New chat control: a plain form with one button, so it works with no JavaScript. It posts the app with no conversation id, which the open route answers by starting a new conversation and sending the reader to it.
+
+Props, all optional: `app` (posted as `app`), `route` (where the form posts; `/api/open`) and `label` (the button's text; "+ New chat"). Setting `route` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
+
+Around it: anything; it fills the width it is given, and `chat-sidebar` is where it usually goes. The form carries `data-genui="native"`: it must load a page, so the client runtime (`chat-enhance`) leaves it to the browser, also inside a `data-chat` element. It reads the theme tokens `--border`, `--radius`, `--bg` and `--accent`.
+-->
+<style>
+  .button {
+    inline-size: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  .button:hover {
+    border-color: var(--accent);
+  }
+  /* A finger gets a 44px target. */
+  @media (pointer: coarse) {
+    .button {
+      min-block-size: 2.75rem;
+    }
+  }
+</style>
+<form
+  method="post"
+  action="/api/open"
+  data-bascik-attr-action="route"
+  data-genui="native"
+  data-testid="chat-new"
+>
+  <input type="hidden" name="app" data-bascik-attr-value="app" />
+  <button class="button" data-testid="chat-sidebar-new" data-bascik-prop-label>
+    + New chat
+  </button>
+</form>

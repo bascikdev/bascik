@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bascik Chat: the parts, placed by hand</title>
+    <meta
+      name="description"
+      content="The chat parts of @bascik/ai in arrangements the demo's own pages do not use."
+    />
+    <meta name="robots" content="noindex" />
+    <link rel="stylesheet" href="/style.css" />
+    <!-- This page is a column of small chats, not one chat that fills the
+         window. -->
+    <style>
+      body {
+        display: block;
+        block-size: auto;
+      }
+      .parts {
+        display: grid;
+        gap: 2rem;
+        max-inline-size: 48rem;
+        margin-inline: auto;
+        padding: 1.5rem 1rem 3rem;
+      }
+      .parts-chat {
+        display: grid;
+        gap: 1rem;
+      }
+      .parts-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        align-items: center;
+      }
+      .parts-tight {
+        line-height: 1;
+      }
+      .parts-narrow {
+        inline-size: 12rem;
+      }
+      .parts-list {
+        display: grid;
+        gap: 0.5rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- What the browser specs for the parts read (e2e/composer-parts.spec.ts
+         and e2e/sidebar-parts.spec.ts):
+         each section is one way to put the parts together. The routes that
+         start with /parts/ are not served: they show that a route prop is
+         where the request goes. -->
+    <main class="parts">
+      <h1>The parts, placed by hand</h1>
+      <chat-enhance />
+
+      <section class="parts-chat" data-chat data-testid="parts-plain">
+        <h2>A composer with nothing in its slots</h2>
+        <chat-thread>
+          <div
+            data-chat-part="turn"
+            data-role="assistant"
+            data-testid="turn-assistant"
+          >
+            <p>Ask about a book on the shelf.</p>
+          </div>
+        </chat-thread>
+        <chat-composer data-bascik-prop-app="books" />
+      </section>
+
+      <section class="parts-chat" data-chat data-testid="parts-full">
+        <h2>Every slot filled, and every prop set</h2>
+        <chat-thread>
+          <div
+            data-chat-part="turn"
+            data-role="assistant"
+            data-testid="turn-assistant"
+          >
+            <p>Attach a cover, or ask about an author.</p>
+          </div>
+        </chat-thread>
+        <chat-composer
+          data-bascik-prop-app="books"
+          data-bascik-prop-route="/parts/send"
+          data-bascik-prop-stop-route="/parts/stop"
+          data-bascik-prop-placeholder="Ask about a book…"
+          data-bascik-prop-label="Question"
+          data-bascik-prop-send-label="Ask"
+          data-bascik-prop-stop-label="Cancel"
+          enctype="multipart/form-data"
+        >
+          <span data-bascik-slot="above">
+            <span data-testid="parts-above">Answers come from the shelf.</span>
+          </span>
+          <span data-bascik-slot="start">
+            <chat-attach
+              data-bascik-prop-max-files="1"
+              data-bascik-prop-max-bytes="2048"
+              data-bascik-prop-types="text/plain,image/png"
+              data-bascik-prop-label="Add a cover"
+            />
+          </span>
+          <chat-voice />
+          <voice-call data-bascik-prop-app="books" />
+          <span data-bascik-slot="below">
+            <span data-testid="parts-below">One file, up to 2 KB.</span>
+          </span>
+        </chat-composer>
+      </section>
+
+      <section class="parts-chat" data-chat data-testid="parts-beside">
+        <h2>The voice parts beside a composer</h2>
+        <chat-thread>
+          <div
+            data-chat-part="turn"
+            data-role="assistant"
+            data-testid="turn-assistant"
+          >
+            <p>Start a call, or turn on captions.</p>
+          </div>
+        </chat-thread>
+        <div class="parts-row" data-testid="parts-voice-row">
+          <chat-voice />
+          <voice-call
+            data-bascik-prop-app="books"
+            data-bascik-prop-session-route="/parts/voice-session"
+            data-bascik-prop-tool-route="/parts/voice-tool"
+            data-bascik-prop-turn-route="/parts/voice-turn"
+            data-bascik-prop-view-route="/parts/voice-view"
+          />
+        </div>
+        <chat-composer data-bascik-prop-app="books" />
+      </section>
+
+      <!-- Outside every chat, so each form is the browser's to send. -->
+      <section class="parts-chat" data-testid="parts-forms">
+        <h2>The form parts, each with its own route</h2>
+        <tool-approval
+          data-bascik-prop-app="books"
+          data-bascik-prop-call="call-1"
+          data-bascik-prop-action="Hold a copy of Dune"
+          data-bascik-prop-route="/parts/approve"
+        >
+          <dt>Title</dt>
+          <dd>Dune</dd>
+        </tool-approval>
+        <memory-note
+          data-bascik-prop-app="books"
+          data-bascik-prop-memory="memory-1"
+          data-bascik-prop-route="/parts/forget-note"
+          >Prefers short books.</memory-note
+        >
+        <ul class="parts-list">
+          <memory-item
+            data-bascik-prop-app="books"
+            data-bascik-prop-memory="memory-2"
+            data-bascik-prop-saved="2026-11-02"
+            data-bascik-prop-back="/parts"
+            data-bascik-prop-route="/parts/forget-item"
+            >Likes Ursula K. Le Guin.</memory-item
+          >
+        </ul>
+        <ol class="parts-list">
+          <search-result
+            data-bascik-prop-app="books"
+            data-bascik-prop-conversation="conversation-1"
+            data-bascik-prop-title="Books about the sea"
+            data-bascik-prop-route="/parts/open"
+            >A <mark>sea</mark> story by Rachel Carson.</search-result
+          >
+        </ol>
+      </section>
+
+      <!-- The sidebar inside the chat: its forms that must load a page are
+           still the browser's to send. -->
+      <section class="parts-chat" data-chat data-testid="parts-side">
+        <h2>A sidebar inside the chat, every prop set</h2>
+        <chat-sidebar data-bascik-prop-menu-label="Shelves">
+          <chat-new
+            data-bascik-prop-app="books"
+            data-bascik-prop-route="/parts/new"
+            data-bascik-prop-label="Start over"
+          />
+          <chat-search
+            data-bascik-prop-route="/parts/search"
+            data-bascik-prop-query="sea"
+            data-bascik-prop-label="Find a conversation"
+            data-bascik-prop-placeholder="Find…"
+            data-bascik-prop-go-label="Find"
+          />
+          <conversation-list data-bascik-prop-label="Recent conversations">
+            <conversation-item
+              data-bascik-prop-app="books"
+              data-bascik-prop-conversation="conversation-1"
+              data-bascik-prop-title="Books about the sea"
+              data-bascik-prop-current="true"
+              data-bascik-prop-route="/parts/open-item"
+            />
+            <conversation-item
+              data-bascik-prop-app="books"
+              data-bascik-prop-conversation="conversation-2"
+              data-bascik-prop-title="Ursula K. Le Guin"
+              data-bascik-prop-route="/parts/open-item"
+            />
+          </conversation-list>
+          <ol class="parts-list">
+            <search-result
+              data-bascik-prop-app="books"
+              data-bascik-prop-conversation="conversation-3"
+              data-bascik-prop-title="Rachel Carson"
+              data-bascik-prop-route="/parts/open-result"
+              >The <mark>sea</mark> around us.</search-result
+            >
+          </ol>
+          <ul class="parts-list">
+            <memory-item
+              data-bascik-prop-app="books"
+              data-bascik-prop-memory="memory-7"
+              data-bascik-prop-saved="2026-11-05"
+              data-bascik-prop-back="/parts"
+              data-bascik-prop-route="/parts/forget"
+              >Likes Ursula K. Le Guin.</memory-item
+            >
+          </ul>
+          <template data-bascik-slot="foot">
+            <model-picker
+              data-bascik-prop-app="books"
+              data-bascik-prop-route="/parts/model"
+              data-bascik-prop-label="Model for answers"
+              data-bascik-prop-use-label="Choose"
+            >
+              <option value="small">Small</option>
+              <option value="large" selected>Large</option>
+              <template data-bascik-slot="note">
+                <p data-testid="parts-model-note">
+                  It changes the next answer.
+                </p>
+              </template>
+            </model-picker>
+          </template>
+        </chat-sidebar>
+        <chat-thread>
+          <div
+            data-chat-part="turn"
+            data-role="assistant"
+            data-testid="turn-assistant"
+          >
+            <p>Pick a conversation, or ask about a book.</p>
+          </div>
+        </chat-thread>
+        <chat-composer
+          data-bascik-prop-app="books"
+          data-bascik-prop-route="/parts/send"
+        />
+      </section>
+
+      <!-- Outside every chat, with no prop set and nothing in a slot. -->
+      <section class="parts-chat" data-testid="parts-alone">
+        <h2>The sidebar parts, each alone</h2>
+        <!-- A page with tight lines: the control is still a finger tall. -->
+        <div class="parts-tight"><chat-sidebar /></div>
+        <chat-new />
+        <chat-search />
+        <conversation-list />
+        <conversation-item />
+        <model-picker />
+        <!-- A plain column, narrower than the title: the button fills it and
+             cuts the title short. -->
+        <div class="parts-narrow" data-testid="parts-narrow">
+          <conversation-item
+            data-bascik-prop-title="The Left Hand of Darkness, and every other book by Ursula K. Le Guin"
+          />
+        </div>
+      </section>
+
+      <section class="parts-chat" data-testid="parts-memory">
+        <h2>The memory list, with its own words, other words, and none</h2>
+        <div data-testid="parts-memory-default"><memory-list /></div>
+        <div data-testid="parts-memory-words">
+          <memory-list>
+            <template data-bascik-slot="heading"><h3>Remembered</h3></template>
+            <span data-bascik-slot="about">Kept for this shelf only.</span>
+            <span data-bascik-slot="empty">No notes on this shelf yet.</span>
+          </memory-list>
+        </div>
+        <div data-testid="parts-memory-bare">
+          <memory-list>
+            <span data-bascik-slot="heading"></span>
+            <span data-bascik-slot="about"></span>
+            <span data-bascik-slot="empty"></span>
+          </memory-list>
+        </div>
+        <div data-testid="parts-memory-items">
+          <memory-list>
+            <span data-bascik-slot="about"></span>
+            <memory-item
+              data-bascik-prop-app="books"
+              data-bascik-prop-memory="memory-3"
+              data-bascik-prop-saved="2026-11-03"
+              data-bascik-prop-back="/parts"
+              >Reads Octavia Butler.</memory-item
+            >
+          </memory-list>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

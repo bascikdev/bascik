@@ -1,0 +1,65 @@
+<!-- @bascik
+What a search of the reader's conversations found: a line that says how many, with a link that clears the search, and the list of matches. It holds no data: put one `search-result` inside per match. `chat-find` prints it on a page whose address has `?q=`.
+
+Props, both optional: `clear` (where the Clear link leads; without it, the page it is on with no search) and `clear-label` (the link's text; "Clear"). Setting `clear` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
+
+Slots:
+- the default slot: the matches, one `search-result` each.
+- `note`: the line's words, such as "3 found" or that nothing matched. Fill it with a wrapper element: `<template data-bascik-slot="note">3 found</template>`.
+
+Around it: anything; it fills the width it is given, and `chat-sidebar` is where it usually goes. It is marked `data-chat-part="found"`: a `chat-sidebar` written with `data-show-found` shows itself whole on a narrow screen while it holds one. It reads the theme tokens `--muted` and `--accent`.
+-->
+<style>
+  .found {
+    display: grid;
+    align-content: start;
+    gap: 0.4rem;
+  }
+  .note {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  .clear {
+    color: var(--accent);
+  }
+  .matches {
+    display: grid;
+    align-content: start;
+    gap: 0.15rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  @media (pointer: coarse) {
+    .clear {
+      display: inline-flex;
+      align-items: center;
+      min-block-size: 2.75rem;
+    }
+  }
+</style>
+<section
+  class="found"
+  aria-label="Search results"
+  data-chat-part="found"
+  data-testid="search-results"
+>
+  <p class="note" data-testid="chat-sidebar-search-note">
+    <span data-bascik-slot="note"></span>
+    <a
+      class="clear"
+      href="?"
+      data-bascik-attr-href="clear"
+      data-testid="chat-sidebar-search-clear"
+      data-bascik-prop-clear-label
+      >Clear</a
+    >
+  </p>
+  <ol class="matches" data-testid="chat-sidebar-search-results">
+    <span data-bascik-slot></span>
+  </ol>
+</section>

@@ -1,0 +1,19 @@
+{
+  "name": "bascik-ai-starter",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The smallest @bascik/ai project: one page that is the whole chat, answered by a scripted model.",
+  "type": "module",
+  "scripts": {
+    "dev": "bascik",
+    "build": "bascik --build",
+    "start": "bascik --server"
+  },
+  "dependencies": {
+    "@bascik/ai": "^0.1.0",
+    "@bascik/bascik": "^1.0.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

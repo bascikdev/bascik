@@ -1,0 +1,15 @@
+<!-- @bascik
+The reader's conversations, read from the project's chat on every request and printed as a `conversation-list` with one `conversation-item` each, the open one marked. A data part: its server script is one call to `conversationList` from `@bascik/ai/app`. It has no element of its own.
+
+The project module: `src/lib/chat.ts`, imported as `@/lib/chat.ts` (see `chat-turns`). This part reads `chat`, `app` (posted as `app` by each item; a site with one chat needs none), `routes.open` (where an item posts; `/api/open`) and `words.conversations` (the list's name for a screen reader; "Conversations"). A project whose chat lives elsewhere changes the import line in its copy.
+
+Props and slots: none.
+
+Around it: anything; `chat-sidebar` is where it usually goes. It needs no other data part, and prints the same list on every address. Beside `chat-find`'s results the list is not shown, so they stand where it was: that is `conversation-list`'s own style, for a `search-results` that is its sibling. A conversation with no message yet is not listed.
+-->
+<script data-bascik-server type="text/typescript">
+  import { conversationList } from "@bascik/ai/app";
+
+  export default (request: Request, context: unknown) =>
+    conversationList(import("@/lib/chat.ts"), request, context);
+</script>

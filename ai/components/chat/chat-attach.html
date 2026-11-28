@@ -1,0 +1,278 @@
+<!-- @bascik
+Attachments for a message box: an Attach control, the chosen files as removable chips, and a line that says why a file was refused. Put it in `chat-composer`'s `start` slot, inside a wrapper element: `<chat-composer enctype="multipart/form-data"><span data-bascik-slot="start"><chat-attach /></span></chat-composer>`. A named slot is filled by a wrapper, never by the attribute on this tag. The control is a label for a file input named `files`, so with scripts off the form still sends whatever the reader picked. With scripts on, files can also be pasted into the message box or dropped on the form, each one is checked against the limits before it is added, an image shows a preview, and the chips are emptied when the form is reset (the client runtime resets it once a message is taken).
+
+Props, all optional: `max-bytes` (the largest one file may be; 5 MB without it), `max-files` (4), `max-total` (the files of one message together; 10 MB), `types` (comma-separated media types, which the file picker offers with scripts off too; PNG, JPEG, WebP, GIF, PDF, plain text, Markdown and CSV) and `label` (the control's name; "Attach files"). Setting `types` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant. The defaults are the server kit's own, and the server checks every file again whatever is set here.
+
+Slots: none.
+
+Around it: a `<form method="post">`, found with `closest("form")`. A form sends files only as `multipart/form-data`: write `enctype="multipart/form-data"` on the `chat-composer` tag (a plain attribute, which lands on the form), so that files are sent with scripts off too. With scripts on, this part sets it when it is missing. In a `chat-composer` the chips and the refusal are lines above the message box (they carry `data-chat-line="above"`) and the control sits before the message box; in any other form they are laid out by that form. The message box is the form's `data-chat-part="input"` element, or its first textarea. The refusal line is the chat's `notice` part: the client runtime writes the server's reason there when the server refuses a file. While files are dragged over the form, the form has `data-dragging`. It reads the theme tokens `--radius`, `--muted`, `--bg`, `--accent` and `--border`.
+-->
+<style>
+  /* The part has no box of its own: its control and its lines are laid out
+     by the form that holds it. */
+  .attach {
+    display: contents;
+  }
+  .control {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    border-radius: var(--radius);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .control:hover,
+  .control:has(.picker:focus-visible) {
+    background: var(--bg);
+    color: var(--accent);
+  }
+  .control:has(.picker:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* The sign is drawn here, so the label's text is its name alone. */
+  .control::before {
+    content: "+";
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+  .name,
+  .picker {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .notice {
+    margin: 0;
+    padding: 0.15rem 0.4rem;
+    color: light-dark(#b3261e, #f2b8b5);
+    font-size: 0.875rem;
+  }
+  .notice[hidden] {
+    display: none;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .chips:empty {
+    display: none;
+  }
+  .chip {
+    display: inline-flex;
+    gap: 0.4rem;
+    align-items: center;
+    max-inline-size: 100%;
+    padding: 0.2rem 0.3rem 0.2rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    font-size: 0.8125rem;
+  }
+  .preview {
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    border-radius: 4px;
+    object-fit: cover;
+  }
+  .chip-name {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chip-size {
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .chip-remove {
+    padding: 0 0.4rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+  }
+  .chip-remove:hover,
+  .chip-remove:focus-visible {
+    color: var(--accent);
+  }
+</style>
+<div
+  id="attach"
+  class="attach"
+  data-bascik-attr-data-max-bytes="max-bytes"
+  data-bascik-attr-data-max-files="max-files"
+  data-bascik-attr-data-max-total="max-total"
+  data-bascik-attr-data-types="types"
+  data-testid="chat-attach"
+>
+  <p
+    id="notice"
+    class="notice"
+    role="alert"
+    hidden
+    data-chat-line="above"
+    data-chat-part="notice"
+    data-testid="chat-composer-notice"
+  ></p>
+  <ul
+    id="chips"
+    class="chips"
+    data-chat-line="above"
+    data-testid="chat-composer-files"
+  ></ul>
+  <template id="chip">
+    <li class="chip" data-testid="chat-composer-file">
+      <img class="preview" alt="" hidden />
+      <span class="chip-name"></span>
+      <span class="chip-size"></span>
+      <button
+        class="chip-remove"
+        type="button"
+        data-testid="chat-composer-file-remove"
+      >
+        &times;
+      </button>
+    </li>
+  </template>
+  <label class="control" for="files" data-testid="chat-composer-attach">
+    <span class="name" data-bascik-prop-label>Attach files</span>
+    <input
+      id="files"
+      class="picker"
+      type="file"
+      name="files"
+      multiple
+      accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/markdown,text/csv"
+      data-bascik-attr-accept="types"
+      data-testid="chat-composer-files-input"
+    />
+  </label>
+  <!-- Optional: without it the file input still sends whatever it holds, and
+       the server checks every file. -->
+  <script type="text/typescript">
+    import { attachLimits, claimedType, refusal, sizeText } from "./chat-attach/files.ts";
+    import { partIn } from "./chat-root/parts.ts";
+
+    const root = document.getElementById("attach")!;
+    const picker = document.getElementById("files") as HTMLInputElement;
+    const chips = document.getElementById("chips")!;
+    const notice = document.getElementById("notice")!;
+    const chipTemplate = document.getElementById("chip") as HTMLTemplateElement;
+    const form = root.closest("form");
+    // Looked up when it is needed: the message box may be parsed after this part.
+    const input = (): HTMLElement | null =>
+      form ? (partIn(form, "input") ?? form.querySelector("textarea")) : null;
+
+    const limits = attachLimits(root.dataset);
+
+    let chosen: File[] = [];
+    const previews = new Map<File, string>();
+
+    function say(message: string): void {
+      notice.textContent = message;
+      notice.hidden = !message;
+    }
+
+    /** Make the file input hold exactly the chosen files, and draw them. */
+    function show(): void {
+      const held = new DataTransfer();
+      for (const file of chosen) held.items.add(file);
+      picker.files = held.files;
+      for (const [file, url] of previews) {
+        if (!chosen.includes(file)) {
+          URL.revokeObjectURL(url);
+          previews.delete(file);
+        }
+      }
+      chips.replaceChildren(
+        ...chosen.map((file) => {
+          const chip = (chipTemplate.content.cloneNode(true) as DocumentFragment)
+            .firstElementChild as HTMLElement;
+          chip.querySelector<HTMLElement>(".chip-name")!.textContent = file.name;
+          chip.querySelector<HTMLElement>(".chip-size")!.textContent = sizeText(file.size);
+          if (claimedType(file).startsWith("image/")) {
+            let url = previews.get(file);
+            if (!url) previews.set(file, (url = URL.createObjectURL(file)));
+            const preview = chip.querySelector<HTMLImageElement>(".preview")!;
+            preview.src = url;
+            preview.hidden = false;
+          }
+          const remove = chip.querySelector<HTMLButtonElement>(".chip-remove")!;
+          remove.setAttribute("aria-label", `Remove ${file.name}`);
+          remove.addEventListener("click", () => {
+            chosen = chosen.filter((one) => one !== file);
+            say("");
+            show();
+            input()?.focus();
+          });
+          return chip;
+        }),
+      );
+    }
+
+    function add(files: Iterable<File>): void {
+      let refused = "";
+      for (const file of files) {
+        const why = refusal(file, chosen, limits);
+        if (why) refused ||= why;
+        else chosen.push(file);
+      }
+      say(refused);
+      show();
+    }
+
+    // A chosen file replaces the input's own list; keep what was chosen before.
+    picker.addEventListener("change", () => {
+      const fresh = [...(picker.files ?? [])].filter((file) => !chosen.includes(file));
+      picker.files = new DataTransfer().files;
+      add(fresh);
+    });
+    if (form) {
+      // A form sends its files only in this encoding.
+      if (!form.hasAttribute("enctype")) form.enctype = "multipart/form-data";
+      // Pasted into anything in the form, which in a composer is the message box.
+      form.addEventListener("paste", (event) => {
+        const pasted = [...(event.clipboardData?.files ?? [])];
+        if (pasted.length) {
+          event.preventDefault();
+          add(pasted);
+        }
+      });
+      form.addEventListener("dragover", (event) => {
+        if (event.dataTransfer?.types.includes("Files")) {
+          event.preventDefault();
+          form.dataset.dragging = "";
+        }
+      });
+      form.addEventListener("dragleave", () => {
+        delete form.dataset.dragging;
+      });
+      form.addEventListener("drop", (event) => {
+        delete form.dataset.dragging;
+        if (event.dataTransfer?.files.length) {
+          event.preventDefault();
+          add(event.dataTransfer.files);
+        }
+      });
+      // Sent (or reset): the files are gone from the form, and their previews with them.
+      form.addEventListener("reset", () => {
+        chosen = [];
+        say("");
+        show();
+      });
+    }
+  </script>
+</div>

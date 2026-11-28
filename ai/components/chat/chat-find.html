@@ -1,0 +1,15 @@
+<!-- @bascik
+Search over the reader's conversations, read from the project's chat on every request: the search box (`chat-search`, with the words searched for shown again) and, on a page whose address has `?q=`, what was found (`search-results` with one `search-result` each). A data part: its server script is one call to `conversationSearch` from `@bascik/ai/app`. Searching is a plain GET form, so it is a page load and works with no JavaScript. It has no element of its own.
+
+The project module: `src/lib/chat.ts`, imported as `@/lib/chat.ts` (see `chat-turns`). This part reads `chat`, `page` (where the search loads and where Clear leads; without it, the page this part is on, so set it only for a sidebar that is also on pages that are not the chat), `app` (posted as `app` by each result), `routes.open` (where a result posts; `/api/open`) and `words` (every word it prints: `search`, `searchPlaceholder`, `searchGo`, `searchClear`, `searchTooShort`, and the functions `searchEmpty(query)` and `searchFound(count)`; without them, English). A project whose chat lives elsewhere changes the import line in its copy.
+
+Props and slots: none.
+
+Around it: anything; `chat-sidebar` is where it usually goes. It needs no other data part: beside `chat-conversations`, the results stand where the list was. In a `chat-sidebar` written in a page or a template, put the plain attribute `data-show-found` on the sidebar (`<chat-sidebar data-show-found="true">`): on a narrow screen the sidebar is closed when a page loads, and with the attribute it shows whole while it holds the results the page was loaded for.
+-->
+<script data-bascik-server type="text/typescript">
+  import { conversationSearch } from "@bascik/ai/app";
+
+  export default (request: Request, context: unknown) =>
+    conversationSearch(import("@/lib/chat.ts"), request, context);
+</script>

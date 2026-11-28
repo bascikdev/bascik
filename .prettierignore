@@ -46,8 +46,9 @@ shop/catalog/source.json
 shop/printful-openapi.json
 shop/src/pages/assets/shop.js
 
-# Conversations the ai demo stores while it runs
+# Conversations the ai demo and the starter example store while they run
 ai/demo/.data/
+ai/examples/starter/.data/
 
 # The Cloudflare example's build-time catalog, and its local Durable Object data
 ai/examples/cloudflare/src/lib/catalog.generated.ts

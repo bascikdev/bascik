@@ -1,0 +1,46 @@
+<!-- @bascik
+What an empty conversation shows: a heading, a line under it, and messages to start with. Put it first inside `chat-thread`; it hides itself as soon as the thread holds a reader's turn, including the one `chat-enhance` shows before the server answers. `chat-turns` prints this tag when the conversation has no turn, with the words the project module gives it; a page can also write the tag itself, beside the turns.
+
+Props: `heading` (the title; "How can I help?" without it) and `tagline` (the line under it; left out without it).
+
+Slots: the default slot is the suggestions, usually `ask-button` tags, each a form that sends its message. The `note` slot is for a line or two of your own between the tagline and the suggestions, such as how long chats are kept: fill it with `<template data-bascik-slot="note"><p>…</p></template>`.
+
+Around it: `chat-thread`, or your own element marked `data-chat-part="thread"`. That element is what hides the welcome once it holds a reader's turn, so a welcome placed beside the thread stays on screen; and during a voice call `voice-call` answers only the forms inside the thread. It reads the theme token `--muted`.
+-->
+<style>
+  .welcome {
+    display: grid;
+    gap: 0.5rem;
+    padding-block: 12dvh 1rem;
+    text-align: center;
+  }
+
+  .heading {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 600;
+  }
+
+  /* The tagline, and any line put in the note slot. */
+  .welcome > :is(p) {
+    margin: 0 0 0.75rem;
+    color: var(--muted);
+  }
+
+  .tagline:empty,
+  .suggestions:empty {
+    display: none;
+  }
+
+  /* The welcome is only for an empty thread. */
+  [data-chat-part="thread"]:has([data-chat-part="turn"][data-role="user"])
+    .welcome {
+    display: none;
+  }
+</style>
+<section class="welcome" data-chat-part="welcome" data-testid="chat-welcome">
+  <h1 class="heading" data-bascik-prop-heading>How can I help?</h1>
+  <p class="tagline" data-bascik-prop-tagline></p>
+  <span data-bascik-slot="note"></span>
+  <div class="suggestions"><span data-bascik-slot></span></div>
+</section>

@@ -1,5 +1,11 @@
 <!-- @bascik
-One memory in a memory-list: its text as content, the day it was saved, and a Forget button. Written by the app from stored data, never by a model. The button is a plain form that posts to /api/forget.
+One memory in a `memory-list`: its text, the day it was saved, and a Forget button. Written by the app from stored data, never by a model. The button is a plain form, so it works with no JavaScript.
+
+Props: `memory` (the memory's id, posted as `id`), `saved` (the day it was saved, as an ISO date; shown and set as the time's `datetime`), `app` (posted as `app`), `back` (posted as `back`: where the answer sends the reader, such as the memory page) and `route` (where Forget posts; `/api/forget` without it). Setting `route` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
+
+Slot: the default slot is the memory's text.
+
+Around it: a list, which `memory-list` is. The form carries `data-genui="native"`: it must load a page, so the client runtime (`chat-enhance`) leaves it to the browser, also inside a `data-chat` element. It reads the theme tokens `--border`, `--radius`, `--surface`, `--muted`, `--bg` and `--accent`.
 -->
 <style>
   .item {
@@ -52,7 +58,13 @@ One memory in a memory-list: its text as content, the day it was saved, and a Fo
     data-bascik-attr-datetime="saved"
     data-bascik-prop-saved
   ></time>
-  <form class="forget" method="post" action="/api/forget">
+  <form
+    class="forget"
+    method="post"
+    action="/api/forget"
+    data-bascik-attr-action="route"
+    data-genui="native"
+  >
     <input type="hidden" name="app" data-bascik-attr-value="app" />
     <input type="hidden" name="id" data-bascik-attr-value="memory" />
     <input type="hidden" name="back" data-bascik-attr-value="back" />

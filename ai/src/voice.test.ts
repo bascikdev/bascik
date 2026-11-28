@@ -297,7 +297,7 @@ describe("voiceMessages", () => {
     // What was spoken is words, even when it looks like a tag. What was shown is a component.
     const html = renderMessage(messages[1]!, catalog, { tools });
     expect(html).toContain(
-      `<p class="spoken">Here is one. &lt;book-card title=&quot;x&quot;&gt;</p>`,
+      `<p class="spoken" data-spoken>Here is one. &lt;book-card title=&quot;x&quot;&gt;</p>`,
     );
     expect(html).toContain(
       `<book-card data-bascik-prop-title="Dune">Sand</book-card>`,

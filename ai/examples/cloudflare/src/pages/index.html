@@ -15,25 +15,28 @@
     <link rel="expect" href="#thread-ready" blocking="render" />
   </head>
   <body>
-    <chat-sidebar />
-    <main class="chat">
-      <!-- The composer is first in the source so it is sent before the reply
-           starts streaming; CSS shows it below the thread. Its limits match
-           FILE_LIMITS in src/lib/chat.ts; the server enforces them either way. -->
-      <div class="dock">
+    <!-- chat-app is the frame, the thread and the client runtime. This
+         example replaces two of its parts: the sidebar, for its own links
+         and note, and the composer, whose limits match FILE_LIMITS in
+         src/lib/chat.ts (the server enforces them either way). -->
+    <chat-app>
+      <template data-bascik-slot="sidebar"><site-menu /></template>
+      <template data-bascik-slot="composer">
         <chat-composer
           data-bascik-prop-app="books"
-          data-bascik-prop-enctype="multipart/form-data"
-          data-bascik-prop-max-bytes="1048576"
-          data-bascik-prop-max-files="2"
-          data-bascik-prop-max-total="2097152"
-          data-bascik-prop-types="image/png,image/jpeg,image/webp,text/plain,text/markdown,application/pdf"
-        />
-      </div>
-      <chat-enhance />
-      <div class="scroller">
-        <chat-thread />
-      </div>
-    </main>
+          data-bascik-prop-autofocus="autofocus"
+          enctype="multipart/form-data"
+        >
+          <span data-bascik-slot="start">
+            <chat-attach
+              data-bascik-prop-max-bytes="1048576"
+              data-bascik-prop-max-files="2"
+              data-bascik-prop-max-total="2097152"
+              data-bascik-prop-types="image/png,image/jpeg,image/webp,text/plain,text/markdown,application/pdf"
+            />
+          </span>
+        </chat-composer>
+      </template>
+    </chat-app>
   </body>
 </html>

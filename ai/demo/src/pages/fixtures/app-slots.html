@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bascik Chat: chat-app, every slot filled</title>
+    <meta
+      name="description"
+      content="A fixture for the browser specs: chat-app with its sidebar, its composer and its default slot filled by the page."
+    />
+    <meta name="robots" content="noindex" />
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="expect" href="#thread-ready" blocking="render" />
+  </head>
+  <body>
+    <!-- For e2e/chat-app.spec.ts: each slot of chat-app holds something the
+         default part does not, so the spec can tell that it was replaced. -->
+    <chat-app>
+      <template data-bascik-slot="sidebar">
+        <chat-sidebar data-bascik-prop-menu-label="Chats">
+          <p data-testid="fixture-side">A sidebar of the page's own.</p>
+          <chat-conversations />
+        </chat-sidebar>
+      </template>
+      <template data-bascik-slot="composer">
+        <chat-composer
+          data-bascik-prop-app="books"
+          data-bascik-prop-placeholder="Write to the shop…"
+        />
+      </template>
+      <p data-testid="fixture-notice">A notice of the page's own.</p>
+    </chat-app>
+  </body>
+</html>

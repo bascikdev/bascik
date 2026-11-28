@@ -1,11 +1,34 @@
 <!-- @bascik
-The optional client runtime. Without it every form in the chat is a page load, and everything works. With it a form is sent with fetch and the page it answers with is streamed into the open one: no reload, an instant echo of the message, a Stop button, and component scripts that start as their component arrives. Put it in the page before the thread.
+The optional client runtime. Without it every form in the chat is a page load, and everything works. With it a form is sent with fetch and the page it answers with is streamed into the open one: no reload, an instant echo of the message, a Stop button, and component scripts that start as their component arrives. Put it in the page before the thread. It has no props, no slots and no element of its own.
+
+Around it: it takes every `method="post"` form inside a `data-chat` element (inside `<main>` on a page that marks none), unless the form has `data-genui="native"`. It finds the other parts from the form's nearest `data-chat` element, by `data-chat-part`: the `thread` (replaced by the answer's thread once the answer holds the `ready` marker), the `composer` (emptied when it is the form that was sent), its `input` and `stop` button (the runtime takes the button's click and posts the composer's fields to its `formaction`, which `chat-composer` sets from its `stop-route` prop; `/api/stop` for a button with none), the `notice` (the line `chat-attach` provides: when the server refuses a file, its reason is written there and the composer keeps the text and the files; in a chat with no notice a refused send is sent again the ordinary way, and the server's page says why), and the `sidebar` (replaced after each answer). On a page with no `data-chat` element it finds them by their test hooks.
+
+State: `data-genui="idle"` or `"streaming"` on the `data-chat` element and on `<html>`; `data-pending` on a form while its request is on its way.
+
+Events, bubbling from the `data-chat` element: `chat:send` (`detail.form`) when a form is taken, `chat:reply-start` when the answer's thread is in the page, `chat:stop` when Stop is pressed, and `chat:reply-end` (`detail.stopped`) when the answer is over, once for every `chat:send`, also when the send failed.
 -->
 <script type="text/typescript">
+  import {
+    announce,
+    closestPart,
+    findPart,
+    isPart,
+    newMarker,
+    newTurn,
+    partIn,
+    rootOf,
+    roots,
+    setState,
+  } from "./chat-root/parts.ts";
+
   const byTestId = (root: ParentNode, id: string): HTMLElement | null =>
     root.querySelector<HTMLElement>(`[data-testid="${id}"]`);
   const state = document.documentElement.dataset;
   let stop: AbortController | null = null;
+  /** True once the reader has pressed Stop on the reply being written. */
+  let stopPressed = false;
+  /** The chat whose reply is being written: its root, or <html> when none is marked. */
+  let streaming: Element | null = null;
   let next: { form: HTMLFormElement; submitter: HTMLElement | null } | null =
     null;
   /*
@@ -73,21 +96,45 @@ The optional client runtime. Without it every form in the chat is a page load, a
   let twins = new WeakMap<Node, Node>();
   let finished = new WeakSet<Node>();
 
+  /** A reply being written that has no end marker: marked as a part, or by its classes as before. */
+  const UNFINISHED =
+    ':is([data-chat-part="turn"][data-live], .live):not(:has([data-chat-part="done"], .done))';
+
+  /**
+   * End every reply of `chat` that has no end marker, so none keeps its
+   * caret. The placeholder of an answer that never came is busy no more,
+   * and is no reply being written: nothing was written in it.
+   */
+  const endUnfinished = (chat: Element): void =>
+    chat.querySelectorAll<HTMLElement>(UNFINISHED).forEach((live) => {
+      if (live.hasAttribute("aria-busy")) {
+        live.removeAttribute("aria-busy");
+        delete live.dataset.live;
+        live.classList.remove("live");
+      }
+      live.append(newMarker("done"));
+    });
+
+  /**
+   * Where Stop posts: the route its button carries as `formaction`, which
+   * the site's base applies to, or the usual one for a button with none.
+   */
+  const stopRoute = (button: HTMLButtonElement): string =>
+    button.getAttribute("formaction") ? button.formAction : "/api/stop";
+
   /** Show the message at once, and the caret, while the request is on its way. */
   function echo(thread: HTMLElement, text: string): void {
     if (text) {
-      const turn = document.createElement("p");
-      turn.className = "turn-user";
       // The same hook as the stored thread's message that replaces it.
-      turn.dataset.testid = "turn-user";
+      const turn = newTurn("user", "turn-user");
       turn.textContent = text;
       thread.append(turn);
     }
-    const live = document.createElement("div");
-    live.className = "turn-assistant live";
-    live.innerHTML = `<span class="writing"></span>`;
     // Until the first chunk of the answer replaces it: a reply is on its way.
-    live.dataset.testid = "turn-pending";
+    const live = newTurn("assistant", "turn-pending");
+    live.classList.add("live");
+    live.dataset.live = "";
+    live.append(newMarker("writing"));
     live.setAttribute("aria-busy", "true");
     thread.append(live);
   }
@@ -146,8 +193,17 @@ The optional client runtime. Without it every form in the chat is a page load, a
     return button?.name && !typed ? words(button) : undefined;
   }
 
-  async function send(form: HTMLFormElement, submitter: HTMLElement | null) {
-    const thread = byTestId(document, "chat-thread");
+  /**
+   * Send `form` and stream the answer into `chat`: the form's own chat, or
+   * the page when no chat is marked. The form may be in the thread, which is
+   * replaced, so everything after it is sent is found from `chat`.
+   */
+  async function send(
+    form: HTMLFormElement,
+    submitter: HTMLElement | null,
+    chat: Element,
+  ) {
+    const thread = findPart(chat, "thread");
     if (!thread) throw new Error("no thread");
     const body = new FormData(form, submitter);
     const label = shownFor(form, submitter, body);
@@ -158,7 +214,10 @@ The optional client runtime. Without it every form in the chat is a page load, a
     if (label !== undefined) body.set("show", label);
     const text = allAnswers(body) ? null : body.get("text");
     stop = new AbortController();
-    state.genui = "streaming";
+    stopPressed = false;
+    streaming = chat;
+    setState(chat, "genui", "streaming");
+    announce(chat, "chat:send", { form });
     // A message with files is shown only once the server has taken it: it may
     // refuse a file, and then the reader's words and files must still be there.
     const withFiles = [...body.values()].some(
@@ -168,7 +227,7 @@ The optional client runtime. Without it every form in the chat is a page load, a
       // A message is echoed as the thread will show it: by its label, if any.
       const typed = typeof text === "string" ? text.trim() : "";
       echo(thread, typeof text === "string" || own ? (label ?? typed) : "");
-      if (formGet(form, "dataset").testid === "chat-composer") {
+      if (isPart(form, "composer")) {
         HTMLFormElement.prototype.reset.call(form);
       }
     };
@@ -193,7 +252,7 @@ The optional client runtime. Without it every form in the chat is a page load, a
         await response.text(),
         "text/html",
       );
-      const notice = byTestId(document, "chat-composer-notice");
+      const notice = findPart(chat, "notice");
       const why = byTestId(page.documentElement, "attach-refused")?.textContent;
       if (notice && why) {
         notice.textContent = why;
@@ -215,16 +274,17 @@ The optional client runtime. Without it every form in the chat is a page load, a
     twins = new WeakMap();
     finished = new WeakSet();
     const sync = (final: boolean): void => {
-      const source = byTestId(parsed, "chat-thread");
+      const source = partIn(parsed, "thread");
       if (!source) return;
       if (!fresh) {
         // Swap the thread in once the stored conversation is all there, so
         // the page never shows half of it.
-        if (!final && !parsed.getElementById("thread-ready")) return;
+        if (!final && !partIn(parsed, "ready")) return;
         fresh = document.importNode(source, false);
         mirror(final, source, fresh);
-        byTestId(document, "chat-thread")!.replaceWith(fresh);
+        findPart(chat, "thread")!.replaceWith(fresh);
         arrived();
+        announce(chat, "chat:reply-start");
       } else {
         mirror(final, source, fresh);
       }
@@ -239,20 +299,37 @@ The optional client runtime. Without it every form in the chat is a page load, a
     parsed.close();
     sync(true);
     if (!fresh) throw new Error("no thread in the answer");
-    const sidebar = byTestId(parsed, "chat-sidebar");
+    const sidebar = partIn(parsed, "sidebar");
     if (sidebar) {
-      byTestId(document, "chat-sidebar")?.replaceWith(
-        document.importNode(sidebar, true),
-      );
+      const shown = findPart(chat, "sidebar");
+      const incoming = document.importNode(sidebar, true);
+      // What the reader has open stays open, so nothing moves under a
+      // finger when the answer ends. The two are the same markup, so their
+      // `details` pair up in order.
+      const before = shown?.querySelectorAll("details") ?? [];
+      const after = incoming.querySelectorAll("details");
+      for (let at = 0; at < after.length && at < before.length; at++) {
+        after[at]!.open = before[at]!.open;
+      }
+      shown?.replaceWith(incoming);
     }
   }
+
+  /**
+   * Whether a form is the chat's to send: it is inside a `data-chat`
+   * element, or, on a page that marks none, inside <main>.
+   */
+  const inChat = (form: HTMLFormElement): boolean =>
+    roots()[0] !== document.documentElement
+      ? rootOf(form) !== null
+      : Element.prototype.closest.call(form, "main") !== null;
 
   document.addEventListener("submit", (event) => {
     const form = event.target as HTMLFormElement;
     if (
       event.defaultPrevented ||
       formGet(form, "method") !== "post" ||
-      !Element.prototype.closest.call(form, "main") ||
+      !inChat(form) ||
       formGet(form, "dataset").genui === "native"
     ) {
       return;
@@ -265,32 +342,36 @@ The optional client runtime. Without it every form in the chat is a page load, a
       next = { form, submitter };
       return;
     }
-    send(form, submitter)
+    const chat = rootOf(form) ?? document.documentElement;
+    send(form, submitter, chat)
       .catch((error: unknown) => {
-        // Stopped by the reader: keep what arrived, and end the caret.
+        // Stopped by the reader, or failed: keep what arrived, and end the
+        // caret, also of the placeholder no answer came to replace.
+        endUnfinished(chat);
         if (error instanceof DOMException && error.name === "AbortError") {
-          document
-            .querySelectorAll(".live:not(:has(.done))")
-            .forEach((live) => live.insertAdjacentHTML("beforeend", `<span class="done"></span>`));
           return;
         }
-        // Anything else: send the form the ordinary way.
+        // A failure: send the form the ordinary way.
         formGet(form, "dataset").genui = "native";
         resubmit(form, submitter);
       })
       .finally(() => {
         delete formGet(form, "dataset").pending;
         stop = null;
+        streaming = null;
         const queued = next;
         next = null;
+        setState(chat, "genui", "idle");
+        // Also after a failure, when the form is sent again the ordinary
+        // way: that may load no page (a form that is no longer valid, or no
+        // longer in the page), and whoever heard the send must hear its end.
+        announce(chat, "chat:reply-end", { stopped: stopPressed });
         if (queued && Reflect.get(Node.prototype, "isConnected", queued.form)) {
           // Still "streaming" to anything that watches: one reply, two requests.
-          state.genui = "idle";
           resubmit(queued.form, queued.submitter);
           return;
         }
-        state.genui = "idle";
-        byTestId(document, "chat-composer-input")?.focus();
+        findPart(chat, "input")?.focus();
       });
   });
 
@@ -298,12 +379,24 @@ The optional client runtime. Without it every form in the chat is a page load, a
   // before anything else is sent; the open response then ends by itself. If
   // the server cannot be asked, closing the connection ends the reply too.
   document.addEventListener("click", (event) => {
-    const button = (event.target as Element).closest<HTMLButtonElement>(
-      '[data-testid="chat-composer-stop"]',
+    const button = closestPart<HTMLButtonElement>(
+      event.target as Element,
+      "stop",
     );
-    if (!button?.form || !stop) return;
+    if (!button) return;
+    // Stop may be a submit button, which is what carries a route: the reply
+    // is ended from here, and the form is never sent to that route.
+    event.preventDefault();
+    if (!button.form || !stop) return;
+    // Only the chat that is writing a reply has one to stop.
+    if ((rootOf(button) ?? document.documentElement) !== streaming) return;
     const current = stop;
-    fetch("/api/stop", { method: "POST", body: new FormData(button.form) })
+    stopPressed = true;
+    announce(button, "chat:stop");
+    fetch(stopRoute(button), {
+      method: "POST",
+      body: new FormData(button.form),
+    })
       .then((response) => {
         if (!response.ok) current.abort();
       })
@@ -354,7 +447,7 @@ The optional client runtime. Without it every form in the chat is a page load, a
       made.type = "button";
       made.dataset.testid = "sandbox-suggestion";
       made.addEventListener("click", () => {
-        const input = byTestId(document, "chat-composer-input");
+        const input = findPart(made, "input");
         if (!(input instanceof HTMLTextAreaElement)) return;
         input.value = made.dataset.text ?? "";
         input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -453,5 +546,5 @@ The optional client runtime. Without it every form in the chat is a page load, a
       sandboxPorts.get(frame)?.postMessage("ping");
     }
   }, 1000);
-  state.genui = "idle";
+  for (const chat of roots()) setState(chat, "genui", "idle");
 </script>

@@ -1,0 +1,15 @@
+<!-- @bascik
+What the chat remembers about the reader, read from the project's chat on every request and printed as a `memory-list` with one `memory-item` each, newest first. A data part: its server script is one call to `memoryList` from `@bascik/ai/app`. Each item's Forget button is a plain form that sends the reader back to the page this part is on. It has no element of its own.
+
+The project module: `src/lib/chat.ts`, imported as `@/lib/chat.ts` (see `chat-turns`). This part reads `chat` (one made with `memory`; without it the list is empty) `app` (posted as `app` by each Forget button) and `routes.forget` (where Forget posts; `/api/forget`). A project whose chat lives elsewhere changes the import line in its copy.
+
+Props and slots: none. For a list with other words, print `memory-list` from a script of your own.
+
+Around it: a page column that sets its width, as `memory-list` needs. It needs no other data part.
+-->
+<script data-bascik-server type="text/typescript">
+  import { memoryList } from "@bascik/ai/app";
+
+  export default (request: Request, context: unknown) =>
+    memoryList(import("@/lib/chat.ts"), request, context);
+</script>

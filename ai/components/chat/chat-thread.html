@@ -1,0 +1,401 @@
+<!-- @bascik
+The conversation: a column of turns, and every style for what is in one. It is a layout part with no script and no data. Put the turns inside the tag: `chat-turns`, the data part that prints them from the project's chat, or a component of your own with a `data-bascik-stream` script, or turns written by hand.
+
+Slot: the default slot is the turns, in order: the welcome (`chat-welcome`) when the conversation is empty, then each stored turn, then the ready marker, then the live turn.
+
+What it styles is found by attribute, so the content must carry these marks, whoever writes it (your stream script, `renderMessage`, `chat-enhance`, `voice-call`):
+- `data-chat-part="turn"` with `data-role="user"` or `data-role="assistant"` on each turn. A reply's own nodes are the turn's direct children.
+- `data-live` on the reply being written. It shows only once it holds a `data-chat-part="writing"` marker, and has a caret until a `data-chat-part="done"` marker follows.
+- `data-chat-part="ready"` on the empty element that ends the stored conversation. Give it `id="thread-ready" data-bascik-preserve="id"`, and put `<link rel="expect" href="#thread-ready" blocking="render" />` in the page's head, so the first paint has the whole conversation.
+- `data-chat-part="files"` on the list of a message's attachments, `data-chat-part="earlier"` on the link to older messages, `data-chat-part="failed"` on the line that says a reply failed.
+- `data-part` with `data-state` on a tool call, `data-view` on a voice call's view, `data-spoken` on words a voice said, `data-diagram` on a drawn diagram: `@bascik/ai` writes these itself.
+
+Around it: an element with `data-chat` that also holds the composer. The thread fills the width it is given up to 46rem, and a reply's prose up to 42rem. It reads the theme tokens `--surface`, `--border`, `--muted`, `--accent` and `--radius`, and `--gap`, `--gap-tight`, `--text-small` and `--text-smaller` when the page sets them. A drawn diagram also reads `--bg` and `--fg` (its text color: set `--fg: var(--text)` beside the other tokens).
+-->
+<style>
+  /* Every selector here starts at the thread's own class, then names content
+     by attribute or by element inside :is(), which is what reaches markup
+     the thread does not write itself. Both checks read one line at a time
+     and take those for unanchored selectors. */
+  /* bascik-disable css-attribute-selector, css-is-element-names */
+  .thread {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    /* Twice the gap inside a reply, so turns read as separate. */
+    gap: 1.5rem;
+    inline-size: 100%;
+    max-inline-size: 46rem;
+    /* A conversation shorter than the scroller starts at the top and grows
+       down, so a reply never pushes the turns above it around. */
+    margin: 0 auto auto;
+    padding-block: 1.5rem;
+  }
+
+  /* Every rule below names the turn inside :where(), which weighs nothing:
+     a rule for a reply's content weighs one class, so a component's own
+     style for its own table, list or code still wins. */
+  .thread :where([data-chat-part="turn"][data-role="user"]) {
+    justify-self: end;
+    max-inline-size: 85%;
+    margin: 0;
+    padding: 0.6rem 0.9rem;
+    border-radius: var(--radius);
+    background: var(--surface);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* What the reader attached, above their words. */
+  .thread :where([data-chat-part="files"]) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    justify-self: end;
+    justify-content: flex-end;
+    max-inline-size: 85%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* The renderer writes every line break as an element, so whitespace in a
+     reply is never content, including what Bascik writes around a component. */
+  .thread :where([data-chat-part="turn"][data-role="assistant"]) {
+    display: flow-root;
+    /* A measure, so a line of prose is not the whole width of the thread. */
+    max-inline-size: 42rem;
+    overflow-wrap: anywhere;
+  }
+
+  /* One stack per reply: components carry no outer margin, and everything in
+     a reply is one --gap from what is above it. The empty <div> the renderer
+     writes between text and a component is what gives text that gap. The
+     :not() adds no condition: it lets these rules outrank a component's own
+     `margin: 0`, which comes later in the page. */
+  .thread :where([data-chat-part="turn"][data-role="assistant"]) > * {
+    margin-block: 0;
+  }
+
+  .thread :where([data-chat-part="turn"][data-role="assistant"]) > * + :not(br),
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    > :is([data-part], [data-view])
+    > *
+    + :not(br) {
+    margin-block-start: var(--gap, 0.75rem);
+  }
+
+  /* Suggested messages sit in a line of text and bring the gap themselves, so
+     the <div> that starts their line adds none. */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    > :is(div):empty:has(+ [data-testid="ask-button"]) {
+    margin-block-start: 0;
+  }
+
+  /* Words a voice model spoke, as transcribed. */
+  .thread :where([data-chat-part="turn"][data-role="assistant"]) [data-spoken] {
+    margin-block-end: 0;
+  }
+
+  .thread :where([data-chat-part="turn"][data-role="assistant"]) > :is(h3, h4) {
+    font-size: 1.05rem;
+  }
+
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    > :is(h3, h4):not(:first-child) {
+    margin-block-start: 1.25rem;
+  }
+
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    > :is(h3, h4)
+    + :not(br) {
+    margin-block-start: var(--gap-tight, 0.25rem);
+  }
+
+  .thread :where([data-chat-part="turn"][data-role="assistant"]) :is(code) {
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    background: var(--surface);
+    font-size: 0.9em;
+  }
+
+  /* A fenced code block arrives as one element per line. */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    :is(code)[data-line] {
+    display: block;
+    padding: 0 1rem;
+    border-radius: 0;
+    background: var(--surface);
+    font-size: var(--text-smaller, 0.8125rem);
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    :is(code)[data-line]
+    + :is(code)[data-line] {
+    margin-block-start: 0;
+  }
+
+  /* The first and last lines round the block off, so it reads as one box
+     apart from what is above and below it. */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    :is(code)[data-line]:first-child,
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    :not(:is(code)[data-line])
+    + :is(code)[data-line] {
+    padding-block-start: 0.75rem;
+    border-start-start-radius: var(--radius);
+    border-start-end-radius: var(--radius);
+  }
+
+  /* The words after a fence are not an element, so the gap under the block
+     is the block's own. */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    :is(code)[data-line]:not(:has(+ :is(code)[data-line])) {
+    margin-block-end: var(--gap, 0.75rem);
+    padding-block-end: 0.75rem;
+    border-end-start-radius: var(--radius);
+    border-end-end-radius: var(--radius);
+  }
+
+  /* A ```mermaid fence, drawn on the server as an inline SVG. Its colors come
+     from the theme: the SVG reads --bg, --fg, --surface, --border, --muted,
+     and --accent. The page sets --fg with its other tokens: a part cannot,
+     because Bascik renames a custom property a component declares. */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    [data-diagram] {
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow-x: auto;
+    text-align: center;
+  }
+
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    [data-diagram]
+    :is(svg) {
+    max-inline-size: 100%;
+    block-size: auto;
+  }
+
+  /* A page the model wrote, in its sandboxed frame (@bascik/ai/sandbox). */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    :is(iframe)[data-genui-sandbox] {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+
+  .thread :where([data-chat-part="turn"][data-role="assistant"]) :is(table) {
+    inline-size: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-small, 0.875rem);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .thread :where([data-chat-part="turn"][data-role="assistant"]) :is(th, td) {
+    padding: 0.45rem 0.6rem;
+    border-block-end: 1px solid var(--border);
+    text-align: start;
+  }
+
+  .thread :where([data-chat-part="turn"][data-role="assistant"]) :is(th) {
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  /* A data-table's script turns each column heading into a sort button. The
+     table is the model's content, not the component's markup, so its styles
+     are here and not in the component. */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    :is(th)
+    :is(button) {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    :is(th)[aria-sort="ascending"]
+    :is(button)::after {
+    content: " ↑";
+  }
+
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    :is(th)[aria-sort="descending"]
+    :is(button)::after {
+    content: " ↓";
+  }
+
+  /* A list the model wrote as plain elements, not a component's own list. */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    :is(ul, ol):not([class]) {
+    padding-inline-start: 1.25rem;
+  }
+
+  .thread :where([data-chat-part="earlier"]) {
+    justify-self: center;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    [data-chat-part="failed"] {
+    color: var(--accent);
+  }
+
+  /* The reply being written has a caret until the stream's last chunk, an
+     empty done marker, arrives. */
+  .thread
+    :where([data-chat-part="turn"])[data-live]:where(
+      :not(:has([data-chat-part="done"]))
+    )::after {
+    content: "";
+    display: inline-block;
+    inline-size: 0.5em;
+    block-size: 1em;
+    margin-inline-start: 0.15em;
+    background: var(--accent);
+    vertical-align: text-bottom;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .thread
+      :where([data-chat-part="turn"])[data-live]:where(
+        :not(:has([data-chat-part="done"]))
+      )::after {
+      animation: blink 1s steps(2, start) infinite;
+    }
+  }
+
+  @keyframes blink {
+    to {
+      visibility: hidden;
+    }
+  }
+
+  /* A reply that was asked for and has not started (the client runtime's
+     placeholder, aria-busy) shows a small dot instead of the caret. It pulses
+     unless the reader prefers less motion. */
+  .thread :where([data-chat-part="turn"])[data-live][aria-busy="true"]::after {
+    inline-size: 0.6em;
+    block-size: 0.6em;
+    border-radius: 50%;
+    vertical-align: baseline;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .thread
+      :where([data-chat-part="turn"])[data-live][aria-busy="true"]::after {
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+  }
+
+  @keyframes pulse {
+    50% {
+      opacity: 0.25;
+      transform: scale(0.7);
+    }
+  }
+
+  /* Shown only while there is a reply: the stream's first chunk is an empty
+     writing marker. Without one the element holds only source whitespace. */
+  .thread
+    :where([data-chat-part="turn"])[data-live]:where(
+      :not(:has([data-chat-part="writing"]))
+    ) {
+    display: none;
+  }
+
+  /* A tool call is sent again when its state changes: once the finished
+     version follows, the running one is hidden. No script does this. */
+  .thread
+    :where([data-part])[data-state="running"]:has(
+      ~ [data-part]:not([data-state="running"])
+    ) {
+    display: none;
+  }
+
+  /* A call with nothing to show takes no room. */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    > [data-part]:empty {
+    display: none;
+  }
+
+  /* Lines that say what was looked up sit close together, as one group above
+     the answer. So do the links to the pages an answer came from. */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    > [data-part]
+    + [data-part]:has(
+      > :is([data-testid="tool-note"], [data-testid="tool-status"])
+    ),
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    > [data-testid="doc-link"]
+    + [data-testid="doc-link"] {
+    margin-block-start: var(--gap-tight, 0.25rem);
+  }
+
+  /* The answer after the lookup lines is not an element, so the gap under the
+     group is the last line's own (as under a code fence). */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])
+    > [data-part]:has(
+      > :is([data-testid="tool-note"], [data-testid="tool-status"])
+    ):not(:has(+ [data-part])) {
+    margin-block-end: var(--gap, 0.75rem);
+  }
+
+  /* The writing marker is not part of the stack: what follows it is the
+     reply's first block, as in the stored turn. So is what follows a hidden
+     running call after the marker. */
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])[data-live]
+    > [data-chat-part="writing"]
+    + *,
+  .thread
+    :where([data-chat-part="turn"][data-role="assistant"])[data-live]
+    > [data-chat-part="writing"]
+    + [data-part][data-state="running"]:has(
+      ~ [data-part]:not([data-state="running"])
+    )
+    + [data-part] {
+    margin-block-start: 0;
+  }
+
+  /* Marks the end of the stored conversation for the page's
+     <link rel="expect">. Never shown. */
+  .thread :where([data-chat-part="ready"]) {
+    display: none;
+  }
+  /* bascik-enable */
+</style>
+<div
+  class="thread"
+  data-chat-part="thread"
+  data-testid="chat-thread"
+  data-bascik-slot
+></div>

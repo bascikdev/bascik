@@ -1,20 +1,28 @@
 <!-- @bascik
-A spoken conversation with a speech-to-speech model: the reader talks, the model answers aloud, and what it shows arrives in the thread as components. Captions follow the voice a few words at a time, with the current word in bold, and the same word is marked in the answer in the thread. The reader can mute the microphone and stay in the call. A call nobody speaks on asks whether anyone is there, and then ends: `idle-seconds` (default 120, 0 for never) and `idle-warning-seconds` (default 30) set how long each takes. It speaks two providers' protocols, named by the ticket: gemini-live and azure-voice-live. Optional and all script. It needs three routes of yours: /api/voice-session for a ticket, /api/voice-tool to run the model's tool calls, and /api/voice-turn to store what was said, and a /voice-view page that renders what a call shows. The app prop is sent to them. Put it inside the composer (`<chat-composer><voice-call /></chat-composer>`): its button joins the composer's row, and its caption and status are a line above the message box. It also works on its own, next to the composer.
+A spoken conversation with a speech-to-speech model: the reader talks, the model answers aloud, and what it shows arrives in the thread as components. Captions follow the voice a few words at a time, with the current word in bold, and the same word is marked in the answer in the thread. The reader can mute the microphone and stay in the call. A call nobody speaks on asks whether anyone is there, and then ends. It speaks two providers' protocols, named by the ticket: gemini-live and azure-voice-live. Optional and all script: with scripts off it shows nothing.
+
+Put it in `chat-composer`'s default slot (`<chat-composer><voice-call /></chat-composer>`): its buttons join the row of the message box, before Send, and its line (who is on the call, what is happening, the caption) is a line above the message box. It also works on its own, beside the composer in the same `data-chat` element: its line and its buttons are then laid out by whatever holds it.
+
+Props, all optional: `app` (sent to every route as the `app` field), `idle-seconds` (how long a call nobody speaks on stays up; 120, and 0 for never), `idle-warning-seconds` (how long before that it asks; 30), and four routes of yours: `session-route` (answers a ticket for a call; `/api/voice-session`), `tool-route` (runs a tool call the model makes; `/api/voice-tool`), `turn-route` (stores what was said; `/api/voice-turn`) and `view-route` (the page that renders what a tool call shows, fetched with `app` and `call` in its query; `/voice-view`). The routes are carried by hidden, empty links marked `rel="nofollow"` in the template, so the site's `base` applies to them; they are not navigation, and a link checker run over the built pages should skip them. Setting one prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
+
+Slots: none.
+
+Around it: it finds the `thread` (where it adds the reader's turn and the spoken reply, and whose forms it answers during a call), the `composer` and its `input` (a message typed during a call is said to the model) from the nearest `data-chat` element, by `data-chat-part`; on a page with no `data-chat` element, by their test hooks. The view page marks what it shows with `data-chat-part="view"`. In a composer its line carries `data-chat-line="above"` and its root has no box, which is how `chat-composer` lays a slotted part out. It reads the theme tokens `--border`, `--muted`, `--accent`, `--on-accent`, `--bg`, `--text` and `--radius`; the word being said is the highlight `voice-call-word`, which a page can restyle.
+
+State and events: while a call is on, `data-genui-call="on"` is set on the `data-chat` element and on `<html>`; `chat:call-start` and `chat:call-end` bubble from the `data-chat` element.
 -->
 <style>
-  /* The component has no box of its own: its parts are laid out by whatever
-     holds it, which in a composer is the row of the message box. */
+  /* The part has no box of its own: its buttons and its line are laid out by
+     whatever holds it. A composer puts the line above its message box. */
   .call {
     display: contents;
   }
   .call[hidden] {
     display: none;
   }
-  /* One line above the message box: who is on the line, what is happening,
-     and the words being spoken. */
+  /* One line: who is on the call, what is happening, and the words being
+     spoken. */
   .strip {
-    order: -2;
-    flex: 0 0 100%;
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem 0.6rem;
@@ -276,7 +284,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
   data-bascik-attr-data-idle-seconds="idle-seconds"
   data-bascik-attr-data-idle-warning-seconds="idle-warning-seconds"
 >
-  <div class="strip">
+  <div class="strip" data-chat-line="above">
     <p id="provider" class="provider" data-testid="voice-call-provider"></p>
     <p
       id="status"
@@ -369,6 +377,37 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     <span class="mute-label">Mute microphone</span>
   </button>
   <input id="app" type="hidden" data-bascik-attr-value="app" />
+  <!-- Where the script posts and fetches. They are links so that the site's
+       base applies to them; none is shown, and rel="nofollow" tells a crawler
+       that none is navigation. -->
+  <a
+    id="session-route"
+    hidden
+    rel="nofollow"
+    href="/api/voice-session"
+    data-bascik-attr-href="session-route"
+  ></a>
+  <a
+    id="tool-route"
+    hidden
+    rel="nofollow"
+    href="/api/voice-tool"
+    data-bascik-attr-href="tool-route"
+  ></a>
+  <a
+    id="turn-route"
+    hidden
+    rel="nofollow"
+    href="/api/voice-turn"
+    data-bascik-attr-href="turn-route"
+  ></a>
+  <a
+    id="view-route"
+    hidden
+    rel="nofollow"
+    href="/voice-view"
+    data-bascik-attr-href="view-route"
+  ></a>
   <script type="text/typescript">
     import {
       barTransform,
@@ -393,7 +432,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       timedWord as placeWord,
       voicing,
     } from "./voice-call/captions.ts";
-    import { callOf, fillForm, formGet, isApproval, openForm, sendForm, toldText } from "./voice-call/forms.ts";
+    import { callOf, fillForm, isApproval, openForm, sendForm, toldText } from "./voice-call/forms.ts";
     import type { SentForm } from "./voice-call/forms.ts";
     import { geminiLive } from "./voice-call/gemini-live.ts";
     import { aliveDue, idleLimits, idlePhase } from "./voice-call/idle.ts";
@@ -402,6 +441,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
     import { closePieces, hear, readerText } from "./voice-call/reader.ts";
     import type { ReaderPiece } from "./voice-call/reader.ts";
     import { fetchView, postForm, viewHolder } from "./voice-call/requests.ts";
+    import { announce, findPart, newTurn, partIn, setState } from "./chat-root/parts.ts";
     import {
       closeReason,
       LISTENING,
@@ -445,6 +485,13 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       }
     };
     const app = (document.getElementById("app") as HTMLInputElement).value;
+    /** The app's routes, as the links in the template carry them. */
+    const routes = {
+      session: (document.getElementById("session-route") as HTMLAnchorElement).href,
+      tool: (document.getElementById("tool-route") as HTMLAnchorElement).href,
+      turn: (document.getElementById("turn-route") as HTMLAnchorElement).href,
+      view: (document.getElementById("view-route") as HTMLAnchorElement).href,
+    };
     let call: Call | null = null;
 
     /* ---- The status line: one thing at a time, the most pressing first ---- */
@@ -504,14 +551,12 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
 
     /* ---- The thread: what was said and shown, as it happens ---- */
 
-    const thread = (): HTMLElement | null =>
-      document.querySelector<HTMLElement>('[data-testid="chat-thread"]');
+    // Looked up each time: the client runtime replaces the thread with every answer.
+    const thread = (): HTMLElement | null => findPart(root, "thread");
 
     function showReader(): void {
       if (!readerBubble) {
-        readerBubble = document.createElement("p");
-        readerBubble.className = "turn-user";
-        readerBubble.dataset.testid = "turn-user";
+        readerBubble = newTurn("user", "turn-user");
         // What the reader said can be written down after the answer has begun.
         if (reply) reply.before(readerBubble);
         else thread()?.append(readerBubble);
@@ -530,12 +575,11 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
 
     function showReply(): HTMLElement {
       if (!reply) {
-        reply = document.createElement("div");
-        reply.className = "turn-assistant";
-        reply.dataset.testid = "turn-voice";
+        reply = newTurn("assistant", "turn-voice");
         // What the voice says, as a paragraph: the same as a stored turn's.
         const words = document.createElement("p");
         words.className = "spoken";
+        words.dataset.spoken = "";
         words.dataset.testid = "voice-call-said";
         saidText = document.createTextNode("");
         words.append(saidText);
@@ -576,7 +620,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       if (earlier) earlier.replaceWith(placeholder);
       else target.append(placeholder);
       try {
-        const view = await fetchView(app, id);
+        const view = await fetchView(routes.view, app, id);
         if (view) placeholder.replaceWith(viewHolder(view, id));
       } finally {
         // A view that did not come leaves nothing behind.
@@ -591,7 +635,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       return runTool(tool, {
         ask: (fields) =>
           busy(current, async () => {
-            const answer = (await (await post("/api/voice-tool", fields)).json()) as ToolAnswer;
+            const answer = (await (await post(routes.tool, fields)).json()) as ToolAnswer;
             // The tool has run. A view that cannot be drawn does not undo
             // that, and the model must not be told the tool failed. A view
             // for a call that has ended has no reply to go in.
@@ -813,7 +857,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
           ? toggle
           : button !== mute && !mute.hidden
             ? mute
-            : document.querySelector<HTMLElement>('[data-testid="chat-composer"] textarea');
+            : findPart(root, "input");
         next?.focus();
       }
       button.hidden = true;
@@ -964,7 +1008,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
      * keeps a second arrival from being a second turn.
      */
     function storeTurn(fields: Record<string, string>, tries = 2): void {
-      post("/api/voice-turn", fields, undefined, true).then(
+      post(routes.turn, fields, undefined, true).then(
         (response) => {
           if (response.status >= 500 && tries > 1) retry();
         },
@@ -1136,7 +1180,9 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       meter.removeAttribute("data-speaking");
       for (const bar of bars) bar.style.transform = "";
       pressed(false);
-      delete document.documentElement.dataset.genuiCall;
+      const wasOn = Boolean(document.documentElement.dataset.genuiCall);
+      setState(root, "genuiCall", null);
+      if (wasOn) announce(root, "chat:call-end");
     }
 
     /** How long a call may take to be on, once its connection is asked for. */
@@ -1168,7 +1214,7 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       try {
         // Made in the click, so the browser lets it play.
         playback = new AudioContext({ sampleRate: 24_000 });
-        const response = await post("/api/voice-session", {}, attempt.signal);
+        const response = await post(routes.session, {}, attempt.signal);
         if (!response.ok) {
           cancelStart(sessionFailure(response.status));
           return;
@@ -1208,7 +1254,8 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
         starting = null;
         provider.textContent = providerLabel(ticket);
         // Other voices on the page stay quiet while a call is on.
-        document.documentElement.dataset.genuiCall = "on";
+        setState(root, "genuiCall", "on");
+        announce(root, "chat:call-start");
         // Binary frames arrive as bytes, which are read without waiting.
         current.socket.binaryType = "arraybuffer";
         if (current.socket.readyState === WebSocket.OPEN) current.wire.begin();
@@ -1252,10 +1299,11 @@ A spoken conversation with a speech-to-speech model: the reader talks, the model
       "submit",
       (event) => {
         const form = event.target as HTMLFormElement;
-        // Any form's submit comes here: only the composer, which is not the
-        // model's, is used by its own property names.
-        if (!call || formGet(form, "dataset").testid !== "chat-composer") return;
-        const input = form.querySelector("textarea");
+        // Any form's submit comes here: only this chat's composer, which is
+        // not the model's, is used by its own property names.
+        if (!call || form !== findPart(root, "composer")) return;
+        const input =
+          partIn<HTMLTextAreaElement>(form, "input") ?? form.querySelector("textarea");
         const text = input?.value.trim();
         if (!text || call.socket.readyState !== WebSocket.OPEN) return;
         event.preventDefault();
