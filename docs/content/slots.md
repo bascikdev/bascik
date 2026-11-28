@@ -67,7 +67,27 @@ Slotted content can also be read by the component's script. The [Tab Group](/exa
 >
 > **A name the template does not declare is dropped.** Content wrapped for a slot name with no matching `data-bascik-slot="name"` in the template does not render, and the build and dev server print a warning naming the component, the slot, and the file the usage is in. Names match in any letter case.
 >
-> **The wrapper is removed.** The usage-site element that carries `data-bascik-slot="name"` only names the zone. Bascik keeps what is inside it and drops the element, with its tag and attributes. Writing `<a data-bascik-slot="actions" href="/docs">Docs</a>` leaves the text `Docs` with no link. Put the real element inside the wrapper: `<div data-bascik-slot="actions"><a href="/docs">Docs</a></div>`.
+> **The wrapper is removed.** The usage-site element that carries `data-bascik-slot="name"` only names the zone. Bascik keeps what is inside it and drops the element, with its tag and attributes. Writing `<a data-bascik-slot="actions" href="/docs">Docs</a>` leaves the text `Docs` with no link. Put the real element inside the wrapper: `<div data-bascik-slot="actions"><a href="/docs">Docs</a></div>`. A component tag is the exception: it is kept and rendered (see the next section).
+
+### A component as named slot content
+
+When the content for a named slot is a single component, put the attribute on the component's tag. No wrapper is needed, and the tag can be self-closing or paired:
+
+```html
+<book-shelf>
+  <book-filter data-bascik-slot="toolbar" data-bascik-prop-label="Filter" />
+  <book-card data-bascik-slot="featured">Dune</book-card>
+  <book-card>Emma</book-card>
+</book-shelf>
+```
+
+`<book-filter>` renders in the shelf's `toolbar` slot and the first `<book-card>` in its `featured` slot. Each keeps its own props, attributes, and children. The second `<book-card>` has no slot name, so it goes to the default slot. The result is the same as wrapping each tag in `<span data-bascik-slot="toolbar">`: a component tag is never treated as the wrapper, so it is not removed, and the attribute itself does not reach the page.
+
+> **The name belongs to the component around the tag.** `data-bascik-slot="toolbar"` on `<book-filter>` names a slot of `<book-shelf>`, the nearest component the tag sits inside, even when `<book-filter>` declares a `toolbar` slot of its own. To fill a slot of `<book-filter>`, write a wrapper or a tagged component between its tags. The same holds in a component template: a tagged component between another component's tags fills that component's slot.
+>
+> **One fill per slot name.** When two elements between a component's tags name the same slot, wrappers or component tags, only the last one reaches the slot and the build warns that the others were dropped. To put two components in one slot, wrap them in one element that carries the attribute: `<span data-bascik-slot="toolbar"><book-filter /><book-sort /></span>`.
+>
+> **Where the attribute does nothing.** A component tag with `data-bascik-slot="name"` that sits inside no other component's tags (on a page, or directly in a component template) renders where it is written and declares no slot. Inside a wrapper that already names a slot, the wrapper decides: the component renders with the wrapper's content. A valueless `data-bascik-slot` on a component tag names no slot, so the component stays in the default slot.
 
 ## Forwarding a Slot into a Nested Component
 

@@ -57,7 +57,7 @@ To have coding agents refactor a live site to production parity at every breakpo
 
 - **Build every template with `html`** in scripts and helpers; JSX and Vue templates escaped for you, and `html` does the same for each value (and blocks `javascript:` URLs). Delete a project `escapeHtml` instead of porting it; `audit-components.mjs` reports one.
 - **Component tag names need a hyphen.**
-- **Named-slot wrappers are removed**, so wrap headings and links in a `<div data-bascik-slot="x">`.
+- **Named-slot wrappers are removed**, so wrap headings and links in a `<div data-bascik-slot="x">`. A component tag may carry the attribute itself: it is kept and rendered in that slot.
 - **Elements created with `document.createElement` get no element-selector styles.** Clone a `<template>` in the component instead.
 - **Production moves component scripts to the end of the document.** Look up elements inside handlers or after `DOMContentLoaded`; keep pre-paint scripts (theme) in `<head>`.
 - **Re-sync form state on `pageshow`** after Back/Forward or reload.

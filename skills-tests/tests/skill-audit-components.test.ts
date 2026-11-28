@@ -1177,6 +1177,51 @@ describe("audit-components: semantic HTML", () => {
     ).toEqual([]);
   });
 
+  it("follows a component tag that carries a named slot, self-closing or paired, as it follows the wrapper form", async () => {
+    // The build keeps a component tag that carries data-bascik-slot="name" and renders it in that slot, so its
+    // template is part of the page: the audit used to read the tag as a wrapper and walk only its children.
+    const components = {
+      "src/components/deep-title/deep-title.html": `<h4 data-testid="deep-title">Dune</h4>
+`,
+      "src/components/book-shelf/book-shelf.html": `<section class="shelf" data-testid="book-shelf">
+  <div data-bascik-slot="start"></div>
+  <div data-bascik-slot></div>
+</section>
+`,
+    };
+    const shelf = (usage: string) =>
+      page(`      <h1>Books</h1>
+      <book-shelf>
+        ${usage}
+        <p>text</p>
+      </book-shelf>`);
+    const root = project({
+      ...clean,
+      ...components,
+      "src/pages/self-closing.html": shelf(
+        '<deep-title data-bascik-slot="start" />',
+      ),
+      "src/pages/paired.html": shelf(
+        '<deep-title data-bascik-slot="start"></deep-title>',
+      ),
+      "src/pages/wrapper.html": shelf(
+        '<span data-bascik-slot="start"><deep-title /></span>',
+      ),
+    });
+    const skipped = only((await audit(root)).findings, "skipped-heading");
+    expect(skipped.map((f) => f.file).sort()).toEqual([
+      "src/pages/paired.html",
+      "src/pages/self-closing.html",
+      "src/pages/wrapper.html",
+    ]);
+    for (const finding of skipped) {
+      expect(finding.message).toContain(
+        "src/components/deep-title/deep-title.html:1",
+      );
+      expect(finding.message).toMatch(/<h1>.*to <h4>/);
+    }
+  });
+
   it("forwards the page's default slot through a named wrapper a component passes to a child", async () => {
     // A valueless marker inside a child's usage content is the outer template's own default slot, even inside a
     // named wrapper: the build fills it with the page's default content (component-expansion-core forwards it).

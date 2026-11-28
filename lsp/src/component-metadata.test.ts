@@ -67,6 +67,19 @@ describe("analyzeComponentSource", () => {
         '<inner-box\n  ><span\n    data-bascik-slot="tail"\n  ><i\n      data-bascik-slot="extra"\n    >fb</i\n    ></span\n  ></inner-box\n>\n<p\n  data-bascik-slot="own"\n>o</p\n>',
       ),
     ).toEqual(["own"]);
+    // A component tag that carries the marker is a nested usage the build
+    // renders, self-closing or paired: it declares no slot, and a wrapper
+    // between its tags is the nested component's.
+    expect(
+      slotsOf(
+        '<main><inner-box data-bascik-slot="other">Dune</inner-box><inner-box data-bascik-slot="side" /><p data-bascik-slot="late">x</p></main>',
+      ),
+    ).toEqual(["late"]);
+    expect(
+      slotsOf(
+        '<inner-box\n  data-bascik-slot="other"\n  ><b data-bascik-slot="tail">t</b></inner-box\n><p data-bascik-slot="late">x</p>',
+      ),
+    ).toEqual(["late"]);
     // A default slot marker in a nested usage is forwarded, so it still counts.
     expect(
       analyzeComponentSource(

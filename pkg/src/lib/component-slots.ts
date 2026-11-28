@@ -99,6 +99,19 @@ interface NamedSlot {
 }
 
 /**
+ * Which text a slot scan reads. In a usage's inner content a component tag
+ * that carries `data-bascik-slot="name"` is that slot's content. In a
+ * template a component tag is a nested usage, never a placeholder.
+ */
+type SlotScanMode = "usage" | "template";
+
+/** Where the named marker that starts at `marker` ends. */
+const namedMarkerEnd = (masked: string, marker: number): number => {
+  NAMED_SLOT_MARKER_RE.lastIndex = marker;
+  return marker + NAMED_SLOT_MARKER_RE.exec(masked)![0].length;
+};
+
+/**
  * Parse all `data-bascik-slot="name"` wrapper elements from `innerContent`,
  * returning an array of `{ slotName, startIndex, endIndex, content }` objects
  * where `startIndex`/`endIndex` delimit the entire wrapper element (including
@@ -112,6 +125,9 @@ interface NamedSlot {
 const parseNamedSlots = (
   innerContent: string,
   componentNames: ReadonlySet<string> = new Set(),
+  mode: SlotScanMode = "template",
+  // The components whose usages keep the markers written between their tags.
+  nestedNames: ReadonlySet<string> = componentNames,
 ): NamedSlot[] => {
   if (!innerContent.includes("data-bascik-slot")) return [];
   const results: NamedSlot[] = [];
@@ -127,9 +143,12 @@ const parseNamedSlots = (
   const findClose = createMatchingCloseFinder(innerContent, masked);
   const isInsideNestedComponent = createNestedComponentCheck(
     innerContent,
-    componentNames,
+    nestedNames,
     masked,
   );
+  // One attribute scan per component name, resumed by each search, as in
+  // `createNestedComponentCheck`.
+  const usageScanners = new Map<string, AttributeValueScanner>();
   let from = 0;
   for (
     let wrapper = nextWrapper(from);
@@ -143,6 +162,39 @@ const parseNamedSlots = (
       NAMED_SLOT_MARKER_RE.exec(masked)!;
     const slotName = doubleName ?? singleName ?? unquotedName;
     if (isInsideNestedComponent(start)) continue;
+    const componentName = tagName.toLowerCase();
+    if (componentNames.has(componentName)) {
+      // A component tag is never a wrapper: removing it would delete the
+      // component. In a template it is a nested usage and declares nothing.
+      if (mode === "template") continue;
+      // In a usage the whole component, self-closing or paired, is the
+      // slot's content, written back without the marker.
+      let scanner = usageScanners.get(componentName);
+      if (scanner === undefined) {
+        scanner = createAttributeValueScanner(masked);
+        usageScanners.set(componentName, scanner);
+      }
+      const usage = getTag(
+        innerContent,
+        componentName,
+        undefined,
+        masked,
+        start,
+        scanner,
+      );
+      const usageEnd = usage.endIndex;
+      if (usage.startIndex !== start || typeof usageEnd !== "number") continue;
+      results.push({
+        slotName,
+        startIndex: start,
+        endIndex: usageEnd,
+        content:
+          innerContent.slice(start, wrapper.marker) +
+          innerContent.slice(namedMarkerEnd(masked, wrapper.marker), usageEnd),
+      });
+      from = usageEnd;
+      continue;
+    }
     const closeIndex = findClose(tagName, contentStart);
     if (closeIndex === -1) continue;
     const closeTagMatch = closeTagAt(innerContent, tagName, closeIndex);
@@ -183,7 +235,7 @@ const parseNamedSlotsOnce = (
     lastParse.innerContent === innerContent
   )
     return lastParse.slots;
-  const slots = parseNamedSlots(innerContent, componentNames);
+  const slots = parseNamedSlots(innerContent, componentNames, "usage");
   lastParse = { innerContent, componentNames, slots };
   return slots;
 };
@@ -363,10 +415,13 @@ export const extractDefaultSlotContent = (
  * Extract named slot content from a component usage's inner HTML.
  * Looks for wrapper elements carrying `data-bascik-slot="slotName"`.
  *
- * Each content is trimmed, as the default slot's is.
+ * Each content is trimmed, as the default slot's is. A tag of one of
+ * `componentNames` that carries the marker is kept whole, without the marker.
  *
  * e.g. '<div data-bascik-slot="header"> <h1>H</h1>\n</div>'
  *      → { header: "<h1>H</h1>" }
+ *      '<book-card data-bascik-slot="side" />'
+ *      → { side: "<book-card />" }
  */
 export const extractNamedSlotContent = (
   innerContent: string | undefined,
@@ -383,6 +438,32 @@ export const extractNamedSlotContent = (
     slots[slotName] = content.trim();
   }
   return slots;
+};
+
+/**
+ * The slot names a usage's inner content fills more than once, each as first
+ * written. Names match as `replaceNamedSlots` matches them, whatever their
+ * letter case. Only the last fill of a name is used, so the caller warns.
+ */
+export const repeatedNamedSlots = (
+  innerContent: string | undefined,
+  componentNames: ReadonlySet<string> = new Set(),
+): string[] => {
+  if (!innerContent) return [];
+  const fills = new Map<string, { name: string; count: number }>();
+  for (const { slotName } of parseNamedSlotsOnce(
+    innerContent,
+    componentNames,
+  )) {
+    const key = slotName.toLowerCase();
+    const fill = fills.get(key);
+    if (fill) fill.count++;
+    else fills.set(key, { name: slotName, count: 1 });
+  }
+  const repeated: string[] = [];
+  for (const { name, count } of fills.values())
+    if (count > 1) repeated.push(name);
+  return repeated;
 };
 
 /**
@@ -447,6 +528,8 @@ interface SlotScope {
   closeIndex: number;
   /** For a wrapper: the end of its close tag. */
   endIndex: number;
+  /** For a component tag that carries a named marker: the marker's span. */
+  marker?: { start: number; end: number };
 }
 
 /**
@@ -467,11 +550,20 @@ export const removeUnclaimedSlotWrappers = (
   const nextWrapper = createSlotWrapperScanner(masked, true);
   const findClose = createMatchingCloseFinder(template, masked);
   const scopes: SlotScope[] = [];
+  // Component tags that carry a named marker, by start: where the marker is.
+  const markedUsages = new Map<number, { start: number; end: number }>();
   for (
     let wrapper = nextWrapper(0);
     wrapper !== null;
     wrapper = nextWrapper(wrapper.end)
   ) {
+    if (componentNames.has(wrapper.tagName.toLowerCase())) {
+      markedUsages.set(wrapper.start, {
+        start: wrapper.marker,
+        end: namedMarkerEnd(masked, wrapper.marker),
+      });
+      continue;
+    }
     const closeIndex = findClose(wrapper.tagName, wrapper.end);
     if (closeIndex === -1) continue;
     const closeTag = closeTagAt(template, wrapper.tagName, closeIndex);
@@ -485,8 +577,19 @@ export const removeUnclaimedSlotWrappers = (
         (closeTag ? closeTag[0].length : `</${wrapper.tagName}>`.length),
     });
   }
-  // A lone wrapper cannot sit inside another.
-  if (scopes.length < 2) return template;
+  // A lone wrapper cannot sit inside another, and a marked component tag
+  // matters only inside a wrapper's content. Wrappers are in document order.
+  if (scopes.length < 2) {
+    if (scopes.length === 0) return template;
+    const [{ contentStart, closeIndex }] = scopes;
+    let inside = false;
+    for (const start of markedUsages.keys())
+      if (contentStart <= start && start < closeIndex) {
+        inside = true;
+        break;
+      }
+    if (!inside) return template;
+  }
   const lowerMasked = masked.toLowerCase();
   for (const name of componentNames) {
     if (!lowerMasked.includes(`<${name.toLowerCase()}`)) continue;
@@ -497,6 +600,7 @@ export const removeUnclaimedSlotWrappers = (
       const usage = getTag(template, name, undefined, masked, from, scanner);
       const { startIndex, endIndex, contentStart, closeIndex } = usage;
       if (typeof startIndex !== "number") break;
+      const marker = markedUsages.get(startIndex);
       if (
         typeof contentStart === "number" &&
         typeof closeIndex === "number" &&
@@ -508,6 +612,18 @@ export const removeUnclaimedSlotWrappers = (
           contentStart,
           closeIndex,
           endIndex: closeIndex,
+          marker,
+        });
+      // A self-closing or unclosed usage holds nothing, but its marker can
+      // still sit inside a wrapper.
+      else if (marker !== undefined)
+        scopes.push({
+          kind: "component",
+          start: startIndex,
+          contentStart: startIndex,
+          closeIndex: startIndex,
+          endIndex: startIndex,
+          marker,
         });
       // Continue inside the usage: a usage of the same component nested in
       // its content is a scope of its own.
@@ -539,6 +655,10 @@ export const removeUnclaimedSlotWrappers = (
         { start: scope.start, end: scope.contentStart },
         { start: scope.closeIndex, end: scope.endIndex },
       );
+    // A component tag is not a wrapper to drop: only its marker goes, and
+    // the component renders where it was written.
+    else if (scope.marker !== undefined && owner?.kind === "wrapper")
+      removed.push(scope.marker);
     open.push(scope);
   }
   if (removed.length === 0) return template;
@@ -604,19 +724,30 @@ export const keepSlotRoot = (fileContent: string): string => {
   );
 };
 
+const NO_NAMES: ReadonlySet<string> = new Set();
+
 /**
  * The template with every slot wrapper, named and default, replaced by a
  * space: the markup an instance renders whatever the usage passes. A tag in
  * slot fallback content renders only when the usage leaves that slot empty,
- * so the expansion's cycle check (finding 44) does not count it.
+ * so the expansion's cycle check (finding 44) does not count it. A tag of
+ * one of `componentNames` that carries a named marker is no wrapper: it is a
+ * usage the template always renders, so it stays.
  */
-export const withoutSlotWrappers = (fileContent: string): string => {
+export const withoutSlotWrappers = (
+  fileContent: string,
+  componentNames: ReadonlySet<string> = new Set(),
+): string => {
   if (!fileContent.includes("data-bascik-slot")) return fileContent;
   const parts: string[] = [];
   let cursor = 0;
+  // A wrapper between a nested usage's tags is still blanked, as it always
+  // was: the nested component renders it only when it declares that slot.
   for (const { startIndex, endIndex } of parseNamedSlots(
     fileContent,
-    new Set(),
+    componentNames,
+    "template",
+    NO_NAMES,
   )) {
     parts.push(fileContent.slice(cursor, startIndex), " ");
     cursor = endIndex;

@@ -40,6 +40,7 @@ import {
   replaceDefaultSlots,
   removeUnclaimedSlotWrappers,
   replaceNamedSlots,
+  repeatedNamedSlots,
   withoutSlotWrappers,
 } from "./component-slots.ts";
 import { checkScanBudget, chargeScan } from "./component-scan-budget.ts";
@@ -406,7 +407,7 @@ const warnUndeclaredUsage = (
 ): void => {
   const inner = usage.innerContent ?? "";
   const propNames = Object.keys(props);
-  const problems: Array<{ key: string; text: string }> = [];
+  const problems: Array<{ key: string; text: string; advice?: string }> = [];
   for (const name of propNames) {
     if (declared.props.has(name.toLowerCase())) continue;
     problems.push({
@@ -424,6 +425,16 @@ const warnUndeclaredUsage = (
         text: `slot "${name}" is not declared by the template, so its content`,
       });
     }
+    // Only the last fill of a name reaches the slot. For a component tag
+    // that carries the marker, an earlier fill is a whole component.
+    for (const name of repeatedNamedSlots(inner, componentNames)) {
+      if (!declared.slots.has(name.toLowerCase())) continue;
+      problems.push({
+        key: `repeat:${name.toLowerCase()}`,
+        text: `slot "${name}" is filled more than once, so every fill but the last`,
+        advice: `Put the content in one element with data-bascik-slot="${name}".`,
+      });
+    }
   }
   if (
     !declared.hasDefaultSlot &&
@@ -435,7 +446,7 @@ const warnUndeclaredUsage = (
     });
   }
   let usedIn: string | undefined;
-  for (const { key, text } of problems) {
+  for (const { key, text, advice } of problems) {
     const id = `${usage.name}\0${key}`;
     if (warned.has(id)) continue;
     warned.add(id);
@@ -443,7 +454,7 @@ const warnUndeclaredUsage = (
     usedIn ??= sourceFileAt(html, at, filePath ?? "");
     propWarn(
       `${text} ${usedIn ? `used in "${usedIn}" ` : ""}was dropped. ` +
-        `Run \`bascik --check\` for a full report.`,
+        (advice ?? `Run \`bascik --check\` for a full report.`),
     );
   }
 };
@@ -498,7 +509,10 @@ export const expandComponents = (
     if (found === undefined) {
       // Comments, raw text and slot fallback content do not render the tag.
       const template = maskRawTextContent(
-        withoutSlotWrappers(componentList[parent]?.fileContent ?? ""),
+        withoutSlotWrappers(
+          componentList[parent]?.fileContent ?? "",
+          (componentNames ??= new Set(Object.keys(componentList))),
+        ),
       ).toLowerCase();
       found = new RegExp(
         `<${child.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s/>]`,
