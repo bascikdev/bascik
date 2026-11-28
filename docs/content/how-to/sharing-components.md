@@ -20,6 +20,7 @@ When you run `bascik add`:
 
 - Files are copied directly into `src/components/` and belong to your project.
 - Adding one component also copies the non-test files in the folder named after it, beside it (`chat/voice-call.html` brings `chat/voice-call/*.ts`), or in its own folder (`book-rating/book-rating.html` brings `book-rating/format-rating.ts`), since a component's relative imports point there.
+- It also copies what the component imports by a relative path from elsewhere in the package's component folder, and what those files import: a helper module several components share comes with whichever of them is added.
 - A `bascik-lock.json` file is created or updated to track package versions and file content hashes.
 - Re-adding an unmodified component updates it safely. If you locally edit a copied component, `bascik add` refuses to overwrite it unless you pass `--force`.
 - Run `bascik add --dry-run` to see what would be copied without writing files to disk.
