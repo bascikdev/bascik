@@ -5,6 +5,7 @@ import {
   findCompatibilityMatches,
   maskComments,
 } from "./compatibility-checker.ts";
+import { propertyBounds } from "./property-runs.test-helper.ts";
 
 describe("compatibility-rules contract & positive/negative probes", () => {
   const ruleVectors: Record<
@@ -79,6 +80,21 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "[xlink|href] { color: red; }",
         "[*|href=x] { color: red; }",
         "[|lang|=en] { color: red; }",
+        // A rule on the same line as the one before it is still its own selector.
+        ".a { color: blue; } [data-state] { color: red; }",
+        "@media (min-width: 40em) { [data-state] { color: red; } }",
+        "@supports (display: grid) {\n  [data-state] { color: red; }\n}",
+        "@container card (width > 20em) { .a, [data-state] { color: red; } }",
+        // Wrapped or not, nothing here is a scoped class.
+        "[data-state]\n  > [data-part] { color: red; }",
+        "[data-state]\n  :not(.off) { color: red; }",
+        '[data-label="{, .card"] { color: red; }',
+        // The parent rule is not anchored, so its nested rule is not either.
+        "[data-state] { [data-part] { color: red; } }",
+        "#panel { [open] & { color: red; } }",
+        // A stylesheet wrapped in an HTML comment: CSS skips the `<!--` and `-->`.
+        "<!--\n[data-state] { color: red; }\n-->",
+        ".a { color: blue; }\n-->\n[data-state] { color: red; }",
       ],
       negative: [
         ".card[data-state] { color: red; }",
@@ -93,6 +109,30 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         "[data-state].-on { color: red; }",
         "[data-state] .--open { color: red; }",
         "[href$=x i].card { color: red; }",
+        // A selector Prettier wraps is still anchored on its first line.
+        ".thread\n  [data-part] { color: red; }",
+        '.thread\n  :where([data-chat-part="turn"][data-role="assistant"])\n  > [data-part][data-state="running"]:has(~ [data-part]:not([data-state="running"])) {\n  display: none;\n}',
+        ".thread [data-a],\n.thread\n  [data-b] { color: red; }",
+        ".thread /* the turn */\n  [data-part] { color: red; }",
+        '.thread[data-label="{, "]\n  [data-part] { color: red; }',
+        "[data-state]\n  .card { color: red; }",
+        "[data-state]:not(:is(.a)) .card { color: red; }",
+        ".card:is(.a, [data-state]) { color: red; }",
+        // A nested rule is a descendant of its anchored parent.
+        ".card {\n  [data-part] { color: red; }\n}",
+        ".card { @media (min-width: 40em) { [data-part] { color: red; } } }",
+        // Nested in a rule that an element or #id leads: the same as `#panel [open]`, which is not standalone.
+        "#panel {\n  [open] { color: red; }\n}",
+        "#panel\n  [open] { color: red; }",
+        "section { [open] { color: red; } }",
+        "div { .x { color: blue; } [data-y] { color: red; } }",
+        ":is(.a, .b) {\n  [open] { color: red; }\n}",
+        "#panel { &[open] { color: red; } }",
+        // An ignore comment above a selector list covers the list, one selector per line too.
+        "/* bascik-ignore css-attribute-selector */\n[data-a],\n[data-b] { color: red; }",
+        "/* bascik-ignore */\n.card,\n[data-b],\n[data-c] { color: red; }",
+        // A declaration is not a selector.
+        ".grid {\n  grid-template-columns:\n    [full-start] 1fr\n    [full-end];\n}",
       ],
     },
     "css-is-element-names": {
@@ -101,6 +141,19 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         ":is(p, h2) { margin: 0; }",
         ":where(ul, ol) { padding: 0; }",
         ".card:has(img) { display: grid; }",
+        ".card\n  .title:has(img)\n  ~ p,\n:is(p) .card { display: grid; }",
+        ":where([data-part])\n  > :is(h3, h4) { margin: 0; }",
+        "@media (min-width: 40em) { p > :is(h3, h4) { margin: 0; } }",
+        // `&` is the parent itself, so this is .card:has(img).
+        ".card { &:has(img) { display: grid; } }",
+        "[data-state] { :is(p) { margin: 0; } }",
+        // A class in the pseudo-class's own compound: an earlier class does not change what it is.
+        ".wrap .card:has(img) { display: grid; }",
+        ".wrap\n  .card:has(> img) { display: grid; }",
+        ".wrap > .card:hover:has(img) { display: grid; }",
+        ".card {\n  .x:has(img) { display: grid; }\n}",
+        ".card {\n  & > .y:has(img) { display: grid; }\n}",
+        ".wrap .card:not(:is(p)) { display: grid; }",
       ],
       negative: [
         ":is(.title, .subtitle) { margin: 0; }",
@@ -109,7 +162,20 @@ describe("compatibility-rules contract & positive/negative probes", () => {
         ".markdown :is(p, ul, ol, blockquote) { margin-block: 1.5rem; }",
         ".-prose :is(h2, h3) { margin: 0; }",
         ".--open :where(p) { margin: 0; }",
+        // Anchored on a scoped class earlier in the selector, with anything in between.
+        ".thread :where([data-chat-part='turn']) > :is(h3, h4):not(:first-child) { margin: 0; }",
+        '.thread\n  :where([data-chat-part="turn"][data-role="assistant"])\n  > :is(h3, h4):not(:first-child) {\n  margin: 0;\n}',
+        '.thread\n  :where([data-chat-part="turn"])\n  :is(th)[aria-sort="ascending"]\n  :is(button)::after { margin: 0; }',
+        ".thread > :is(div):empty:has(+ [data-testid='ask-button']) { margin: 0; }",
+        ".thread /* headings */ > p ~ :is(h3, h4) { margin: 0; }",
+        ".card { :is(p, ul) { margin: 0; } }",
+        ".card { & > :is(p, ul) { margin: 0; } }",
+        ".card { @media (min-width: 40em) { > :is(p, ul) { margin: 0; } } }",
+        '.card::after { content: ":is(p)"; }',
         "/* bascik-ignore css-is-element-names */\n:is(h2, h3) { margin: 0; }",
+        ".wrap .card :is(p) { margin: 0; }",
+        ".wrap :is(p).card { margin: 0; }",
+        "/* bascik-ignore css-is-element-names */\n.wrap\n  .card:has(img) { margin: 0; }",
       ],
     },
     "js-id-setter": {
@@ -269,6 +335,251 @@ describe("compatibility-rules contract & positive/negative probes", () => {
       );
     });
   }
+});
+
+describe("selectors read whole, not a line at a time", () => {
+  const lineOf = (css: string, index: number) =>
+    css.slice(0, index).split("\n").length;
+  const report = (css: string) =>
+    findCompatibilityMatches(css, "css").map(
+      (m) => `${m.rule.id}@${lineOf(css, m.index)}`,
+    );
+
+  it("reports nothing in the wrapped selectors of a real component", () => {
+    // From the chat-thread component of the ai package, as Prettier writes them.
+    const css = `
+.thread :where([data-chat-part="turn"][data-role="assistant"]) > * + :not(br),
+.thread
+  :where([data-chat-part="turn"][data-role="assistant"])
+  > :is([data-part], [data-view])
+  > *
+  + :not(br) {
+  margin-block-start: 0.75rem;
+}
+.thread
+  :where([data-chat-part="turn"][data-role="assistant"])
+  > :is(div):empty:has(+ [data-testid="ask-button"]) {
+  display: none;
+}
+.thread
+  :where([data-chat-part="turn"][data-role="assistant"])
+  > :is(h3, h4)
+  + * {
+  margin-block-start: 0.25rem;
+}
+.thread
+  :where([data-chat-part="turn"][data-role="assistant"])
+  [data-diagram]
+  :is(svg) {
+  max-inline-size: 100%;
+}
+.thread
+  :where([data-chat-part="turn"][data-role="assistant"])
+  :is(th)[aria-sort="descending"]
+  :is(button)::after {
+  content: "\\2193";
+}
+.thread
+  :where([data-chat-part="turn"][data-role="assistant"])
+  [data-chat-part="failed"] {
+  color: red;
+}
+`;
+    expect(report(css)).toEqual([]);
+  });
+
+  it("reports an unanchored selector on its own line, among wrapped anchored ones", () => {
+    const css = [
+      ".thread", // 1
+      "  [data-a],", // 2
+      "[data-b]", // 3
+      "  > [data-c],", // 4
+      ".thread", // 5
+      "  > :is(h3, h4) {", // 6
+      "  color: red;", // 7
+      "}", // 8
+      "@media (min-width: 40em) {", // 9
+      "  .thread", // 10
+      "    [data-d] {", // 11
+      "    color: red;", // 12
+      "  }", // 13
+      "  :where([data-e])", // 14
+      "    > :is(p) {", // 15
+      "    color: red;", // 16
+      "  }", // 17
+      "}", // 18
+    ].join("\n");
+    expect(report(css)).toEqual([
+      "css-attribute-selector@3",
+      "css-is-element-names@15",
+    ]);
+  });
+
+  it("starts a report at the selector, not at the comma or blank lines before it", () => {
+    const css = ".a,\n\n\n  [data-x] { color: red; }";
+    const [match] = findCompatibilityMatches(css, "css");
+    expect(css.slice(match.index, match.index + match.length)).toBe("[data-x]");
+  });
+
+  it("honors an ignore comment on the line before a wrapped selector's reported line", () => {
+    const css =
+      "/* bascik-ignore css-is-element-names */\n:is(p)\n  > [data-x] { color: red; }";
+    expect(report(css)).toEqual([]);
+  });
+
+  it("lets an ignore comment above a selector list cover that list only", () => {
+    const css = [
+      "/* bascik-ignore css-attribute-selector */", // 1
+      "[data-a],", // 2
+      "[data-b],", // 3
+      "[data-c] {", // 4
+      "  color: red;", // 5
+      "}", // 6
+      "[data-d],", // 7
+      "[data-e] {", // 8
+      "  color: red;", // 9
+      "}", // 10
+    ].join("\n");
+    expect(report(css)).toEqual([
+      "css-attribute-selector@7",
+      "css-attribute-selector@8",
+    ]);
+  });
+
+  it("reports a nested attribute selector only when attribute selectors lead it all the way up", () => {
+    const css = [
+      "[data-a] {", // 1
+      "  [data-b] {", // 2
+      "    color: red;", // 3
+      "  }", // 4
+      "  div {", // 5
+      "    [data-c] {", // 6
+      "      color: red;", // 7
+      "    }", // 8
+      "  }", // 9
+      "}", // 10
+      "#panel {", // 11
+      "  [data-d] {", // 12
+      "    [data-e] {", // 13
+      "      color: red;", // 14
+      "    }", // 15
+      "  }", // 16
+      "}", // 17
+    ].join("\n");
+    expect(report(css)).toEqual([
+      "css-attribute-selector@1",
+      "css-attribute-selector@2",
+    ]);
+  });
+
+  it("reads a rule after the `<!--` of a wrapped stylesheet on its own line", () => {
+    expect(report("<!--\n[data-x] { color: red; }\n-->")).toEqual([
+      "css-attribute-selector@2",
+    ]);
+  });
+
+  // One compound of a selector, with what a reader of the whole selector knows about it.
+  const compounds = [
+    { text: ".thread", hasClass: true },
+    { text: ".card[data-open]", hasClass: true },
+    { text: "[data-a]", startsWithAttribute: true },
+    { text: '[data-b="{, .x; }"]', startsWithAttribute: true },
+    { text: "[data-c]:is(.x)", startsWithAttribute: true },
+    { text: ":is(h3, h4)", elementNames: 1 },
+    { text: ".card:has(img)", hasClass: true, elementNames: 1 },
+    { text: ':where([data-part="turn"])' },
+    { text: ":not(.off)" },
+    { text: "p" },
+  ] as const;
+  type Compound = (typeof compounds)[number];
+
+  const complexSelector = fc.array(fc.constantFrom<Compound>(...compounds), {
+    minLength: 1,
+    maxLength: 5,
+  });
+  const selectorList = fc.array(complexSelector, {
+    minLength: 1,
+    maxLength: 3,
+  });
+  const expectedOf = (list: Compound[][]) => {
+    const expected: string[] = [];
+    for (const selector of list) {
+      const anchored = selector.some((c) => "hasClass" in c);
+      if ("startsWithAttribute" in selector[0] && !anchored) {
+        expected.push("css-attribute-selector");
+      }
+      let classBefore = false;
+      for (const compound of selector) {
+        // Reported unless a class and a combinator come first and the compound itself has no class.
+        if (
+          "elementNames" in compound &&
+          (!classBefore || "hasClass" in compound)
+        ) {
+          expected.push("css-is-element-names");
+        }
+        classBefore ||= "hasClass" in compound;
+      }
+    }
+    return expected.sort();
+  };
+  const render = (
+    list: Compound[][],
+    gaps: readonly string[],
+    wrapAtRule: boolean,
+  ) => {
+    let gap = 0;
+    const next = () => gaps[gap++ % gaps.length];
+    const rule = `${list
+      .map((selector) =>
+        selector
+          .map((compound): string => compound.text)
+          .reduce((left, right) => `${left}${next()}${right}`),
+      )
+      // Between two selectors of the list a combinator would be a syntax error, so only its line breaks stay.
+      .join(`,${next().replace(/[>+~]/g, "")}`)} { color: red; }`;
+    return wrapAtRule ? `@media (min-width: 40em) {\n${rule}\n}` : rule;
+  };
+  const ONE_LINE = [" "] as const;
+  const WRAPS = fc.array(
+    fc.constantFrom(
+      " ",
+      "\n",
+      "\n  ",
+      "\r\n    ",
+      " > ",
+      "\n  > ",
+      "\n  + ",
+      " ~\n  ",
+      " /* a, [data-z] { */ ",
+      "\n  /* .card */\n  ",
+    ),
+    { minLength: 1, maxLength: 8 },
+  );
+  const BOUNDS = propertyBounds(300);
+
+  it(
+    "gives a selector the same verdict however it is wrapped",
+    () => {
+      fc.assert(
+        fc.property(
+          selectorList,
+          WRAPS,
+          fc.boolean(),
+          (list, gaps, wrapAtRule) => {
+            const ids = (css: string) =>
+              findCompatibilityMatches(css, "css")
+                .map((m) => m.rule.id)
+                .sort();
+            const expected = expectedOf(list);
+            expect(ids(render(list, ONE_LINE, false))).toEqual(expected);
+            expect(ids(render(list, gaps, wrapAtRule))).toEqual(expected);
+          },
+        ),
+        BOUNDS.options,
+      );
+    },
+    BOUNDS.timeoutMs,
+  );
 });
 
 describe("bascik-disable and bascik-ignore rule lists", () => {

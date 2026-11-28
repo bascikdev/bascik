@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchCompatibilityRules } from "./rules.js";
+import { findCompatibilityMatches, matchCompatibilityRules } from "./rules.js";
 import { analyzeApiRouteSource } from "./api-rules.js";
 
 describe("Scoping Compatibility Rules", () => {
@@ -50,6 +50,105 @@ describe("Scoping Compatibility Rules", () => {
       const css = ":is(div, span) { color: blue; }";
       const matches = matchCompatibilityRules(css, "css");
       expect(matches.some((m) => m.id === "css-is-element-names")).toBe(true);
+    });
+
+    it.each([
+      ".thread\n  [data-part] { color: red; }",
+      '.thread\n  :where([data-chat-part="turn"])\n  > [data-part][data-state="running"] {\n  display: none;\n}',
+      ".thread [data-a],\n.thread\n  [data-b] { color: red; }",
+      ".thread /* the turn */\n  [data-part] { color: red; }",
+      ".card {\n  [data-part] { color: red; }\n}",
+      ".grid {\n  grid-template-columns:\n    [full-start] 1fr\n    [full-end];\n}",
+    ])("allows an anchored attribute selector that is wrapped: %j", (css) => {
+      expect(matchCompatibilityRules(css, "css")).toEqual([]);
+    });
+
+    it.each([
+      ".thread :where([data-chat-part='turn']) > :is(h3, h4):not(:first-child) { margin: 0; }",
+      '.thread\n  :where([data-chat-part="turn"])\n  > :is(h3, h4):not(:first-child) {\n  margin: 0;\n}',
+      '.thread\n  :is(th)[aria-sort="ascending"]\n  :is(button)::after { margin: 0; }',
+      ".card { > :is(p, ul) { margin: 0; } }",
+    ])("allows :is() with element names after a scoped class: %j", (css) => {
+      expect(matchCompatibilityRules(css, "css")).toEqual([]);
+    });
+
+    it.each([
+      "#panel {\n  [open] { color: red; }\n}",
+      "section { [open] { color: red; } }",
+      ":is(.a, .b) {\n  [open] { color: red; }\n}",
+      "[data-a] .card { div { [open] { color: red; } } }",
+    ])(
+      "allows an attribute selector nested in a rule it only continues: %j",
+      (css) => {
+        expect(matchCompatibilityRules(css, "css")).toEqual([]);
+      },
+    );
+
+    it("reports :has() with element names in a compound that has a class, whatever comes before", () => {
+      const css = [
+        ".wrap .card:has(img) { color: red; }", // line 0
+        ".wrap",
+        "  .card:has(> img) { color: red; }", // line 2
+        ".card {",
+        "  .x:has(img) { color: red; }", // line 4
+        "  & > .y:has(img) { color: red; }", // line 5
+        "  > :is(p) { color: red; }",
+        "}",
+      ].join("\n");
+      expect(
+        findCompatibilityMatches(css, "css").map((match) => [
+          match.rule.id,
+          css.slice(0, match.index).split("\n").length - 1,
+        ]),
+      ).toEqual([
+        ["css-is-element-names", 0],
+        ["css-is-element-names", 2],
+        ["css-is-element-names", 4],
+        ["css-is-element-names", 5],
+      ]);
+    });
+
+    it("reports a rule of a stylesheet wrapped in <!-- and -->, and gives each match its list's start", () => {
+      const css = "<!--\n[data-a],\n[data-b] { color: red; }\n-->";
+      expect(
+        findCompatibilityMatches(css, "css").map((match) => [
+          match.rule.id,
+          css.slice(match.index, match.index + match.length),
+          match.selectorListStart,
+        ]),
+      ).toEqual([
+        ["css-attribute-selector", "[data-a]", css.indexOf("[data-a]")],
+        ["css-attribute-selector", "[data-b]", css.indexOf("[data-a]")],
+      ]);
+    });
+
+    it("still reports unanchored selectors, wrapped or inside an at-rule, where they start", () => {
+      const css = [
+        ".thread", // line 0
+        "  [data-a],",
+        "[data-b]", // line 2
+        "  > [data-c] {",
+        "  color: red;",
+        "}",
+        "@media (min-width: 40em) {",
+        "  :where([data-e])",
+        "    > :is(p) {", // line 8
+        "    color: red;",
+        "  }",
+        "  .card:has(img) { color: red; }", // line 11
+        "}",
+      ].join("\n");
+      expect(
+        findCompatibilityMatches(css, "css").map((match) => [
+          match.rule.id,
+          css.slice(0, match.index).split("\n").length - 1,
+          css.slice(match.index, match.index + match.length),
+        ]),
+      ).toEqual([
+        ["css-attribute-selector", 2, "[data-b]"],
+        ["css-is-element-names", 8, ":is(p)"],
+        ["css-is-element-names", 11, ":has(img)"],
+      ]);
     });
 
     it("ignores class selectors inside :is()", () => {

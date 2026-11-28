@@ -9,6 +9,12 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
+## [Unreleased]
+
+### Fixed
+
+- The `css-attribute-selector` and `css-is-element-names` lint rules (in `bascik --check`, the build warnings, `@bascik/language-server` and the VS Code extension) no longer report a selector that is anchored on a scoped class. They now read each selector whole instead of a line at a time, so a selector Prettier wraps over several lines (`.thread`, then `[data-part]` on the next line) gets the same verdict as its one-line form, and `:is()` with element names is accepted after a scoped class and a combinator anywhere earlier in the selector (`.thread :where([data-role]) > :is(h3, h4)`), not only directly after the class. A nested rule without `&` is read as a continuation of its parent (`.card { [open] {} }` is `.card [open]`, `#panel { [open] {} }` is `#panel [open]`), and bracketed grid line names in a declaration are no longer read as selectors. Unanchored selectors (`[data-state] {}`, `:is(p) {}`) and `:has()` with element names in a compound that has a class of its own (`.card:has(img) {}`, `.wrap .card:has(img) {}`) are still reported, now also when a rule shares its line with the one before it, and on the selector's own line when it follows a comma. A `bascik-ignore` comment on the line above a rule covers its whole selector list for these two rules, however the list is wrapped. A `bascik-disable` or `bascik-ignore` comment added for the misreported cases can be removed. See [Compatibility](https://bascik.dev/compatibility).
+
 ## [1.1.0] - 2026-11-27
 
 ### Added

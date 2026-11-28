@@ -480,6 +480,33 @@ describe("Bascik Language Server Analyzer", () => {
       ).toContain("css-attribute-selector");
     });
 
+    it("lets an ignore comment above a wrapped selector list cover the whole list, and only that list", () => {
+      const source = [
+        '<div class="a"></div>', // line 0
+        "<style>",
+        "  /* bascik-ignore css-attribute-selector */",
+        "  [data-a],", // line 3
+        "  [data-b],",
+        "  [data-c] {",
+        "    color: red;",
+        "  }",
+        "  [data-d],", // line 8
+        "  [data-e] {",
+        "    color: red;",
+        "  }",
+        "</style>",
+      ].join("\n");
+      expect(
+        createDiagnostics(
+          TextDocument.create(`file://${componentPath}`, "html", 1, source),
+          componentPath,
+          mockSnapshot,
+        )
+          .filter((d) => d.code === "css-attribute-selector")
+          .map((d) => d.range.start.line),
+      ).toEqual([8, 9]);
+    });
+
     it.each([
       ["</style/>"],
       ["</style foo>"],

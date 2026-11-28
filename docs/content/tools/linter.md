@@ -381,6 +381,8 @@ In CSS or JavaScript:
 element.id = "dynamic-id";
 ```
 
+For `css-attribute-selector` and `css-is-element-names`, a `bascik-ignore` comment on the line above a rule covers the rule's whole selector list, also when the list or one of its selectors is wrapped over several lines.
+
 You can also disable checks across an entire block:
 
 ```html

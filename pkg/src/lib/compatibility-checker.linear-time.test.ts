@@ -44,6 +44,26 @@ describe("css rule patterns on hostile input", () => {
   );
 });
 
+describe("selector rules on hostile input", () => {
+  // The rules that read one selector at a time find the selectors in one pass over the text.
+  it.each([
+    ["[data-x]{", 20_000],
+    [".a [data-x],", 20_000],
+    ["[data-x]\n", 20_000],
+    [".a{", 20_000],
+    ["url( ", 20_000],
+    ['.a { b: "\\"', 20_000],
+    [".a :is(p) > ", 20_000],
+  ] as const)(
+    "scans %j repeated in linear time",
+    (unit, count) => {
+      const text = (n: number) => unit.repeat(n);
+      expectLinearTime(text, count, (t) => findCompatibilityMatches(t, "css"));
+    },
+    LINEAR_TIME_TIMEOUT_MS,
+  );
+});
+
 describe("maskComments", () => {
   it.each([
     ["css", '"', '\\"', 100_000],

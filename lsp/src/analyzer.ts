@@ -868,10 +868,12 @@ export function createDiagnostics(
     offset: number,
   ) => {
     if (!appliesScopingRules) return;
-    for (const { rule, index, length } of findCompatibilityMatches(
-      sourceText,
-      kind,
-    )) {
+    for (const {
+      rule,
+      index,
+      length,
+      selectorListStart,
+    } of findCompatibilityMatches(sourceText, kind)) {
       const start = document.positionAt(offset + index);
       const end = document.positionAt(offset + index + length);
       const severity =
@@ -884,6 +886,11 @@ export function createDiagnostics(
         severity,
         source: "bascik",
         code: rule.id,
+        ...(selectorListStart !== undefined && {
+          data: {
+            selectorListStart: offset + selectorListStart,
+          } satisfies SelectorListData,
+        }),
       });
     }
   };
@@ -1788,6 +1795,19 @@ export function createDiagnostics(
       return false;
     }
     if (isDiagnosticIgnored(line, code, ignoreRanges)) return false;
+    // A selector on a later line of a wrapped selector list: an ignore comment above the list's first line
+    // covers it too.
+    const selectorListStart = (
+      diag.data as Partial<SelectorListData> | undefined
+    )?.selectorListStart;
+    if (typeof selectorListStart === "number") {
+      const listLine = document.positionAt(selectorListStart).line;
+      if (
+        listLine !== line &&
+        isDiagnosticIgnored(listLine, code, ignoreRanges)
+      )
+        return false;
+    }
     // A hole on a later line of a multi-line template: an ignore comment
     // above the template's first line covers it too.
     const templateStart = (diag.data as Partial<WrapHtmlData> | undefined)
@@ -2292,6 +2312,11 @@ export function buildThrowErrorEdit(
     title: "Wrap in new Error(...)",
     edit: { range: diag.range, newText: `new Error(${literal})` },
   };
+}
+
+/** Where the selector list of a selector diagnostic starts (an offset in the document). */
+interface SelectorListData {
+  selectorListStart: number;
 }
 
 /** Where the "Wrap template in html`...`" fix applies (offsets in the document). */

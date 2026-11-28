@@ -4,6 +4,7 @@
 // compiler), so this test, which sees both, is what keeps them saying the same thing.
 //
 // The rules themselves (`compatibility-rules.json`) are kept identical by generate-compatibility-rules.test.ts.
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 interface Matchers {
@@ -21,8 +22,19 @@ const languageServer = (await import(
   new URL("../../lsp/src/rules.ts", import.meta.url).href
 )) as Matchers;
 
-const summarize = (matches: Array<{ rule: { id: string }; index: number }>) =>
-  matches.map(({ rule, index }) => `${rule.id}@${index}`).sort();
+const summarize = (
+  matches: Array<{
+    rule: { id: string };
+    index: number;
+    selectorListStart?: number;
+  }>,
+) =>
+  matches
+    .map(
+      ({ rule, index, selectorListStart }) =>
+        `${rule.id}@${index} list@${selectorListStart}`,
+    )
+    .sort();
 
 const css = [
   '[id="a"] { color: red; }',
@@ -34,6 +46,16 @@ const css = [
   "[data-state] .scoped-class { color: blue; }",
   ":is(div, span) { margin: 0; }",
   "#ok, .fine > p { color: #fff; }",
+  // Selectors a formatter wraps: anchored ones stay quiet, unanchored ones are reported where they start.
+  ".thread\n  [data-part],\n[data-loose]\n  > [data-part] { color: red; }",
+  '.thread\n  :where([data-chat-part="turn"])\n  > :is(h3, h4) { margin: 0; }',
+  ":where([data-part])\n  > :is(h3, h4) { margin: 0; }",
+  "@media (min-width: 40em) {\n  .card { [open] { color: red; } }\n  [open] { :is(p) { margin: 0; } }\n}",
+  // A class in the pseudo-class's own compound, rules nested in unanchored parents, a wrapped stylesheet.
+  ".wrap .card:has(img),\n.wrap\n  :is(p) { margin: 0; }",
+  "#panel {\n  [open] { color: red; }\n}\n[data-a] { [open] { color: red; } div { [hidden] { color: red; } } }",
+  "<!--\n[data-wrapped],\n[data-list] { color: red; }\n-->",
+  '.grid {\n  grid-template-columns:\n    [full-start] 1fr\n    [full-end];\n  content: ":is(p)";\n}',
   "",
 ].join("\n");
 
@@ -49,6 +71,14 @@ const js = [
 ].join("\n");
 
 describe("compatibility matcher parity", () => {
+  it("carries the same selector scanner in both packages", async () => {
+    const copy = (path: string) =>
+      readFile(new URL(path, import.meta.url), "utf8");
+    expect(await copy("../../lsp/src/css-selector-anchors.ts")).toBe(
+      await copy("../../pkg/src/lib/css-selector-anchors.ts"),
+    );
+  });
+
   it.each([
     ["css", css],
     ["js", js],
@@ -78,6 +108,8 @@ describe("compatibility matcher parity", () => {
   it.each([
     ["css", '[id] { a: "x }\n[data-y] { b: url( "z) }\n/* [hidden] unclosed\n'],
     ["css", ".a { background: url('x[id]') } [data-q] { c: 'open\n"],
+    ["css", ".a:is(p { } [data-q] { } .b { [data-r { } :has(img) { }\n"],
+    ["css", '.a { b: url(x } [data-q]\n  > :is(p) { c: "open }\n[data-r] { }'],
     [
       "js",
       'el.id = "a;\nconst t = `x\\` [data-x]\n/* el.id = 1;\ndocument.querySelector("[open]");\n',
