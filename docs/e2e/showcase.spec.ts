@@ -8,6 +8,11 @@ const sites = [
     name: "Sunridge Counseling",
     url: "https://sunridgecounseling.com",
   },
+  {
+    slug: "outside-the-session",
+    name: "Outside The Session",
+    url: "https://outsidethesession.com",
+  },
   { slug: "dgco", name: "DGCO", url: "https://dgcocpa.com" },
   {
     slug: "lateral-emdr",
