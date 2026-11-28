@@ -702,55 +702,6 @@ describe("bascik add", () => {
     ).toBe("export {};\n");
   });
 
-  it("copies a module two components share, and what it imports, with either one", async () => {
-    await setupFixturePackage(
-      "chat-kit",
-      {
-        name: "chat-kit",
-        version: "1.0.0",
-        bascik: { components: "components" },
-      },
-      {
-        "components/chat/chat-enhance.html":
-          '<script type="text/typescript">\n  import {\n    findPart,\n  } from "./chat-root/parts.ts";\n</script>',
-        "components/chat/voice-call.html":
-          '<script type="text/typescript">import "./voice-call/requests.ts";</script>',
-        "components/chat/voice-call/requests.ts":
-          "import { partIn } from '../chat-root/parts.ts';\nexport { partIn };\n",
-        "components/chat/chat-root/parts.ts":
-          'export const lazy = () => import("../../shared/names.ts");\n',
-        "components/chat/chat-root/parts.test.ts": 'import "./parts.ts";\n',
-        "components/chat/chat-root/unused.ts": "export {};\n",
-        "components/shared/names.ts": 'import "./missing.ts";\nexport {};\n',
-        "components/chat/other.html": "<p>other</p>",
-      },
-    );
-    const copiedBy = async (target: string): Promise<string[]> => {
-      const result = await addComponents([target], {
-        cwd: testDir,
-        dryRun: true,
-      });
-      return result.copiedFiles
-        .map((file) =>
-          file.destPath.slice(componentsDir.length + 1).replace(/\\/g, "/"),
-        )
-        .sort();
-    };
-
-    expect(await copiedBy("chat-kit/chat-enhance")).toEqual([
-      "chat/chat-enhance.html",
-      "chat/chat-root/parts.ts",
-      "shared/names.ts",
-    ]);
-    // Reached through a module in the component's folder, not the component.
-    expect(await copiedBy("chat-kit/voice-call")).toEqual([
-      "chat/chat-root/parts.ts",
-      "chat/voice-call.html",
-      "chat/voice-call/requests.ts",
-      "shared/names.ts",
-    ]);
-  });
-
   it("copies the helpers in a component's own folder (name/name.html)", async () => {
     await setupFixturePackage(
       "rating-kit",

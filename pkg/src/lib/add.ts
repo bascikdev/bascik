@@ -20,13 +20,6 @@ import { BascikConfig } from "./config.ts";
 import { deepReadDirFlat } from "./file-system.ts";
 import { COMPONENT_FILE_RE, deriveComponentName } from "./components.ts";
 
-/**
- * A relative module specifier in an import: `from "./x.ts"`, a bare
- * `import "../x.ts"`, or `import("./x.ts")`. Group 1 is the specifier.
- */
-const RELATIVE_IMPORT_RE =
-  /\b(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"'\n]+)["']/g;
-
 export interface AddOptions {
   cwd?: string;
   componentsDir?: string;
@@ -389,8 +382,8 @@ export const addComponents = async (
           const ownFolder = dir.endsWith(`/${name}/`) || dir === `${name}/`;
           return ownFolder ? [`${stem}/`, dir] : [`${stem}/`];
         });
-      const chosen = new Set(candidateFiles);
       if (siblingFolders.length > 0) {
+        const chosen = new Set(candidateFiles);
         for (const filePath of packageFiles as string[]) {
           if (chosen.has(filePath)) continue;
           const rel = relOf(filePath);
@@ -398,22 +391,6 @@ export const addComponents = async (
           if (siblingFolders.some((folder) => rel.startsWith(folder))) {
             candidateFiles.push(filePath);
             chosen.add(filePath);
-          }
-        }
-      }
-
-      // A module several components share lives in neither's folder
-      // (`chat/chat-enhance.html` and `chat/voice-call.html` both import
-      // `./chat-root/parts.ts`). Follow each chosen file's relative imports,
-      // and theirs, to the package files they name.
-      const inPackage = new Set(packageFiles as string[]);
-      for (const filePath of candidateFiles) {
-        const source = await readFile(filePath, "utf8");
-        for (const [, specifier] of source.matchAll(RELATIVE_IMPORT_RE)) {
-          const imported = resolve(dirname(filePath), specifier!);
-          if (inPackage.has(imported) && !chosen.has(imported)) {
-            candidateFiles.push(imported);
-            chosen.add(imported);
           }
         }
       }

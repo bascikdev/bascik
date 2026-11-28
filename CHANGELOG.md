@@ -19,7 +19,6 @@ it is not `@bascik/bascik`.
 ### Fixed
 
 - `bascik add <package>/<component>` also copies the files in the folder named after that component, beside it, such as `chat/voice-call/*.ts` next to `chat/voice-call.html`, and the other files in a component's own folder, such as `book-rating/format-rating.ts` beside `book-rating/book-rating.html`. Before, only the files named after the component were copied, so one that imports modules from those folders failed to build. Test files in the folder are left out. See [Sharing Components](https://bascik.dev/how-to/sharing-components).
-- `bascik add <package>/<component>` also copies the files that component imports by a relative path from elsewhere in the package's component folder, and the files those import, such as a helper module several components share.
 
 ## [1.0.2] - 2026-11-25
 
