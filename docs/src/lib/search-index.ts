@@ -66,8 +66,9 @@ export const SEARCH_TEXT_FILE_PATTERN = /^search-text\.[0-9a-f]{10}\.json$/;
  * visitor downloaded all of it before seeing a result.
  */
 export const SEARCH_INDEX_MAX_COMPRESSED_BYTES = 45_000;
-// Raised from 470,000 for the generative UI pages (Providers, then the server kit and how-tos).
-export const SEARCH_TEXT_MAX_COMPRESSED_BYTES = 520_000;
+// Raised from 470,000 for the generative UI pages (Providers, then the server kit and how-tos), and from
+// 520,000 for the Chat Parts page and the reference of every chat part (525,965 measured).
+export const SEARCH_TEXT_MAX_COMPRESSED_BYTES = 540_000;
 
 /** The size of a file as a host sends it. */
 export const compressedSize = (json: string): number =>
