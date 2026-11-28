@@ -318,6 +318,8 @@ export interface Match {
    * samples over seconds; a lost piece moves it by the piece's length.
    */
   slip: number;
+  /** Each stretch that was compared: its best score, and how far it was moved to get it. */
+  stretches: { score: number; moved: number }[];
 }
 
 /**
@@ -381,6 +383,7 @@ export function findSignal(
   const size = Math.round(sampleRate * windowSeconds);
   let worst = 1;
   let slip = 0;
+  const stretches: Match["stretches"] = [];
   for (let start = 0; start + size <= signal.length; start += size) {
     // A stretch of silence has no shape to compare.
     if (rms(signal, start, start + size) < 0.005) continue;
@@ -401,6 +404,7 @@ export function findSignal(
     }
     worst = Math.min(worst, best);
     slip = Math.max(slip, Math.abs(moved));
+    stretches.push({ score: best, moved });
   }
   const heard = rms(recording, lag, lag + signal.length);
   return {
@@ -409,6 +413,7 @@ export function findSignal(
     worst,
     gain: heard / (rms(signal) || 1),
     slip,
+    stretches,
   };
 }
 
