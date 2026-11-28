@@ -1,9 +1,24 @@
 import compatibilityRulesData from "./compatibility-rules.json" with { type: "json" };
+import {
+  findCssSelectors,
+  hasClassBeforeInCompound,
+  selectorOnOneLine,
+  type CssSelector,
+} from "./css-selector-anchors.js";
+
+/**
+ * How a CSS rule that reports unanchored selectors is silenced. A rule with this field is matched against one
+ * selector at a time (an item of a style rule's selector list, read whole, however it is wrapped), not against
+ * the raw text. `any-class`: a scoped class anywhere at the top level of the selector anchors it.
+ * `earlier-class`: a scoped class and a combinator must come before the match (`.card :is(p)`).
+ */
+export type CompatibilityAnchor = "any-class" | "earlier-class";
 
 export type CompatibilityPattern = {
   id: string;
   kind: "css" | "js";
   severity?: "error" | "warning";
+  anchoredBy?: CompatibilityAnchor;
   regex: RegExp;
   message: string;
   suggestion: string;
@@ -13,6 +28,7 @@ type CompatibilityRuleDefinition = {
   id: string;
   kind: "css" | "js";
   severity?: "error" | "warning";
+  anchoredBy?: CompatibilityAnchor;
   pattern: string;
   flags?: string;
   message: string;
@@ -31,6 +47,11 @@ export interface CompatibilityMatch {
   /** Offset of the match in the text that was scanned. */
   index: number;
   length: number;
+  /**
+   * For a rule that reads selectors: where the selector list of the match starts. An ignore comment on the line
+   * above the list covers the match, also when the list is wrapped and the match is on a later line.
+   */
+  selectorListStart?: number;
 }
 
 /** End of the quoted string that opens at `start`, past its closing quote, or -1 when it never closes. */
@@ -141,6 +162,7 @@ export function findCompatibilityMatches(
 ): CompatibilityMatch[] {
   const scannable = maskComments(text, kind);
   const matches: CompatibilityMatch[] = [];
+  let selectors: CssSelector[] | undefined;
   for (const rule of compatibilityRules) {
     if (rule.kind !== kind) continue;
     const regex = new RegExp(
@@ -149,33 +171,67 @@ export function findCompatibilityMatches(
         ? rule.regex.flags
         : `${rule.regex.flags}g`,
     );
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(scannable)) !== null) {
-      // Some patterns allow leading whitespace (`(^|,)\s*\[`), which can reach back over blank lines. Start the
-      // match at the first visible character, so a squiggle lands where the problem is.
-      const leading = Math.max(match[0].search(/\S/), 0);
-      matches.push({
-        rule,
-        index: match.index + leading,
-        length: Math.max(match[0].length - leading, 1),
-      });
-      // A pattern that can match nothing would otherwise never advance.
-      if (match[0].length === 0) regex.lastIndex++;
+    // Runs the pattern over `source`, the whole text or one `selector` of it, and keeps what `keep` accepts.
+    const collect = (
+      source: string,
+      selector?: CssSelector,
+      keep?: (offset: number) => boolean,
+    ) => {
+      const base = selector?.start ?? 0;
+      regex.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(source)) !== null) {
+        // A pattern that can match nothing would otherwise never advance.
+        if (match[0].length === 0) regex.lastIndex++;
+        // Some patterns allow leading whitespace (`(^|,)\s*\[`), which can reach back over blank lines. Start
+        // the match at the first visible character, so a squiggle lands where the problem is.
+        const leading = Math.max(match[0].search(/\S/), 0);
+        const index = base + match.index + leading;
+        if (keep && !keep(index)) continue;
+        matches.push({
+          rule,
+          index,
+          length: Math.max(match[0].length - leading, 1),
+          ...(selector && { selectorListStart: selector.listStart }),
+        });
+      }
+    };
+    if (kind !== "css" || !rule.anchoredBy) {
+      collect(scannable);
+      continue;
+    }
+    // A rule about unanchored selectors reads one whole selector at a time. Read a line at a time, a selector
+    // that Prettier wraps looks like several, and its later lines look unanchored.
+    selectors ??= findCssSelectors(scannable);
+    for (const selector of selectors) {
+      if (rule.anchoredBy === "any-class") {
+        if (selector.hasAnchor || selector.followsParent) continue;
+        collect(selectorOnOneLine(scannable, selector), selector);
+      } else {
+        // Past a class and a combinator the match is a relative of an anchored element, unless its own
+        // compound has a class too (`.wrap .card:has(img)` narrows `.card`, as `.card:has(img)` does).
+        const { anchoredFrom } = selector;
+        collect(
+          selectorOnOneLine(scannable, selector),
+          selector,
+          (offset) =>
+            anchoredFrom < 0 ||
+            offset < anchoredFrom ||
+            hasClassBeforeInCompound(selector, offset),
+        );
+      }
     }
   }
   return matches;
 }
 
+/** The rules that report something in `text`, each once. The same verdict as `findCompatibilityMatches`. */
 export function matchCompatibilityRules(
   text: string,
   kind: "css" | "js",
 ): CompatibilityPattern[] {
-  return compatibilityRules.filter((rule) => {
-    if (rule.kind !== kind) {
-      return false;
-    }
-
-    const regex = new RegExp(rule.regex.source, rule.regex.flags);
-    return regex.test(text);
-  });
+  const matched = new Set(
+    findCompatibilityMatches(text, kind).map((match) => match.rule),
+  );
+  return compatibilityRules.filter((rule) => matched.has(rule));
 }

@@ -1,9 +1,24 @@
 import compatibilityRulesData from "./compatibility-rules.json" with { type: "json" };
+import {
+  findCssSelectors,
+  hasClassBeforeInCompound,
+  selectorOnOneLine,
+  type CssSelector,
+} from "./css-selector-anchors.ts";
+
+/**
+ * How a CSS rule that reports unanchored selectors is silenced. A rule with this field is matched against one
+ * selector at a time (an item of a style rule's selector list, read whole, however it is wrapped), not against
+ * the raw text. `any-class`: a scoped class anywhere at the top level of the selector anchors it.
+ * `earlier-class`: a scoped class and a combinator must come before the match (`.card :is(p)`).
+ */
+export type CompatibilityAnchor = "any-class" | "earlier-class";
 
 export interface CompatibilityPattern {
   id: string;
   kind: "css" | "js";
   severity?: "error" | "warning";
+  anchoredBy?: CompatibilityAnchor;
   regex: RegExp;
   message: string;
   suggestion: string;
@@ -13,12 +28,18 @@ export interface CompatibilityMatch {
   rule: CompatibilityPattern;
   index: number;
   length: number;
+  /**
+   * For a rule that reads selectors: where the selector list of the match starts. An ignore comment on the line
+   * above the list covers the match, also when the list is wrapped and the match is on a later line.
+   */
+  selectorListStart?: number;
 }
 
 interface CompatibilityRuleDefinition {
   id: string;
   kind: "css" | "js";
   severity?: "error" | "warning";
+  anchoredBy?: CompatibilityAnchor;
   pattern: string;
   flags?: string;
   message: string;
@@ -233,35 +254,77 @@ export function findCompatibilityMatches(
   const ignoreRanges = parseIgnoreDirectives(text);
   const scannable = maskComments(text, kind);
   const matches: CompatibilityMatch[] = [];
+  let selectors: CssSelector[] | undefined;
   for (const rule of compatibilityRules) {
     if (rule.kind !== kind) continue;
     const flags = rule.regex.flags.includes("g")
       ? rule.regex.flags
       : `${rule.regex.flags}g`;
     const regex = new RegExp(rule.regex.source, flags);
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(scannable)) !== null) {
-      // Some patterns allow leading whitespace (`(^|,)\s*\[`), which can reach back over line breaks.
-      // Start the match at its first visible character, as the language server does, so the
-      // reported (and ignore-checked) line is the line of the problem.
-      const leading = Math.max(m[0].search(/\S/), 0);
-      if (
-        ignoreRanges.length > 0 &&
-        isDiagnosticIgnored(
-          getZeroBasedLineAt(text, m.index + leading),
-          rule.id,
-          ignoreRanges,
-        )
-      ) {
-        if (!regex.global) break;
-        continue;
+    // Runs the pattern over `source`, the whole text or one `selector` of it, and keeps what `keep` accepts.
+    const collect = (
+      source: string,
+      selector?: CssSelector,
+      keep?: (offset: number) => boolean,
+    ) => {
+      const base = selector?.start ?? 0;
+      regex.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = regex.exec(source)) !== null) {
+        // A pattern that can match nothing would otherwise never advance.
+        if (m[0].length === 0) regex.lastIndex++;
+        // Some patterns allow leading whitespace (`(^|,)\s*\[`), which can reach back over line breaks.
+        // Start the match at its first visible character, as the language server does, so the
+        // reported (and ignore-checked) line is the line of the problem.
+        const leading = Math.max(m[0].search(/\S/), 0);
+        const index = base + m.index + leading;
+        if (keep && !keep(index)) continue;
+        // An ignore comment covers the line of the match, or the line where its selector list starts.
+        const isIgnoredAt = (offset: number) =>
+          isDiagnosticIgnored(
+            getZeroBasedLineAt(text, offset),
+            rule.id,
+            ignoreRanges,
+          );
+        if (
+          ignoreRanges.length > 0 &&
+          (isIgnoredAt(index) ||
+            (selector !== undefined && isIgnoredAt(selector.listStart)))
+        ) {
+          continue;
+        }
+        matches.push({
+          rule,
+          index,
+          length: Math.max(m[0].length - leading, 1),
+          ...(selector && { selectorListStart: selector.listStart }),
+        });
       }
-      matches.push({
-        rule,
-        index: m.index + leading,
-        length: Math.max(m[0].length - leading, 1),
-      });
-      if (!regex.global) break;
+    };
+    if (kind !== "css" || !rule.anchoredBy) {
+      collect(scannable);
+      continue;
+    }
+    // A rule about unanchored selectors reads one whole selector at a time. Read a line at a time, a selector
+    // that Prettier wraps looks like several, and its later lines look unanchored.
+    selectors ??= findCssSelectors(scannable);
+    for (const selector of selectors) {
+      if (rule.anchoredBy === "any-class") {
+        if (selector.hasAnchor || selector.followsParent) continue;
+        collect(selectorOnOneLine(scannable, selector), selector);
+      } else {
+        // Past a class and a combinator the match is a relative of an anchored element, unless its own
+        // compound has a class too (`.wrap .card:has(img)` narrows `.card`, as `.card:has(img)` does).
+        const { anchoredFrom } = selector;
+        collect(
+          selectorOnOneLine(scannable, selector),
+          selector,
+          (offset) =>
+            anchoredFrom < 0 ||
+            offset < anchoredFrom ||
+            hasClassBeforeInCompound(selector, offset),
+        );
+      }
     }
   }
   return matches;
