@@ -80,9 +80,10 @@ const VOID_ELEMENTS = new Set([
  * of this template, read as the build's slot parser (`parseNamedSlots` in
  * pkg's component-slots.ts) reads them: a marker inside a closed component
  * usage belongs to that component, a marker inside a filled wrapper is that
- * wrapper's content, and a marker whose element has no matching end tag (a
+ * wrapper's content, a marker whose element has no matching end tag (a
  * void element, `<span data-bascik-slot="a"/>` with no `</span>`) is never
- * filled. A component usage with no end tag, or written `<x-card/>`, holds
+ * filled, and a marker on a component tag names no slot of this template. A
+ * component usage with no end tag, or written `<x-card/>`, holds
  * nothing, so a marker after it is still this template's.
  */
 function ownedSlotMarkerTags(
@@ -138,7 +139,10 @@ function ownedSlotMarkerTags(
       if (
         tag.start < filledUntil ||
         tag.start < insideUntil ||
-        closeStart[index] === -1
+        closeStart[index] === -1 ||
+        // A component tag that carries the marker is a nested usage, never
+        // a placeholder: the build renders it and fills nothing.
+        componentNames.has(tag.name.toLowerCase())
       )
         owned.push([tag.start, tag.end]);
       else filledUntil = closeEnd[index];

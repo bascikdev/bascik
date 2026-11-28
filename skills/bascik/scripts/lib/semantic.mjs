@@ -453,9 +453,12 @@ export function walkComposed(page, componentDocs, visit) {
             // Bascik drops a named wrapper and keeps what is inside it. A wrapper a template passes to a child is
             // that template's content, so no named placeholder in there is filled from an outer usage, but a
             // valueless marker in there still receives the outer usage's default slot (the build forwards it).
+            // A component tag that carries the attribute is no wrapper: the build keeps and renders it.
             const outer = ctx.slots.ctx.slots;
             walk(
-              passed.flatMap((wrapper) => wrapper.children),
+              passed.flatMap((wrapper) =>
+                componentDocs.has(wrapper.tag) ? [wrapper] : wrapper.children,
+              ),
               {
                 ...ctx.slots.ctx,
                 slots: outer && {

@@ -9,6 +9,18 @@ Entries cover every Bascik package: `@bascik/bascik`, `create-bascik`,
 the VS Code extension, and the public agent skills. A bullet names its package when
 it is not `@bascik/bascik`.
 
+## [Unreleased]
+
+### Added
+
+- The build warns when a usage fills one named slot more than once (`<book-shelf><book-filter data-bascik-slot="toolbar" /><book-sort data-bascik-slot="toolbar" /></book-shelf>`, or two wrappers with one name). Only the last fill reaches the slot, as before, and the earlier ones were dropped without a word. The warning names the component, the slot and the file. To render all of them, put them in one element that carries the attribute. See [Slots](https://bascik.dev/slots#a-component-as-named-slot-content).
+
+### Fixed
+
+- A component tag can carry `data-bascik-slot="name"` itself: `<chat-composer><chat-attach data-bascik-slot="start" /></chat-composer>` renders `<chat-attach>` in the composer's `start` slot, the same as wrapping it in `<span data-bascik-slot="start">`. Before, the paired form (`<chat-attach data-bascik-slot="start"></chat-attach>`) was removed as a wrapper, so the component never rendered, and the self-closing form rendered in the default slot, both without a warning. If you relied on the self-closing form landing in the default slot, remove the attribute: the component now moves to the named slot, or is dropped with the "not declared" warning when the outer component has no slot of that name. A template that renders its own tag this way is now reported as a component cycle at once in the paired form too. See [Slots](https://bascik.dev/slots#a-component-as-named-slot-content).
+- `@bascik/language-server` and the VS Code extension (the editor and the per-file checks of `bascik --check`) no longer list a slot for a paired component tag that carries `data-bascik-slot="name"` in a component template (`<main><book-card data-bascik-slot="side">Dune</book-card></main>`). The build renders that component and fills nothing, so content passed for `side` is now reported as an undeclared slot and `side` is no longer offered as a completion.
+- Agent skills: `audit-components.mjs` in the `bascik` skill follows a component tag that carries `data-bascik-slot="name"` into its template, as it does for the wrapper form, so findings such as a skipped heading level inside it are reported. The `bascik` and `bascik-migrate` skills say that a component tag may carry the attribute and is kept.
+
 ## [1.1.0] - 2026-11-27
 
 ### Added
