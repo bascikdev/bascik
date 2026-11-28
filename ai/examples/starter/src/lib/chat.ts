@@ -41,7 +41,8 @@ const model = scriptedModel(
   { delayMs: Number(process.env.STARTER_MODEL_DELAY_MS ?? 12) },
 );
 
-const chat = createChat({
+// Named too, so the route files and your own scripts can import it.
+export const chat = createChat({
   store: fileStore(join(DATA_DIR, "conversations")),
   files: diskFiles(join(DATA_DIR, "files")),
   catalog: () => readCatalog(CATALOG_DIR),

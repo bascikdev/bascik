@@ -34,6 +34,13 @@ Around it: anything; it fills the width it is given, and `chat-sidebar` is where
     padding: 0;
     list-style: none;
   }
+  @media (pointer: coarse) {
+    .clear {
+      display: inline-flex;
+      align-items: center;
+      min-block-size: 2.75rem;
+    }
+  }
 </style>
 <section
   class="found"

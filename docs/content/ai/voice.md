@@ -4,15 +4,31 @@ Two optional components give a chat a voice. `chat-voice` uses the browser's own
 
 ## Add it
 
-`bascik add @bascik/ai` copies the component to `src/components/chat/`. Put it inside the composer:
+`bascik add @bascik/ai` copies the component to `src/components/chat/`. Put it in the composer's default slot, which is between its tags:
 
 ```html
-<chat-composer data-bascik-prop-app="books">
+<chat-composer>
   <chat-voice />
 </chat-composer>
 ```
 
-Inside the composer, it adds a CC button to the composer's row. The button opens a line of controls above the message box, and shows a light while any of them is on. Captions appear as a line in the same box:
+`chat-app`'s default message box has no voice parts, because they are opt-in. With the one tag, fill its `composer` slot with a composer that holds them, repeating what the default had and you still want:
+
+```html
+<chat-app>
+  <template data-bascik-slot="composer">
+    <chat-composer
+      data-bascik-prop-autofocus="autofocus"
+      enctype="multipart/form-data"
+    >
+      <span data-bascik-slot="start"><chat-attach /></span>
+      <chat-voice />
+    </chat-composer>
+  </template>
+</chat-app>
+```
+
+Inside the composer, it adds a CC button to the composer's row, before Send. The button opens a line of controls next to the message box, and shows a light while any of them is on. Captions appear as the first line of the same box:
 
 | Control    | What it does                                                                                  |
 | :--------- | :-------------------------------------------------------------------------------------------- |
@@ -66,17 +82,23 @@ A control whose API is missing is not shown.
 The browser's voices are free and instant, and they sound like a browser. `voice-call` is the other kind of voice: a spoken conversation with a speech-to-speech model, which hears the reader and answers aloud with no text step in between. It works with Google's Gemini Live API and with Azure Voice Live.
 
 ```html
-<chat-composer data-bascik-prop-app="books">
+<chat-composer>
   <chat-voice />
-  <voice-call data-bascik-prop-app="books" />
+  <voice-call />
 </chat-composer>
 ```
+
+A site with several chats names its app on both: `data-bascik-prop-app="books"` on `chat-composer` and on `voice-call`.
 
 Pressing the microphone button connects, turns on the microphone, and the reader talks. The model's voice plays, a caption line follows it, and what each side says appears in the thread. Typing in the composer during a call says the message to the model, so a call also works with no microphone. While a call is on, the button reads End call, and a line above the message box names the provider and its model, says what the call is doing, and carries the captions. The Reading aids step aside: a call has its own voice and captions. Dictate stops listening while a call is on, so nothing is sent to the model twice, and listens again when the call ends. When a call ends because the relay or the provider hung up, the reason is shown on that line.
 
 A second button mutes the microphone without ending the call, and a call nobody speaks on asks whether anyone is there and then ends itself: see [Muting the microphone](#muting-the-microphone) and [A call nobody is speaking on](#a-call-nobody-is-speaking-on).
 
-Both components have no box of their own. Their parts are laid out by the composer, so the chat has one box at the bottom of the page and not three. Either one also works outside the composer, as plain elements in the page.
+Both components have no box of their own. Each puts its button in the composer's row and marks its other elements as lines, with `data-chat-line`, which the composer lays out: `chat-voice`'s caption is the first line (`top`), the call's status line is above the message box (`above`), and `chat-voice`'s controls are the line next to the message box (`near`). So the chat has one box at the bottom of the page and not three, and the order holds whichever part comes first in the source. See [Lines in the message box](/ai/chat-parts#lines-in-the-message-box).
+
+Either one also works outside the composer, beside it in the same `data-chat` element: its lines and its button are then laid out by whatever holds it. Each finds the thread, the composer and the message box from its nearest `data-chat` element, so a call takes over only the composer of its own chat.
+
+While a call is on, `voice-call` sets `data-genui-call="on"` on the `data-chat` element and on `<html>`, and the events `chat:call-start` and `chat:call-end` bubble from the `data-chat` element.
 
 ### What goes direct and what goes through your server
 
@@ -127,7 +149,18 @@ A tool that has not answered after a minute (`VOICE_TOOL_TIMEOUT_MS`) is recorde
 
 When the model finishes a turn, `voiceMessages(turn, { reader, model })` gives the messages to store. Pass `show` as well when the thread showed something other than what the model was told, such as the label of a form the reader pressed: it is stored as the reader's message's `show` (see [Forms in a call](#forms-in-a-call)). Words a model spoke are stored as a text part marked `spoken`, and are shown as plain text: a transcript that looks like a tag is still only something that was said.
 
-The repository's demo has the three routes (`api/voice-session.ts`, `api/voice-tool.ts`, `api/voice-turn.ts`) and the `voice-view` page the component reads a call's view from. The view is a page, and not an API response, so that Bascik renders the components in it.
+The repository's demo has the three routes (`api/voice-session.ts`, `api/voice-tool.ts`, `api/voice-turn.ts`) and the `voice-view` page the component reads a call's view from. The view is a page, and not an API response, so that Bascik renders the components in it. The page marks what it shows with `data-chat-part="view"`.
+
+The four paths are defaults. `voice-call` takes each as a prop:
+
+| Prop            | Default              |
+| :-------------- | :------------------- |
+| `session-route` | `/api/voice-session` |
+| `tool-route`    | `/api/voice-tool`    |
+| `turn-route`    | `/api/voice-turn`    |
+| `view-route`    | `/voice-view`        |
+
+Setting one prints one build line, "Attribute binding conflict … prop wins", which is the prop replacing the default. The component carries the routes as hidden, empty links marked `rel="nofollow"`, so the site's `base` applies to them. They are not navigation: a link checker run over the built pages should skip them.
 
 ### Azure Voice Live
 
@@ -234,7 +267,6 @@ Two props set the times:
 
 ```html
 <voice-call
-  data-bascik-prop-app="books"
   data-bascik-prop-idle-seconds="300"
   data-bascik-prop-idle-warning-seconds="60"
 />

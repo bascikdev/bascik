@@ -50,6 +50,11 @@ Around it: `search-results`, or an `ol` or a `ul` of your own; its root is a lis
     background: var(--accent);
     color: var(--on-accent);
   }
+  @media (pointer: coarse) {
+    .open {
+      min-block-size: 2.75rem;
+    }
+  }
 </style>
 <li class="result" data-testid="search-result">
   <form

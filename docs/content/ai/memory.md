@@ -24,10 +24,12 @@ Two more handlers belong to the same option, and each is one line in a route fil
 
 ```ts
 // src/api/forget.ts
+import { chat } from "../lib/chat.ts";
+
 export const POST = chat.forget;
 ```
 
-`chat.forget` takes a form post with the memory's `id` and sends the reader back to the page. It also takes an optional `back`, a path on your site to return to (a value that is not a path on your site is ignored). Removing a memory that is already gone is not an error, so the form is safe to send twice.
+`/api/forget` is where `memory-item` and `memory-note` post unless you set their `route` prop. `chat.forget` takes a form post with the memory's `id` and sends the reader back to the page. It also takes an optional `back`, a path on your site to return to (a value that is not a path on your site is ignored). Removing a memory that is already gone is not an error, so the form is safe to send twice.
 
 ## What the model can do
 
@@ -54,7 +56,7 @@ const system = `${instructions}\n\n${memoryPrompt(await store.list(reader))}`;
 
 Saving and forgetting change stored data about a person, so neither happens out of sight.
 
-- **In the reply.** Each `remember` call shows as a line in the reply: "Remembered:" and the words that were saved. By default the line is the tool's `note`. To add an Undo button, draw the finished call yourself with `view` and the `memory-note` component, which is a plain form that posts to `/api/forget`:
+- **In the reply.** Each `remember` call shows as a line in the reply: "Remembered:" and the words that were saved. By default the line is the tool's `note`. To add an Undo button, draw the finished call yourself with `view` and the `memory-note` component, which is a plain form that posts to `/api/forget` (its `route` prop):
 
 ```ts
 import { html } from "@bascik/bascik/html";
@@ -64,7 +66,6 @@ view: (part) => {
   const saved = savedMemory(part);
   return saved
     ? html`<memory-note
-        data-bascik-prop-app="${app.id}"
         data-bascik-prop-memory="${saved.id}"
         >${saved.text}</memory-note
       >`
@@ -72,23 +73,59 @@ view: (part) => {
 },
 ```
 
-- **On a page of its own.** `chat.memories(request)` answers the reader's memories, newest first, for a page that lists them. `memory-list` holds the heading, a line that says what memory is, the empty state, and one `memory-item` per memory. Each item is a plain form with a Forget button, so a reader with no JavaScript can remove anything:
+- **On a page of its own.** `chat-memories` is the whole list in one tag. It is a data part: it reads the chat from the project module (`src/lib/chat.ts`) on every request and prints `memory-list` with one `memory-item` per memory, newest first. Each item is a plain form with a Forget button, so a reader with no JavaScript can remove anything, and Forget sends the reader back to the page the list is on:
 
-```ts
-const memories = await chat.memories(request);
-yield html`<memory-list
-  >${memories.map(
-    (memory) =>
-      html`<memory-item
-        data-bascik-prop-app="${app.id}"
-        data-bascik-prop-memory="${memory.id}"
-        data-bascik-prop-saved="${new Date(memory.created).toISOString().slice(0, 10)}"
-        data-bascik-prop-back="/memory"
-        >${memory.text}</memory-item
-      >`,
-  )}</memory-list
->`;
+```html
+<main class="page">
+  <chat-memories />
+</main>
 ```
+
+```css
+.page {
+  max-inline-size: 46rem;
+  margin-inline: auto;
+  padding: 1.5rem 1rem;
+}
+```
+
+`memory-list` fills the width it is given and adds no space around itself, so the column it sits in sets its width and margins. That lets the same list sit in a page, a sidebar section, or a dialog. `chat-memories` reads `app` and `routes.forget` from the project module, and has no props.
+
+- **With your own words.** `chat-memories` prints `memory-list` with its own English text. For other words, or another heading level, print the list from a script of your own. `chat.memories(request)` answers the reader's memories, newest first, and `memory-list` has a slot for each piece of text: `heading` (the heading element itself), `about` (the line under it) and `empty` (the empty state). A slot filled from a script uses a `<template>` wrapper, and an empty wrapper leaves that piece out:
+
+```html
+<main class="page">
+  <script data-bascik-stream type="text/typescript">
+    import { html } from "@bascik/bascik/html";
+    import { chat } from "@/lib/chat.ts";
+
+    export default async function* (request: Request) {
+      const memories = await chat.memories(request);
+      yield html`<memory-list>
+        <template data-bascik-slot="heading"><h2>Memory</h2></template>
+        <template data-bascik-slot="about"
+          >What you told the bookshop assistant to keep.</template
+        >
+        ${memories.map(
+          (memory) =>
+            html`<memory-item
+              data-bascik-prop-memory="${memory.id}"
+              data-bascik-prop-saved="${new Date(memory.created)
+                .toISOString()
+                .slice(0, 10)}"
+              data-bascik-prop-back="/memory"
+              >${memory.text}</memory-item
+            >`,
+        )}
+      </memory-list>`;
+    }
+  </script>
+</main>
+```
+
+A site with several chats adds `data-bascik-prop-app` with the app's id to each `memory-item`, and to `memory-note` above.
+
+Forget is always a page load. `memory-item`'s form carries `data-genui="native"`, so the [client runtime](/ai/client-runtime#which-forms-it-takes) leaves it to the browser, also when the list sits inside a chat. `memory-note`'s Undo is a form in a reply, so inside a chat the client runtime sends it and streams the answer in.
 
 - **By approval.** To make the reader allow each save and each removal first, set `memoryApproval: true`. The reply stops at the call with the usual approval card (see [Tools & Approval](/ai/tools#ask-before-a-tool-runs)), and nothing is saved until they press Allow. The default is off: the reader sees every save, and one press undoes it.
 

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <docs-head />
+    <script data-bascik-build>
+      import { canonical } from "@/lib/canonical.ts";
+      export default async () => await canonical();
+    </script>
+    <script data-bascik-build>
+      import { openGraph } from "@/lib/open-graph.ts";
+      export default async () => await openGraph();
+    </script>
+    <script data-bascik-build>
+      import { breadcrumbLd } from "@/lib/breadcrumb-ld.ts";
+      export default async () => await breadcrumbLd();
+    </script>
+    <script data-bascik-build>
+      import { articleSchema } from "@/lib/article-schema.ts";
+      export default async () => await articleSchema();
+    </script>
+    <meta
+      name="description"
+      content="Assemble a chat UI from Bascik AI parts, or use the one-tag chat-app: the project module, replace slots, the contract between parts, and styling your own."
+    />
+    <title>Composable Chat UI Parts and a One-Tag Chat - Bascik</title>
+  </head>
+
+  <body>
+    <docs-nav />
+
+    <div class="container">
+      <div class="docs-layout">
+        <docs-sidebar />
+
+        <main class="docs-content" id="main-content">
+          <script data-bascik-build>
+            import { renderSectionLabel } from "@/lib/render-nav.ts";
+            export default async () => renderSectionLabel("/ai/chat-parts");
+          </script>
+
+          <!-- Content rendered from docs/content/ai/chat-parts.md at build time.
+             To update page content, edit the MD file, not this file. -->
+          <script data-bascik-build>
+            import { renderMd } from "@/lib/md-renderer.ts";
+            export default async () =>
+              await renderMd("./content/ai/chat-parts.md");
+          </script>
+
+          <docs-pagination />
+        </main>
+      </div>
+    </div>
+
+    <docs-footer />
+  </body>
+</html>

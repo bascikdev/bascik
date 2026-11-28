@@ -36,6 +36,8 @@ ai/examples/cloudflare/
 
 The bookshop itself (`booksApp`, its tools and its scripted model) is imported from `ai/demo/src/lib/books-app.ts`, and the components from `ai/components` and `ai/demo/src/genui`. Nothing imports the demo's Node-only modules (`apps.ts`, `chat.ts`, `models.ts`); `tests/config.node.test.ts` checks the built Worker for them.
 
+The page is the package's `<chat-app>` with two parts replaced. Its `sidebar` slot holds this example's `site-menu` (the package's `chat-sidebar` with the example's own links and note around the data parts `chat-find` and `chat-conversations`), and its `composer` slot holds a `chat-composer` whose `chat-attach` carries the same limits as `FILE_LIMITS` in `src/lib/chat.ts`. `/memory` is not a chat, so it uses the parts directly: `site-menu` beside a column that holds `chat-memories`. The data parts read the chat from the default export of `src/lib/chat.ts`, which here is a function of the request and its context, because the chat is made from the platform's bindings.
+
 Two settings make the kit fit Workers (see "Hosts without shared memory" on the Bascik AI scaling page):
 
 - `followLocally: false`. On Workers a request must never wait on another request's stream or promise, so every page that did not start a reply reads it from the conversation's ConversationLive object, and Stop goes through it too.

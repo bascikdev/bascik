@@ -4,28 +4,35 @@ This page lists the shortest correct path to common goals using the `@bascik/ai`
 
 ## Add a chat to a Bascik site
 
-1. Install the package and copy its components into your project.
+1. Install the package, esbuild, and copy the components into your project.
 
 ```sh
-npm install @bascik/ai
+npm install @bascik/bascik @bascik/ai
+npm install --save-dev esbuild
 npx bascik add @bascik/ai
 ```
 
-2. Create a chat object in a library file using a memory store for a first try.
+2. Create the project module. The chat parts read its default export, and the route files use its `chat`. A memory store is enough for a first try.
 
 ```ts
 // src/lib/chat.ts
-import { createChat, memoryStore } from "@bascik/ai/app";
+import { readCatalog, scriptedModel } from "@bascik/ai";
+import { createChat, memoryStore, type ChatProject } from "@bascik/ai/app";
+
+// A stand-in that needs no API key: see Quick Start for a real model.
+const model = scriptedModel(() => "Hello.");
 
 export const chat = createChat({
   store: memoryStore(),
-  catalog,
+  catalog: () => readCatalog("src/components/catalog"),
   model: () => model,
   system: "You are a helpful assistant.",
 });
+
+export default { chat } satisfies ChatProject;
 ```
 
-3. Create route files that export the chat handlers.
+3. Create a route file for each handler the parts post to: `send`, `stop`, `open`, and `file` when the chat takes attachments.
 
 ```ts
 // src/api/send.ts
@@ -33,17 +40,44 @@ import { chat } from "../lib/chat.ts";
 export const POST = chat.send;
 ```
 
-4. Build a page that gets the thread state and yields the live reply.
+4. Put the chat in a page, with the theme stylesheet and the `rel="expect"` link in its head.
 
-```ts
-// In a stream script
-const state = await chat.thread(request);
-if (state.turn) {
-  yield * state.turn.html.subscribe();
-}
+```html
+<head>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="expect" href="#thread-ready" blocking="render" />
+</head>
+<body>
+  <chat-app />
+</body>
 ```
 
 More: [Quick Start](/ai/quick-start)
+
+## Change one part of the chat
+
+1. To change what a part says, add a value to the project module's default export: `welcome`, `words`, `models` or `routes`.
+
+```ts
+export default {
+  chat,
+  welcome: { heading: "What are you reading next?" },
+} satisfies ChatProject;
+```
+
+2. To change a part's props or what it holds, fill `chat-app`'s `sidebar` or `composer` slot with that part. The slot replaces the whole part, and it is filled with a wrapper element.
+
+```html
+<chat-app>
+  <template data-bascik-slot="composer">
+    <chat-composer data-bascik-prop-placeholder="Ask about a book…" />
+  </template>
+</chat-app>
+```
+
+3. To change the layout, copy the template of `src/components/chat/chat-app.html` into your page and edit it.
+
+More: [Chat Parts](/ai/chat-parts)
 
 ## Let the model show your own component
 
@@ -133,26 +167,28 @@ import { chat } from "../lib/chat.ts";
 export const POST = chat.forget;
 ```
 
-4. Use `chat.memories(request)` to list memories on a page.
+4. List the reader's memories on a page with the `chat-memories` part, inside a column that sets its width.
 
-```ts
-const memories = await chat.memories(request);
+```html
+<main class="page">
+  <chat-memories />
+</main>
 ```
 
 More: [Memory](/ai/memory)
 
 ## Let readers search their conversations
 
-1. Add a search form to your page that sends a GET request with a `q` parameter.
+1. Use `chat-find`, which is in `chat-app`'s default sidebar. It prints the search box and, on a page whose address has `?q=`, what was found.
 
 ```html
-<form method="get" action="/">
-  <input name="q" type="search" />
-  <button>Search</button>
-</form>
+<chat-sidebar data-show-found="true">
+  <chat-find />
+  <chat-conversations />
+</chat-sidebar>
 ```
 
-2. In your page script, call `chat.search(request)` to get matches.
+2. For results drawn your own way, call `chat.search(request)` in a page script.
 
 ```ts
 const { matches } = await chat.search(request);
@@ -190,10 +226,12 @@ import { chat } from "../lib/chat.ts";
 export const GET = chat.file;
 ```
 
-3. Enable the attach button in the composer by setting the `enctype` prop.
+3. Put `chat-attach` in the composer's `start` slot, inside a wrapper element, and write `enctype` on the composer's tag. `chat-app`'s default message box already has both.
 
 ```html
-<chat-composer data-bascik-prop-enctype="multipart/form-data" />
+<chat-composer enctype="multipart/form-data">
+  <span data-bascik-slot="start"><chat-attach /></span>
+</chat-composer>
 ```
 
 More: [Attachments](/ai/attachments)
@@ -222,12 +260,16 @@ export const POST = async () => {
 };
 ```
 
-3. Add the `voice-call` component to your composer.
+3. Add the `voice-call` component to your composer. With `chat-app`, that means filling its `composer` slot.
 
 ```html
-<chat-composer>
-  <voice-call data-bascik-prop-app="books" />
-</chat-composer>
+<chat-app>
+  <template data-bascik-slot="composer">
+    <chat-composer data-bascik-prop-autofocus="autofocus">
+      <voice-call />
+    </chat-composer>
+  </template>
+</chat-app>
 ```
 
 More: [Voice & Captions](/ai/voice)

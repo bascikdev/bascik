@@ -4,6 +4,20 @@ Readers find things in their past conversations with a search box, and the model
 
 ## The smallest setup
 
+`chat-find` is the search in one tag: the box and, on a page whose address has `?q=`, what was found. It is a data part that reads the chat from the project module (`src/lib/chat.ts`), and it is in `chat-app`'s default sidebar, so the one-tag chat has search with nothing to add. In a sidebar of your own it goes above the conversation list:
+
+```html
+<chat-sidebar data-show-found="true">
+  <chat-new />
+  <chat-find />
+  <chat-conversations />
+</chat-sidebar>
+```
+
+`data-show-found="true"` makes a narrow screen, where the sidebar loads closed, show the results a search page was loaded for: see [Narrow screens](/ai/chat-parts#narrow-screens). The words `chat-find` prints, and the page a search loads, are set in the project module as `words` and `page`: see [Change what the chat says](/ai/chat-parts#change-what-the-chat-says).
+
+The rest of this section is what `chat-find` does, for a page that draws its own results.
+
 `chat.search(request)` reads `?q=` from the request and answers the reader's matching conversations. Any store works, because without a search of its own the chat reads the reader's conversations and matches words itself. A page script calls it:
 
 ```ts
@@ -15,37 +29,35 @@ const { query, tooShort, matches } = await chat.search(request);
 
 Each match has the conversation's `id`, its `title`, when it was `updatedAt`, a short `snippet` of what was said, and `marks`, the `[start, end)` offsets of the matched words inside the snippet. The snippet is text a reader or a model wrote, so it is never markup: draw it by escaping it and wrapping each marked range in `<mark>`.
 
-The form that sends the query is ordinary HTML:
+The form that sends the query is ordinary HTML, a `search` element with a `GET` form. `chat-search` is that form as a part, with the words searched for shown in the box again:
 
 ```html
-<search>
-  <form method="get" action="/">
-    <label for="q">Search conversations</label>
-    <input id="q" type="search" name="q" maxlength="200" />
-    <button>Search</button>
-  </form>
-</search>
+<chat-search data-bascik-prop-query="lighthouses" />
 ```
+
+Without a `route` prop the search loads the page the form is on.
 
 ## What the reader sees
 
-The demo's sidebar shows the search box under "New chat". With a query in the address, the results take the place of the conversation list: each result is its conversation's title, a snippet with the matched words marked, and a button that opens it. Opening is the same form post the conversation list uses (`/api/open`), so a result works with scripts off, and the page it lands on has no query.
+The sidebar shows the search box under "New chat". With a query in the address, the results take the place of the conversation list (`conversation-list` hides itself beside a sibling `search-results`): each result is its conversation's title, a snippet with the matched words marked, and a button that opens it. Opening is the same form post the conversation list uses (`/api/open`), so a result works with scripts off, and the page it lands on has no query.
 
-A query with no matches shows "No conversation mentions" and the words. A query shorter than two characters shows a hint instead of searching. The search box keeps what was typed.
+A line above the results says how many were found, with a Clear link that loads the page with no search. A query with no matches shows "No conversation mentions" and the words. A query shorter than two characters shows a hint instead of searching. The search box keeps what was typed.
 
-The results list is a component, `search-result`, copied into `src/components/chat/` by `bascik add @bascik/ai`. Each one is a list item for an `ol`, and the snippet goes inside the tag:
+The results are two parts, copied into `src/components/chat/` by `bascik add @bascik/ai`. `search-results` holds the line and the list, and each `search-result` inside it is a list item with the snippet inside the tag:
 
 ```html
-<search-result
-  data-bascik-prop-app="books"
-  data-bascik-prop-conversation="3f2a0c1e"
-  data-bascik-prop-title="Books about lighthouses"
->
-  A short <mark>lighthouse</mark> story
-</search-result>
+<search-results>
+  <template data-bascik-slot="note">1 found</template>
+  <search-result
+    data-bascik-prop-conversation="3f2a0c1e"
+    data-bascik-prop-title="Books about lighthouses"
+  >
+    A short <mark>lighthouse</mark> story
+  </search-result>
+</search-results>
 ```
 
-The sidebar around it is yours: where the box goes, what an empty result says, and how a match is dated.
+The browser highlights `mark` in its own colors. A result's form carries `data-genui="native"`, so opening one is a page load with the [client runtime](/ai/client-runtime#which-forms-it-takes) too. A page that prints these itself decides where the box goes, what an empty result says, and how a match is dated.
 
 ## Matching
 
