@@ -16,7 +16,7 @@
   </head>
   <body>
     <chat-sidebar />
-    <main class="chat">
+    <main class="chat" data-chat>
       <!-- The composer is first in the source so it is sent before the reply
            starts streaming; CSS shows it below the thread. Its limits match
            FILE_LIMITS in src/lib/chat.ts; the server enforces them either way. -->
@@ -32,7 +32,7 @@
       </div>
       <chat-enhance />
       <div class="scroller">
-        <chat-thread />
+        <chat-thread><chat-turns /></chat-thread>
       </div>
     </main>
   </body>

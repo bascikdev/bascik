@@ -162,6 +162,7 @@ The message box. A plain form that posts to /api/send, so sending works with no 
   data-bascik-attr-data-max-files="max-files"
   data-bascik-attr-data-max-total="max-total"
   data-bascik-attr-data-types="types"
+  data-chat-part="composer"
   data-testid="chat-composer"
 >
   <input type="hidden" name="app" data-bascik-attr-value="app" />
@@ -170,6 +171,7 @@ The message box. A plain form that posts to /api/send, so sending works with no 
     class="notice"
     role="alert"
     hidden
+    data-chat-part="notice"
     data-testid="chat-composer-notice"
   ></p>
   <ul id="chips" class="chips" data-testid="chat-composer-files"></ul>
@@ -208,12 +210,21 @@ The message box. A plain form that posts to /api/send, so sending works with no 
     autofocus
     placeholder="Ask a question…"
     aria-label="Message"
+    data-chat-part="input"
     data-testid="chat-composer-input"
   ></textarea>
   <div data-bascik-slot></div>
-  <button class="send" data-testid="chat-composer-send">Send</button>
+  <button class="send" data-chat-part="send" data-testid="chat-composer-send">
+    Send
+  </button>
   <!-- Shown by chat-enhance while a reply streams; never without a script. -->
-  <button class="send" type="button" hidden data-testid="chat-composer-stop">
+  <button
+    class="send"
+    type="button"
+    hidden
+    data-chat-part="stop"
+    data-testid="chat-composer-stop"
+  >
     Stop
   </button>
   <!-- The only client script in the app, and it is optional: Enter sends,

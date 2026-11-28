@@ -246,7 +246,7 @@ export function mermaidFence(options: MermaidFenceOptions = {}): FenceRenderer {
         adopt(renderMermaidSVG(spaceArrows(text), { transparent: true })),
       );
       if (svg) {
-        html = `<figure class="diagram" data-testid="diagram">${svg}</figure>`;
+        html = `<figure class="diagram" data-diagram data-testid="diagram">${svg}</figure>`;
       }
     } catch {
       // Not Mermaid, or a diagram type the library does not draw.

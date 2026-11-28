@@ -3,6 +3,7 @@
  * app, and the /voice-view page that holds what a tool call shows. A view's
  * scripts are made again here, since a script parsed elsewhere does not run.
  */
+import { partIn } from "../chat-root/parts.ts";
 
 /** POST `fields` and the app's name to `path`, as a form. */
 export function postForm(
@@ -40,9 +41,7 @@ export async function fetchView(
     await response.text(),
     "text/html",
   );
-  // A data attribute is not renamed per instance, so it can be selected as written.
-  // bascik-ignore js-attribute-selector
-  return page.querySelector('[data-testid="voice-view"]');
+  return partIn(page, "view");
 }
 
 /**

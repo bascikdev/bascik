@@ -8,7 +8,7 @@ export const WRITER_GONE =
   "The server writing this reply stopped. Reload the page to write it again.";
 
 export const failedNotice = (message: string): string =>
-  `<p class="failed" data-testid="turn-failed">${message}</p>`;
+  `<p class="failed" data-chat-part="failed" data-testid="turn-failed">${message}</p>`;
 
 /** What the server writing a reply tells the others: which turn, and how much of the conversation was above it. */
 export interface TurnRecord {

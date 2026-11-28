@@ -1,5 +1,7 @@
 <!-- @bascik
 Voice for a chat: reads each reply aloud as it streams, captions it a few words at a time with the current word in bold, and can listen for the next message. Optional and all script: with scripts off it shows nothing. Put it inside the composer (`<chat-composer><chat-voice /></chat-composer>`): its button joins the composer's row, and its caption and controls open above the message box. It also works on its own, next to the composer. Captions also run with the sound off, as a paced reading aid. A component in a reply is spoken only when an element in it has a data-say attribute.
+
+Around it: it finds the reply being written (the turn with `data-live`, read until its `done` marker) and the composer's `input` (dictation fills and sends it) from the nearest `data-chat` element, by `data-chat-part`; on a page with no `data-chat` element, by their test hooks. It steps aside while `<html>` has `data-genui-call` (a voice call is on).
 -->
 <style>
   /* The component has no box of its own: its parts are laid out by whatever
@@ -197,6 +199,7 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     import { sentenceEnd, sentencesOf, speakable } from "./chat-voice/sentences.ts";
     import { STORE, aidsLabel, isActive, loadSettings, saveSettings } from "./chat-voice/settings.ts";
     import type { Recognizer } from "./chat-voice/types.ts";
+    import { findPart, liveTurn, partIn } from "./chat-root/parts.ts";
 
     const root = document.getElementById("voice")!;
     const caption = document.getElementById("caption")!;
@@ -227,15 +230,20 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
     /** True once the current reply has been said to its end. */
     let finished = false;
 
+    /**
+     * Whether a reply has its end marker: marked as a part, by its test hook,
+     * or by the `done` class a thread written before the marks ends with.
+     */
+    const ended = (turn: Element): boolean =>
+      (partIn(turn, "done") ?? turn.querySelector(".done")) !== null;
+
     function scan(): void {
       // A voice call has its own voice and captions (voice-call).
       if (document.documentElement.dataset.genuiCall) {
         if (playing) hush();
         return;
       }
-      // A data attribute is not renamed per instance, so it can be selected as written.
-      // bascik-ignore js-attribute-selector
-      const live = document.querySelector('[data-testid="turn-live"]');
+      const live = liveTurn(root);
       if (live !== reply) {
         // A new reply: whatever was being said belongs to the last one.
         reply = live;
@@ -245,7 +253,7 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
       }
       if (!live) return;
       const text = speakable(live);
-      const over = live.querySelector(".done") !== null;
+      const over = ended(live);
       if (!active()) {
         taken = text.length;
         if (over) drained();
@@ -265,7 +273,7 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
 
     /** The reply has been said to its end: in a conversation, listen again. */
     function drained(): void {
-      if (finished || !reply?.querySelector(".done")) return;
+      if (finished || !reply || !ended(reply)) return;
       finished = true;
       if (settings.talk) listen();
     }
@@ -366,9 +374,7 @@ Voice for a chat: reads each reply aloud as it streams, captions it a few words 
       // A voice call hears the reader itself: two listeners would send
       // everything said to the model twice.
       if (document.documentElement.dataset.genuiCall) return;
-      const input = document.querySelector<HTMLTextAreaElement>(
-        '[data-testid="chat-composer-input"]',
-      );
+      const input = findPart<HTMLTextAreaElement>(root, "input");
       if (!input?.form) return;
       const hearing = new Recognition();
       recognizer = hearing;
