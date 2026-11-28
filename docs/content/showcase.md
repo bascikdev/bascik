@@ -4,7 +4,7 @@ Made with Bascik: real websites built with HTML components, scoped styles, and z
 
 ## New tool. Familiar output.
 
-Choosing a new tool for a production site is a real decision. Bascik is already in production on business websites, a CPA and business consulting firm, an online counseling practice, a SaaS product with a server-rendered dashboard, an open-source project, and an online shop. The sites below, including this one, show it at work.
+Choosing a new tool for a production site is a real decision. Bascik is already in production on business websites, a CPA and business consulting firm, an online counseling practice, a consulting practice for therapists, a SaaS product with a server-rendered dashboard, an open-source project, and an online shop. The sites below, including this one, show it at work.
 
 You do not have to take the compiler's output on faith. Bascik ships HTML, JavaScript, and CSS to the browser. [Turn off minification](/configuration#minify-byominifier) to inspect the generated files yourself, then use the browser's developer tools to see what is actually running.
 
@@ -23,6 +23,10 @@ The company behind Rinsesoft and Lateral EMDR, with fifteen years of technology 
 ### Sunridge Counseling
 
 A therapist's website running on Bascik.
+
+### Outside The Session
+
+One-time consultation sessions for therapists building or refining a private practice, from the owner of Sunridge Counseling. A single-page site served as static files on Cloudflare Workers, with booking through Calendly.
 
 ### DGCO
 
