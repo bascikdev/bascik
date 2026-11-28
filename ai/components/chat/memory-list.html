@@ -1,22 +1,36 @@
 <!-- @bascik
-What the assistant remembers about the reader: a heading, one line that says what memory is, and the list. Put one memory-item inside per memory. With none inside, it shows an empty state. A plain list: it needs no JavaScript.
+What the assistant remembers about the reader: a heading, one line that says what memory is, and the list. Put one `memory-item` inside per memory. With none inside, it shows an empty state. A plain list: it needs no JavaScript, and it has no props.
+
+Slots, each optional, with words of its own when unfilled:
+- the default slot: the items.
+- `heading`: the heading element itself, an `h1` saying "What I remember about you". Pass an `h2` or lower where the list is a section of a page: `<template data-bascik-slot="heading"><h2>Memory</h2></template>`.
+- `about`: the text of the line under the heading, which says what memory is.
+- `empty`: the text shown when there is no item.
+A named slot is filled by a wrapper element, and an empty wrapper leaves that piece out with the room it took: `<span data-bascik-slot="about"></span>`.
+
+Around it: anything. It fills the width it is given and adds no space around itself, so the page column, sidebar section or dialog it sits in sets its width and its margins. It reads the theme tokens `--muted`, `--border` and `--radius`.
 -->
 <style>
   .memory {
     display: grid;
     gap: 0.75rem;
-    max-inline-size: 46rem;
-    inline-size: 100%;
-    margin-inline: auto;
-    padding-block: 1.5rem;
   }
-  .title {
+  /* The heading is the page's own element when the slot is filled, so it is
+     named by element, and its holder has no box. */
+  .head {
+    display: contents;
+  }
+  /* bascik-ignore css-is-element-names */
+  .head :is(h1, h2, h3, h4, h5, h6) {
     margin: 0;
     font-size: 1.5rem;
   }
   .about {
     margin: 0;
     color: var(--muted);
+  }
+  .about:empty {
+    display: none;
   }
   .items {
     display: grid;
@@ -33,25 +47,24 @@ What the assistant remembers about the reader: a heading, one line that says wha
     border-radius: var(--radius);
     color: var(--muted);
   }
-  /* Shown when no memory-item was put inside. The items are slotted in, so
-     their element name is not one of this component's to rename. */
+  /* Shown when no memory-item was put inside, unless the page left its
+     words out. The items are slotted in, so their element name is not one of
+     this component's to rename. */
   /* bascik-ignore css-is-element-names */
-  .memory:not(:has(li)) .empty {
+  .memory:not(:has(li)) .empty:not(:empty) {
     display: block;
   }
 </style>
 <section class="memory" data-testid="memory-list">
-  <h1 class="title">What I remember about you</h1>
-  <p class="about" data-testid="memory-list-about">
-    Memory is what the assistant keeps about you between conversations: things
-    you told it that it can use next time. You can remove any of it, and it only
-    saves what you say.
-  </p>
+  <!-- Each piece of text is written on one line, with nothing around its
+       slot: one a page leaves out is then empty, and takes no room. -->
+  <!-- prettier-ignore -->
+  <div class="head"><span data-bascik-slot="heading"><h1>What I remember about you</h1></span></div>
+  <!-- prettier-ignore -->
+  <p class="about" data-testid="memory-list-about"><span data-bascik-slot="about">Memory is what the assistant keeps about you between conversations: things you told it that it can use next time. You can remove any of it, and it only saves what you say.</span></p>
   <ul class="items" data-testid="memory-list-items">
     <span data-bascik-slot></span>
   </ul>
-  <p class="empty" data-testid="memory-list-empty">
-    Nothing is remembered yet. Tell the assistant something to remember, such as
-    "Remember that I prefer short books."
-  </p>
+  <!-- prettier-ignore -->
+  <p class="empty" data-testid="memory-list-empty"><span data-bascik-slot="empty">Nothing is remembered yet. Tell the assistant something to remember, such as "Remember that I prefer short books."</span></p>
 </section>

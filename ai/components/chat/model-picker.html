@@ -1,0 +1,105 @@
+<!-- @bascik
+The model picker: a plain form with a list of models and a Use button, so choosing one is a page load and works with no JavaScript. It holds no data: the page writes the models as the list's options.
+
+Props, all optional: `app` (posted as `app`), `route` (where the form posts; `/api/model`), `label` (the text above the list; "Model") and `use-label` (the button's text; "Use"). Setting `route` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
+
+Slots:
+- the default slot: the list's `option` and `optgroup` elements, with `selected` on the model in use. The chosen option's value is posted as `model`.
+- `note`: one or more paragraphs under the list, in small print, such as what the choice does not change. Fill it with a wrapper element: `<template data-bascik-slot="note"><p>…</p></template>`.
+
+Around it: anything that is not a form; it fills the width it is given, and `chat-sidebar`'s foot is where it usually goes. It is a form of its own, so it must never sit inside another one, which rules out every slot of `chat-composer`: HTML does not nest forms, and the list and its button would belong to the message form. The route is the project's own: it stores the choice and sends the reader back. The form carries `data-genui="native"`: it must load a page, so the client runtime (`chat-enhance`) leaves it to the browser, also inside a `data-chat` element. It reads the theme tokens `--border`, `--radius`, `--bg`, `--muted` and `--accent`.
+-->
+<style>
+  .model {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.3rem 0.4rem;
+  }
+  .label {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .select,
+  .use {
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+  }
+  /* Drawn here, so it matches the theme in every browser: the system's own
+     arrow and focus ring do not. */
+  .select {
+    min-inline-size: 0;
+    padding-inline-end: 1.9rem;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23807c74' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 0.75rem;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .use {
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .select:focus-visible,
+  .use:focus-visible {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .use:hover {
+    border-color: var(--accent);
+  }
+  /* The notes are the page's own paragraphs: each is a row of the form. */
+  .notes {
+    display: contents;
+  }
+  .notes :is(p) {
+    grid-column: 1 / -1;
+    margin: 0.2rem 0 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+  /* A finger gets a 44px target. */
+  @media (pointer: coarse) {
+    .select,
+    .use {
+      min-block-size: 2.75rem;
+    }
+  }
+</style>
+<form
+  class="model"
+  method="post"
+  action="/api/model"
+  data-bascik-attr-action="route"
+  data-genui="native"
+  data-testid="chat-sidebar-model"
+>
+  <input type="hidden" name="app" data-bascik-attr-value="app" />
+  <label class="label" for="model" data-bascik-prop-label>Model</label>
+  <select
+    class="select"
+    id="model"
+    name="model"
+    data-testid="chat-sidebar-model-select"
+  >
+    <span data-bascik-slot></span>
+  </select>
+  <button
+    class="use"
+    data-testid="chat-sidebar-model-use"
+    data-bascik-prop-use-label
+  >
+    Use
+  </button>
+  <div class="notes"><span data-bascik-slot="note"></span></div>
+</form>

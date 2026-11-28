@@ -301,9 +301,17 @@ Events, bubbling from the `data-chat` element: `chat:send` (`detail.form`) when 
     if (!fresh) throw new Error("no thread in the answer");
     const sidebar = partIn(parsed, "sidebar");
     if (sidebar) {
-      findPart(chat, "sidebar")?.replaceWith(
-        document.importNode(sidebar, true),
-      );
+      const shown = findPart(chat, "sidebar");
+      const incoming = document.importNode(sidebar, true);
+      // What the reader has open stays open, so nothing moves under a
+      // finger when the answer ends. The two are the same markup, so their
+      // `details` pair up in order.
+      const before = shown?.querySelectorAll("details") ?? [];
+      const after = incoming.querySelectorAll("details");
+      for (let at = 0; at < after.length && at < before.length; at++) {
+        after[at]!.open = before[at]!.open;
+      }
+      shown?.replaceWith(incoming);
     }
   }
 

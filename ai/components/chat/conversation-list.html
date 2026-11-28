@@ -1,0 +1,23 @@
+<!-- @bascik
+The reader's conversations: a `nav` that lists them. It holds no data: put one `conversation-item` inside per conversation.
+
+Prop: `label` (the list's name for a screen reader; "Conversations"). Setting it prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
+
+Slot: the default slot is the items.
+
+Around it: anything; it fills the width it is given, and `chat-sidebar` is where it usually goes.
+-->
+<style>
+  .list {
+    display: grid;
+    align-content: start;
+    gap: 0.15rem;
+  }
+</style>
+<nav
+  class="list"
+  aria-label="Conversations"
+  data-bascik-attr-aria-label="label"
+  data-testid="conversation-list"
+  data-bascik-slot
+></nav>

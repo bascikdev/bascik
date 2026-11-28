@@ -5,7 +5,7 @@ Props: `memory` (the memory's id, posted as `id`), `saved` (the day it was saved
 
 Slot: the default slot is the memory's text.
 
-Around it: a list, which `memory-list` is. It reads the theme tokens `--border`, `--radius`, `--surface`, `--muted`, `--bg` and `--accent`.
+Around it: a list, which `memory-list` is. The form carries `data-genui="native"`: it must load a page, so the client runtime (`chat-enhance`) leaves it to the browser, also inside a `data-chat` element. It reads the theme tokens `--border`, `--radius`, `--surface`, `--muted`, `--bg` and `--accent`.
 -->
 <style>
   .item {
@@ -63,6 +63,7 @@ Around it: a list, which `memory-list` is. It reads the theme tokens `--border`,
     method="post"
     action="/api/forget"
     data-bascik-attr-action="route"
+    data-genui="native"
   >
     <input type="hidden" name="app" data-bascik-attr-value="app" />
     <input type="hidden" name="id" data-bascik-attr-value="memory" />

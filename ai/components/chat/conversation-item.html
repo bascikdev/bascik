@@ -1,0 +1,57 @@
+<!-- @bascik
+One conversation in a `conversation-list`: a plain form whose button is the conversation's title, so opening one works with no JavaScript. It posts the conversation's id, which the open route answers by sending the reader to that conversation. Written by the app from stored data, never by a model.
+
+Props: `conversation` (the conversation's id, posted as `id`), `title` (its title, the button's text; "Conversation" without it), `app` (posted as `app`), `current` (`true` on the conversation that is open, which marks its button `aria-current`) and `route` (where the form posts; `/api/open` without it). Setting `route` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
+
+Around it: `conversation-list`, or any column. The form carries `data-genui="native"`: it must load a page, so the client runtime (`chat-enhance`) leaves it to the browser, also inside a `data-chat` element. It reads the theme tokens `--radius` and `--bg`.
+-->
+<style>
+  .item {
+    display: contents;
+  }
+  .open {
+    /* The whole row is the target, in a list and in a plain column alike. */
+    inline-size: 100%;
+    padding: 0.45rem 0.6rem;
+    border: 0;
+    border-radius: calc(var(--radius) - 2px);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: start;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .open:hover,
+  .open[aria-current="true"] {
+    background: var(--bg);
+  }
+  /* A finger gets a 44px target. */
+  @media (pointer: coarse) {
+    .open {
+      min-block-size: 2.75rem;
+    }
+  }
+</style>
+<form
+  class="item"
+  method="post"
+  action="/api/open"
+  data-bascik-attr-action="route"
+  data-genui="native"
+  data-testid="conversation-item"
+>
+  <input type="hidden" name="app" data-bascik-attr-value="app" />
+  <input type="hidden" name="id" data-bascik-attr-value="conversation" />
+  <button
+    class="open"
+    data-testid="chat-sidebar-item"
+    data-bascik-attr-aria-current="current"
+    data-bascik-prop-title
+  >
+    Conversation
+  </button>
+</form>

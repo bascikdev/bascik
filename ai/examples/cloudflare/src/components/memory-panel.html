@@ -7,16 +7,20 @@ What the assistant remembers about the reader, read from their ReaderData object
     min-block-size: 0;
     overflow-y: auto;
   }
-  /* The same column as the list under it. */
+  /* The page's column: the list fills whatever width it is given. */
+  .column {
+    display: grid;
+    gap: 1.5rem;
+    max-inline-size: 46rem;
+    margin-inline: auto;
+    padding-block: 1rem 1.5rem;
+  }
   .top {
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem 1rem;
     align-items: baseline;
     justify-content: space-between;
-    max-inline-size: 46rem;
-    margin-inline: auto;
-    padding-block-start: 1rem;
     font-size: 0.875rem;
   }
   .back {
@@ -43,7 +47,8 @@ What the assistant remembers about the reader, read from their ReaderData object
       context: RequestContext,
     ) {
       const memories = await chatOf(context).chat.memories(request);
-      yield html`<nav class="top" aria-label="Memory">
+      yield html`<div class="column">
+        <nav class="top" aria-label="Memory">
           <a class="back" href="/" data-testid="memory-back"
             >Back to Bookshop</a
           >
@@ -61,7 +66,8 @@ What the assistant remembers about the reader, read from their ReaderData object
               >${memory.text}</memory-item
             >`,
         )}</memory-list
-      >`;
+      >
+      </div>`;
     }
   </script>
 </div>

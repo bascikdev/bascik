@@ -7,7 +7,7 @@ Slots, each optional, and an unfilled one takes no room:
 - `above`: a line above the message box, for a status or a note. A status that comes and goes carries the `hidden` attribute while it has nothing to say: the line takes no room while every element in it is hidden. The same holds for `below`.
 - `start`: before the message box, which is where `chat-attach` goes.
 - the default slot: between the message box and Send, which is where `chat-voice` and `voice-call` go.
-- `below`: a row under the message box, for a model picker or a note.
+- `below`: a row under the message box, for a note or a control sent with the message. It is inside the message form, so a part that is a form itself, as `model-picker` is, cannot go here.
 A named slot is filled by a wrapper element, never by the attribute on a component's own tag: `<chat-composer><span data-bascik-slot="start"><chat-attach /></span><chat-voice /></chat-composer>`.
 
 Lines: a part in any slot can put an element of its own on a full line above or below the message box by marking it `data-chat-line="above"` or `data-chat-line="below"`. Two more values place a line among those above: `data-chat-line="top"` is the first line of all, which is where captions go, and `data-chat-line="near"` is the last, next to the message box, which is where controls that a button in the row opens go. Lines of the same kind stack in source order. The marked element must be a child of the part's root, and that root must have no box (`display: contents`), so the line is laid out by the composer; `chat-attach`, `chat-voice` and `voice-call` are written this way.

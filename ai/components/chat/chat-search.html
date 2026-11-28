@@ -1,0 +1,81 @@
+<!-- @bascik
+The conversation search box: a `search` element with a plain GET form, so searching is a page load with the words in the address as `q`, and works with no JavaScript. It holds no results: the page reads `q`, and prints one `search-result` per match where it wants them.
+
+Props, all optional: `route` (the page the search loads; without it, the page the form is on), `query` (the words searched for, shown in the box again), `label` (the box's name for a screen reader; "Search conversations"), `placeholder` ("Search conversations") and `go-label` (the button's text; "Search"). Setting `placeholder` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
+
+Around it: anything; it fills the width it is given, and `chat-sidebar` is where it usually goes. It reads the theme tokens `--border`, `--radius`, `--bg` and `--accent`.
+-->
+<style>
+  .form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.3rem 0.4rem;
+  }
+  .label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .input,
+  .go {
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--bg);
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+  }
+  .input {
+    min-inline-size: 0;
+  }
+  .go {
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .input:focus-visible,
+  .go:focus-visible {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .go:hover {
+    border-color: var(--accent);
+  }
+  /* A finger gets a 44px target. */
+  @media (pointer: coarse) {
+    .input,
+    .go {
+      min-block-size: 2.75rem;
+    }
+  }
+</style>
+<search data-testid="chat-sidebar-search">
+  <form class="form" method="get" data-bascik-attr-action="route">
+    <label class="label" for="q" data-bascik-prop-label
+      >Search conversations</label
+    >
+    <input
+      id="q"
+      class="input"
+      type="search"
+      name="q"
+      data-bascik-attr-value="query"
+      placeholder="Search conversations"
+      data-bascik-attr-placeholder="placeholder"
+      maxlength="200"
+      autocomplete="off"
+      data-testid="chat-sidebar-search-input"
+    />
+    <button
+      class="go"
+      data-testid="chat-sidebar-search-go"
+      data-bascik-prop-go-label
+    >
+      Search
+    </button>
+  </form>
+</search>

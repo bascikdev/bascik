@@ -43,6 +43,11 @@ body {
   body {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  /* The sidebar is a bar above the chat here, and the chat takes the rest. */
+  body:has(> aside) {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
 }
 
 .chat {
