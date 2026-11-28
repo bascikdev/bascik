@@ -23,12 +23,18 @@
       <div class="dock">
         <chat-composer
           data-bascik-prop-app="books"
-          data-bascik-prop-enctype="multipart/form-data"
-          data-bascik-prop-max-bytes="1048576"
-          data-bascik-prop-max-files="2"
-          data-bascik-prop-max-total="2097152"
-          data-bascik-prop-types="image/png,image/jpeg,image/webp,text/plain,text/markdown,application/pdf"
-        />
+          data-bascik-prop-autofocus="autofocus"
+          enctype="multipart/form-data"
+        >
+          <span data-bascik-slot="start">
+            <chat-attach
+              data-bascik-prop-max-bytes="1048576"
+              data-bascik-prop-max-files="2"
+              data-bascik-prop-max-total="2097152"
+              data-bascik-prop-types="image/png,image/jpeg,image/webp,text/plain,text/markdown,application/pdf"
+            />
+          </span>
+        </chat-composer>
       </div>
       <chat-enhance />
       <div class="scroller">

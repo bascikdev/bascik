@@ -1,5 +1,11 @@
 <!-- @bascik
-A line in a reply that says the assistant just saved something about the reader, with the words it saved as content and an Undo button. Written by the app for a finished remember call, never by a model. The button is a plain form that posts to /api/forget.
+A line in a reply that says the assistant just saved something about the reader, with an Undo button. Written by the app for a finished remember call, never by a model. It is a plain form, so Undo works with no JavaScript.
+
+Props: `memory` (the memory's id, posted as `id`), `app` (posted as `app`) and `route` (where Undo posts; `/api/forget` without it). Setting `route` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
+
+Slot: the default slot is the words that were saved.
+
+Around it: a reply in the thread. Inside a `data-chat` element the client runtime sends the form and streams the answer in. It reads the theme tokens `--border`, `--radius`, `--muted`, `--bg` and `--accent`, and `--text-small` when it is set.
 -->
 <style>
   .note {
@@ -42,6 +48,7 @@ A line in a reply that says the assistant just saved something about the reader,
   class="note"
   method="post"
   action="/api/forget"
+  data-bascik-attr-action="route"
   role="status"
   data-testid="memory-note"
 >

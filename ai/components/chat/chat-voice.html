@@ -1,11 +1,15 @@
 <!-- @bascik
-Voice for a chat: reads each reply aloud as it streams, captions it a few words at a time with the current word in bold, and can listen for the next message. Optional and all script: with scripts off it shows nothing. Put it inside the composer (`<chat-composer><chat-voice /></chat-composer>`): its button joins the composer's row, and its caption and controls open above the message box. It also works on its own, next to the composer. Captions also run with the sound off, as a paced reading aid. A component in a reply is spoken only when an element in it has a data-say attribute.
+Reading aids for a chat: captions each reply a few words at a time as it streams, with the current word in bold, can read it aloud, and can listen for the next message. It uses the browser's own voice and speech recognition, not a speech model. Optional and all script: with scripts off it shows nothing. Captions also run with the sound off, as a paced reading aid. A component in a reply is spoken only when an element in it has a `data-say` attribute. What the reader chose is kept in the browser for their next visit.
 
-Around it: it finds the reply being written (the turn with `data-live`, read until its `done` marker) and the composer's `input` (dictation fills and sends it) from the nearest `data-chat` element, by `data-chat-part`; on a page with no `data-chat` element, by their test hooks. It steps aside while `<html>` has `data-genui-call` (a voice call is on).
+Put it in `chat-composer`'s default slot (`<chat-composer><chat-voice /></chat-composer>`): its button joins the row of the message box, before Send, the caption is the first line above the message box, and the controls the button opens are the line next to the message box, under any other part's line. It also works on its own, beside the composer in the same `data-chat` element: its lines and its button are then laid out by whatever holds it.
+
+Props: none. Slots: none.
+
+Around it: it finds the reply being written (the turn with `data-live`, read until its `done` marker) and the composer's `input` (dictation fills and sends it) from the nearest `data-chat` element, by `data-chat-part`; on a page with no `data-chat` element, by their test hooks. It steps aside while `<html>` has `data-genui-call` (a voice call is on). In a composer its caption carries `data-chat-line="top"`, its controls `data-chat-line="near"`, and its root has no box, which is how `chat-composer` lays a slotted part out. It reads the theme tokens `--border`, `--muted`, `--accent`, `--on-accent`, `--bg` and `--radius`.
 -->
 <style>
-  /* The component has no box of its own: its parts are laid out by whatever
-     holds it, which in a composer is the row of the message box. */
+  /* The part has no box of its own: its button and its lines are laid out by
+     whatever holds it. A composer puts the lines above its message box. */
   .voice {
     display: contents;
   }
@@ -13,8 +17,6 @@ Around it: it finds the reply being written (the turn with `data-live`, read unt
     display: none;
   }
   .caption {
-    order: -3;
-    flex: 0 0 100%;
     margin: 0;
     padding: 0.15rem 0.4rem 0.5rem;
     border-block-end: 1px solid var(--border);
@@ -28,10 +30,8 @@ Around it: it finds the reply being written (the turn with `data-live`, read unt
   .caption:empty {
     display: none;
   }
-  /* The controls, opened by the button: a line above the message box. */
+  /* The controls, opened by the button. */
   .aids {
-    order: -1;
-    flex: 0 0 100%;
     padding: 0.15rem 0.4rem 0.5rem;
     border-block-end: 1px solid var(--border);
     font-size: 0.8125rem;
@@ -136,9 +136,16 @@ Around it: it finds the reply being written (the turn with `data-live`, read unt
     id="caption"
     class="caption"
     aria-hidden="true"
+    data-chat-line="top"
     data-testid="chat-voice-caption"
   ></p>
-  <div id="aids" class="aids" hidden data-testid="chat-voice-aids">
+  <div
+    id="aids"
+    class="aids"
+    hidden
+    data-chat-line="near"
+    data-testid="chat-voice-aids"
+  >
     <div class="controls" role="group" aria-label="Reading aids">
       <button
         id="captions"

@@ -1,7 +1,7 @@
 <!-- @bascik
 The optional client runtime. Without it every form in the chat is a page load, and everything works. With it a form is sent with fetch and the page it answers with is streamed into the open one: no reload, an instant echo of the message, a Stop button, and component scripts that start as their component arrives. Put it in the page before the thread. It has no props, no slots and no element of its own.
 
-Around it: it takes every `method="post"` form inside a `data-chat` element (inside `<main>` on a page that marks none), unless the form has `data-genui="native"`. It finds the other parts from the form's nearest `data-chat` element, by `data-chat-part`: the `thread` (replaced by the answer's thread once the answer holds the `ready` marker), the `composer` (emptied when it is the form that was sent), its `input`, `notice` and `stop` button, and the `sidebar` (replaced after each answer). On a page with no `data-chat` element it finds them by their test hooks.
+Around it: it takes every `method="post"` form inside a `data-chat` element (inside `<main>` on a page that marks none), unless the form has `data-genui="native"`. It finds the other parts from the form's nearest `data-chat` element, by `data-chat-part`: the `thread` (replaced by the answer's thread once the answer holds the `ready` marker), the `composer` (emptied when it is the form that was sent), its `input` and `stop` button (the runtime takes the button's click and posts the composer's fields to its `formaction`, which `chat-composer` sets from its `stop-route` prop; `/api/stop` for a button with none), the `notice` (the line `chat-attach` provides: when the server refuses a file, its reason is written there and the composer keeps the text and the files; in a chat with no notice a refused send is sent again the ordinary way, and the server's page says why), and the `sidebar` (replaced after each answer). On a page with no `data-chat` element it finds them by their test hooks.
 
 State: `data-genui="idle"` or `"streaming"` on the `data-chat` element and on `<html>`; `data-pending` on a form while its request is on its way.
 
@@ -99,6 +99,28 @@ Events, bubbling from the `data-chat` element: `chat:send` (`detail.form`) when 
   /** A reply being written that has no end marker: marked as a part, or by its classes as before. */
   const UNFINISHED =
     ':is([data-chat-part="turn"][data-live], .live):not(:has([data-chat-part="done"], .done))';
+
+  /**
+   * End every reply of `chat` that has no end marker, so none keeps its
+   * caret. The placeholder of an answer that never came is busy no more,
+   * and is no reply being written: nothing was written in it.
+   */
+  const endUnfinished = (chat: Element): void =>
+    chat.querySelectorAll<HTMLElement>(UNFINISHED).forEach((live) => {
+      if (live.hasAttribute("aria-busy")) {
+        live.removeAttribute("aria-busy");
+        delete live.dataset.live;
+        live.classList.remove("live");
+      }
+      live.append(newMarker("done"));
+    });
+
+  /**
+   * Where Stop posts: the route its button carries as `formaction`, which
+   * the site's base applies to, or the usual one for a button with none.
+   */
+  const stopRoute = (button: HTMLButtonElement): string =>
+    button.getAttribute("formaction") ? button.formAction : "/api/stop";
 
   /** Show the message at once, and the caret, while the request is on its way. */
   function echo(thread: HTMLElement, text: string): void {
@@ -290,7 +312,7 @@ Events, bubbling from the `data-chat` element: `chat:send` (`detail.form`) when 
    * element, or, on a page that marks none, inside <main>.
    */
   const inChat = (form: HTMLFormElement): boolean =>
-    document.querySelector("[data-chat]")
+    roots()[0] !== document.documentElement
       ? rootOf(form) !== null
       : Element.prototype.closest.call(form, "main") !== null;
 
@@ -315,14 +337,13 @@ Events, bubbling from the `data-chat` element: `chat:send` (`detail.form`) when 
     const chat = rootOf(form) ?? document.documentElement;
     send(form, submitter, chat)
       .catch((error: unknown) => {
-        // Stopped by the reader: keep what arrived, and end the caret.
+        // Stopped by the reader, or failed: keep what arrived, and end the
+        // caret, also of the placeholder no answer came to replace.
+        endUnfinished(chat);
         if (error instanceof DOMException && error.name === "AbortError") {
-          chat
-            .querySelectorAll(UNFINISHED)
-            .forEach((live) => live.append(newMarker("done")));
           return;
         }
-        // Anything else: send the form the ordinary way.
+        // A failure: send the form the ordinary way.
         formGet(form, "dataset").genui = "native";
         resubmit(form, submitter);
       })
@@ -354,13 +375,20 @@ Events, bubbling from the `data-chat` element: `chat:send` (`detail.form`) when 
       event.target as Element,
       "stop",
     );
-    if (!button?.form || !stop) return;
+    if (!button) return;
+    // Stop may be a submit button, which is what carries a route: the reply
+    // is ended from here, and the form is never sent to that route.
+    event.preventDefault();
+    if (!button.form || !stop) return;
     // Only the chat that is writing a reply has one to stop.
     if ((rootOf(button) ?? document.documentElement) !== streaming) return;
     const current = stop;
     stopPressed = true;
     announce(button, "chat:stop");
-    fetch("/api/stop", { method: "POST", body: new FormData(button.form) })
+    fetch(stopRoute(button), {
+      method: "POST",
+      body: new FormData(button.form),
+    })
       .then((response) => {
         if (!response.ok) current.abort();
       })

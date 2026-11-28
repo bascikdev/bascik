@@ -347,6 +347,37 @@ test.describe("events", () => {
     expect(await page.evaluate("window.kept === true")).toBe(true);
   });
 
+  test("a send the server fails leaves no reply waiting: the placeholder ends, as a stopped reply does", async ({
+    page,
+  }) => {
+    await page.route("**/api/send", (route) =>
+      route.fulfill({ status: 500, body: "no" }),
+    );
+    await page.getByTestId("chat-composer-input").fill("Recommend a book");
+    await page.getByTestId("chat-composer-send").click();
+    await expect(page.locator("[data-chat]")).toHaveAttribute(
+      "data-genui",
+      "idle",
+    );
+    // The message that was shown stays, and the reply that never came is over.
+    await expect(page.getByTestId("turn-user")).toHaveText("Recommend a book");
+    const pending = page.getByTestId("turn-pending");
+    await expect(pending).toHaveCount(1);
+    await expect(pending).not.toHaveAttribute("aria-busy");
+    // Nothing was written in it, so it is not the reply being written.
+    await expect(pending).not.toHaveAttribute("data-live");
+    await expect(pending.locator('[data-chat-part="done"]')).toHaveCount(1);
+    expect(
+      await styleOf(page, '[data-testid="turn-pending"]', "content", "::after"),
+    ).toBe("none");
+    // No reply in the chat is left with a caret.
+    await expect(
+      page.locator(
+        '[data-chat-part="turn"][data-live]:not(:has([data-chat-part="done"]))',
+      ),
+    ).toHaveCount(0);
+  });
+
   test("a chat in an element that is not <main> is answered without a page load", async ({
     page,
   }) => {

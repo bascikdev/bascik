@@ -73,19 +73,6 @@ body {
   scrollbar-gutter: stable both-edges;
 }
 
-/* With the client runtime (chat-enhance) on, a reply can be stopped. */
-[data-genui] [data-testid="chat-composer-stop"] {
-  display: none;
-}
-
-[data-genui="streaming"] [data-testid="chat-composer-stop"] {
-  display: inline-block;
-}
-
-[data-genui="streaming"] [data-testid="chat-composer-send"] {
-  display: none;
-}
-
 /* The component gallery (/gallery): one page of every catalog component. It
    has no sidebar, so the page takes the whole width. Its bar (gallery-bar)
    stays at the top of this scroller. */

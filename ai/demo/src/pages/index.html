@@ -21,8 +21,10 @@
       <div class="dock">
         <chat-composer
           data-bascik-prop-app="books"
-          data-bascik-prop-enctype="multipart/form-data"
+          data-bascik-prop-autofocus="autofocus"
+          enctype="multipart/form-data"
         >
+          <span data-bascik-slot="start"><chat-attach /></span>
           <chat-voice />
           <voice-call data-bascik-prop-app="books" />
         </chat-composer>
