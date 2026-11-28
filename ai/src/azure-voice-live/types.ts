@@ -26,6 +26,20 @@ export interface AzureVoiceLiveOptions {
    */
   voice?: string;
   apiVersion?: string;
+  /**
+   * How long the reader may be silent before their turn is taken as over,
+   * in milliseconds (default 800, from 200 to 3000). Higher waits through a
+   * pause for thought; lower answers sooner.
+   */
+  pauseMs?: number;
+  /**
+   * Voice Live's own `turn_detection` settings, laid over the default
+   * (`{ type: "azure_semantic_vad", silence_duration_ms: pauseMs }`): another
+   * `type`, `threshold`, `remove_filler_words`, `languages`,
+   * `end_of_utterance_detection`, and the rest. Which of them a model takes
+   * is the provider's to say; one it refuses ends the call as it starts.
+   */
+  turnDetection?: Record<string, unknown>;
   /** Where the relay listens. Port 0, the default, takes any free port. */
   relay?: {
     port?: number;
@@ -37,6 +51,28 @@ export interface AzureVoiceLiveOptions {
      * `ws://<host>:<port>`.
      */
     publicUrl?: string;
+    /** The most calls open on this relay at once (default 100). One past it is closed as it connects. */
+    maxCalls?: number;
+    /**
+     * The most calls one owner (`VoiceSessionConfig.owner`, the reader in
+     * the chat kit) has open on this relay at once (default 3).
+     */
+    maxCallsPerOwner?: number;
+    /**
+     * How long a browser may send nothing, not even the answer to a ping,
+     * before its call ends, in milliseconds (default 45 000).
+     */
+    idleMs?: number;
+    /**
+     * How much may wait to be sent to a browser before its call ends, in
+     * bytes (default 8 000 000): a browser that has stopped reading.
+     */
+    maxUnsentBytes?: number;
+    /**
+     * How long a browser has to hang up after its call is closed, or after
+     * `close()`, before its socket is destroyed, in milliseconds (default 1000).
+     */
+    closeGraceMs?: number;
   };
   /**
    * Where one-use tickets are kept. Default: this process's memory, which is
@@ -47,8 +83,31 @@ export interface AzureVoiceLiveOptions {
   shared?: Pick<Shared, "set" | "take" | "delete">;
   /** How long a ticket may be used to start a session, in seconds (default 60). */
   startWithinSeconds?: number;
-  /** How long a session may last, in seconds (default 900). */
+  /**
+   * How long a session may last, in seconds (default 900). A number no timer
+   * can hold, infinity included, is no limit.
+   */
   sessionSeconds?: number;
+  /**
+   * How long a call may go on with nobody speaking, in seconds, before the
+   * relay ends it (default 300, 0 for never). Microphone audio alone is not
+   * speaking: the provider hearing speech, the model answering, a typed
+   * message and a tool's result are. A page can also tell the relay the
+   * call is in use by sending `{ "type": "call.active" }`, which goes no
+   * further: the voice-call component does while the reader has an answer
+   * to give on screen, is still listening, or has said they are there. That
+   * component ends a quiet call sooner and asks first; this limit is for a
+   * page that cannot, or does not. A number no timer can hold, infinity
+   * included, is never. It is not `relay.idleMs`, which is a browser that
+   * has stopped answering.
+   */
+  callIdleSeconds?: number;
+  /**
+   * How long the provider has to set a session up once the relay connects
+   * to it, in milliseconds (default 15 000). After that the reader is told
+   * it did not answer.
+   */
+  connectTimeoutMs?: number;
   /** The provider's WebSocket root. Replace it for a test server. */
   wsBase?: string;
 }

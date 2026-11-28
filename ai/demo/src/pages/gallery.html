@@ -12,6 +12,7 @@
   </head>
   <body>
     <main class="gallery" data-testid="gallery">
+      <gallery-bar />
       <header class="gallery-head">
         <h1>Component gallery</h1>
         <p>
@@ -19,7 +20,6 @@
           description is the one the model is given, read from the component's
           own file when the page is built.
         </p>
-        <a href="/" data-testid="gallery-back">Back to the chat</a>
       </header>
       <script data-bascik-build type="text/typescript">
         import { gallery } from "../lib/gallery.ts";

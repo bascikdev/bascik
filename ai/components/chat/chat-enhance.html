@@ -92,11 +92,71 @@ The optional client runtime. Without it every form in the chat is a page load, a
     thread.append(live);
   }
 
+  /**
+   * Whether every field of a form is an answer under a name the model chose,
+   * as an input-form says with its hidden `fields` field: its `show` and
+   * `text` fields are then answers too. The server reads it the same way.
+   */
+  const allAnswers = (body: FormData): boolean =>
+    body.get("fields") === "message";
+
+  /**
+   * What the thread shows for a form's message in place of the message, or
+   * undefined when the message itself is shown. The form's own `show` field
+   * wins: its text, or nothing when it is empty. Without one, a button that
+   * carries the answer (it has a name) shows its words, unless the reader
+   * wrote the message themselves in a box named `text`. `data-answer="message"`
+   * on the form shows the message, and `"label"` shows the picked option's
+   * words, or the button's. A form whose fields are all answers shows its
+   * message. The same rule as a voice call's `shownAnswer`.
+   */
+  function shownFor(
+    form: HTMLFormElement,
+    submitter: HTMLElement | null,
+    body: FormData,
+  ): string | undefined {
+    if (allAnswers(body)) return undefined;
+    const own = body.get("show");
+    if (typeof own === "string") return own.trim();
+    const mode = formGet(form, "dataset").answer;
+    if (mode === "message") return undefined;
+    const words = (node: Element | null | undefined): string | undefined =>
+      node?.textContent?.replace(/\s+/g, " ").trim() || undefined;
+    const button = submitter instanceof HTMLButtonElement ? submitter : null;
+    if (mode === "label") {
+      const picked = [...formGet(form, "elements")].find(
+        (control): control is HTMLInputElement =>
+          control instanceof HTMLInputElement &&
+          control.type === "radio" &&
+          control.name === "text" &&
+          control.checked,
+      );
+      return words(picked?.labels?.[0]) ?? words(button);
+    }
+    const typed = [...formGet(form, "elements")].some(
+      (control) =>
+        (control instanceof HTMLTextAreaElement ||
+          (control instanceof HTMLInputElement &&
+            !["hidden", "radio", "checkbox", "submit", "button"].includes(
+              control.type,
+            ))) &&
+        control.name === "text" &&
+        control.value.trim() !== "",
+    );
+    return button?.name && !typed ? words(button) : undefined;
+  }
+
   async function send(form: HTMLFormElement, submitter: HTMLElement | null) {
     const thread = byTestId(document, "chat-thread");
     if (!thread) throw new Error("no thread");
     const body = new FormData(form, submitter);
-    const text = body.get("text");
+    const label = shownFor(form, submitter, body);
+    // The words of a `show` field the form's author wrote are what the
+    // thread will show; a button's words may not be, when another handler
+    // takes the form.
+    const own = label !== undefined && typeof body.get("show") === "string";
+    if (label !== undefined) body.set("show", label);
+    const text = allAnswers(body) ? null : body.get("text");
     stop = new AbortController();
     state.genui = "streaming";
     // A message with files is shown only once the server has taken it: it may
@@ -105,7 +165,9 @@ The optional client runtime. Without it every form in the chat is a page load, a
       (value) => typeof value !== "string" && value.size > 0,
     );
     const shown = (): void => {
-      echo(thread, typeof text === "string" ? text.trim() : "");
+      // A message is echoed as the thread will show it: by its label, if any.
+      const typed = typeof text === "string" ? text.trim() : "";
+      echo(thread, typeof text === "string" || own ? (label ?? typed) : "");
       if (formGet(form, "dataset").testid === "chat-composer") {
         HTMLFormElement.prototype.reset.call(form);
       }

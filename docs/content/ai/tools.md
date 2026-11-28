@@ -27,7 +27,7 @@ type MessagePart =
     };
 ```
 
-A text part marked `spoken` is words from a [voice call](/ai/voice#a-call-with-a-speech-model), shown as plain text. Parts are what you store, what the model is shown again, and what the page renders. A tool call therefore looks the same while it runs, after a reload, and to the model.
+A text part marked `spoken` is words from a [voice call](/ai/voice#a-call-with-a-speech-model), shown as plain text. A reader's message has no parts. It has its text, `content`, and sometimes `show`: what the thread shows in place of the text when the message came from a form (see [What the thread shows for a form](/ai/server-kit#what-the-thread-shows-for-a-form)). Parts are what you store, what the model is shown again, and what the page renders. A tool call therefore looks the same while it runs, after a reload, and to the model.
 
 ## Define a tool
 

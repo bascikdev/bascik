@@ -68,21 +68,81 @@ Memory, conversation search, attachments, and running on several servers each ha
 
 ## Handlers
 
-| Handler        | What it does                                                                             | What it answers                                                                           |
-| -------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `send`         | Add the reader's message and go back to the page, which streams the reply.               | A 303 redirect to the page, JSON `{ say }` for a `voice=1` form, or 400 when not a form.  |
-| `approve`      | Record the reader's answer to a tool call that needs their say-so.                       | A 303 redirect to the page, or 400 when no call waits for that answer.                    |
-| `answer`       | Record the result of a client tool call.                                                 | A 303 redirect to the page, or 400 when no call waits for that result.                    |
-| `stop`         | End the reply being written for the open conversation.                                   | 204, or 404 when none is, or when the open conversation is not the reader's.              |
-| `open`         | Open one of the reader's conversations, or start a new one.                              | A 303 redirect to the page, or 400 when not a form.                                       |
-| `forget`       | Remove one of the reader's memories. It takes a form post with `id` and optional `back`. | Returns to `back` or the chat's page; a missing memory is not an error.                   |
-| `memoryList`   | Return the reader's memories as JSON, newest first.                                      | JSON `{ memories }`, newest first.                                                        |
-| `voiceSession` | Start a spoken conversation.                                                             | JSON ticket, 404 when no provider, 502 when provider fails.                               |
-| `file`         | Serve one attached file. It takes `GET` with `?id=<file id>`.                            | The file to the reader it belongs to; 404 for anyone else, and for an id that is not one. |
-| `voiceTool`    | Run a tool call a voice model made.                                                      | JSON `{ state, output, view }`, or 400 when not a tool call.                              |
-| `voiceTurn`    | Store what was just said in a spoken conversation.                                       | 204, or 400 when not a voice turn.                                                        |
+| Handler        | What it does                                                                             | What it answers                                                                                             |
+| -------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `send`         | Add the reader's message and go back to the page, which streams the reply.               | A 303 redirect to the page, JSON `{ say }` or `{ say, show }` for a `voice=1` form, or 400 when not a form. |
+| `approve`      | Record the reader's answer to a tool call that needs their say-so.                       | A 303 redirect to the page, or 400 when no call waits for that answer.                                      |
+| `answer`       | Record the result of a client tool call.                                                 | A 303 redirect to the page, or 400 when no call waits for that result.                                      |
+| `stop`         | End the reply being written for the open conversation.                                   | 204, or 404 when none is, or when the open conversation is not the reader's.                                |
+| `open`         | Open one of the reader's conversations, or start a new one.                              | A 303 redirect to the page, or 400 when not a form.                                                         |
+| `forget`       | Remove one of the reader's memories. It takes a form post with `id` and optional `back`. | Returns to `back` or the chat's page; a missing memory is not an error.                                     |
+| `memoryList`   | Return the reader's memories as JSON, newest first.                                      | JSON `{ memories }`, newest first.                                                                          |
+| `voiceSession` | Start a spoken conversation.                                                             | JSON ticket, 404 when no provider, 502 when provider fails.                                                 |
+| `file`         | Serve one attached file. It takes `GET` with `?id=<file id>`.                            | The file to the reader it belongs to; 404 for anyone else, and for an id that is not one.                   |
+| `voiceTool`    | Run a tool call a voice model made.                                                      | JSON `{ state, output, view }`, or 400 when not a tool call.                                                |
+| `voiceTurn`    | Store what was just said in a spoken conversation.                                       | 204, or 400 when not a voice turn.                                                                          |
 
-A form posted with `voice=1` gets JSON `{ say }`. It contains the message text. The handler adds nothing to the conversation. The call stores its own turns.
+A form posted with `voice=1` gets JSON `{ say }`. It contains the message text, and `show` beside it when the form sent a `show` field. The handler adds nothing to the conversation. The call stores its own turns.
+
+### What the thread shows for a form
+
+A form with a `text` field sends that as the reader's message; any other form sends one `Label: value` line per field. Either way the message is written for the model. A review form's message can be a record with an item id in it, and a deck of twelve cards sends twelve lines. Neither reads well as the reader's own turn in the thread.
+
+So a message has two texts. `content` is what the model reads. `show`, when it is set, is what the thread shows in its place:
+
+```ts
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  /** On a reader's message: what the thread shows in place of `content`. Empty shows nothing. */
+  show?: string;
+  // ...
+}
+```
+
+`send` reads it from a form field named `show`, which sits beside the message the way `say` sits beside a button's label:
+
+```html
+<form method="post" action="/api/send">
+  <input
+    type="hidden"
+    name="text"
+    value="Decision on fact-12 (fact): confirmed"
+  />
+  <input type="hidden" name="show" value="Correct" />
+  <button>Correct</button>
+</form>
+```
+
+| The form sends       | The thread shows      | The model reads |
+| :------------------- | :-------------------- | :-------------- |
+| No `show` field      | The message           | The message     |
+| `show` with text     | That text             | The message     |
+| `show` that is empty | Nothing for this turn | The message     |
+
+The field is trimmed and kept to 2,000 characters, it is never one of the `Label: value` lines, and it is stored only when it differs from the message. Draw a reader's turn with `shownOf(message)` from `@bascik/ai`, which gives `show` when the message has one and `content` otherwise, and draw nothing when it is empty:
+
+```ts
+import { shownOf } from "@bascik/ai";
+
+const shown = shownOf(message);
+if (shown) yield html`<p class="turn-user">${shown}</p>`;
+```
+
+With scripts on, a form does not need the field to get a label. The [client runtime](/ai/client-runtime) and a [voice call](/ai/voice#forms-in-a-call) add `show` to a form that has none, by one rule:
+
+- A submit button with a `name` carries the answer as its value, so the thread shows the words on the button.
+- `data-answer="label"` on the form shows the words beside the picked option (a checked radio named `text`), or the button's words when none is picked.
+- `data-answer="message"` on the form shows the message itself, whatever the button.
+- Any other form shows the message.
+
+A form's own `show` field always wins. With scripts off no label is added, so a form that must show one in every browser carries the field.
+
+A route of your own passes the label to `chat.addMessage(session, text, { show })`. During a call, `voiceTurn` takes it as an optional `show` field beside `reader`, and `voiceMessages` stores it on the reader's message.
+
+Every handler that reads a form, and `stop` and `voiceSession`, refuses a POST that another site's page sent, with 403 and "This request came from another site." The browser says where a request came from: a `Sec-Fetch-Site` header of `cross-site` is refused, and without that header an `Origin` that is not this host (as `Host`, `X-Forwarded-Host`, or the request's URL names it) is refused. A request with neither header is not a browser's, and goes on.
+
+`voiceTurn` takes an optional `turn` field that names the turn, so the same turn sent twice is stored once: see [Voice & Captions](/ai/voice#turn-ids). `voiceSession` also answers 502 when the turn an earlier call left behind cannot be stored.
 
 ### The host's context
 

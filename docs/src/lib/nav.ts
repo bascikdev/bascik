@@ -173,6 +173,7 @@ export const NAV: NavSection[] = [
       { href: "/ai/providers", label: "Providers" },
       { href: "/ai/client-runtime", label: "Client Runtime" },
       { href: "/ai/voice", label: "Voice & Captions" },
+      { href: "/ai/testing-voice", label: "Testing Voice" },
       { href: "/ai/conversation-search", label: "Conversation Search" },
       { href: "/ai/attachments", label: "Attachments" },
       { href: "/ai/scaling", label: "Running on Several Servers" },

@@ -11,6 +11,8 @@ export default defineConfig({
             "demo/src/lib/**/*.test.ts",
             // The browser modules beside the chat components.
             "components/**/*.test.ts",
+            // The sound math the voice tests measure with.
+            "voice-lab/**/*.test.ts",
           ],
           exclude: ["src/**/*.integration.test.ts"],
         },

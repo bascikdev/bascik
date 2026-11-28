@@ -203,13 +203,36 @@ test.describe("the gallery", () => {
 
   test("the chat sidebar links to it", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("chat-sidebar-gallery").click();
-    await expect(page).toHaveURL(/\/gallery$/);
+    // The link is small print at the foot of the sidebar, not one of the apps.
+    const foot = page.getByTestId("chat-sidebar-foot");
+    await expect(foot.getByTestId("chat-sidebar-memory")).toHaveText("Memory");
+    await expect(
+      page.getByRole("navigation", { name: "Apps" }).getByRole("link"),
+    ).toHaveCount(4);
+    await foot.getByTestId("chat-sidebar-gallery").click();
+    await expect(page).toHaveURL(/\/gallery\?app=books$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
       "Component gallery",
     );
+    await expect(page.getByTestId("gallery-back")).toHaveText(
+      "Back to Bookshop",
+    );
     await page.getByTestId("gallery-back").click();
     await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("its back link stays in view and returns to the app the reader came from", async ({
+    page,
+  }) => {
+    await page.goto("/docs");
+    await page.getByTestId("chat-sidebar-gallery").click();
+    await expect(page).toHaveURL(/\/gallery\?app=docs$/);
+    const back = page.getByTestId("gallery-back");
+    await expect(back).toHaveText("Back to Ask the docs");
+    await page.getByTestId("gallery-section").last().scrollIntoViewIfNeeded();
+    await expect(back).toBeInViewport();
+    await back.click();
+    await expect(page).toHaveURL(/\/docs$/);
   });
 });
 
@@ -218,6 +241,9 @@ test.describe("the gallery", () => {
 test.describe("swipe-deck", () => {
   const firstDeck = (page: Page) =>
     section(page, "swipe-deck").getByTestId("swipe-deck").first();
+  // The third sample is the one written with radios="show" and its own hint.
+  const radioDeck = (page: Page) =>
+    section(page, "swipe-deck").getByTestId("swipe-deck").nth(2);
 
   test.beforeEach(async ({ page }) => {
     await page.goto("/gallery");
@@ -248,6 +274,16 @@ test.describe("swipe-deck", () => {
     await expect(deck.getByTestId("swipe-deck-done")).toBeVisible();
     for (const card of await deck.getByTestId("swipe-card").all()) {
       await expect(card).toBeVisible();
+    }
+    // Nothing can be swiped, so nothing says so, and the radios are the
+    // answer whether or not the deck asked for them.
+    for (const each of [deck, radioDeck(page)]) {
+      await expect(each.getByTestId("swipe-deck-hint")).toBeHidden();
+      await expect(each.getByTestId("swipe-deck-verdict")).toBeHidden();
+      for (const card of await each.getByTestId("swipe-card").all()) {
+        await expect(card.getByLabel("Yes")).toBeVisible();
+        await expect(card.getByLabel("No")).toBeVisible();
+      }
     }
   });
 
@@ -292,6 +328,162 @@ test.describe("swipe-deck", () => {
     const other = section(page, "swipe-deck").getByTestId("swipe-deck").nth(1);
     await expect(other.getByTestId("swipe-deck-yes")).toHaveText("Yes");
     await expect(other.getByTestId("swipe-deck-no")).toHaveText("No");
+  });
+
+  test("JavaScript: a line under the question says how to answer, in the deck's own labels", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "JavaScript case");
+    const hint = firstDeck(page).getByTestId("swipe-deck-hint");
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText("right for Keep, left for Skip");
+    await expect(hint).toContainText("arrow keys");
+    const other = section(page, "swipe-deck").getByTestId("swipe-deck").nth(1);
+    await expect(other.getByTestId("swipe-deck-hint")).toContainText(
+      "right for Yes, left for No",
+    );
+    // A deck's own hint replaces the line.
+    await expect(radioDeck(page).getByTestId("swipe-deck-hint")).toHaveText(
+      "Pick an answer on the card, or swipe it.",
+    );
+  });
+
+  test("JavaScript: the radios are hidden unless the deck asks for them, and the buttons are the tab stops", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "JavaScript case");
+    const deck = firstDeck(page);
+    for (const card of await deck.getByTestId("swipe-card").all()) {
+      await expect(card.getByTestId("swipe-card-yes-input")).toBeHidden();
+      await expect(card.getByTestId("swipe-card-no-input")).toBeHidden();
+    }
+    const focusedTestId = () =>
+      page.evaluate(() => document.activeElement?.getAttribute("data-testid"));
+    await deck.getByTestId("swipe-deck-no").focus();
+    await page.keyboard.press("Tab");
+    expect(await focusedTestId()).toBe("swipe-deck-undo");
+    await page.keyboard.press("Tab");
+    expect(await focusedTestId()).toBe("swipe-deck-yes");
+    // Backwards from the first button, focus leaves the deck without
+    // stopping on a hidden radio.
+    await deck.getByTestId("swipe-deck-no").focus();
+    await page.keyboard.press("Shift+Tab");
+    expect(
+      await deck.evaluate((form) => form.contains(document.activeElement)),
+    ).toBe(false);
+  });
+
+  test("JavaScript: with the radios hidden, the keyboard alone answers every card", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "JavaScript case");
+    const sent = await capture(page);
+    const deck = firstDeck(page);
+    const progress = deck.getByTestId("swipe-deck-progress");
+    await deck.getByTestId("swipe-deck-no").focus();
+    await page.keyboard.press("Enter");
+    await expect(progress).toContainText("1 of 3 answered. Next: Emma");
+    await page.keyboard.press("ArrowRight");
+    await expect(progress).toContainText("2 of 3 answered. Next: Beloved");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Enter");
+    await expect(progress).toContainText("1 of 3 answered. Next: Emma");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(() => sent.bodies.length).toBe(1);
+    // A line for each card, for the model, and one line for the thread.
+    expect(fields(sent.bodies[0])).toEqual([
+      "Dune=no",
+      "Emma=no",
+      "Beloved=yes",
+      "show=Keep: Beloved. Skip: Dune, Emma.",
+    ]);
+  });
+
+  test('JavaScript: radios="show" keeps the radios on the cards, with the buttons\' labels', async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "JavaScript case");
+    const deck = radioDeck(page);
+    const top = deck.getByRole("group", { name: "Kindred" });
+    await expect(top.getByLabel("Lend")).toBeVisible();
+    await expect(top.getByLabel("Hold")).toBeVisible();
+    await expect(deck.getByTestId("swipe-deck-yes")).toHaveText("Lend");
+    await expect(deck.getByTestId("swipe-deck-no")).toHaveText("Hold");
+  });
+
+  test("JavaScript: a dragged card is labelled with the answer its direction gives", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "JavaScript case");
+    const deck = firstDeck(page);
+    await deck.scrollIntoViewIfNeeded();
+    const verdict = deck.getByTestId("swipe-deck-verdict");
+    await expect(verdict).toHaveCSS("opacity", "0");
+    const dune = deck.getByTestId("swipe-card").first();
+    const box = (await dune.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + 40;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 60, y, { steps: 5 });
+    await expect(verdict).toHaveText("Keep");
+    await expect(verdict).not.toHaveCSS("opacity", "0");
+    await page.mouse.move(x - 60, y, { steps: 5 });
+    await expect(verdict).toHaveText("Skip");
+    await page.mouse.up();
+    // Let go short of the reach: the label goes and the card stays.
+    await expect(verdict).toHaveCSS("opacity", "0");
+    await expect(dune).toBeVisible();
+    await expect(deck.getByTestId("swipe-deck-progress")).toContainText(
+      "0 of 3 answered",
+    );
+  });
+
+  // Count the nudges: every animation started on a card of either deck kind.
+  const countNudges = async (page: Page): Promise<() => Promise<number>> => {
+    await page.addInitScript(() => {
+      const counter = window as unknown as { nudges: number };
+      counter.nudges = 0;
+      const animate = Element.prototype.animate;
+      Element.prototype.animate = function (...args) {
+        if (this.matches("fieldset")) counter.nudges++;
+        return animate.apply(this, args);
+      };
+    });
+    await page.goto("/gallery");
+    for (const testId of ["swipe-deck-stack", "fact-swipe-stack"]) {
+      for (const stack of await page.getByTestId(testId).all()) {
+        await stack.scrollIntoViewIfNeeded();
+        // Two frames, so the observer has reported this position.
+        await page.evaluate(
+          () =>
+            new Promise((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve)),
+            ),
+        );
+      }
+    }
+    return () =>
+      page.evaluate(() => (window as unknown as { nudges: number }).nudges);
+  };
+
+  test("JavaScript: one deck on the page nudges its top card, once", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "JavaScript case");
+    const nudges = await countNudges(page);
+    await expect.poll(nudges).toBe(1);
+  });
+
+  test("JavaScript: with reduced motion no card is nudged", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "JavaScript case");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const nudges = await countNudges(page);
+    expect(await nudges()).toBe(0);
+    await expect(firstDeck(page).getByTestId("swipe-deck-hint")).toBeVisible();
   });
 
   test("JavaScript: buttons, keys, drag and undo; the last answer submits the form", async ({
@@ -362,6 +554,7 @@ test.describe("swipe-deck", () => {
       "Dune=yes",
       "Emma=no",
       "Beloved=yes",
+      "show=Keep: Dune, Beloved. Skip: Emma.",
     ]);
   });
 
@@ -369,11 +562,14 @@ test.describe("swipe-deck", () => {
     page,
   }) => {
     test.skip(!withScripts(), "JavaScript case");
-    const deck = firstDeck(page);
-    await deck.getByRole("group", { name: "Dune" }).getByLabel("No").check();
+    const deck = radioDeck(page);
+    await deck
+      .getByRole("group", { name: "Kindred" })
+      .getByLabel("Hold")
+      .check();
     await expect(deck.getByTestId("swipe-card").first()).toBeHidden();
     await expect(deck.getByTestId("swipe-deck-progress")).toContainText(
-      "1 of 3 answered",
+      "1 of 2 answered",
     );
   });
 
@@ -393,18 +589,21 @@ test.describe("swipe-deck", () => {
     page,
   }) => {
     test.skip(!withScripts(), "JavaScript case");
-    const deck = firstDeck(page);
-    await deck.getByRole("group", { name: "Dune" }).getByLabel("Yes").focus();
+    const deck = radioDeck(page);
+    await deck
+      .getByRole("group", { name: "Kindred" })
+      .getByLabel("Lend")
+      .focus();
     await page.keyboard.press("ArrowRight");
     await expect(deck.getByTestId("swipe-deck-progress")).toContainText(
-      "1 of 3 answered. Next: Emma",
+      "1 of 2 answered. Next: Hamlet",
     );
     const focused = await page.evaluate(
       () =>
         document.activeElement?.closest("fieldset")?.querySelector("legend")
           ?.textContent,
     );
-    expect(focused).toBe("Emma");
+    expect(focused).toBe("Hamlet");
   });
 
   test("JavaScript: reserved and repeated titles get names of their own", async ({

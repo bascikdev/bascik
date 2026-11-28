@@ -322,6 +322,27 @@ test("the docs app answers from the real docs and stays on its own page", async 
   expect(await links.count()).toBeGreaterThan(2);
 });
 
+test("a reply is one stack: the page spaces its parts, not each component", async ({
+  page,
+}) => {
+  await page.goto("/docs");
+  await page.getByTestId("chat-sidebar-new").click();
+  await send(page, "How do I stream rows from a slow source?");
+  const turn = page.getByTestId("turn-live");
+  const links = turn.getByTestId("doc-link");
+  // A component has no outer margin of its own.
+  await expect(links.first()).toHaveCSS("margin-bottom", "0px");
+  // Links to the pages an answer came from sit close, as one group.
+  const first = (await links.nth(0).boundingBox())!;
+  const second = (await links.nth(1).boundingBox())!;
+  expect(second.y - (first.y + first.height)).toBeCloseTo(4, 0);
+  // Prose keeps a measure narrower than the thread.
+  const thread = (await page.getByTestId("chat-thread").boundingBox())!;
+  const reply = (await turn.boundingBox())!;
+  expect(reply.width).toBeLessThanOrEqual(42 * 16);
+  expect(reply.width).toBeLessThanOrEqual(thread.width);
+});
+
 test("the data app runs SQL and renders a chart and a table", async ({
   page,
 }) => {
@@ -422,8 +443,9 @@ test("a review is validated item by item and every answer is recorded", async ({
   await live.getByTestId("fact-check-note").fill("The emailed receipt counts.");
   await live.getByTestId("fact-check-confirm").click();
   await settled(page);
-  await expect(page.getByTestId("turn-user").last()).toContainText(
-    "Decision on returns-window (fact): confirmed",
+  // The thread shows what was pressed and the note, not the record sent.
+  await expect(page.getByTestId("turn-user").last()).toHaveText(
+    "Correct\nThe emailed receipt counts.",
   );
 
   // An open rule: pick a branch.
@@ -470,8 +492,8 @@ test("a review is validated item by item and every answer is recorded", async ({
     await deck.getByTestId("fact-swipe-done").click();
   }
   await settled(page);
-  await expect(page.getByTestId("turn-user").last()).toContainText(
-    "Decision on quick-facts (facts): reviewed",
+  await expect(page.getByTestId("turn-user").last()).toHaveText(
+    "2 right, 1 wrong",
   );
   await expect(live).toContainText("I will not quote sale-items");
 
@@ -994,7 +1016,10 @@ test.describe("voice", () => {
           this.onresult?.({ results: [Object.assign([{ transcript: "Recommend a book" }], { isFinal: true })] });
         }, 20);
       }
-      abort() { this.onend?.(); }
+      abort() {
+        window.__aborted = (window.__aborted ?? 0) + 1;
+        this.onend?.();
+      }
     };
     document.addEventListener("DOMContentLoaded", () => {
       const caption = document.querySelector('[data-testid="chat-voice-caption"]');
@@ -1114,6 +1139,49 @@ test.describe("voice", () => {
       "data-state",
       "listening",
     );
+  });
+
+  test("stops dictation while a voice call is on, so nothing is heard twice, and takes it up again after", async ({
+    page,
+  }) => {
+    test.skip(!withScripts(), "voice is a script");
+    await page.addInitScript(fakeSpeech);
+    await page.addInitScript(
+      "navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('no', 'NotAllowedError'); };",
+    );
+    await page.reload();
+    await page.getByTestId("chat-voice-summary").click();
+    await page.getByTestId("chat-voice-talk").click();
+    await expect(page.getByTestId("turn-user")).toHaveText("Recommend a book");
+    await settled(page);
+    const aids = page.getByTestId("chat-voice");
+    await expect(aids).toHaveAttribute("data-state", "listening");
+    const abortedBefore = Number(await page.evaluate("window.__aborted ?? 0"));
+    const listenedBefore = Number(await page.evaluate("window.__listening"));
+
+    // A call starts: the browser's own listening stops at once.
+    const toggle = page.getByTestId("voice-call-toggle");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(aids).not.toHaveAttribute("data-state", "listening");
+    expect(Number(await page.evaluate("window.__aborted"))).toBe(
+      abortedBefore + 1,
+    );
+    await expect(page.getByTestId("voice-call-status")).toHaveText(
+      "No microphone: type to talk.",
+    );
+    // And it does not start again under the call.
+    expect(Number(await page.evaluate("window.__listening"))).toBe(
+      listenedBefore,
+    );
+
+    // The call ends: dictation was on, and is on again.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(aids).toHaveAttribute("data-state", "listening");
+    await page.getByTestId("chat-voice-summary").click();
+    await page.getByTestId("chat-voice-talk").click();
+    await expect(aids).not.toHaveAttribute("data-state", "listening");
   });
 });
 
@@ -1773,6 +1841,36 @@ test.describe("memory", () => {
     await page.getByTestId("chat-sidebar-memory").click();
     await expect(page.getByTestId("memory-list")).toBeVisible();
   }
+
+  test("the memory page names its app and has a way back to it", async ({
+    page,
+  }) => {
+    await openMemory(page);
+    await expect(page.getByTestId("memory-scope")).toHaveText(
+      "Memory for Bookshop",
+    );
+    // The app the memory belongs to stays marked in the sidebar.
+    await expect(page.getByTestId("chat-sidebar-app").first()).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    await expect(page.getByTestId("chat-sidebar-memory")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    const back = page.getByTestId("memory-back");
+    await expect(back).toHaveText("Back to Bookshop");
+    await back.click();
+    await expect(page).toHaveURL(/\/$/);
+
+    await page.goto("/docs");
+    await openMemory(page);
+    await expect(page.getByTestId("memory-back")).toHaveText(
+      "Back to Ask the docs",
+    );
+    await page.getByTestId("memory-back").click();
+    await expect(page).toHaveURL(/\/docs$/);
+  });
 
   test("a reply shows what was remembered, and a new conversation uses it", async ({
     page,

@@ -31,6 +31,7 @@ One fact in a fact-swipe. fact is the fact's id (letters, digits, dots and dashe
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-block-size: 2.75rem;
     padding: 0.4rem 0.9rem;
     border: 1px solid var(--border);
     border-radius: 999px;
@@ -38,6 +39,9 @@ One fact in a fact-swipe. fact is the fact's id (letters, digits, dots and dashe
   }
   .answer:has(:checked) {
     border-color: var(--accent);
+  }
+  .card[data-answers="hidden"] .answers {
+    display: none;
   }
 </style>
 <fieldset class="card" data-testid="fact-card">

@@ -30,12 +30,22 @@ export interface Call {
   speaking: boolean;
   /** When the level last fell quiet, while still counted as speech. */
   quietAt: number;
+  /** The reader switched the microphone off: nothing they say is sent. */
+  muted: boolean;
+  /** Chunks of silence still to send after a mute, so the provider hears the reader stop. */
+  muteTail: number;
+  /** When something last happened on the call, in milliseconds (performance.now). */
+  activeAt: number;
+  /** Nobody has spoken for a while, and the reader is being asked if they are there. */
+  idle: boolean;
+  /** When the provider was last told the call is in use, on the same clock. */
+  aliveAt: number;
 }
 
 /** What the status line is worked out from. */
 export type CallStatus = Pick<
   Call,
-  "waiting" | "working" | "thinking" | "hearing" | "base"
+  "waiting" | "working" | "thinking" | "hearing" | "base" | "idle"
 >;
 
 /** The parts of the status a change may set. */
@@ -51,6 +61,13 @@ export interface Wire {
   audio(base64: string): void;
   /** A typed message, said to the model. */
   text(text: string): void;
+  /** The microphone was switched off: no more audio is coming for now. */
+  pause(): void;
+  /**
+   * The call is in use in a way only the page can tell: an answer awaited on
+   * screen, a long reply still playing, the reader saying they are there.
+   */
+  alive(): void;
   receive(message: any): Promise<void>;
 }
 
@@ -79,8 +96,20 @@ export interface WireHooks {
   mark(patch: StatusPatch): void;
   /** The reader cut in: stop the model's voice at once. */
   quiet(): void;
-  /** Words the reader said; `whole` replaces what was heard so far. */
-  heard(text: string, whole?: boolean): void;
+  /**
+   * Words the reader said. `piece` names the utterance they belong to, when
+   * the provider names it: `whole` then replaces that utterance's words, and
+   * never another's (see reader.ts).
+   */
+  heard(text: string, piece?: string, whole?: boolean): void;
+  /**
+   * The reader spoke over a reply. When none of it had been heard yet, and
+   * it shows nothing, it is taken back, and this is true: the reader's
+   * turn goes on. Otherwise the reply stays, and this is false.
+   */
+  dropReply(): boolean;
+  /** Someone spoke, or something was said: the call is in use. */
+  active(): void;
   /** A piece of the model's audio: 24 kHz, 16-bit, base64. */
   play(base64: string): void;
   /** Words the model said. */

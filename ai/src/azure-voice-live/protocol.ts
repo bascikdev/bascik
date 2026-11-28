@@ -5,6 +5,7 @@
  */
 import type { Tool } from "../model.ts";
 import type { VoiceSessionConfig } from "../voice.ts";
+import { pauseMsOf } from "../voice/pause.ts";
 
 const isAzureVoice = (name: string): boolean =>
   /^[a-z]{2,3}-[A-Z]{2}-/.test(name);
@@ -18,10 +19,34 @@ function declaration(tool: Tool): Record<string, unknown> {
   };
 }
 
+/**
+ * How Voice Live tells that the reader's turn is over: by meaning as well as
+ * silence, waiting `pauseMs` of silence. What the developer passes as
+ * `turnDetection` is laid over it. OpenAI's own `semantic_vad` has no wait
+ * to set, so it is given none.
+ */
+function turnDetection(
+  pauseMs: number | undefined,
+  given: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const type = given.type ?? "azure_semantic_vad";
+  return {
+    type,
+    ...(type === "semantic_vad"
+      ? {}
+      : { silence_duration_ms: pauseMsOf(pauseMs) }),
+    ...given,
+  };
+}
+
 /** The session setup the relay sends, which the browser has no say in. */
 export function azureVoiceLiveSession(
   config: VoiceSessionConfig,
-  options: { voice: string },
+  options: {
+    voice: string;
+    pauseMs?: number;
+    turnDetection?: Record<string, unknown>;
+  },
 ): Record<string, unknown> {
   const azureVoice = isAzureVoice(options.voice);
   return {
@@ -36,7 +61,7 @@ export function azureVoiceLiveSession(
     input_audio_sampling_rate: 16_000,
     // What the reader says, as text: their side of the stored conversation.
     input_audio_transcription: { model: "azure-speech" },
-    turn_detection: { type: "azure_semantic_vad" },
+    turn_detection: turnDetection(options.pauseMs, options.turnDetection),
     input_audio_noise_reduction: { type: "azure_deep_noise_suppression" },
     input_audio_echo_cancellation: { type: "server_echo_cancellation" },
     // Only an Azure voice can say when each word is spoken.
@@ -52,7 +77,8 @@ const text = (value: unknown, max: number): value is string =>
 /**
  * What a browser may say to the provider through the relay, rebuilt field by
  * field: microphone audio, a typed message, a tool's result, and asking for
- * or stopping a reply. Anything else, a new session setup included, is null.
+ * or stopping a reply. `call.active` is said to the relay and goes no
+ * further. Anything else, a new session setup included, is null.
  */
 export function relayedClientEvent(
   raw: string,
@@ -71,6 +97,8 @@ export function relayedClientEvent(
     case "input_audio_buffer.clear":
     case "response.cancel":
     case "response.create":
+    // For the relay alone: the page counts the call as in use.
+    case "call.active":
       return { type };
     case "conversation.item.create": {
       if (typeof item !== "object" || item === null) return null;

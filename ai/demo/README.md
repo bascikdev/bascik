@@ -19,6 +19,9 @@ Visitors can try:
 - Attachments: The Bookshop app accepts file attachments.
 - Voice calls: When a voice provider is configured, visitors can start spoken calls.
 - Reading aids: The docs app can show step lists, note boxes, and links to source pages.
+- Component gallery at `/gallery`: Every catalog component on one page, under a bar that stays in view with a link back to the app you came from.
+
+The foot of the sidebar holds what is not a conversation: the model, a Memory link to what the open app remembers (that page has a link back to the app), and the link to the component gallery.
 
 ## Run it
 
@@ -66,21 +69,26 @@ With none set, it answers from a fixed offline script.
 
 With none set, no voice provider is offered.
 
-| Name                          | What it does                                          | Default |
-| ----------------------------- | ----------------------------------------------------- | ------- |
-| `AZURE_VOICE_LIVE_ENDPOINT`   | Enables Azure voice live.                             | None    |
-| `AZURE_VOICE_LIVE_WS`         | Enables Azure voice live. It can point at a stand-in. | None    |
-| `AZURE_VOICE_LIVE_MODEL`      | Model for Azure voice live.                           | None    |
-| `AZURE_VOICE_LIVE_VOICE`      | Voice for Azure voice live.                           | None    |
-| `AZURE_VOICE_LIVE_API_KEY`    | Key for Azure voice live.                             | None    |
-| `AZURE_VOICE_LIVE_TOKEN`      | Token for Azure voice live.                           | None    |
-| `AZURE_VOICE_LIVE_RELAY_PORT` | Port for the Azure voice relay.                       | `0`     |
-| `GEMINI_API_KEY`              | Enables Gemini Live.                                  | None    |
-| `GEMINI_LIVE_MODEL`           | Model for Gemini Live.                                | None    |
-| `GEMINI_LIVE_HTTP`            | HTTP base for Gemini Live tests.                      | None    |
-| `GEMINI_LIVE_WS`              | WebSocket base for Gemini Live tests.                 | None    |
+| Name                              | What it does                                                                                             | Default |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------- | ------- |
+| `AZURE_VOICE_LIVE_ENDPOINT`       | Enables Azure voice live.                                                                                | None    |
+| `AZURE_VOICE_LIVE_WS`             | Enables Azure voice live. It can point at a stand-in.                                                    | None    |
+| `AZURE_VOICE_LIVE_MODEL`          | Model for Azure voice live.                                                                              | None    |
+| `AZURE_VOICE_LIVE_VOICE`          | Voice for Azure voice live.                                                                              | None    |
+| `AZURE_VOICE_LIVE_API_KEY`        | Key for Azure voice live.                                                                                | None    |
+| `AZURE_VOICE_LIVE_TOKEN`          | Token for Azure voice live.                                                                              | None    |
+| `AZURE_VOICE_LIVE_RELAY_PORT`     | Port for the Azure voice relay.                                                                          | `0`     |
+| `GEMINI_API_KEY`                  | Enables Gemini Live.                                                                                     | None    |
+| `GEMINI_LIVE_MODEL`               | Model for Gemini Live.                                                                                   | None    |
+| `GEMINI_LIVE_HTTP`                | HTTP base for Gemini Live tests.                                                                         | None    |
+| `GEMINI_LIVE_WS`                  | WebSocket base for Gemini Live tests.                                                                    | None    |
+| `VOICE_PAUSE_MS`                  | How long a pause ends the reader's turn, in milliseconds, for both providers. Kept between 200 and 3000. | `800`   |
+| `AZURE_VOICE_LIVE_TURN_DETECTION` | Voice Live `turn_detection` settings, as a JSON object, laid over the default.                           | None    |
+| `GEMINI_LIVE_REALTIME_INPUT`      | Gemini Live `realtimeInputConfig` settings, as a JSON object, laid over the default.                     | None    |
 
 If Azure is enabled and neither key nor token is set, the server uses Azure CLI sign-in.
+
+The last three tune a call and enable no provider by themselves. `AZURE_VOICE_LIVE_TURN_DETECTION` and `GEMINI_LIVE_REALTIME_INPUT` take a JSON object, such as `AZURE_VOICE_LIVE_TURN_DETECTION='{"remove_filler_words":true}'`. A value that is not one is an error when the voice providers are made, such as "AZURE_VOICE_LIVE_TURN_DETECTION must be a JSON object.", and a `VOICE_PAUSE_MS` that is not a number is ignored. Which settings a model takes is the provider's to say; see [Providers](https://bascik.dev/ai/providers#voice-how-long-a-pause-ends-a-turn).
 
 ## Where data is kept
 

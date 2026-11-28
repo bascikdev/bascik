@@ -14,6 +14,14 @@ export const BAR_SHAPE: readonly number[] = [0.55, 0.8, 1, 0.8, 0.55];
 /** Microphone samples per message: a tenth of a second at 16 kHz. */
 export const CHUNK = 1600;
 
+/**
+ * How many chunks of silence follow the reader's last sound when they mute.
+ * A provider ends the reader's turn only after a pause as long as the one
+ * it was set up with, so the silence outlasts the longest pause there is
+ * (`pauseMs` is at most 3000): 3.2 seconds.
+ */
+export const MUTE_TAIL = 32;
+
 /** An audio worklet that hands each block of microphone samples to the page. */
 export const WORKLET = `registerProcessor("mic", class extends AudioWorkletProcessor {
       process(inputs) {
@@ -52,6 +60,8 @@ export function encodePcm16(samples: readonly number[]): string {
 export function pcmChunker(size = CHUNK): {
   add(data: Float32Array): number;
   take(): string | null;
+  /** Forget what has not been taken. */
+  reset(): void;
 } {
   let pending: number[] = [];
   return {
@@ -69,8 +79,15 @@ export function pcmChunker(size = CHUNK): {
       pending = [];
       return chunk;
     },
+    reset() {
+      pending = [];
+    },
   };
 }
+
+/** One chunk of silence, as the provider is sent it. */
+export const silentChunk = (size = CHUNK): string =>
+  encodePcm16(new Array<number>(size).fill(0));
 
 /** The microphone's level, and whether it counts as speech. */
 export interface Speech {

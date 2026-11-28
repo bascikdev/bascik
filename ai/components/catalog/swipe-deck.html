@@ -1,9 +1,9 @@
 <!-- @bascik
-A stack of cards the reader judges one at a time, swiping right for yes and left for no, like Tinder; with arrow keys and two buttons; with no JavaScript it is a plain list of yes/no choices. Props: question (shown above the stack, a short question such as "Keep or skip?"), yes (the label for the right button, default "Yes"), no (the label for the left button, default "No"). Two to twelve swipe-card components go inside, each with a unique title and a short content. When the reader has answered every card the answers are sent as their next message, one "Title: yes" or "Title: no" line per card. Use it for deciding among several candidates, triaging items, or checking whether each of a series of statements is good or bad, true or false, relevant or not. Do not give a card the title text, app or voice; those names are reserved.
+A stack of cards the reader judges one at a time, swiping or dragging right for yes and left for no, like Tinder; with arrow keys and two buttons; a line under the question tells the reader how; with no JavaScript it is a plain list of yes/no choices. Props: question (shown above the stack, a short question such as "Keep or skip?"), hint (replaces the line that explains the gesture; leave it out, and the line is written from the yes and no labels), radios (leave it out, and the buttons answer; write radios="show" only when the reader asks to also see the two choices as radio buttons on each card), yes (the label for the right button, default "Yes"), no (the label for the left button, default "No"). Two to twelve swipe-card components go inside, each with a unique title and a short content. When the reader has answered every card the answers are sent as their next message, one "Title: yes" or "Title: no" line per card. Use it for deciding among several candidates, triaging items, or checking whether each of a series of statements is good or bad, true or false, relevant or not. Do not give a card the title text, app, voice or show; those names are reserved.
 -->
 <style>
   .deck {
-    margin: 0.75rem 0;
+    margin: 0;
     display: grid;
     gap: 0.75rem;
     max-inline-size: 26rem;
@@ -15,11 +15,44 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
   .live {
     display: grid;
     position: relative;
+    /* The top card and the label stack high: they stay inside this box. */
+    isolation: isolate;
     touch-action: pan-y;
     padding-block-end: 1.5rem;
   }
   .question {
     font-weight: bold;
+  }
+  .question:has(+ .hint:not([hidden])) {
+    margin-block-end: 0;
+  }
+  .hint {
+    margin-block: -0.5rem 0;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+  .verdict {
+    display: none;
+  }
+  .live .verdict {
+    display: block;
+    grid-area: 1 / 1;
+    place-self: start center;
+    z-index: 20;
+    margin-block-start: 0.5rem;
+    padding: 0.2rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    font-weight: 600;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease-out;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .live .verdict {
+      transition: none;
+    }
   }
   .progress {
     color: var(--muted);
@@ -35,6 +68,8 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
     display: none;
   }
   .choice {
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
     padding: 0.5rem 1.1rem;
     border: 1px solid var(--border);
     background: var(--surface);
@@ -50,6 +85,7 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
   .done {
     justify-self: start;
     margin-top: 0.35rem;
+    min-block-size: 2.75rem;
     padding: 0.45rem 1rem;
     border: 0;
     border-radius: 999px;
@@ -66,8 +102,26 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
 </style>
 <form class="deck" method="post" action="/api/send" data-testid="swipe-deck">
   <p class="question" data-bascik-prop-question>Keep or skip?</p>
-  <div id="stack" class="stack" data-testid="swipe-deck-stack">
+  <p
+    id="hint"
+    class="hint"
+    hidden
+    data-testid="swipe-deck-hint"
+    data-bascik-prop-hint
+  ></p>
+  <div
+    id="stack"
+    class="stack"
+    data-testid="swipe-deck-stack"
+    data-bascik-attr-data-radios="radios"
+  >
     <span data-bascik-slot></span>
+    <span
+      id="verdict"
+      class="verdict"
+      aria-hidden="true"
+      data-testid="swipe-deck-verdict"
+    ></span>
   </div>
   <p
     id="progress"
@@ -114,6 +168,8 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
     const yesBtn = document.getElementById("yes")!;
     const noBtn = document.getElementById("no")!;
     const undoBtn = document.getElementById("undo")!;
+    const hint = document.getElementById("hint")!;
+    const verdict = document.getElementById("verdict")!;
     const form = stack.closest("form")!;
 
     // bascik-ignore js-attribute-selector the cards are another component's roots, found by their test id
@@ -125,7 +181,7 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
       for (const card of cards) {
         const radios = card.getElementsByTagName("input");
         let name = radios[0]?.name ?? "";
-        if (name === "text" || name === "app" || name === "voice") {
+        if (name === "text" || name === "app" || name === "voice" || name === "show") {
           name = `${name} (item)`;
         }
         const n = (seen.get(name) ?? 0) + 1;
@@ -143,9 +199,39 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
       progress.hidden = false;
       done.hidden = true;
 
+      // The line under the question names the gesture with the deck's own labels, unless the deck brought its own.
+      const yesLabel = yesBtn.textContent!.trim();
+      const noLabel = noBtn.textContent!.trim();
+      if (!hint.textContent!.trim()) {
+        hint.textContent = `Swipe or drag right for ${yesLabel}, left for ${noLabel}. The arrow keys work from the buttons.`;
+      }
+      hint.hidden = false;
+
+      // The radios are the form without scripts. Here the buttons answer, so the radios show only when the deck asks for them, and then they carry the buttons' labels.
+      const showRadios = stack.dataset.radios === "show";
+      for (const card of cards) {
+        if (!showRadios) {
+          card.dataset.answers = "hidden";
+          continue;
+        }
+        for (const label of [...card.getElementsByTagName("label")]) {
+          const radio = label.getElementsByTagName("input")[0];
+          const text = label.getElementsByTagName("span")[0];
+          if (radio && text) text.textContent = radio.value === "yes" ? yesLabel : noLabel;
+        }
+      }
+
+      // How far a card must travel before letting go answers it.
+      const reach = (card: HTMLElement): number => Math.max(80, card.offsetWidth * 0.3);
+      let nudge: Animation | undefined;
+
       let answered: HTMLElement[] = [];
       const answeredSet = new Set<HTMLElement>();
       let submitted = false;
+      // The one line the thread shows for the deck, rewritten each time the answers are sent.
+      const shown = document.createElement("input");
+      shown.type = "hidden";
+      shown.name = "show";
       const leaving = new Set<HTMLElement>();
 
       const remaining = (): HTMLElement[] => {
@@ -171,6 +257,7 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
             card.removeAttribute("aria-hidden");
             card.style.zIndex = "10";
             card.style.userSelect = "none";
+            card.style.cursor = "grab";
           } else if (i <= 2) {
             setShown(card, true);
             card.style.transform = `translateY(${i * 10}px) scale(${1 - i * 0.04})`;
@@ -178,6 +265,7 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
             card.inert = true;
             card.setAttribute("aria-hidden", "true");
             card.style.userSelect = "";
+            card.style.cursor = "";
           } else {
             setShown(card, false);
             card.style.userSelect = "";
@@ -209,6 +297,8 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
         }
         answered.push(card);
         answeredSet.add(card);
+        nudge?.cancel();
+        verdict.style.opacity = "0";
 
         const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -235,12 +325,23 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
 
         if (hadFocus) {
           const next = getTop();
-          const target = next ? next.getElementsByTagName("input")[0] : yesBtn;
+          // With the radios hidden nothing in the next card takes focus, so a button does.
+          const target = showRadios && next ? next.getElementsByTagName("input")[0] : yesBtn;
           (target as HTMLElement | undefined)?.focus();
         }
 
         if (remaining().length === 0 && !submitted) {
           submitted = true;
+          // The thread shows one line for the deck, in its own labels; the
+          // model is still sent a line for each card.
+          const sorted = (value: string): string =>
+            cards
+              .map((each) => each.getElementsByTagName("input"))
+              .filter((radios) => [...radios].some((radio) => radio.checked && radio.value === value))
+              .map((radios) => radios[0]!.name)
+              .join(", ") || "none";
+          shown.value = `${yesLabel}: ${sorted("yes")}. ${noLabel}: ${sorted("no")}.`;
+          if (!shown.isConnected) form.append(shown);
           form.requestSubmit();
         }
       };
@@ -268,6 +369,7 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
         last.style.opacity = "";
         last.style.transition = "";
         submitted = false;
+        shown.remove();
         layout();
       });
 
@@ -306,6 +408,7 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
         if (!top) return;
         if (!top.contains(event.target as Node)) return;
 
+        nudge?.cancel();
         startX = event.clientX;
         dragCard = top;
         dragging = false;
@@ -315,16 +418,26 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
 
       stack.addEventListener("pointermove", (event) => {
         if (!dragCard) return;
+        // A press let go outside the stack never sent its pointerup here.
+        if (!(event.buttons & 1)) {
+          endDrag(event);
+          return;
+        }
         dx = event.clientX - startX;
 
         if (!dragging && Math.abs(dx) > 6) {
           dragging = true;
           dragCard.setPointerCapture(event.pointerId);
           dragCard.style.transition = "";
+          dragCard.style.cursor = "grabbing";
         }
 
         if (dragging) {
           dragCard.style.transform = `translateX(${dx}px) rotate(${dx / 20}deg)`;
+          // The label rides on the card, names the answer this direction gives, and is solid once letting go would give it.
+          verdict.textContent = dx > 0 ? yesLabel : noLabel;
+          verdict.style.transform = `translateX(${dx}px)`;
+          verdict.style.opacity = String(Math.min(1, Math.abs(dx) / reach(dragCard)));
         }
       });
 
@@ -333,8 +446,9 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
         if (dragging) {
           justDragged = true;
           setTimeout(() => { justDragged = false; }, 0);
-          const threshold = Math.max(80, dragCard.offsetWidth * 0.3);
-          if (Math.abs(dx) > threshold) {
+          verdict.style.opacity = "0";
+          dragCard.style.cursor = "grab";
+          if (Math.abs(dx) > reach(dragCard)) {
             answer(dragCard, dx > 0 ? "yes" : "no");
           } else {
             const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -362,6 +476,27 @@ A stack of cards the reader judges one at a time, swiping right for yes and left
           justDragged = false;
         }
       });
+
+      // The first deck a reader sees on a page moves its top card aside once, to show that it can be dragged.
+      const page = document.documentElement;
+      if (!page.dataset.swipeNudged && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        const watcher = new IntersectionObserver((entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return;
+          watcher.disconnect();
+          const top = getTop();
+          if (!top || page.dataset.swipeNudged || answered.length > 0 || dragCard) return;
+          page.dataset.swipeNudged = "1";
+          nudge = top.animate(
+            [
+              { transform: "none", easing: "ease-out" },
+              { transform: "translateX(14px) rotate(0.7deg)", easing: "ease-in-out" },
+              { transform: "none" },
+            ],
+            { duration: 450 },
+          );
+        }, { threshold: 0.6 });
+        watcher.observe(stack);
+      }
 
       layout();
     }

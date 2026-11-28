@@ -31,6 +31,23 @@ const componentsIn = (markup: string): string[] =>
     ),
   ].sort();
 
+/**
+ * The most characters of a tool's result the model is told. A relay drops a
+ * longer result whole (Azure Voice Live's passes 200,000), and the model
+ * would wait for an answer that never comes, so a long one is cut here.
+ */
+export const MAX_VOICE_TOOL_OUTPUT = 100_000;
+const CUT_SHORT = "\n(The result was too long. This is the start of it.)";
+
+/** How long a voice tool may run before the model is told it failed, unless the caller says. */
+export const VOICE_TOOL_TIMEOUT_MS = 60_000;
+
+/** `output`, cut to what a voice model is told. */
+const told = (output: string): string =>
+  output.length <= MAX_VOICE_TOOL_OUTPUT
+    ? output
+    : `${output.slice(0, MAX_VOICE_TOOL_OUTPUT - CUT_SHORT.length)}${CUT_SHORT}`;
+
 const ALREADY_CALLED: VoiceToolResult = {
   state: "failed",
   output: "Error: already called.",
@@ -50,7 +67,9 @@ const TOO_MUCH: VoiceToolResult = {
  * needs approval waits, and a decision claims the call it answers. A call
  * with an id the turn already holds is refused, and a decision about a call
  * that is not waiting does nothing, so a call runs at most once however many
- * requests arrive together. `show` is rendered through the catalog like any
+ * requests arrive together. The ids of calls in turns already stored are
+ * remembered too (the last `MAX_VOICE_CALL_IDS`), so a call sent again after
+ * its turn was stored does not run a second time. `show` is rendered through the catalog like any
  * reply. A call to run comes back as `run`, for `finishVoiceTool`.
  */
 export function startVoiceTool(
@@ -180,12 +199,13 @@ function voiceToolResult(
 ): VoiceToolResult {
   return {
     state: part.state,
-    output:
+    output: told(
       part.state === "done"
         ? (part.output ?? "")
         : part.state === "denied"
           ? "The reader declined this action. It was not done."
           : `Error: ${part.error ?? "the tool failed"}`,
+    ),
     html: renderToolPart(part, catalog, view),
   };
 }
@@ -193,23 +213,42 @@ function voiceToolResult(
 /**
  * The second half of a voice tool call: run the call `startVoiceTool`
  * claimed, with no lock held, and change `part` to what came of it. Record
- * it with `settleVoiceTool`.
+ * it with `settleVoiceTool`. A tool that has not answered after
+ * `limits.timeoutMs` (default `VOICE_TOOL_TIMEOUT_MS`; 0 for no limit) is
+ * recorded as failed and its `signal` is aborted, so the model is told and
+ * the reader is not left waiting.
  */
 export async function finishVoiceTool(
   part: ToolPart,
   tools: readonly Tool[],
   catalog: Catalog,
   options: TurnRenderOptions = {},
+  limits: { timeoutMs?: number } = {},
 ): Promise<VoiceToolResult> {
+  const { timeoutMs = VOICE_TOOL_TIMEOUT_MS } = limits;
   const offered = voiceTools(tools);
   const tool = offered.find((candidate) => candidate.name === part.name);
+  const stop = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     if (!tool?.run) throw new Error(`There is no tool named ${part.name}.`);
-    part.output = await tool.run(part.input, {});
+    const late = new Promise<never>((_resolve, reject) => {
+      if (!(timeoutMs > 0) || !Number.isFinite(timeoutMs)) return;
+      timer = setTimeout(() => {
+        stop.abort();
+        reject(new Error("The tool took too long to answer."));
+      }, timeoutMs);
+    });
+    part.output = await Promise.race([
+      Promise.resolve(tool.run(part.input, { signal: stop.signal })),
+      late,
+    ]);
     part.state = "done";
   } catch (error) {
     part.error = error instanceof Error ? error.message : "The tool failed.";
     part.state = "failed";
+  } finally {
+    clearTimeout(timer);
   }
   return voiceToolResult(part, catalog, { ...options, tools: offered });
 }
@@ -228,9 +267,10 @@ export async function runVoiceTool(
   tools: readonly Tool[],
   catalog: Catalog,
   options: TurnRenderOptions = {},
+  limits: { timeoutMs?: number } = {},
 ): Promise<VoiceToolResult> {
   const started = startVoiceTool(turn, request, tools, catalog, options);
   if (!started.run) return started.result!;
   // The part is the turn's own, so finishing it records it.
-  return finishVoiceTool(started.run, tools, catalog, options);
+  return finishVoiceTool(started.run, tools, catalog, options, limits);
 }

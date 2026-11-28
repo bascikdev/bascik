@@ -170,8 +170,19 @@ export function catalogPrompt(
       "",
     );
   }
+  // A link can only be shown by a component that takes an href: prose has no
+  // link syntax, so a URL written in it is literal text.
+  const linked = [...catalog.values()].some((entry) =>
+    entry.props.includes("href"),
+  );
   lines.push(
-    "Use only the attributes shown. Prefer a component over a long list or table of the same information, and keep the prose around it short.",
+    [
+      "Use only the attributes shown. Prefer a component over a long list or table of the same information.",
+      "A component replaces the prose it covers: introduce it in at most one short sentence, and do not repeat in text what it shows.",
+      linked
+        ? "You cannot write a link in prose: never write a URL or a path to a page as text, and give a link only through a component that has an href."
+        : "You cannot write a link in prose: do not write a URL unless the reader asks for one.",
+    ].join(" "),
   );
   return lines.join("\n");
 }

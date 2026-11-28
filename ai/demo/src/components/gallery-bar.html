@@ -1,0 +1,46 @@
+<!-- @bascik
+The bar at the top of the component gallery. It stays in view as the page scrolls, and its link goes back to the app the reader came from: the one named in ?app=, or the one the request was sent from.
+-->
+<style>
+  .bar {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 10;
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+    border-block-end: 1px solid var(--border);
+    background: var(--bg);
+    font-size: 0.875rem;
+  }
+  .back {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 2.75rem;
+    color: inherit;
+    font-weight: 600;
+    text-underline-offset: 0.2em;
+  }
+  .back:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .where {
+    color: var(--muted);
+  }
+</style>
+<nav class="bar" aria-label="Demo" data-testid="gallery-bar">
+  <script data-bascik-server type="text/typescript">
+    import { html } from "@bascik/bascik/html";
+    import { appFor } from "@/lib/chat.ts";
+
+    export default (request: Request) => {
+      const app = appFor(request);
+      return html`<a class="back" href="${app.path}" data-testid="gallery-back"
+          >Back to ${app.name}</a
+        >
+        <span class="where">Component gallery</span>`;
+    };
+  </script>
+</nav>

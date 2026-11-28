@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
+  MUTED,
+  STILL_THERE,
   closeReason,
   providerLabel,
   sessionFailure,
@@ -13,6 +15,7 @@ describe("statusText", () => {
     working: 0,
     thinking: false,
     hearing: false,
+    idle: false,
     base: "Listening.",
   };
 
@@ -34,6 +37,15 @@ describe("statusText", () => {
       "Thinking…",
     );
     expect(statusText({ ...idle, hearing: true })).toBe("Hearing you…");
+  });
+
+  test("asks whether anyone is there before thinking, hearing or listening", () => {
+    const asked = { ...idle, idle: true, thinking: true, hearing: true };
+    expect(statusText(asked)).toBe(STILL_THERE);
+    expect(statusText({ ...asked, working: 1 })).toBe("Working…");
+    expect(statusText({ ...idle, base: MUTED })).toBe(
+      "Muted. The model cannot hear you.",
+    );
   });
 });
 

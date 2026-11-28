@@ -96,6 +96,49 @@ export function decisionMessage(decision: Decision): string {
   return lines.join("\n");
 }
 
+/** What the reviewer pressed, in the words on the button. */
+const PRESSED: Record<string, string> = {
+  "fact confirmed": "Correct",
+  "fact wrong": "Wrong",
+  "fact unsure": "Not sure",
+  "gap unknown": "I do not know",
+  "plan approved": "Approve plan",
+  "plan changes": "Needs changes",
+  "rule none-fit": "None of these",
+};
+
+/**
+ * The words a rule's form sent for the branch that was picked: every
+ * fork-branch sends its condition in a field named by its id.
+ */
+export function branchFrom(form: FormData, decision: Decision): string {
+  if (decision.kind !== "rule" || OWN_FIELDS.has(decision.verdict)) return "";
+  return field(form, decision.verdict).slice(0, MAX_NOTE);
+}
+
+/**
+ * The decision as the thread shows it, in the reviewer's turn: what they
+ * pressed or picked, then their note. The model reads `decisionMessage`.
+ * `branch` is the condition of the branch a rule's form picked.
+ */
+export function decisionLabel(decision: Decision, branch = ""): string {
+  const rows = Object.values(decision.rows);
+  const wrong = rows.filter((answer) => answer === "wrong").length;
+  let label = PRESSED[`${decision.kind} ${decision.verdict}`] ?? "";
+  if (rows.length > 0) {
+    label =
+      wrong === 0
+        ? `All ${rows.length} right`
+        : `${rows.length - wrong} right, ${wrong} wrong`;
+  } else if (!label && decision.kind === "rule" && branch) {
+    label = `If ${branch}`;
+  } else if (!label && decision.kind === "gap" && decision.note) {
+    // The answer to a gap is the note, and those are the reviewer's words.
+    return decision.note;
+  }
+  return [label || "Answered", decision.note].filter(Boolean).join("\n");
+}
+
 const DECISION_LINE = /^Decision on ([\w.-]+) \((\w+)\): ([\w.-]+)$/;
 
 /** Every decision recorded in a conversation, oldest first. */

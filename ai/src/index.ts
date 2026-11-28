@@ -30,6 +30,7 @@ export {
   filesOf,
   invalidToolInput,
   partsOf,
+  shownOf,
   roundsOf,
   scriptedModel,
   toolResult,

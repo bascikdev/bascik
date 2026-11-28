@@ -11,11 +11,18 @@ export function postForm(
   fields: Record<string, string>,
   signal?: AbortSignal,
   fetcher: typeof fetch = fetch,
+  /** Send it even if the page is left before it is answered. */
+  keepalive = false,
 ): Promise<Response> {
   const body = new FormData();
   body.set("app", app);
   for (const [name, value] of Object.entries(fields)) body.set(name, value);
-  return fetcher(path, { method: "POST", body, signal });
+  return fetcher(path, {
+    method: "POST",
+    body,
+    signal,
+    ...(keepalive ? { keepalive } : {}),
+  });
 }
 
 /** Where the view of one tool call is rendered. */

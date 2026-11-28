@@ -3,7 +3,8 @@
  * voice model made, store what was said in a turn, and show what a voice
  * tool call put on screen.
  */
-import { newConversation } from "../store.ts";
+import type { ChatMessage } from "../model.ts";
+import { newConversation, type Conversation } from "../store.ts";
 import { abandonToolCalls } from "../turn.ts";
 import {
   finishVoiceTool,
@@ -28,9 +29,15 @@ import {
   badRequest,
   conversationFull,
 } from "./errors.ts";
-import { field } from "./forms.ts";
+import { crossSite, field } from "./forms.ts";
 import { MAX_SPEECH, MAX_TOOL_INPUT, NO_STORE, VOICE_MS } from "./limits.ts";
+import type { Session } from "./sessions.ts";
 import type { Chat } from "./types.ts";
+
+/** A turn's id, as a browser may send it with `voiceTurn`. Any other is not used. */
+const TURN_ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** How many stored turns' ids a call remembers, newest last. */
+const MAX_STORED_TURN_IDS = 64;
 
 /** The handlers of a spoken chat, and the voice view a page reads. */
 export type ChatVoiceHandlers = Pick<
@@ -59,7 +66,28 @@ export function chatVoiceHandlers(
     updateVoice,
   } = base;
 
+  /** Store a voice turn's messages in its conversation. False when it has no room. */
+  const storeTurn = async (
+    session: Session,
+    conversation: Conversation,
+    messages: ChatMessage[],
+  ): Promise<boolean> => {
+    if (!roomIn(conversation, messages)) return false;
+    abandonToolCalls(conversation.messages);
+    if (conversation.messages.length === 0) {
+      conversation.title = titleOf(
+        messages[0]!.content || "Voice conversation",
+      );
+    }
+    conversation.messages.push(...messages);
+    await save(session, conversation);
+    return true;
+  };
+
   const voiceSession: Chat["voiceSession"] = async (request) => {
+    // No form is read here, so where the request came from is checked here.
+    const refused = crossSite(request);
+    if (refused) return refused;
     const session = sessions.identify(request);
     const wanted = new URL(request.url).searchParams.get("provider");
     const voice =
@@ -71,19 +99,40 @@ export function chatVoiceHandlers(
         status: 404,
       });
     }
-    // What is said is stored, so there has to be a conversation to store it
-    // in. A new one has an id of its own, which nothing else writes yet.
-    let conversation = await changingOpen(session, async (found) => found);
-    if (!conversation) {
-      const created = newConversation();
-      await serialized(session, created.id, () => save(session, created));
-      conversation = created;
+    // A call that ended without storing its last turn (the page was closed,
+    // the connection dropped) left it recorded. It is stored now, as ended:
+    // its parts are not the new call's, and a call still waiting for the
+    // reader in it can no longer be approved.
+    let found: Conversation | null;
+    try {
+      found = await changingOpen(session, async (open) => {
+        if (!open) return open;
+        const left = await updateVoice(open.id, (turn) =>
+          turn.parts.length
+            ? voiceMessages(turn, { reader: "", model: "" })
+            : [],
+        );
+        if (left.length) await storeTurn(session, open, left);
+        return open;
+      });
+    } catch (error) {
+      onError(error, "the last voice call's turn was not stored");
+      return new Response("The voice call could not be started.", {
+        status: 502,
+      });
     }
+    // What is said is stored, so there has to be a conversation to store it
+    // in. A new one has an id of its own, which nothing else writes yet. It
+    // is stored once there is a ticket, so a provider that fails leaves no
+    // empty conversation behind.
+    const created = found ? null : newConversation();
+    const conversation = found ?? created!;
     let ticket;
     try {
       ticket = await voice.createSession({
         system: await promptFor(true, session),
         tools: voiceTools(toolsFor(session, conversation.id)),
+        owner: session.reader,
       });
     } catch (error) {
       onError(error, "no voice session");
@@ -102,6 +151,9 @@ export function chatVoiceHandlers(
           status: 502,
         });
       }
+    }
+    if (created) {
+      await serialized(session, created.id, () => save(session, created));
     }
     const headers = sessions.remember(session, conversation.id);
     headers.set("content-type", "application/json");
@@ -185,15 +237,22 @@ export function chatVoiceHandlers(
         catalogNow,
         renderOptions,
       );
-      shown = await updateVoice(conversation.id, async (latest) => {
-        // Only into the turn that claimed it: a turn stored meanwhile
-        // recorded the call as ended, and the next one is not its own, even
-        // when it holds a call with the same id.
-        if ((latest.round ?? 0) !== started.round) return false;
-        settleVoiceTool(latest, started.run!, started.round);
-        await keepView(latest, result.html);
-        return result.html !== "";
-      });
+      try {
+        shown = await updateVoice(conversation.id, async (latest) => {
+          // Only into the turn that claimed it: a turn stored meanwhile
+          // recorded the call as ended, and the next one is not its own, even
+          // when it holds a call with the same id.
+          if ((latest.round ?? 0) !== started.round) return false;
+          settleVoiceTool(latest, started.run!, started.round);
+          await keepView(latest, result.html);
+          return result.html !== "";
+        });
+      } catch (error) {
+        // The tool ran, so the model is told what came of it either way: an
+        // error here would have it wait, or ask for the call again.
+        onError(error, "a voice tool's result was not recorded");
+        shown = false;
+      }
     }
     return Response.json(
       { state: result.state, output: result.output, view: shown },
@@ -207,6 +266,13 @@ export function chatVoiceHandlers(
     const session = sessions.identify(request);
     const reader = field(form, "reader");
     const model = field(form, "model");
+    // What the thread shows for the reader's words, when a form they pressed
+    // told the model something else.
+    const show = field(form, "show");
+    // The browser may name the turn, so the same turn sent twice (a retry
+    // after a lost answer) is stored once.
+    const named = field(form, "turn");
+    const turnId = named !== undefined && TURN_ID.test(named) ? named : null;
     return changingOpen(session, async (conversation) => {
       if (!conversation || reader === undefined || model === undefined) {
         return badRequest("Not a voice turn.");
@@ -214,22 +280,34 @@ export function chatVoiceHandlers(
       if (!(await voiceOpen(conversation.id))) return noVoice();
       // The turn is taken either way: one with no room is dropped, not kept
       // to be refused again.
-      const messages = await updateVoice(conversation.id, (turn) =>
-        voiceMessages(turn, {
+      const messages = await updateVoice(conversation.id, (turn) => {
+        if (turnId !== null) {
+          if ((turn.stored ?? []).includes(turnId)) return null;
+          turn.stored = [...(turn.stored ?? []), turnId].slice(
+            -MAX_STORED_TURN_IDS,
+          );
+        }
+        return voiceMessages(turn, {
           reader: reader.slice(0, MAX_SPEECH),
           model: model.slice(0, MAX_SPEECH),
-        }),
-      );
-      if (!messages.length) return new Response(null, { status: 204 });
-      if (!roomIn(conversation, messages)) return conversationFull();
-      abandonToolCalls(conversation.messages);
-      if (conversation.messages.length === 0) {
-        conversation.title = titleOf(
-          messages[0]!.content || "Voice conversation",
-        );
+          ...(show === undefined ? {} : { show: show.slice(0, MAX_SPEECH) }),
+        });
+      });
+      // Stored already, or nothing to store.
+      if (!messages?.length) return new Response(null, { status: 204 });
+      try {
+        if (!(await storeTurn(session, conversation, messages))) {
+          return conversationFull();
+        }
+      } catch (error) {
+        if (turnId !== null) {
+          // Not stored after all: the same turn sent again is taken.
+          await updateVoice(conversation.id, (turn) => {
+            turn.stored = (turn.stored ?? []).filter((id) => id !== turnId);
+          }).catch(() => {});
+        }
+        throw error;
       }
-      conversation.messages.push(...messages);
-      await save(session, conversation);
       return new Response(null, { status: 204 });
     });
   };

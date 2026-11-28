@@ -9,7 +9,7 @@ import { newConversation, type Conversation } from "../store.ts";
 import type { Chat } from "./types.ts";
 import type { ChatBase, ChatConversations } from "./context.ts";
 import { ConversationFullError } from "./errors.ts";
-import { DEFAULT_MAX_CONVERSATION_BYTES } from "./limits.ts";
+import { DEFAULT_MAX_CONVERSATION_BYTES, MAX_SHOWN } from "./limits.ts";
 import { applyChanges } from "./merge.ts";
 import type { Session } from "./sessions.ts";
 
@@ -162,6 +162,9 @@ export function chatConversations(base: ChatBase): ChatConversations {
           ],
         }
       : { role: "user", content: text };
+    // Kept only when the thread is to show something other than the text.
+    const show = titled?.show?.trim().slice(0, MAX_SHOWN);
+    if (show !== undefined && show !== text) message.show = show;
     if (!roomIn(conversation, [message])) throw new ConversationFullError();
     abandonToolCalls(conversation.messages);
     conversation.messages.push(message);

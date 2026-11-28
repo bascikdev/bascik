@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   QUEUE,
   decisionFrom,
+  branchFrom,
+  decisionLabel,
   decisionMessage,
   decisionsIn,
   reviewReply,
@@ -124,6 +126,94 @@ describe("a decision as a chat message", () => {
     expect(
       decisionsIn([{ role: "user", content: `I think the ${content}` }]),
     ).toEqual([]);
+  });
+});
+
+describe("a decision as the thread shows it", () => {
+  const decided = (fields: Record<string, string>) =>
+    decisionFrom(form(fields), NOW)!;
+
+  it("is the words on the button that was pressed, then the note", () => {
+    const base = { kind: "fact", item: "returns-window" };
+    expect(decisionLabel(decided({ ...base, verdict: "unsure" }))).toBe(
+      "Not sure",
+    );
+    expect(decisionLabel(decided({ ...base, verdict: "wrong" }))).toBe("Wrong");
+    expect(
+      decisionLabel(
+        decided({ ...base, verdict: "confirmed", note: "<b>45</b> days, $1" }),
+      ),
+    ).toBe("Correct\n<b>45</b> days, $1");
+    expect(
+      decisionLabel(decided({ kind: "plan", item: "p", verdict: "changes" })),
+    ).toBe("Needs changes");
+  });
+
+  it("is the reviewer's own answer to a gap, or that they do not know", () => {
+    const base = { kind: "gap", item: "gift-returns" };
+    expect(
+      decisionLabel(
+        decided({ ...base, verdict: "answered", note: "Store credit only." }),
+      ),
+    ).toBe("Store credit only.");
+    expect(decisionLabel(decided({ ...base, verdict: "unknown" }))).toBe(
+      "I do not know",
+    );
+  });
+
+  it("names the branch of a rule by the condition its form sent", () => {
+    const posted = form({
+      kind: "rule",
+      item: "damaged-no-receipt",
+      verdict: "store-credit",
+      "store-credit": "the receipt cannot be found",
+      refund: "the card is on file",
+    });
+    const decision = decisionFrom(posted, NOW)!;
+    expect(branchFrom(posted, decision)).toBe("the receipt cannot be found");
+    expect(decisionLabel(decision, branchFrom(posted, decision))).toBe(
+      "If the receipt cannot be found",
+    );
+    // Without the condition, and for "none of these", it still says something.
+    expect(decisionLabel(decision)).toBe("Answered");
+    expect(
+      decisionLabel(
+        decided({ kind: "rule", item: "r", verdict: "none-fit", note: "Ask." }),
+      ),
+    ).toBe("None of these\nAsk.");
+  });
+
+  it("never reads a branch's words from one of the form's own fields", () => {
+    const posted = form({
+      kind: "rule",
+      item: "r",
+      verdict: "note",
+      note: "x",
+    });
+    expect(branchFrom(posted, decisionFrom(posted, NOW)!)).toBe("");
+  });
+
+  it("counts the rows of a table or a deck", () => {
+    const base = { kind: "facts", item: "quick-facts", verdict: "reviewed" };
+    expect(
+      decisionLabel(decided({ ...base, a: "right", b: "wrong", c: "right" })),
+    ).toBe("2 right, 1 wrong");
+    expect(
+      decisionLabel(
+        decided({ ...base, kind: "codes", a: "right", b: "right", note: "Ok" }),
+      ),
+    ).toBe("All 2 right\nOk");
+  });
+
+  it("does not change what the model reads", () => {
+    const decision = decided({
+      kind: "fact",
+      item: "returns-window",
+      verdict: "unsure",
+    });
+    expect(decisionMessage(decision)).toBe(
+      "Decision on returns-window (fact): unsure",
+    );
   });
 });
 

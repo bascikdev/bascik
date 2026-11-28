@@ -106,7 +106,9 @@
     "!components/**/*.test.ts",
     "LICENSE",
     "README.md",
-    "!demo/**"
+    "!demo/**",
+    "!e2e/**",
+    "!voice-lab/**"
   ],
   "bascik": {
     "components": "./components"
@@ -121,6 +123,9 @@
     "demo:build": "cd demo && bascik --build",
     "demo:server": "cd demo && bascik --server",
     "e2e": "playwright test",
+    "e2e:live": "playwright test --config playwright.live.config.ts --reporter=list",
+    "voice:record": "node voice-lab/record.ts",
+    "voice:sentences": "node voice-lab/speech.ts",
     "stress:load": "node stress/load.ts",
     "stress:adherence": "node stress/adherence.ts"
   },

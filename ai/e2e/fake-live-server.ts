@@ -7,6 +7,9 @@
  */
 import { createServer } from "node:http";
 import { acceptWebSocket, refuseUpgrade } from "../src/ws.ts";
+import { playCassette } from "../voice-lab/cassette.ts";
+import { createLab, labCommand, labVoicePieces, PAUSED } from "./fake-lab.ts";
+import type { LabCommand } from "./fake-lab.ts";
 
 const PORT = Number(process.argv[2] ?? 4480);
 /** How long the model thinks before it answers what it heard from the microphone. */
@@ -21,14 +24,35 @@ const BOOKS = [
   `<ask-button say="Hold a copy of Shipping Small Changes">Hold the short one</ask-button>`,
 ].join("\n");
 
+/**
+ * A tool call's id. A provider never gives the same one twice, and the
+ * server refuses one it has seen, so each is numbered.
+ */
+let calls = 0;
+const callId = (name: string): string => `call_${name}_${++calls}`;
+
+/** What the voice lab specs read and steer (see fake-lab.ts). */
+const lab = createLab();
+
 const server = createServer(async (request, response) => {
+  if (await lab.http(request, response)) return;
   if (request.method === "POST" && request.url === "/v1beta/auth_tokens") {
     let body = "";
     for await (const chunk of request) body += chunk;
     // Only a request with a key, and with a setup to lock in, gets a token.
-    const setup = (JSON.parse(body) as { bidiGenerateContentSetup?: unknown })
-      .bidiGenerateContentSetup;
-    if (!request.headers["x-goog-api-key"] || !setup) {
+    const setup = (
+      JSON.parse(body) as {
+        bidiGenerateContentSetup?: {
+          realtimeInputConfig?: {
+            automaticActivityDetection?: { silenceDurationMs?: number };
+          };
+        };
+      }
+    ).bidiGenerateContentSetup;
+    // How long a pause ends the reader's turn is always locked in with it.
+    const pause =
+      setup?.realtimeInputConfig?.automaticActivityDetection?.silenceDurationMs;
+    if (!request.headers["x-goog-api-key"] || !Number.isInteger(pause)) {
       response.statusCode = 400;
       response.end(
         JSON.stringify({ error: { message: "Bad token request." } }),
@@ -51,6 +75,12 @@ server.on("upgrade", (request, socket) => {
   }
   const client = acceptWebSocket(request, socket);
   if (!client) return;
+  // A test gave a recorded session: it is played, and the script is not.
+  const tape = lab.cassette();
+  if (tape) {
+    void playCassette(tape, client, { longestGap: 1500 });
+    return;
+  }
   // In binary frames, as the real provider sends.
   const send = (message: unknown): void =>
     client.send(JSON.stringify(message), true);
@@ -72,23 +102,122 @@ server.on("upgrade", (request, socket) => {
     send({ serverContent: { generationComplete: true } });
     send({ serverContent: { turnComplete: true } });
   };
+  /**
+   * A tool call, in the order a real session has: the provider calls the
+   * turn complete straight after the call, before the tool has answered.
+   */
+  const callTool = (call: {
+    id: string;
+    name: string;
+    args: unknown;
+  }): void => {
+    send({ toolCall: { functionCalls: [call] } });
+    endTurn();
+  };
   let heardAudio = false;
   let afterTool: ((result: string) => void) | null = null;
+  const session = lab.session();
+  /** Stops the lab voice that is being sent, when one is. */
+  let stopSpeaking: (() => number) | null = null;
+  let lateOnCut = false;
+
+  /** One audible piece of the lab voice. */
+  const sendVoice = (data: string): void =>
+    send({
+      serverContent: {
+        modelTurn: {
+          parts: [{ inlineData: { mimeType: "audio/pcm;rate=24000", data } }],
+        },
+      },
+    });
+
+  /** What a typed "lab:" message asks for (see fake-lab.ts). */
+  const runLab = (command: LabCommand): void => {
+    if (command.kind === "paused") {
+      // The typed command is a turn of its own, answered and over.
+      say("Ready.");
+      endTurn();
+      const heard = (text: string): void =>
+        send({ serverContent: { inputTranscription: { text } } });
+      // Then a reader who pauses: the model starts to answer the first
+      // utterance, is spoken over, and the provider calls that turn complete.
+      setTimeout(() => {
+        heard(PAUSED.first);
+        if (command.early) {
+          send({
+            serverContent: { outputTranscription: { text: PAUSED.early } },
+          });
+        }
+        send({ serverContent: { interrupted: true } });
+        send({ serverContent: { turnComplete: true } });
+        heard(` ${PAUSED.second}`);
+        say(PAUSED.answer);
+        endTurn();
+      }, 400).unref();
+      return;
+    }
+    if (command.kind === "hearing" || command.kind === "latewords") {
+      // This provider does not name the reader's utterances: there is nothing to show.
+      say("Ready.");
+      endTurn();
+      return;
+    }
+    if (command.kind === "close") {
+      client.close(command.code, command.reason);
+      return;
+    }
+    if (command.kind === "garbage") {
+      client.send("{ this is not JSON", true);
+      send({
+        serverContent: {
+          modelTurn: { parts: [{ inlineData: { data: "@@not base64@@" } }] },
+        },
+      });
+    }
+    const speaking =
+      command.kind === "speak"
+        ? command
+        : { seconds: 3, late: false, slow: false };
+    lateOnCut = speaking.late;
+    send({
+      serverContent: { outputTranscription: { text: "The lab voice speaks." } },
+    });
+    let sent = 0;
+    stopSpeaking = session.speak(
+      speaking,
+      (piece) => {
+        sendVoice(piece);
+        // A connection that is cut: no close frame, no reason, mid-sentence.
+        if (command.kind === "drop" && ++sent === 5) {
+          stopSpeaking?.();
+          stopSpeaking = null;
+          socket.destroy();
+        }
+      },
+      () => {
+        // The voice is sent well before it has been played: the turn ends,
+        // and a reader who speaks while it plays still cuts in.
+        endTurn();
+        setTimeout(() => {
+          stopSpeaking = null;
+        }, speaking.seconds * 1000).unref();
+      },
+    );
+  };
 
   /** One scripted turn, by what was asked. */
   const answer = (asked: string): void => {
+    const command = labCommand(asked);
+    if (command) {
+      runLab(command);
+      return;
+    }
     if (/press/i.test(asked)) {
       // The reader said their answer: the form on screen is sent for them.
-      send({
-        toolCall: {
-          functionCalls: [
-            {
-              id: "call_fill",
-              name: "fill_form",
-              args: { press: "hold the short one" },
-            },
-          ],
-        },
+      callTool({
+        id: callId("fill"),
+        name: "fill_form",
+        args: { press: "hold the short one" },
       });
       afterTool = (result) => {
         say(`Done. ${result}`);
@@ -99,24 +228,16 @@ server.on("upgrade", (request, socket) => {
     if (/sneak/i.test(asked)) {
       // A model that tries to allow its own action: it asks to hold a book,
       // then, once the question is on screen, tries to press Allow itself.
-      send({
-        toolCall: {
-          functionCalls: [
-            {
-              id: "call_hold",
-              name: "place_hold",
-              args: { title: "The Quiet Network" },
-            },
-          ],
-        },
+      callTool({
+        id: callId("hold"),
+        name: "place_hold",
+        args: { title: "The Quiet Network" },
       });
       setTimeout(() => {
-        send({
-          toolCall: {
-            functionCalls: [
-              { id: "call_fill", name: "fill_form", args: { press: "Allow" } },
-            ],
-          },
+        callTool({
+          id: callId("fill"),
+          name: "fill_form",
+          args: { press: "Allow" },
         });
       }, 1500);
       afterTool = (blocked) => {
@@ -130,16 +251,10 @@ server.on("upgrade", (request, socket) => {
     }
     if (/hold/i.test(asked)) {
       say("I can hold that for you.");
-      send({
-        toolCall: {
-          functionCalls: [
-            {
-              id: "call_hold",
-              name: "place_hold",
-              args: { title: "The Quiet Network" },
-            },
-          ],
-        },
+      callTool({
+        id: callId("hold"),
+        name: "place_hold",
+        args: { title: "The Quiet Network" },
       });
       afterTool = (result) => {
         say(`The shop says: ${result}`);
@@ -148,30 +263,46 @@ server.on("upgrade", (request, socket) => {
       return;
     }
     say("Here are two books from the shelf.");
-    send({
-      toolCall: {
-        functionCalls: [
-          { id: "call_show", name: "show", args: { markup: BOOKS } },
-        ],
-      },
-    });
+    callTool({ id: callId("show"), name: "show", args: { markup: BOOKS } });
     afterTool = () => endTurn();
   };
 
   client.onMessage = (text) => {
     const message = JSON.parse(text) as {
       setup?: unknown;
-      realtimeInput?: { audio?: { data: string; mimeType: string } };
+      realtimeInput?: {
+        audio?: { data: string; mimeType: string };
+        audioStreamEnd?: boolean;
+      };
       clientContent?: { turns: { parts: { text: string }[] }[] };
       toolResponse?: { functionResponses: { response: { result: string } }[] };
     };
     if (message.setup) {
       send({ setupComplete: {} });
+    } else if (message.realtimeInput?.audioStreamEnd) {
+      session.note("audioStreamEnd");
     } else if (message.realtimeInput?.audio) {
       // The first sound from the microphone is "heard" as one sentence.
       const audio = message.realtimeInput.audio;
+      const pcm = Buffer.from(audio.data, "base64");
+      const loud = session.hear(pcm, audio.mimeType);
+      if (loud && stopSpeaking) {
+        // The reader cut in: the model stops, and says that it was cut off.
+        session.note("cut");
+        const left = stopSpeaking();
+        stopSpeaking = null;
+        send({ serverContent: { interrupted: true } });
+        if (lateOnCut) {
+          // Pieces that were already on their way still arrive.
+          for (const piece of labVoicePieces(0.5)) sendVoice(piece);
+        }
+        // A turn that had not finished ends here; one that had is not ended twice.
+        if (left > 0) send({ serverContent: { turnComplete: true } });
+        return;
+      }
+      if (!lab.canned()) return;
       if (heardAudio || audio.mimeType !== "audio/pcm;rate=16000") return;
-      if (Buffer.from(audio.data, "base64").length < 1000) return;
+      if (pcm.length < 1000) return;
       heardAudio = true;
       send({ serverContent: { inputTranscription: { text: "Recommend " } } });
       send({ serverContent: { inputTranscription: { text: "a book" } } });

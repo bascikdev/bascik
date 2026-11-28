@@ -85,18 +85,23 @@ const provider = geminiLiveVoice({
 });
 ```
 
-| Option               | Default                                     | What it does                                                                              |
-| :------------------- | :------------------------------------------ | :---------------------------------------------------------------------------------------- |
-| `apiKey`             | `GEMINI_API_KEY` from the environment.      | Sets the Gemini Developer API key.                                                        |
-| `model`              | `models/gemini-3.8-live`                    | Names a model that supports live sessions.                                                |
-| `voice`              | None.                                       | Sets one of the provider's voice names. Left out, the provider picks.                     |
-| `startWithinSeconds` | `60`                                        | Sets how long a ticket may be used to start a session, in seconds.                        |
-| `sessionSeconds`     | `900`                                       | Sets how long a session may last, in seconds. This is the provider's own limit for audio. |
-| `httpBase`           | `https://generativelanguage.googleapis.com` | Sets the provider's HTTP root. Replace it for a test server or a proxy.                   |
-| `wsBase`             | `wss://generativelanguage.googleapis.com`   | Sets the provider's WebSocket root. Replace it for a test server or a proxy.              |
-| `fetch`              | The global `fetch`.                         | Replaces `fetch`, for a test.                                                             |
+| Option               | Default                                     | What it does                                                                                                                                                                           |
+| :------------------- | :------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apiKey`             | `GEMINI_API_KEY` from the environment.      | Sets the Gemini Developer API key.                                                                                                                                                     |
+| `model`              | `models/gemini-3.8-live`                    | Names a model that supports live sessions.                                                                                                                                             |
+| `voice`              | None.                                       | Sets one of the provider's voice names. Left out, the provider picks.                                                                                                                  |
+| `pauseMs`            | `800`                                       | Sets how long the reader may be silent before their turn is taken as over, in milliseconds, from 200 to 3000. See [how long a pause ends a turn](#voice-how-long-a-pause-ends-a-turn). |
+| `realtimeInput`      | None.                                       | Sets the provider's own `realtimeInputConfig`, laid over the default.                                                                                                                  |
+| `startWithinSeconds` | `60`                                        | Sets how long a ticket may be used to start a session, in seconds.                                                                                                                     |
+| `sessionSeconds`     | `900`                                       | Sets how long a session may last, in seconds. This is the provider's own limit for audio.                                                                                              |
+| `httpBase`           | `https://generativelanguage.googleapis.com` | Sets the provider's HTTP root. Replace it for a test server or a proxy.                                                                                                                |
+| `wsBase`             | `wss://generativelanguage.googleapis.com`   | Sets the provider's WebSocket root. Replace it for a test server or a proxy.                                                                                                           |
+| `fetch`              | The global `fetch`.                         | Replaces `fetch`, for a test.                                                                                                                                                          |
+| `timeoutMs`          | `15000`                                     | Sets how long the provider has to answer the request for a token, body included, in milliseconds.                                                                                      |
 
 The token locks in the model, the system prompt, and the tools. The browser sends only the model name after it connects.
+
+A provider that has not answered after `timeoutMs` makes `createSession` throw "The voice provider did not answer in time.", so the reader is not left waiting on a call that cannot start. At most 64,000 bytes of the provider's answer are read.
 
 > **The API key never leaves the server.** The browser gets a one-use token.
 
@@ -114,26 +119,77 @@ const provider = azureVoiceLiveVoice({
 });
 ```
 
-| Option               | Default                                           | What it does                                                                                                                               |
-| :------------------- | :------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------- |
-| `endpoint`           | `AZURE_VOICE_LIVE_ENDPOINT` from the environment. | Sets the resource, as `https://<name>.services.ai.azure.com`.                                                                              |
-| `apiKey`             | `AZURE_VOICE_LIVE_API_KEY` from the environment.  | Sets the resource's key.                                                                                                                   |
-| `token`              | `AZURE_VOICE_LIVE_TOKEN` from the environment.    | Sets a Microsoft Entra token for `https://ai.azure.com/.default`, or a function that returns a fresh one. It is used when there is no key. |
-| `model`              | `gpt-realtime-2`                                  | Names a model Voice Live offers in the resource's region.                                                                                  |
-| `voice`              | `en-US-AvaMultilingualNeural`                     | Sets the voice name. An Azure voice sends the time of each word, which captions follow exactly. An OpenAI voice does not.                  |
-| `apiVersion`         | `2026-04-10`                                      | Sets the API version.                                                                                                                      |
-| `relay.port`         | `0`                                               | Sets the port the relay listens on. Port 0 takes any free port.                                                                            |
-| `relay.host`         | `127.0.0.1`                                       | Sets the interface the relay listens on.                                                                                                   |
-| `relay.publicUrl`    | `ws://<host>:<port>`                              | Sets the address a browser reaches the relay at, for example `wss://example.com/voice`, when it is behind a proxy.                         |
-| `startWithinSeconds` | `60`                                              | Sets how long a ticket may be used to start a session, in seconds.                                                                         |
-| `sessionSeconds`     | `900`                                             | Sets how long a session may last, in seconds.                                                                                              |
-| `wsBase`             | None.                                             | Sets the provider's WebSocket root. Replace it for a test server.                                                                          |
+| Option                   | Default                                           | What it does                                                                                                                                                                           |
+| :----------------------- | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `endpoint`               | `AZURE_VOICE_LIVE_ENDPOINT` from the environment. | Sets the resource, as `https://<name>.services.ai.azure.com`.                                                                                                                          |
+| `apiKey`                 | `AZURE_VOICE_LIVE_API_KEY` from the environment.  | Sets the resource's key.                                                                                                                                                               |
+| `token`                  | `AZURE_VOICE_LIVE_TOKEN` from the environment.    | Sets a Microsoft Entra token for `https://ai.azure.com/.default`, or a function that returns a fresh one. It is used when there is no key.                                             |
+| `model`                  | `gpt-realtime-2`                                  | Names a model Voice Live offers in the resource's region.                                                                                                                              |
+| `voice`                  | `en-US-AvaMultilingualNeural`                     | Sets the voice name. An Azure voice sends the time of each word, which captions follow exactly. An OpenAI voice does not.                                                              |
+| `apiVersion`             | `2026-04-10`                                      | Sets the API version.                                                                                                                                                                  |
+| `pauseMs`                | `800`                                             | Sets how long the reader may be silent before their turn is taken as over, in milliseconds, from 200 to 3000. See [how long a pause ends a turn](#voice-how-long-a-pause-ends-a-turn). |
+| `turnDetection`          | None.                                             | Sets Voice Live's own `turn_detection` settings, laid over the default.                                                                                                                |
+| `relay.port`             | `0`                                               | Sets the port the relay listens on. Port 0 takes any free port.                                                                                                                        |
+| `relay.host`             | `127.0.0.1`                                       | Sets the interface the relay listens on.                                                                                                                                               |
+| `relay.publicUrl`        | `ws://<host>:<port>`                              | Sets the address a browser reaches the relay at, for example `wss://example.com/voice`, when it is behind a proxy.                                                                     |
+| `relay.maxCalls`         | `100`                                             | Sets the most calls open on this relay at once. One past it is closed as it connects.                                                                                                  |
+| `relay.maxCallsPerOwner` | `3`                                               | Sets the most calls one owner has open on this relay at once. The owner is the session config's `owner`, which the server kit sets to the reader.                                      |
+| `relay.idleMs`           | `45000`                                           | Sets how long a browser may send nothing, not even the answer to a ping, before its call ends, in milliseconds.                                                                        |
+| `relay.maxUnsentBytes`   | `8000000`                                         | Sets how much may wait to be sent to a browser before its call ends, in bytes. Past it, the browser has stopped reading.                                                               |
+| `relay.closeGraceMs`     | `1000`                                            | Sets how long a browser has to hang up after its call is closed, or after `close()`, before its socket is destroyed, in milliseconds.                                                  |
+| `startWithinSeconds`     | `60`                                              | Sets how long a ticket may be used to start a session, in seconds.                                                                                                                     |
+| `sessionSeconds`         | `900`                                             | Sets how long a session may last, in seconds.                                                                                                                                          |
+| `callIdleSeconds`        | `300`                                             | Sets how long a call may go on with nobody speaking before the relay ends it, in seconds. `0` never ends one for that.                                                                 |
+| `connectTimeoutMs`       | `15000`                                           | Sets how long Azure has to set a session up once the relay connects to it, in milliseconds. After that the call ends with "The voice provider did not answer in time."                 |
+| `wsBase`                 | None.                                             | Sets the provider's WebSocket root. Replace it for a test server.                                                                                                                      |
 
 The browser connects to the relay with a one-use ticket. The relay connects to Azure with the credential, sends the session's setup itself, and passes on only the messages a call needs. It allows microphone audio, a typed message, a tool's result, and asking for or stopping a reply. It refuses anything else, including a new session setup.
+
+Each call holds a connection to Azure, so the relay limits how many are open. A call past `relay.maxCalls`, or past `relay.maxCallsPerOwner` for one reader, is closed as it connects with WebSocket code 1008 and a reason the reader is shown: "The voice relay is full. Try again later." or "Too many voice calls are open." The relay pings each browser, and ends the call of one that has sent nothing for `relay.idleMs` or has stopped reading.
+
+A call nobody speaks on is a different thing from a browser that has gone away, and has its own limit. `relay.idleMs` is about the connection: a browser that answers no ping in 45 seconds is gone. `callIdleSeconds` is about the conversation: a browser can answer every ping, and send microphone audio all day, on a call that was forgotten. The relay ends a call when `callIdleSeconds` pass with none of these: Azure saying the reader started to speak, the model starting a reply or sending audio, a typed message, or a tool's result. Microphone audio alone does not count. The call closes with "The call ended because nobody spoke." The `voice-call` component asks the reader first and ends a quiet call sooner (after two and a half minutes by default: see [A call nobody is speaking on](/ai/voice#a-call-nobody-is-speaking-on)), so this limit is for a page that does not use the component, or has turned its own limit off.
+
+When Azure's side of a call ends, the reader is told one of four fixed lines: that the provider refused the connection, refused the call's settings, did not answer in time, or hung up. Azure's own close reason can name the resource, so it goes to the server's log only, after "It said:".
 
 The cost is that the audio passes through this server, which Gemini Live avoids. The relay needs Node, because it listens on a port, so it does not run on an edge runtime. `provider.close()` stops the relay and ends every call on it.
 
 > **The browser never sees a credential.** The relay holds the key or token.
+
+## Voice: how long a pause ends a turn
+
+A speech-to-speech provider decides when the reader has finished speaking, and answers. When it decides too soon, the model answers a pause for thought. Both providers take one number for it, `pauseMs`: how long the reader may be silent before their turn is taken as over.
+
+```ts
+const gemini = geminiLiveVoice({ pauseMs: 1200 });
+const azure = azureVoiceLiveVoice({ pauseMs: 1200 });
+```
+
+The default is 800 milliseconds for both, so a call feels the same on each. A higher number waits through a longer pause, and a lower one answers sooner. The value is rounded to a whole number and kept between 200 and 3000. A value that is not a number makes the provider throw "pauseMs must be a number of milliseconds." when it is made, not when a reader calls.
+
+Each provider has more settings of its own, and each adapter passes them through:
+
+| Provider         | Option          | The default it is laid over                                      |
+| :--------------- | :-------------- | :--------------------------------------------------------------- |
+| Gemini Live      | `realtimeInput` | `{ automaticActivityDetection: { silenceDurationMs: pauseMs } }` |
+| Azure Voice Live | `turnDetection` | `{ type: "azure_semantic_vad", silence_duration_ms: pauseMs }`   |
+
+`realtimeInput` is Gemini's `realtimeInputConfig`. Its keys replace the default's, and the keys of its `automaticActivityDetection` are merged with the default's, so `endOfSpeechSensitivity` can be set without losing the pause. The token locks the result in with the prompt.
+
+`turnDetection` is Voice Live's `turn_detection`. Its keys replace the default's, so it can name another `type`, a `threshold`, `remove_filler_words`, `languages`, or `end_of_utterance_detection`. With `type: "semantic_vad"`, OpenAI's own detector, no `silence_duration_ms` is sent, because that detector has no wait to set.
+
+```ts
+const azure = azureVoiceLiveVoice({
+  turnDetection: {
+    end_of_utterance_detection: { model: "smart_end_of_turn_detection" },
+  },
+});
+```
+
+Which settings a model takes is the provider's to say. When Azure refuses the session's setup, the relay ends the call as it starts, with "The voice provider refused the call's settings." on the reader's status line, and logs the same line followed by what Azure said. It does not wait for `connectTimeoutMs`.
+
+> **One observation, not a guarantee.** On 2026-11-27, with model `gpt-realtime-2` on API version `2026-04-10`, Azure accepted `end_of_utterance_detection: { model: "smart_end_of_turn_detection" }`, `{ type: "semantic_vad", eagerness: "low" }`, and `remove_filler_words`, and refused the text-based end-of-utterance model `semantic_detection_v1`. The provider decides, per model, region and API version, and can change it. Try a setting on a call before you ship it.
+
+How a call treats a reply that the reader spoke over all the same is on [Voice & Captions](/ai/voice#when-the-reader-pauses).
 
 ## Writing your own
 
@@ -179,6 +235,6 @@ export function myVoiceProvider(): VoiceProvider {
 }
 ```
 
-The config has `system` and `tools`. The ticket has `protocol`, `url`, `setup`, and an optional `label`.
+The config has `system`, `tools`, and an optional `owner`: whose session it is, which the server kit sets to the reader. A provider with a relay can use it to limit how many calls one reader has open. The ticket has `protocol`, `url`, `setup`, and an optional `label`.
 
 > **A voice provider has a browser side too.** The `voice-call` component speaks the wire protocol the ticket names, and it knows two: `gemini-live` and `azure-voice-live`. Each protocol is one module beside the component, `voice-call/gemini-live.ts` and `voice-call/azure-voice-live.ts`, which `bascik add` copies into your project for you to edit. A provider with a protocol of its own needs a module like them, chosen by the ticket's `protocol` in the component's script.

@@ -9,8 +9,11 @@ import {
 } from "./app.ts";
 import { scriptedModel, type Tool, type ToolPart } from "./model.ts";
 import { renderMessage } from "./render-turn.ts";
+import { relayedClientEvent } from "./azure-voice-live.ts";
 import {
+  MAX_VOICE_CALL_IDS,
   MAX_VOICE_PARTS,
+  MAX_VOICE_TOOL_OUTPUT,
   MAX_VOICE_TURN_CHARS,
   MAX_VOICE_VIEWS,
   newVoiceTurn,
@@ -86,6 +89,16 @@ describe("voiceTools and voicePrompt", () => {
     expect(prompt).toContain("spoken aloud");
     expect(prompt).toContain(`the ${SHOW_TOOL} tool`);
     expect(prompt).toContain(`<book-card title="…">content</book-card>`);
+  });
+
+  it("tells a speaking model its words are printed, and to leave the detail to the screen", () => {
+    const prompt = voicePrompt(catalog);
+    expect(prompt).toContain("printed on the screen");
+    expect(prompt).toContain("at most two short sentences");
+    expect(prompt).toContain("web addresses");
+    expect(prompt).toContain("do not read out or summarize");
+    const show = voiceTools([]).find((tool) => tool.name === SHOW_TOOL)!;
+    expect(JSON.stringify(show.inputSchema)).toContain("No prose.");
   });
 });
 
@@ -366,6 +379,36 @@ describe("fill_form", () => {
 describe("geminiLiveVoice", () => {
   const config = { system: "Be brief.", tools: voiceTools(tools) };
 
+  it("locks in how long a pause ends the reader's turn: 800 ms by default", () => {
+    const input = (options: object): unknown =>
+      geminiLiveSetup(config, { model: "models/m", ...options })
+        .realtimeInputConfig;
+    expect(input({})).toEqual({
+      automaticActivityDetection: { silenceDurationMs: 800 },
+    });
+    expect(input({ pauseMs: 1200 })).toEqual({
+      automaticActivityDetection: { silenceDurationMs: 1200 },
+    });
+    // The provider's own settings are laid over it, and keep the wait.
+    expect(
+      input({
+        realtimeInput: {
+          activityHandling: "NO_INTERRUPTION",
+          automaticActivityDetection: {
+            endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
+          },
+        },
+      }),
+    ).toEqual({
+      activityHandling: "NO_INTERRUPTION",
+      automaticActivityDetection: {
+        silenceDurationMs: 800,
+        endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
+      },
+    });
+    expect(() => geminiLiveVoice({ pauseMs: Number.NaN })).toThrow(/pauseMs/);
+  });
+
   it("locks the model, the prompt, and the tools into the session setup", () => {
     const setup = geminiLiveSetup(config, {
       model: "models/m",
@@ -446,6 +489,33 @@ describe("geminiLiveVoice", () => {
       setup: { model: "models/gemini-3.8-live" },
     });
     expect(JSON.stringify(ticket)).not.toContain("secret-key");
+
+    // The developer's pause and the provider's own settings are in the setup the token locks in.
+    await geminiLiveVoice({
+      apiKey: "secret-key",
+      fetch: fake,
+      pauseMs: 1200,
+      realtimeInput: { activityHandling: "NO_INTERRUPTION" },
+    }).createSession(config);
+    const setup = (
+      requests.at(-1)!.body as {
+        bidiGenerateContentSetup: { realtimeInputConfig: unknown };
+      }
+    ).bidiGenerateContentSetup;
+    expect(setup.realtimeInputConfig).toEqual({
+      activityHandling: "NO_INTERRUPTION",
+      automaticActivityDetection: { silenceDurationMs: 1200 },
+    });
+  });
+
+  it("tells the developer of settings that are not an object, when the provider is made", () => {
+    for (const given of [null, ["NO_INTERRUPTION"], "NO_INTERRUPTION"]) {
+      expect(() =>
+        geminiLiveVoice({
+          realtimeInput: given as unknown as Record<string, unknown>,
+        }),
+      ).toThrow(/realtimeInput must be an object/);
+    }
   });
 
   it("fails with the provider's words, and without a key says so", async () => {
@@ -781,8 +851,17 @@ describe("voice tool calls through createChat", () => {
       state: "failed",
       error: "ended with the call",
     });
-    // A new call with the same id, in the next turn.
-    const fresh = { id: "c1", name: "pay", input: '{"title":"New"}' };
+    // The same id again, in the next turn: an id is one call's, so it is
+    // refused and nothing runs for it.
+    expect(
+      await call({ id: "c1", name: "pay", input: '{"title":"Again"}' }),
+    ).toMatchObject({ state: "failed", output: "Error: already called." });
+    expect(await call({ ...old, decision: "approve" })).toMatchObject({
+      state: "failed",
+      output: "Error: nothing is waiting.",
+    });
+    // A new call, in the next turn.
+    const fresh = { id: "c2", name: "pay", input: '{"title":"New"}' };
     expect((await call(fresh)).state).toBe("approval-requested");
     expect(await call({ ...fresh, decision: "approve" })).toMatchObject({
       state: "done",
@@ -792,7 +871,7 @@ describe("voice tool calls through createChat", () => {
     expect(ran.sort()).toEqual(["New", "Old"]);
     const second = (await stored()).find((part) => part.type === "tool");
     expect(second).toMatchObject({
-      id: "c1",
+      id: "c2",
       input: { title: "New" },
       output: "Paid New",
       state: "done",
@@ -1000,17 +1079,197 @@ describe("a call that finishes after its turn was stored", () => {
       state: "failed",
       error: "ended with the call",
     });
-    // The next turn has its own c1, still running.
-    const second = startVoiceTool(
+    // The id was used: sent again in the next turn, it runs nothing.
+    const again = startVoiceTool(
       turn,
       { id: "c1", name: "pay", input: {} },
       [pay],
       catalog,
     );
+    expect(again.run).toBeUndefined();
+    expect(again.result).toMatchObject({
+      state: "failed",
+      output: "Error: already called.",
+    });
+    const second = startVoiceTool(
+      turn,
+      { id: "c2", name: "pay", input: {} },
+      [pay],
+      catalog,
+    );
     expect(second.round).toBe(first.round! + 1);
+    // A turn recorded before ids were kept may hold a call with the same id.
+    turn.parts.push({ ...structuredClone(first.run!), state: "running" });
     claimed.state = "done";
     claimed.output = "Paid late";
     settleVoiceTool(turn, claimed, first.round);
-    expect(turn.parts).toMatchObject([{ id: "c1", state: "running" }]);
+    expect(turn.parts).toMatchObject([
+      { id: "c2", state: "running" },
+      { id: "c1", state: "running" },
+    ]);
+  });
+});
+
+describe("what a voice model is told of a tool's result", () => {
+  const long: Tool = {
+    name: "catalog_dump",
+    description: "Every book.",
+    inputSchema: { type: "object", properties: {} },
+    run: () => "b".repeat(300_000),
+  };
+
+  it("cuts a long result so a relay passes it, and says it was cut", async () => {
+    const result = await runVoiceTool(
+      newVoiceTurn(),
+      { id: "c1", name: "catalog_dump", input: {} },
+      [long],
+      catalog,
+    );
+    expect(result.state).toBe("done");
+    expect(result.output!.length).toBe(MAX_VOICE_TOOL_OUTPUT);
+    expect(result.output).toMatch(/^b+\n\(The result was too long\./);
+    // What the browser then sends is what the relay lets through.
+    expect(
+      relayedClientEvent(
+        JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: "c1",
+            output: result.output,
+          },
+        }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("cuts a long error the same way, and leaves a short result alone", async () => {
+    const failing: Tool = {
+      ...long,
+      run: () => {
+        throw new Error("e".repeat(300_000));
+      },
+    };
+    const failed = await runVoiceTool(
+      newVoiceTurn(),
+      { id: "c1", name: "catalog_dump", input: {} },
+      [failing],
+      catalog,
+    );
+    expect(failed.state).toBe("failed");
+    expect(failed.output!.length).toBe(MAX_VOICE_TOOL_OUTPUT);
+    const short = await runVoiceTool(
+      newVoiceTurn(),
+      { id: "c1", name: "catalog_dump", input: {} },
+      [{ ...long, run: () => "Three books." }],
+      catalog,
+    );
+    expect(short.output).toBe("Three books.");
+  });
+});
+
+describe("a call id sent again after its turn was stored", () => {
+  it("runs nothing the second time, for a tool and for show", async () => {
+    let ran = 0;
+    const pay: Tool = {
+      name: "pay",
+      description: "Pay.",
+      inputSchema: { type: "object", properties: {} },
+      run: () => `Paid ${++ran}`,
+    };
+    const turn = newVoiceTurn();
+    const request = { id: "c1", name: "pay", input: {} };
+    expect((await runVoiceTool(turn, request, [pay], catalog)).output).toBe(
+      "Paid 1",
+    );
+    const show = {
+      id: "s1",
+      name: SHOW_TOOL,
+      input: { markup: `<book-card title="Dune" />` },
+    };
+    expect((await runVoiceTool(turn, show, [pay], catalog)).state).toBe("done");
+    voiceMessages(turn, { reader: "Pay", model: "Paid." });
+    expect(turn.parts).toEqual([]);
+
+    expect(await runVoiceTool(turn, request, [pay], catalog)).toMatchObject({
+      state: "failed",
+      output: "Error: already called.",
+    });
+    expect(await runVoiceTool(turn, show, [pay], catalog)).toMatchObject({
+      state: "failed",
+      output: "Error: already called.",
+    });
+    expect(ran).toBe(1);
+    expect(turn.parts).toEqual([]);
+  });
+
+  it("remembers the last MAX_VOICE_CALL_IDS ids, and no more", async () => {
+    const turn = newVoiceTurn();
+    const show = (id: string) =>
+      runVoiceTool(
+        turn,
+        { id, name: SHOW_TOOL, input: { markup: `<book-card title="x" />` } },
+        [],
+        catalog,
+      );
+    for (let at = 0; at < MAX_VOICE_CALL_IDS + 10; at++) {
+      expect((await show(`c${at}`)).state).toBe("done");
+      voiceMessages(turn, { reader: "", model: "" });
+    }
+    expect(turn.calls).toHaveLength(MAX_VOICE_CALL_IDS);
+    expect((await show(`c${MAX_VOICE_CALL_IDS + 9}`)).state).toBe("failed");
+    expect((await show("c10")).state).toBe("failed");
+    // The oldest are forgotten: the list does not grow for ever.
+    expect((await show("c0")).state).toBe("done");
+  });
+});
+
+describe("a voice tool that does not answer", () => {
+  it("is recorded as failed after the limit, with its signal aborted", async () => {
+    let signal: AbortSignal | undefined;
+    const slow: Tool = {
+      name: "slow",
+      description: "Never answers.",
+      inputSchema: { type: "object", properties: {} },
+      run: (_input, options) => {
+        signal = options.signal;
+        return new Promise<string>(() => {});
+      },
+    };
+    const turn = newVoiceTurn();
+    const started = Date.now();
+    const result = await runVoiceTool(
+      turn,
+      { id: "c1", name: "slow", input: {} },
+      [slow],
+      catalog,
+      {},
+      { timeoutMs: 40 },
+    );
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(result).toMatchObject({
+      state: "failed",
+      output: "Error: The tool took too long to answer.",
+    });
+    expect(signal?.aborted).toBe(true);
+    expect(turn.parts).toMatchObject([{ id: "c1", state: "failed" }]);
+  });
+
+  it("leaves a tool that answers in time alone", async () => {
+    const quick: Tool = {
+      name: "quick",
+      description: "Answers.",
+      inputSchema: { type: "object", properties: {} },
+      run: async (_input, options) => `aborted: ${options.signal?.aborted}`,
+    };
+    const result = await runVoiceTool(
+      newVoiceTurn(),
+      { id: "c1", name: "quick", input: {} },
+      [quick],
+      catalog,
+      {},
+      { timeoutMs: 1000 },
+    );
+    expect(result).toMatchObject({ state: "done", output: "aborted: false" });
   });
 });

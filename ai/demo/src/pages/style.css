@@ -8,6 +8,11 @@
   --accent: light-dark(#b4512c, #e08a5f);
   --on-accent: light-dark(#ffffff, #1a1a19);
   --radius: 10px;
+  /* Optional: components fall back to these values without them. */
+  --gap: 0.75rem;
+  --gap-tight: 0.25rem;
+  --text-small: 0.875rem;
+  --text-smaller: 0.8125rem;
 }
 
 @view-transition {
@@ -69,7 +74,8 @@ body {
 .thread {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 1.25rem;
+  /* Twice the gap inside a reply, so turns read as separate. */
+  gap: 1.5rem;
   inline-size: 100%;
   max-inline-size: 46rem;
   /* A conversation shorter than the scroller starts at the top and grows
@@ -105,18 +111,48 @@ body {
 /* The renderer writes every line break as an element, so whitespace in a
    reply is never content, including what Bascik writes around a component. */
 .turn-assistant {
+  display: flow-root;
+  /* A measure, so a line of prose is not the whole width of the thread. */
+  max-inline-size: 42rem;
   overflow-wrap: anywhere;
+}
+
+/* One stack per reply: components carry no outer margin, and everything in
+   a reply is one --gap from what is above it. The empty <div> the renderer
+   writes between text and a component is what gives text that gap. The
+   :not() adds no condition: it lets these rules outrank a component's own
+   `margin: 0`, which comes later in the page. */
+.turn-assistant > * {
+  margin-block: 0;
+}
+
+.turn-assistant > * + :not(br),
+.turn-assistant > :is(.part, [data-view]) > * + :not(br) {
+  margin-block-start: var(--gap, 0.75rem);
+}
+
+/* Suggested messages sit in a line of text and bring the gap themselves, so
+   the <div> that starts their line adds none. */
+.turn-assistant > div:empty:has(+ [data-testid="ask-button"]) {
+  margin-block-start: 0;
 }
 
 /* Words a voice model spoke, as transcribed. */
 .turn-assistant .spoken {
-  margin: 0;
+  margin-block-end: 0;
 }
 
-.turn-assistant h3,
-.turn-assistant h4 {
-  margin: 1rem 0 0.25rem;
+.turn-assistant > h3,
+.turn-assistant > h4 {
   font-size: 1.05rem;
+}
+
+.turn-assistant > :is(h3, h4):not(:first-child) {
+  margin-block-start: 1.25rem;
+}
+
+.turn-assistant > :is(h3, h4) + :not(br) {
+  margin-block-start: var(--gap-tight, 0.25rem);
 }
 
 .turn-assistant code {
@@ -132,15 +168,31 @@ body {
   padding: 0 1rem;
   border-radius: 0;
   background: var(--surface);
+  font-size: var(--text-smaller, 0.8125rem);
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 
-.turn-assistant :not(code[data-line]) + code[data-line] {
-  padding-block-start: 0.75rem;
+.turn-assistant code[data-line] + code[data-line] {
+  margin-block-start: 0;
 }
 
+/* The first and last lines round the block off, so it reads as one box
+   apart from what is above and below it. */
+.turn-assistant code[data-line]:first-child,
+.turn-assistant :not(code[data-line]) + code[data-line] {
+  padding-block-start: 0.75rem;
+  border-start-start-radius: var(--radius);
+  border-start-end-radius: var(--radius);
+}
+
+/* The words after a fence are not an element, so the gap under the block
+   is the block's own. */
 .turn-assistant code[data-line]:not(:has(+ code[data-line])) {
+  margin-block-end: var(--gap, 0.75rem);
   padding-block-end: 0.75rem;
+  border-end-start-radius: var(--radius);
+  border-end-end-radius: var(--radius);
 }
 
 /* A ```mermaid fence, drawn on the server as an inline SVG. Its colors come
@@ -148,7 +200,6 @@ body {
    and --accent from here. */
 .turn-assistant .diagram {
   --fg: var(--text);
-  margin: 0.75rem 0;
   padding: 0.5rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -164,7 +215,6 @@ body {
 /* A page the model wrote, in its sandboxed frame (@bascik/ai/sandbox). */
 .turn-assistant iframe[data-genui-sandbox] {
   display: block;
-  margin: 0.75rem 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -172,9 +222,8 @@ body {
 
 .turn-assistant table {
   inline-size: 100%;
-  margin: 0.75rem 0;
   border-collapse: collapse;
-  font-size: 0.9375rem;
+  font-size: var(--text-small, 0.875rem);
   font-variant-numeric: tabular-nums;
 }
 
@@ -210,9 +259,8 @@ body {
   content: " ↓";
 }
 
-.turn-assistant ul,
-.turn-assistant ol {
-  margin: 0.5rem 0;
+/* A list the model wrote as plain elements, not a component's own list. */
+.turn-assistant :is(ul, ol):not([class]) {
   padding-inline-start: 1.25rem;
 }
 
@@ -285,6 +333,40 @@ body {
   display: none;
 }
 
+/* A call with nothing to show takes no room. */
+.turn-assistant > .part:empty {
+  display: none;
+}
+
+/* Lines that say what was looked up sit close together, as one group above
+   the answer. So do the links to the pages an answer came from. */
+.turn-assistant
+  > .part
+  + .part:has(> :is([data-testid="tool-note"], [data-testid="tool-status"])),
+.turn-assistant > [data-testid="doc-link"] + [data-testid="doc-link"] {
+  margin-block-start: var(--gap-tight, 0.25rem);
+}
+
+/* The answer after the lookup lines is not an element, so the gap under the
+   group is the last line's own (as under a code fence). */
+.turn-assistant
+  > .part:has(
+    > :is([data-testid="tool-note"], [data-testid="tool-status"])
+  ):not(:has(+ .part)) {
+  margin-block-end: var(--gap, 0.75rem);
+}
+
+/* The .writing marker is not part of the stack: what follows it is the
+   reply's first block, as in the stored turn. So is what follows a hidden
+   running call after the marker. */
+.turn-assistant.live > .writing + *,
+.turn-assistant.live
+  > .writing
+  + .part[data-state="running"]:has(~ .part:not([data-state="running"]))
+  + .part {
+  margin-block-start: 0;
+}
+
 /* With the client runtime (chat-enhance) on, a reply can be stopped. */
 [data-genui] [data-testid="chat-composer-stop"] {
   display: none;
@@ -328,7 +410,8 @@ body {
 }
 
 /* The component gallery (/gallery): one page of every catalog component. It
-   has no sidebar, so the page takes the whole width. */
+   has no sidebar, so the page takes the whole width. Its bar (gallery-bar)
+   stays at the top of this scroller. */
 body:has(> .gallery) {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -336,7 +419,10 @@ body:has(> .gallery) {
 .gallery {
   min-block-size: 0;
   overflow-y: auto;
-  padding: 1.5rem 1rem 3rem;
+  padding: 0 1rem 3rem;
+  /* Room for the sticky gallery-bar: a focused control or an anchored
+     section is scrolled clear of it. */
+  scroll-padding-block-start: 3.5rem;
 }
 
 .gallery > * {

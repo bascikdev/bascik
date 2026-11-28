@@ -22,11 +22,17 @@ One option inside a decision-fork: a short id for the option as value, the condi
   .then {
     grid-column: 2;
     color: var(--muted);
-    font-size: 0.9375rem;
+    font-size: var(--text-small, 0.875rem);
   }
 </style>
 <label class="branch" data-testid="fork-branch">
   <input type="radio" name="verdict" required data-bascik-attr-value="value" />
+  <!-- The condition, sent under the branch's id: what the thread shows for the pick. -->
+  <input
+    type="hidden"
+    data-bascik-attr-name="value"
+    data-bascik-attr-value="when"
+  />
   <span class="when"
     >If <span data-testid="fork-branch-when" data-bascik-prop-when></span
   ></span>

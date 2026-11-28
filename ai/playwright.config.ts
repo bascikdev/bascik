@@ -1,4 +1,35 @@
 import { defineConfig } from "@playwright/test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  silence,
+  speechLike,
+  toWav,
+  join as joinSound,
+} from "./voice-lab/signal.ts";
+
+/**
+ * A recording for Chromium to use as the microphone itself: the browser's
+ * own capture, with its own processing, hears this file in place of a device
+ * (the real-microphone project below). A second of quiet, then a sentence;
+ * Chromium plays it over and over. It is made from a formula each run, so
+ * no recording is kept in the repository. voice-capture.spec.ts makes the
+ * same sentence to compare with.
+ */
+const MICROPHONE_FILE = join(tmpdir(), "bascik-ai-voice-lab", "microphone.wav");
+mkdirSync(join(MICROPHONE_FILE, ".."), { recursive: true });
+writeFileSync(
+  MICROPHONE_FILE,
+  toWav(
+    joinSound(
+      silence(1, 48_000),
+      speechLike(3, 48_000, { pitch: 120, rate: 4.2 }),
+      silence(1, 48_000),
+    ),
+    48_000,
+  ),
+);
 
 const PORT = 4477;
 const MODEL_PORT = 4479;
@@ -20,8 +51,37 @@ export default defineConfig({
   // all, and it must work the same with the client runtime (chat-enhance)
   // sending forms with fetch and streaming the answer into the open page.
   projects: [
-    { name: "no-js", use: { javaScriptEnabled: false } },
-    { name: "js", use: { javaScriptEnabled: true } },
+    {
+      name: "no-js",
+      testIgnore: /voice-capture\.spec\.ts/,
+      use: { javaScriptEnabled: false },
+    },
+    {
+      name: "js",
+      testIgnore: /voice-capture\.spec\.ts/,
+      use: { javaScriptEnabled: true },
+    },
+    {
+      // The browser's real getUserMedia, with a file where the device would
+      // be. Every other voice spec hands the page a stream; this one checks
+      // that what the browser's own capture gives is what reaches a provider.
+      name: "real-microphone",
+      testMatch: /voice-capture\.spec\.ts/,
+      use: {
+        javaScriptEnabled: true,
+        permissions: ["microphone"],
+        launchOptions: {
+          ...(process.env.CHROMIUM_PATH
+            ? { executablePath: process.env.CHROMIUM_PATH }
+            : {}),
+          args: [
+            "--use-fake-device-for-media-stream",
+            "--use-fake-ui-for-media-stream",
+            `--use-file-for-fake-audio-capture=${MICROPHONE_FILE}`,
+          ],
+        },
+      },
+    },
   ],
   webServer: [
     {

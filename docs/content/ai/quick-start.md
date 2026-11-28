@@ -45,6 +45,30 @@ npm install --save-dev esbuild
 
 The components read a few custom properties for their colors: `--bg`, `--surface`, `--border`, `--text`, `--muted`, `--accent`, `--on-accent`, and `--radius`. Define them once in your stylesheet; see [Theming](/how-to/theming).
 
+Four more are optional. A component that reads one falls back to the value shown, so leave them out until you want to change the scale:
+
+| Property         | Fallback    | What it sets                                                        |
+| :--------------- | :---------- | :------------------------------------------------------------------ |
+| `--gap`          | `0.75rem`   | The space between two parts of one reply.                           |
+| `--gap-tight`    | `0.25rem`   | The space between parts that belong together, such as status lines. |
+| `--text-small`   | `0.875rem`  | Secondary text: a note, a step's detail, an approval card.          |
+| `--text-smaller` | `0.8125rem` | The smallest text: a tool's status line.                            |
+
+The components read the two text sizes. The two gaps are for your page's stylesheet, because the components carry no outer margin: a reply is one stack, and the page that holds it spaces its parts. The demo's `style.css` does it with these rules, where `.turn-assistant` is the element a reply is rendered into:
+
+```css
+.turn-assistant > * {
+  margin-block: 0;
+}
+
+.turn-assistant > * + :not(br),
+.turn-assistant > :is(.part, [data-view]) > * + :not(br) {
+  margin-block-start: var(--gap, 0.75rem);
+}
+```
+
+Everything in a reply is then one `--gap` from what is above it, whether it is a paragraph, a component, or what a tool call (`.part`) or a voice call's view (`[data-view]`) shows. The `:not(br)` is there for its weight: it lets the rule outrank a component's own `margin: 0`, which comes later in the page. Without rules like these, components in a reply touch each other.
+
 ## Stream a reply
 
 A page with a form and a stream script. The script reads the catalog from the folder `bascik add` made, asks the model, and yields what `renderStream` gives back:

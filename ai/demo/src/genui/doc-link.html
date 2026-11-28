@@ -1,31 +1,35 @@
 <!-- @bascik
-A link to a documentation page: the page or section title, its full URL as href, and one sentence on what the reader finds there as content. Use it to cite every page an answer came from.
+A link to a documentation page: the page or section title, its full URL as href, and one sentence on what the reader finds there as content. Use it to cite every page an answer came from. Never also write the URL in the text.
 -->
 <style>
   .link {
     display: grid;
-    gap: 0.15rem;
-    margin: 0.5rem 0;
-    padding: 0.7rem 0.9rem;
+    gap: 0.1rem;
+    margin: 0;
+    padding: 0.45rem 0.7rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: var(--surface);
     color: inherit;
     text-decoration: none;
   }
   .link:hover {
     border-color: var(--accent);
   }
+  .link:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
   .title {
+    font-size: var(--text-small, 0.875rem);
     font-weight: 600;
   }
   .title::after {
     content: " ↗";
-    color: var(--accent);
+    color: var(--muted);
   }
   .summary {
     color: var(--muted);
-    font-size: 0.875rem;
+    font-size: var(--text-smaller, 0.8125rem);
   }
 </style>
 <!-- The docs are another site, so the link opens in a new tab and the

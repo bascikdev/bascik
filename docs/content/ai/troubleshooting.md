@@ -16,6 +16,12 @@ Where: `ai/src/azure-voice-live/provider.ts`
 What it means: The provider cannot build a connection URL because no WebSocket base or endpoint was configured.
 What to do: Set the `wsBase` option or provide an HTTP endpoint that can be converted to a WebSocket URL.
 
+### pauseMs must be a number of milliseconds.
+
+Where: `ai/src/voice/pause.ts`
+What it means: `geminiLiveVoice` or `azureVoiceLiveVoice` was given a `pauseMs` that is not a finite number, such as the result of parsing an empty environment variable. The provider throws when it is made.
+What to do: Pass a number of milliseconds, or leave `pauseMs` out for the default of 800. A number outside 200 to 3000 is not an error; it is brought into that range.
+
 ### No Gemini API key is set.
 
 Where: `ai/src/gemini-live.ts`
@@ -54,17 +60,35 @@ Where: `ai/src/azure-voice-live/provider.ts`
 What it means: The WebSocket connection to Azure Voice Live was refused before it could be established. This often happens when credentials are invalid or expired.
 What to do: Check that the Azure Voice Live key or token is valid and not expired.
 
+### The voice provider refused the call's settings.
+
+Where: `ai/src/azure-voice-live/provider.ts`
+What it means: Azure Voice Live answered the session's setup with an error, so the relay ended the call as it started. The usual cause is a `turnDetection` setting the model does not take. The server's log has this line followed by "It said:" and Azure's own message, which names the setting.
+What to do: Read the log, then remove or change that setting. Which settings a model takes is the provider's to say: see [Providers](/ai/providers#voice-how-long-a-pause-ends-a-turn).
+
 ### The voice provider hung up.
 
 Where: `ai/src/azure-voice-live/provider.ts`
 What it means: The WebSocket connection to Azure Voice Live was closed by the provider after it was established.
 What to do: This may be a temporary provider issue. Try the call again.
 
+### The voice provider did not answer in time.
+
+Where: `ai/src/gemini-live.ts`, `ai/src/azure-voice-live/provider.ts`
+What it means: With Gemini Live, the request for a token was not answered within `timeoutMs` (15 seconds by default), and `createSession` throws this. With Azure Voice Live, the relay connected but Azure did not set the session up within `connectTimeoutMs` (15 seconds by default); the call ends with this line and it is logged.
+What to do: Check the provider's status and the network path from the server. Raise the option only when the provider is known to be slow.
+
 ### The voice provider did not answer.
 
 Where: `ai/src/app/voice-handlers.ts`
 What it means: The server could not create a voice session with the configured provider. The underlying error is logged via `onError`.
 What to do: Check the server logs for the specific error. Ensure the voice provider is configured and reachable.
+
+### The voice call could not be started.
+
+Where: `ai/src/app/voice-handlers.ts`
+What it means: The voice session handler answered 502 because the shared store did not answer, or because the turn an earlier call left behind could not be stored. The underlying error is logged via `onError` as "the shared store did not answer" or "the last voice call's turn was not stored".
+What to do: Check the server logs, then the shared store and the conversation store.
 
 ### This server has no voice provider.
 
@@ -79,6 +103,12 @@ What it means: The model failed while generating a reply. The specific error is 
 What to do: Check the server logs for the underlying error. This may be a transient model failure.
 
 ## Sending messages and forms
+
+### This request came from another site.
+
+Where: `ai/src/app/forms.ts`
+What it means: A handler answered 403 because the POST was sent by another site's page: its `Sec-Fetch-Site` header was `cross-site`, or it had no such header and its `Origin` was not this host. Every handler that reads a form checks this, and so do `stop` and `voiceSession`.
+What to do: Post from a page on the same site. Behind a proxy that changes `Host`, have it send `X-Forwarded-Host` with the host the browser used.
 
 ### Not a form.
 
@@ -211,8 +241,20 @@ What to do: Ensure the approval is sent for a tool call that is actually pending
 ### Error: already called.
 
 Where: `ai/src/voice/tool-calls.ts`
-What it means: A voice tool call was attempted for a tool that has already been called in this turn.
-What to do: Ensure each tool call is unique and not repeated.
+What it means: A voice tool call arrived with an id that was already used in this call, in this turn or in one of the turns stored before it. The first call stands and the second is not run.
+What to do: Ensure each tool call has an id of its own. A provider that sends a call again after a reconnect gets this answer by design.
+
+### Error: The tool took too long to answer.
+
+Where: `ai/src/voice/tool-calls.ts`
+What it means: A voice tool did not answer within `VOICE_TOOL_TIMEOUT_MS` (60 seconds). It is recorded as failed, the `signal` it was given is aborted, and the model is told.
+What to do: Make the tool faster, have it stop on its `signal`, or pass `{ timeoutMs }` as the last argument of `runVoiceTool` or `finishVoiceTool`.
+
+### (The result was too long. This is the start of it.)
+
+Where: `ai/src/voice/tool-calls.ts`
+What it means: A voice tool's result was longer than `MAX_VOICE_TOOL_OUTPUT` (100,000 characters). The model is told the start of it, ending with this line.
+What to do: Return a shorter result, such as a summary or the first matches.
 
 ### Error: <error>
 
@@ -304,6 +346,54 @@ What to do: Ensure the memory ID is correct.
 
 ## Voice calls
 
+### No microphone: type to talk.
+
+Where: `ai/components/chat/voice-call.html`
+What it means: The reader declined the microphone, the browser could not start capturing, or the microphone went away during the call (unplugged, or permission taken back). The call is still on.
+What to do: Type in the composer to talk to the model. To speak, allow the microphone for the site and start a new call.
+
+### Muted. The model cannot hear you.
+
+Where: `ai/components/chat/voice-call.html`
+What it means: The reader pressed the mute button. The microphone is switched off and no audio is sent; the call is still on, and the model's voice still plays.
+What to do: Press the button again to speak, or type in the composer.
+
+### Still there? The call is about to end.
+
+Where: `ai/components/chat/voice-call.html`
+What it means: Nothing has happened on the call for `idle-seconds` (120 by default). The call ends after `idle-warning-seconds` more (30 by default).
+What to do: Press "Stay on the call", speak, or type. To change the times, set the two props on `voice-call`; `idle-seconds` of 0 never asks.
+
+### The call ended because nobody spoke.
+
+Where: `ai/components/chat/voice-call.html`, `ai/src/azure-voice-live/provider.ts`
+What it means: The call was ended because it was not in use. The component ends it when its question, "Still there?", goes unanswered. The Azure relay ends it when nobody has spoken for `callIdleSeconds` (300 by default), whatever the page does. Sound in the microphone does not count as speaking.
+What to do: Start a new call. If calls end while readers are still on them, raise `idle-seconds` on the component or `callIdleSeconds` on the provider: see [A call nobody is speaking on](/ai/voice#a-call-nobody-is-speaking-on).
+
+### The model answers before I finish speaking
+
+Where: `ai/src/voice/pause.ts`
+What it means: The provider took a pause for the end of the reader's turn. A reply the reader speaks over before they heard it is taken back, and their words stay one turn, but the model has still been interrupted.
+What to do: Raise `pauseMs` on the voice provider (800 by default, up to 3000). With Azure Voice Live, also try end-of-utterance detection through `turnDetection`, which judges by what was said and not by silence alone. See [Providers](/ai/providers#voice-how-long-a-pause-ends-a-turn).
+
+### The voice service did not answer.
+
+Where: `ai/components/chat/voice-call.html`
+What it means: The call connected but was not on 20 seconds later, so the component ended it.
+What to do: Try the call again. If it repeats, check the provider's status and, with Azure Voice Live, the relay's log.
+
+### The voice relay is full. Try again later.
+
+Where: `ai/src/azure-voice-live/provider.ts`
+What it means: The relay already had `relay.maxCalls` calls open (100 by default), so it closed this one as it connected, with WebSocket code 1008.
+What to do: Try again later. Raise `relay.maxCalls` when the server and the Azure resource have room for more.
+
+### Too many voice calls are open.
+
+Where: `ai/src/azure-voice-live/provider.ts`
+What it means: One reader already had `relay.maxCallsPerOwner` calls open on this relay (3 by default), so this one was closed as it connected, with WebSocket code 1008.
+What to do: End a call in another tab or window. Raise `relay.maxCallsPerOwner` if readers need more.
+
 ### The voice call's state is busy.
 
 Where: `ai/src/app/voice-state.ts`
@@ -327,6 +417,30 @@ What to do: Ensure the request is a proper WebSocket upgrade request.
 Where: `ai/src/azure-voice-live/provider.ts`
 What it means: The server failed to read or write the voice ticket in the shared store.
 What to do: Check the shared store configuration and connectivity.
+
+### [azure-voice-live] <reason> It said: <provider's reason>
+
+Where: `ai/src/azure-voice-live/provider.ts`
+What it means: Azure's side of a call ended. The first part is the line the reader was shown; what follows "It said:" is Azure's own close reason, which is logged and never sent to the browser because it can name the resource.
+What to do: Read the provider's reason. It usually names a quota, a model the region does not offer, or a credential problem.
+
+### a voice tool's result was not recorded
+
+Where: `ai/src/app/voice-handlers.ts`
+What it means: A voice tool ran, but its result could not be written to the call's turn in the shared store. The model is still told the result; the view is not shown, and the stored message can record the call as failed. Logged via `onError`.
+What to do: Check the shared store configuration and connectivity.
+
+### Idle
+
+Where: `ai/src/ws.ts`
+What it means: The relay closed a call with WebSocket code 1001 because the browser sent nothing, not even the answer to a ping, for `relay.idleMs` (45 seconds by default).
+What to do: Nothing, when the reader's device went away. Raise `relay.idleMs` if a proxy in front of the relay holds frames back.
+
+### Invalid UTF-8
+
+Where: `ai/src/ws.ts`
+What it means: The relay closed a call with WebSocket code 1007 because a text message, or a close reason, was not valid UTF-8.
+What to do: Send text frames as UTF-8. The `voice-call` component does.
 
 ### [azure-voice-live] <detail>
 

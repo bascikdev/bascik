@@ -16,6 +16,7 @@ import type { Call } from "./types.ts";
 export async function openMicrophone(
   current: Call,
   isLive: () => boolean,
+  onLost: () => void = () => {},
 ): Promise<AudioWorkletNode | null> {
   const microphone = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
@@ -25,17 +26,54 @@ export async function openMicrophone(
     microphone.getTracks().forEach((track) => track.stop());
     return null;
   }
-  // Asking for 16 kHz here means the browser resamples, not this script.
-  const capture = new AudioContext({ sampleRate: 16_000 });
+  // The call holds it from here, so ending the call lets it go whatever happens next.
   current.microphone = microphone;
-  current.capture = capture;
-  await capture.audioWorklet.addModule(
-    URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })),
+  const worklet = URL.createObjectURL(
+    new Blob([WORKLET], { type: "text/javascript" }),
   );
-  if (!isLive()) return null;
-  const node = new AudioWorkletNode(capture, "mic");
-  capture.createMediaStreamSource(microphone).connect(node);
-  return node;
+  try {
+    // Asking for 16 kHz here means the browser resamples, not this script.
+    const capture = new AudioContext({ sampleRate: 16_000 });
+    current.capture = capture;
+    await capture.audioWorklet.addModule(worklet);
+    if (!isLive()) return null;
+    const node = new AudioWorkletNode(capture, "mic");
+    capture.createMediaStreamSource(microphone).connect(node);
+    // A headset unplugged, or permission taken back: the track ends by itself.
+    for (const track of microphone.getTracks()) {
+      track.addEventListener("ended", () => {
+        if (current.microphone !== microphone) return;
+        dropMicrophone(current);
+        onLost();
+      });
+    }
+    return node;
+  } catch (error) {
+    // A browser that cannot capture (no worklet, a rate it refuses) must not
+    // be left recording: the reader is told there is no microphone.
+    dropMicrophone(current);
+    throw error;
+  } finally {
+    URL.revokeObjectURL(worklet);
+  }
+}
+
+/** Let go of a call's microphone and what captures it; the call goes on. */
+export function dropMicrophone(current: Call): void {
+  current.microphone?.getTracks().forEach((track) => track.stop());
+  void current.capture?.close().catch(() => {});
+  current.microphone = undefined;
+  current.capture = undefined;
+}
+
+/**
+ * Switch a call's microphone off or on, at its source: a muted track gives
+ * silence, and the browser shows that nothing is being recorded.
+ */
+export function muteMicrophone(current: Call, muted: boolean): void {
+  for (const track of current.microphone?.getAudioTracks() ?? []) {
+    track.enabled = !muted;
+  }
 }
 
 /** Let go of everything a call holds: its socket, audio and microphone. */
@@ -43,7 +81,6 @@ export function closeCall(ending: Call): void {
   for (const decide of ending.waiting.values()) decide("deny");
   ending.socket.close();
   for (const source of ending.sources) source.stop();
-  ending.microphone?.getTracks().forEach((track) => track.stop());
-  void ending.capture?.close();
-  void ending.playback.close();
+  dropMicrophone(ending);
+  void ending.playback.close().catch(() => {});
 }

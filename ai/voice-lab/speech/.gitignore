@@ -1,0 +1,3 @@
+# Recordings of your own voice stay on your machine unless you decide
+# otherwise: remove this file to commit them.
+*.wav

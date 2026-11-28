@@ -8,6 +8,7 @@
  * cannot change what the session may do.
  */
 import type { Tool, ToolInputSchema } from "./model.ts";
+import { pauseMsOf, turnSettingsOf } from "./voice/pause.ts";
 import type {
   VoiceProvider,
   VoiceSessionConfig,
@@ -21,6 +22,19 @@ export interface GeminiLiveOptions {
   model?: string;
   /** One of the provider's voice names. Left out, the provider picks. */
   voice?: string;
+  /**
+   * How long the reader may be silent before their turn is taken as over,
+   * in milliseconds (default 800, from 200 to 3000). Higher waits through a
+   * pause for thought; lower answers sooner.
+   */
+  pauseMs?: number;
+  /**
+   * The provider's own `realtimeInputConfig`, laid over the default
+   * (`{ automaticActivityDetection: { silenceDurationMs: pauseMs } }`):
+   * `automaticActivityDetection.endOfSpeechSensitivity`, `activityHandling`,
+   * `turnCoverage`, and the rest. The token locks it in with the prompt.
+   */
+  realtimeInput?: Record<string, unknown>;
   /** How long a ticket may be used to start a session, in seconds (default 60). */
   startWithinSeconds?: number;
   /** How long a session may last, in seconds (default 900, the provider's own limit for audio). */
@@ -30,6 +44,34 @@ export interface GeminiLiveOptions {
   wsBase?: string;
   /** Replace `fetch`, for a test. */
   fetch?: typeof fetch;
+  /**
+   * How long the provider has to answer the request for a token, body
+   * included, in milliseconds (default 15 000).
+   */
+  timeoutMs?: number;
+}
+
+/** The most of the provider's answer that is read. A token's is a few hundred bytes. */
+const MAX_ANSWER_BYTES = 64_000;
+
+/** The answer's body as text, or null when it is longer than `MAX_ANSWER_BYTES`. */
+async function boundedText(response: Response): Promise<string | null> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let seen = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    seen += value.byteLength;
+    if (seen > MAX_ANSWER_BYTES) {
+      // The rest is not read: the connection is let go.
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
 }
 
 const HTTP_BASE = "https://generativelanguage.googleapis.com";
@@ -67,8 +109,14 @@ function declaration(tool: Tool): Record<string, unknown> {
 /** The session setup the token locks in. */
 export function geminiLiveSetup(
   config: VoiceSessionConfig,
-  options: { model: string; voice?: string },
+  options: {
+    model: string;
+    voice?: string;
+    pauseMs?: number;
+    realtimeInput?: Record<string, unknown>;
+  },
 ): Record<string, unknown> {
+  const detection = options.realtimeInput?.automaticActivityDetection;
   return {
     model: options.model,
     generationConfig: {
@@ -90,6 +138,16 @@ export function geminiLiveSetup(
     // What each side says, as text: the captions and the stored conversation.
     inputAudioTranscription: {},
     outputAudioTranscription: {},
+    // How long a pause ends the reader's turn.
+    realtimeInputConfig: {
+      ...options.realtimeInput,
+      automaticActivityDetection: {
+        silenceDurationMs: pauseMsOf(options.pauseMs),
+        ...(typeof detection === "object" && detection !== null
+          ? detection
+          : {}),
+      },
+    },
   };
 }
 
@@ -103,7 +161,11 @@ export function geminiLiveVoice(
     sessionSeconds = 900,
     httpBase = HTTP_BASE,
     wsBase = WS_BASE,
+    timeoutMs = 15_000,
   } = options;
+  // A setting that cannot be used is told to the developer now, not to a reader later.
+  const pauseMs = pauseMsOf(options.pauseMs);
+  const realtimeInput = turnSettingsOf("realtimeInput", options.realtimeInput);
   const send = options.fetch ?? fetch;
   return {
     protocol: "gemini-live",
@@ -112,8 +174,17 @@ export function geminiLiveVoice(
       if (!apiKey) throw new Error("No Gemini API key is set.");
       const at = (seconds: number): string =>
         new Date(Date.now() + seconds * 1000).toISOString();
+      // One limit for the whole answer: a provider that takes the request
+      // and says nothing, or never finishes its body, does not hold the reader.
+      const signal = AbortSignal.timeout(timeoutMs);
+      const late = (error: unknown): never => {
+        throw signal.aborted
+          ? new Error("The voice provider did not answer in time.")
+          : error;
+      };
       const response = await send(`${httpBase}/v1beta/auth_tokens`, {
         method: "POST",
+        signal,
         headers: {
           "x-goog-api-key": apiKey,
           "content-type": "application/json",
@@ -122,13 +193,22 @@ export function geminiLiveVoice(
           uses: 1,
           newSessionExpireTime: at(startWithinSeconds),
           expireTime: at(sessionSeconds),
-          bidiGenerateContentSetup: geminiLiveSetup(config, { model, voice }),
+          bidiGenerateContentSetup: geminiLiveSetup(config, {
+            model,
+            voice,
+            pauseMs,
+            realtimeInput,
+          }),
         }),
-      });
-      const body = (await response.json().catch(() => ({}))) as {
-        name?: string;
-        error?: { message?: string };
-      };
+      }).catch(late);
+      const text = await boundedText(response).catch(late);
+      let body: { name?: string; error?: { message?: string } } = {};
+      try {
+        const parsed: unknown = JSON.parse(text ?? "");
+        if (typeof parsed === "object" && parsed !== null) body = parsed;
+      } catch {
+        // Not JSON, or too long to read: answered below by its status.
+      }
       if (!response.ok || !body.name) {
         throw new Error(
           `The voice provider answered ${response.status}${body.error?.message ? `: ${body.error.message.slice(0, 300)}` : ""}`,

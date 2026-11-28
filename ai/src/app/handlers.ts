@@ -25,7 +25,13 @@ import {
   badRequest,
   conversationFull,
 } from "./errors.ts";
-import { field, localPath, messageFrom } from "./forms.ts";
+import {
+  crossSite,
+  field,
+  localPath,
+  messageFrom,
+  shownFrom,
+} from "./forms.ts";
 import { MAX_MESSAGE, NO_STORE, SEARCH_LIMIT } from "./limits.ts";
 import type { Chat } from "./types.ts";
 
@@ -72,9 +78,15 @@ export function chatHandlers(
     }
     const session = sessions.identify(request);
     const text = messageFrom(form).slice(0, MAX_MESSAGE);
+    // What the thread shows for it, when the form says: a label, or nothing.
+    const show = shownFrom(form);
     if (form.get("voice") === "1") {
-      // The call stores its own turns: this only says what to say.
-      return Response.json({ say: text }, { headers: NO_STORE });
+      // The call stores its own turns: this only says what to say, and what
+      // to show for it.
+      return Response.json(
+        show === undefined ? { say: text } : { say: text, show },
+        { headers: NO_STORE },
+      );
     }
     const attached = await attach(session, form, text);
     if (attached instanceof Response) return attached;
@@ -84,7 +96,10 @@ export function chatHandlers(
     }
     let added: Conversation;
     try {
-      added = await addMessage(session, text, { files: attached });
+      added = await addMessage(session, text, {
+        files: attached,
+        ...(show === undefined ? {} : { show }),
+      });
     } catch (error) {
       if (error instanceof ConversationFullError) return conversationFull();
       throw error;
@@ -150,6 +165,9 @@ export function chatHandlers(
   };
 
   const stop: Chat["stop"] = async (request) => {
+    // Stop reads no form, so it checks where the request came from itself.
+    const refused = crossSite(request);
+    if (refused) return refused;
     // Only the reader's own conversation: its id in a cookie is not enough.
     const conversation = await load(sessions.identify(request));
     const stopped = conversation !== null && (await stopTurn(conversation.id));
