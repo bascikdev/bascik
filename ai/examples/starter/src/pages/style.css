@@ -1,0 +1,30 @@
+/* The theme: the tokens every chat part reads. Change the look here. */
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#fbfaf8, #1a1a19);
+  --surface: light-dark(#f3f1ec, #232322);
+  --border: light-dark(#dedad2, #3a3a37);
+  --text: light-dark(#1f1e1c, #ecebe7);
+  --muted: light-dark(#6b6862, #a3a099);
+  --accent: light-dark(#b4512c, #e08a5f);
+  --on-accent: light-dark(#ffffff, #1a1a19);
+  --radius: 10px;
+  /* The text color of a drawn diagram. */
+  --fg: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* chat-app fills the window: the body only sets the page's colors and font. */
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    16px/1.55 system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}

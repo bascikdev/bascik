@@ -13,7 +13,13 @@ import {
   type ToolPart,
   type VoiceProvider,
 } from "@bascik/ai";
-import { createChat, fileMemories, fileStore, type Chat } from "@bascik/ai/app";
+import {
+  createChat,
+  fileMemories,
+  fileStore,
+  type Chat,
+  type ChatProject,
+} from "@bascik/ai/app";
 import { savedMemory } from "@bascik/ai/memory";
 import { diskFiles } from "@bascik/ai/files";
 import { MERMAID_PROMPT, mermaidFence } from "@bascik/ai/mermaid";
@@ -289,6 +295,52 @@ export function chatFor(app: ChatApp): Chat {
     chats.set(app.id, chat);
   }
   return chat;
+}
+
+/**
+ * What the package's data parts read (chat-turns, chat-find,
+ * chat-conversations, chat-models, chat-memories): the chat of the app the
+ * request is for, and that app's choices. One page component then serves
+ * every app.
+ */
+export default function project(request: Request): ChatProject {
+  const app = appFor(request);
+  return {
+    chat: chatFor(app),
+    app: app.id,
+    // The sidebar is on the memory page too, which is not a chat: a search
+    // from there loads the app's own page.
+    ...(new URL(request.url).pathname === "/memory" ? { page: app.path } : {}),
+    welcome: {
+      heading: app.heading,
+      tagline: app.tagline,
+      suggestions: app.suggestions,
+    },
+    // Listed only where the picker is shown: it asks the local model servers.
+    models: async () => {
+      const models = await listModels();
+      return {
+        options: models,
+        chosen: pickModel(models, requestedModel(request)).id,
+        label: "Model for typed chat",
+        notes: [
+          html`<p data-testid="chat-sidebar-voice-note">
+            A voice call uses the speech model this server started with, not
+            this one.
+          </p>`,
+          ...(models.length === 1
+            ? [
+                html`<p data-testid="chat-sidebar-model-note">
+                  No model is set up, so typed replies come from a fixed script.
+                  Set ANTHROPIC_API_KEY, or run Ollama or LM Studio, and
+                  restart.
+                </p>`,
+              ]
+            : []),
+        ],
+      };
+    },
+  };
 }
 
 /** The text system prompt of an app, for the stress script. */

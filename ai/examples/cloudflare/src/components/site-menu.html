@@ -1,0 +1,97 @@
+<!-- @bascik
+This example's sidebar: the package's `chat-sidebar`, with the example's own links around the package's data parts. Its server script reads only the page the request is for, to mark the link to it. The search and the conversations are the data parts `chat-find` and `chat-conversations`, which read the reader's ReaderData object through the chat. It has no element of its own.
+-->
+<style>
+  .apps {
+    display: grid;
+    gap: 0.15rem;
+    padding-block-end: 1rem;
+    border-block-end: 1px solid var(--border);
+  }
+  .apps a {
+    padding: 0.45rem 0.6rem;
+    border-radius: calc(var(--radius) - 2px);
+    color: inherit;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  /* On the memory page the app it belongs to stays marked. */
+  .apps a:hover,
+  .apps a[aria-current="page"],
+  .apps a[aria-current="true"] {
+    background: var(--bg);
+  }
+  .settings a {
+    display: block;
+    padding: 0.45rem 0.6rem;
+    border-radius: calc(var(--radius) - 2px);
+    color: inherit;
+    font-size: 0.875rem;
+    text-decoration: none;
+  }
+  .settings a:hover,
+  .settings a[aria-current="page"] {
+    background: var(--bg);
+  }
+  .apps a:focus-visible,
+  .settings a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  /* A finger gets a 44px target. */
+  @media (pointer: coarse) {
+    .apps a,
+    .settings a {
+      display: flex;
+      align-items: center;
+      min-block-size: 2.75rem;
+    }
+  }
+  .note {
+    margin: 0;
+    padding-inline: 0.6rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+</style>
+<script data-bascik-server type="text/typescript">
+  import { html } from "@bascik/bascik/html";
+  import { APP_ID } from "@/lib/chat.ts";
+
+  export default (request: Request) => {
+    const url = new URL(request.url);
+    const onMemory = url.pathname === "/memory";
+    const content = html`<nav class="apps" aria-label="Pages">
+        <a
+          href="/"
+          data-testid="chat-sidebar-chat"
+          aria-current="${onMemory ? "true" : "page"}"
+          >Bookshop</a
+        >
+      </nav>
+      <chat-new data-bascik-prop-app="${APP_ID}" />
+      <chat-find />
+      <chat-conversations />
+      <template data-bascik-slot="foot">
+        <nav class="settings" aria-label="Your data">
+          <a
+            href="/memory"
+            data-testid="chat-sidebar-memory"
+            aria-current="${onMemory ? "page" : "false"}"
+            >Memory</a
+          >
+        </nav>
+        <p class="note" data-testid="chat-sidebar-note">
+          Replies come from a fixed script, not a model. Chats, memories and
+          files are deleted 24 hours after your last message.
+        </p>
+      </template>`;
+    // A search loads a page: on a narrow screen its results are in view.
+    return url.searchParams.has("q")
+      ? html`<chat-sidebar data-bascik-prop-open="open"
+          >${content}</chat-sidebar
+        >`
+      : html`<chat-sidebar>${content}</chat-sidebar>`;
+  };
+</script>

@@ -5,7 +5,7 @@ Props: `conversation` (the conversation's id, posted as `id`), `title` (its titl
 
 Slot: the default slot is what was found, with the matched words in `mark`, which the browser highlights in its own colors.
 
-Around it: an `ol` or a `ul`; its root is a list item. The form carries `data-genui="native"`: it must load a page, so the client runtime (`chat-enhance`) leaves it to the browser, also inside a `data-chat` element. It reads the theme tokens `--radius`, `--bg` and `--muted`.
+Around it: `search-results`, or an `ol` or a `ul` of your own; its root is a list item. The form carries `data-genui="native"`: it must load a page, so the client runtime (`chat-enhance`) leaves it to the browser, also inside a `data-chat` element. It reads the theme tokens `--radius`, `--bg` and `--muted`.
 -->
 <style>
   .result {

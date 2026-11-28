@@ -15,6 +15,7 @@ import {
   cookieSessions,
   createChat,
   type Chat,
+  type ChatProject,
   type ChatSessions,
   type HostContext,
 } from "@bascik/ai/app";
@@ -52,7 +53,7 @@ export const FILE_LIMITS = {
 } as const;
 
 /** The app's words for the welcome: heading, tagline, suggestions. Its model is not used. */
-export const WELCOME = booksApp({ delayMs: 0 });
+const WELCOME = booksApp({ delayMs: 0 });
 
 const catalog: Catalog = new Map(
   CATALOG_ENTRIES.map((entry) => [entry.name, entry]),
@@ -211,6 +212,32 @@ export function chatOf(context: RequestContext | undefined): {
   host: HostContext;
 } {
   return { chat: chatFor(envOf(context)), host: hostOf(context) };
+}
+
+/**
+ * What the package's data parts read (chat-turns, chat-find,
+ * chat-conversations, chat-memories): the chat for the request's bindings,
+ * the platform's waitUntil, so a reply a page starts is finished and stored
+ * after the reader leaves, and the words of the welcome.
+ */
+export default function project(
+  _request: Request,
+  context?: RequestContext,
+): ChatProject {
+  return {
+    ...chatOf(context),
+    app: APP_ID,
+    // The sidebar is on the memory page too: a search from there loads the chat.
+    page: "/",
+    welcome: {
+      heading: WELCOME.heading,
+      tagline: WELCOME.tagline,
+      note: html`<p data-testid="chat-retention">
+        Demo chats are kept for 24 hours after your last message.
+      </p>`,
+      suggestions: WELCOME.suggestions,
+    },
+  };
 }
 
 /**

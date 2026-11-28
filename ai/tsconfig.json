@@ -15,6 +15,7 @@
     "src/**/*",
     "demo/src/lib/**/*",
     "demo/src/api/**/*",
+    "examples/starter/src/**/*",
     "stress/**/*",
     "e2e/**/*",
     "voice-lab/**/*",

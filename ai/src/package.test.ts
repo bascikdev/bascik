@@ -8,6 +8,7 @@ const manifest = JSON.parse(
   await readFile(join(root, "package.json"), "utf8"),
 ) as {
   files: string[];
+  devDependencies: Record<string, string>;
   bascik: { components: string };
   exports: Record<string, string>;
   publishConfig: {
@@ -38,6 +39,19 @@ async function moduleFiles(): Promise<string[]> {
     (file) => file.endsWith(".ts") && !file.endsWith(".test.ts"),
   );
 }
+
+/**
+ * The components that read the project's chat at request time, and the one
+ * project module they may import: `src/lib/chat.ts`.
+ */
+const DATA_PARTS = [
+  "chat-conversations",
+  "chat-find",
+  "chat-memories",
+  "chat-models",
+  "chat-turns",
+];
+const PROJECT_MODULE = "@/lib/chat.ts";
 
 describe("the package", () => {
   it("offers its components to `bascik add`, and ships them", () => {
@@ -89,10 +103,94 @@ describe("the package", () => {
       // A component a model or an editor can be told about.
       expect(described, file).not.toBeNull();
       expect(described!.description, file).not.toBe("");
-      // No import of the project it came from: `@/` is the reader's own root.
-      expect(source, file).not.toMatch(/from\s+["']@\//);
-      expect(source, file).toMatch(/data-testid="/);
+      // No import of the project it came from: `@/` is the reader's own
+      // root. The data parts are the exception, and theirs is one module.
+      const project = [...source.matchAll(/["'](@\/[^"']*)["']/g)].map(
+        ([, specifier]) => specifier,
+      );
+      const name = file.slice(file.lastIndexOf("/") + 1, -".html".length);
+      if (DATA_PARTS.includes(name)) {
+        expect(project.length, file).toBeGreaterThan(0);
+        expect(new Set(project), file).toEqual(new Set([PROJECT_MODULE]));
+        // Its script is a call into the package, with nothing to fork.
+        expect(source, file).toMatch(/from "@bascik\/ai\/app"/);
+        expect(source, file).not.toMatch(/<style/);
+      } else {
+        expect(project, file).toEqual([]);
+        // A data part with no element of its own prints tags that carry
+        // their own hooks; every other component has one.
+        expect(source, file).toMatch(/data-testid="/);
+      }
     }
+  });
+
+  it("has exactly the data parts it says read the project's chat", async () => {
+    const names: string[] = [];
+    for (const file of await componentFiles()) {
+      const source = await readFile(file, "utf8");
+      if (/<script[^>]*data-bascik-(server|stream)/.test(source)) {
+        names.push(file.slice(file.lastIndexOf("/") + 1, -".html".length));
+      }
+    }
+    // No other package component runs a script on the server.
+    expect(names.sort()).toEqual([...DATA_PARTS].sort());
+  });
+
+  it("keeps a starter that is the all-in-one and what it needs, and nothing else", async () => {
+    const starter = join(root, "examples", "starter");
+    const page = await readFile(
+      join(starter, "src", "pages", "index.html"),
+      "utf8",
+    );
+    // The page's body is one tag.
+    const body = /<body>([\s\S]*)<\/body>/.exec(page)![1]!;
+    expect(body.replace(/<!--[\s\S]*?-->/g, "").trim()).toBe("<chat-app />");
+    // The head link a component cannot carry, and the theme.
+    expect(page).toMatch(
+      /<link rel="expect" href="#thread-ready" blocking="render" \/>/,
+    );
+    expect(page).toContain('<link rel="stylesheet" href="/style.css" />');
+    // The module the data parts read, where they look for it.
+    const chat = await readFile(join(starter, "src", "lib", "chat.ts"), "utf8");
+    expect(chat).toMatch(/^export default \{\n {2}chat,/m);
+    expect(chat).toContain("satisfies ChatProject");
+    // One route file for every route chat-app's default parts post to.
+    const app = await readFile(
+      join(components, "chat", "chat-app.html"),
+      "utf8",
+    );
+    const routes = (await readdir(join(starter, "src", "api")))
+      .map((file) => file.replace(/\.ts$/, ""))
+      .sort();
+    expect(routes).toEqual(["file", "open", "send", "stop"]);
+    for (const route of routes)
+      expect(app, route).toContain(`\`/api/${route}\``);
+    // Every theme token chat-app's reference names is one the starter sets.
+    const style = await readFile(
+      join(starter, "src", "pages", "style.css"),
+      "utf8",
+    );
+    const tokens = [
+      ...app.slice(0, app.indexOf("-->")).matchAll(/`(--[a-z-]+)`/g),
+    ];
+    expect(tokens.length).toBeGreaterThan(5);
+    for (const [, token] of tokens) expect(style, token).toContain(`${token}:`);
+    // chat-app holds parts that import modules beside them, which Bascik
+    // bundles with esbuild: a copy of the starter must install it.
+    expect(
+      await readFile(join(components, "chat", "chat-enhance.html"), "utf8"),
+    ).toMatch(/from "\.\/chat-root\//);
+    const starterManifest = JSON.parse(
+      await readFile(join(starter, "package.json"), "utf8"),
+    ) as { devDependencies?: Record<string, string> };
+    expect(starterManifest.devDependencies?.esbuild).toBe(
+      manifest.devDependencies.esbuild,
+    );
+    expect(await readFile(join(starter, "README.md"), "utf8")).toContain(
+      "npm i -D esbuild",
+    );
+    // The examples stay in the repository: a project copies one from there.
+    expect(manifest.files).toContain("!examples/**");
   });
 
   it("ships browser modules that bundle into the components", async () => {

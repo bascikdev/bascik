@@ -26,8 +26,6 @@
 }
 
 body {
-  display: grid;
-  grid-template-columns: 16rem minmax(0, 1fr);
   block-size: 100dvh;
   margin: 0;
   background: var(--bg);
@@ -39,54 +37,32 @@ body {
     sans-serif;
 }
 
-@media (max-width: 720px) {
-  body {
-    grid-template-columns: minmax(0, 1fr);
-  }
+/* A page with the sidebar that is not a chat (/memory): the sidebar beside
+   the page's column, as chat-app lays out a chat. */
+body:has(> aside) {
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+}
 
-  /* The sidebar is a bar above the chat here, and the chat takes the rest. */
+@media (max-width: 720px) {
+  /* The sidebar is a bar above the page here, and the page takes the rest. */
   body:has(> aside) {
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
   }
 }
 
-.chat {
+.page {
   display: flex;
   flex-direction: column;
   min-block-size: 0;
   padding: 0 1rem 1rem;
 }
 
-/* The composer comes first in the source so it is sent before the reply
-   starts streaming; `order` shows it below the thread. */
-.chat > .dock {
-  order: 2;
-  /* Until the thread below it in the source is parsed, the composer is the
-     only child: the margin keeps it at the bottom from the first paint. */
-  margin-block-start: auto;
-}
-
-/* A column-reverse scroller stays pinned to its end as content arrives, so
-   the newest text is always in view with no script. */
-.scroller {
-  order: 1;
-  flex: 1;
-  display: flex;
-  flex-direction: column-reverse;
-  min-block-size: 0;
-  overflow-y: auto;
-  scrollbar-gutter: stable both-edges;
-}
-
 /* The component gallery (/gallery): one page of every catalog component. It
-   has no sidebar, so the page takes the whole width. Its bar (gallery-bar)
-   stays at the top of this scroller. */
-body:has(> .gallery) {
-  grid-template-columns: minmax(0, 1fr);
-}
-
+   scrolls by itself, and its bar (gallery-bar) stays at the top. */
 .gallery {
-  min-block-size: 0;
+  block-size: 100%;
   overflow-y: auto;
   padding: 0 1rem 3rem;
   /* Room for the sticky gallery-bar: a focused control or an anchored

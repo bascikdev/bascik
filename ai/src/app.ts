@@ -13,6 +13,11 @@
  * live, who the reader is, which model answers, and which voice provider is
  * offered are all passed in, and a client never chooses any of them.
  *
+ * A page gets its data through the chat's data parts (components/chat), whose
+ * scripts call `storedTurns`, `liveTurn`, `conversationList`,
+ * `conversationSearch`, `modelMenu` and `memoryList` with the project's own
+ * `src/lib/chat.ts`, whose default export is a `ChatProject`.
+ *
  * This is the `@bascik/ai/app` entry: the kit itself lives in `./app/`, one
  * module per part, and this file re-exports its public names.
  */
@@ -50,3 +55,20 @@ export type {
 export type { ChatOptions } from "./app/options.ts";
 export { ConversationFullError } from "./app/errors.ts";
 export { createChat } from "./app/create-chat.ts";
+export {
+  chatProject,
+  conversationList,
+  conversationSearch,
+  liveTurn,
+  memoryList,
+  modelMenu,
+  storedTurns,
+  type ChatProject,
+  type ChatProjectModule,
+  type ChatProjectSource,
+  type ChatRoutes,
+  type ChatWelcome,
+  type ChatWords,
+  type ModelMenu,
+  type ModelOption,
+} from "./app/page-parts.ts";

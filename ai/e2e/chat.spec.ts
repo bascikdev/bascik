@@ -204,7 +204,8 @@ test("search finds a past conversation, marks the words, and opens it", async ({
   const results = page.getByTestId("search-result");
   await expect(results).toHaveCount(1);
   // The conversation list gives way to the results.
-  await expect(page.getByTestId("chat-sidebar-item")).toHaveCount(0);
+  await expect(page.getByTestId("conversation-list")).toBeHidden();
+  await expect(page.getByTestId("chat-sidebar-item").first()).toBeHidden();
   await expect(results.getByTestId("search-result-title")).toHaveText(
     "Recommend a book about lighthouses",
   );

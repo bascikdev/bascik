@@ -32,6 +32,7 @@ writeFileSync(
 );
 
 const PORT = 4477;
+const STARTER_PORT = 4478;
 const MODEL_PORT = 4479;
 const VOICE_PORT = 4480;
 const AZURE_VOICE_PORT = 4481;
@@ -84,6 +85,13 @@ export default defineConfig({
     },
   ],
   webServer: [
+    {
+      // The starter: a page that is the all-in-one and nothing else, with its
+      // scripted model. e2e/chat-app.spec.ts names this port.
+      command: `cd examples/starter && bascik --build && bascik --server --port ${STARTER_PORT}`,
+      url: `http://127.0.0.1:${STARTER_PORT}/`,
+      reuseExistingServer: false,
+    },
     {
       // A stand-in for a speech-to-speech provider, so a voice call has one to reach.
       command: `node e2e/fake-live-server.ts ${VOICE_PORT}`,

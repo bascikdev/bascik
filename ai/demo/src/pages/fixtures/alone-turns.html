@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bascik Chat: the turns alone</title>
+    <meta
+      name="description"
+      content="A fixture for the browser specs: chat-turns in a thread, with no other data part on the page."
+    />
+    <meta name="robots" content="noindex" />
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="expect" href="#thread-ready" blocking="render" />
+  </head>
+  <body>
+    <!-- For e2e/chat-app.spec.ts: one data part, and none of the others. -->
+    <main data-chat data-testid="fixture-turns">
+      <chat-thread><chat-turns /></chat-thread>
+    </main>
+  </body>
+</html>

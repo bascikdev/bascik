@@ -1,8 +1,8 @@
 import { defineConfig } from "@bascik/bascik/config";
 
 export default defineConfig({
-  // src/components is this example's chat shell (thread, sidebar, memory
-  // panel). ../../components is the package's own folder: the chat pieces
+  // src/components is what this example adds (its menu and memory
+  // panel). ../../components is the package's own folder: the chat parts
   // and the starter catalog. ../../demo/src/genui holds the demo's
   // components, of which the bookshop writes book-card.
   directory: {

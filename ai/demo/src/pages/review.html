@@ -14,11 +14,12 @@
     <link rel="expect" href="#thread-ready" blocking="render" />
   </head>
   <body>
-    <chat-menu />
-    <main class="chat" data-chat>
-      <!-- The composer is first in the source so it is sent before the reply
-           starts streaming; CSS shows it below the thread. -->
-      <div class="dock">
+    <!-- chat-app is the frame, the thread and the client runtime. This demo
+         replaces two of its parts: the sidebar, for its app links, model
+         picker and memory link, and the composer, for its voice parts. -->
+    <chat-app>
+      <template data-bascik-slot="sidebar"><site-menu /></template>
+      <template data-bascik-slot="composer">
         <chat-composer
           data-bascik-prop-app="review"
           data-bascik-prop-autofocus="autofocus"
@@ -26,11 +27,7 @@
           <chat-voice />
           <voice-call data-bascik-prop-app="review" />
         </chat-composer>
-      </div>
-      <chat-enhance />
-      <div class="scroller">
-        <chat-thread><chat-turns /></chat-thread>
-      </div>
-    </main>
+      </template>
+    </chat-app>
   </body>
 </html>

@@ -1,7 +1,7 @@
 <!-- @bascik
 The sidebar's layout: a column for whatever a page puts beside the chat, with a foot that stays at the bottom. It holds no data and no script. On a wide screen it is a column that scrolls by itself. On a narrow one (720px and under) it is a bar above the chat with one labeled control, and its content opens under that bar and closes again; it is a `details` element, so that works with no JavaScript.
 
-Props, both optional: `menu-label` (the text of the control a narrow screen shows; "Menu") and `open` (write `data-bascik-prop-open="open"` on a page that should load with the content showing on a narrow screen, such as a page of search results; a wide screen always shows it).
+Props, both optional: `menu-label` (the text of the control a narrow screen shows; "Menu") and `open` (write `data-bascik-prop-open="open"` on a page that should load with the content showing on a narrow screen, such as a page of search results; a wide screen always shows it). A script can decide `open` per request; a sidebar written in a page or a template cannot, so it carries the plain attribute `data-show-found` instead: on a narrow screen it then shows whole, without its control, for as long as it holds search results (a `search-results` part, or any element marked `data-chat-part="found"`). Use one or the other.
 
 Slots:
 - the default slot: the sections, top to bottom in the order the page writes them, such as `chat-new`, `chat-search`, `conversation-list` and a page's own links.
@@ -78,6 +78,24 @@ A browser without `::details-content` (before 2025) cannot show a closed `detail
       }
       .toggle {
         display: none;
+      }
+    }
+  }
+  /* A narrow screen, on a sidebar written with data-show-found: while it
+     holds search results the content shows and the control is gone, since
+     the results are what the page was loaded for. Clearing the search, or
+     opening a result, loads a page without them. */
+  @media (max-width: 720px) {
+    @supports selector(::details-content) {
+      .sidebar[data-show-found]:has([data-chat-part="found"])
+        .drawer::details-content {
+        content-visibility: visible;
+      }
+      .sidebar[data-show-found]:has([data-chat-part="found"]) .toggle {
+        display: none;
+      }
+      .sidebar[data-show-found]:has([data-chat-part="found"]) .body {
+        padding-block-start: 1rem;
       }
     }
   }

@@ -1,5 +1,5 @@
 <!-- @bascik
-What the assistant remembers about the reader, read from their ReaderData object on every request, under a link back to the chat. Each memory is a memory-item with a Forget button; the html helper escapes the text, so nothing saved is ever drawn as markup.
+The memory page's column: a link back to the chat, over the package's `chat-memories`, which reads the reader's memories from their ReaderData object through the chat on every request and prints each as a memory-item with a Forget button.
 -->
 <style>
   .panel {
@@ -37,37 +37,10 @@ What the assistant remembers about the reader, read from their ReaderData object
   }
 </style>
 <div class="panel" data-testid="memory-panel">
-  <script data-bascik-stream type="text/typescript">
-    import { html } from "@bascik/bascik/html";
-    import { APP_ID, chatOf } from "@/lib/chat.ts";
-    import type { RequestContext } from "@/lib/env.ts";
-
-    export default async function* (
-      request: Request,
-      context: RequestContext,
-    ) {
-      const memories = await chatOf(context).chat.memories(request);
-      yield html`<div class="column">
-        <nav class="top" aria-label="Memory">
-          <a class="back" href="/" data-testid="memory-back"
-            >Back to Bookshop</a
-          >
-        </nav>
-        <memory-list
-        >${memories.map(
-          (memory) =>
-            html`<memory-item
-              data-bascik-prop-app="${APP_ID}"
-              data-bascik-prop-memory="${memory.id}"
-              data-bascik-prop-saved="${new Date(memory.created)
-                .toISOString()
-                .slice(0, 10)}"
-              data-bascik-prop-back="/memory"
-              >${memory.text}</memory-item
-            >`,
-        )}</memory-list
-      >
-      </div>`;
-    }
-  </script>
+  <div class="column">
+    <nav class="top" aria-label="Memory">
+      <a class="back" href="/" data-testid="memory-back">Back to Bookshop</a>
+    </nav>
+    <chat-memories />
+  </div>
 </div>

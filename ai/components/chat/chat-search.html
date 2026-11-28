@@ -1,5 +1,5 @@
 <!-- @bascik
-The conversation search box: a `search` element with a plain GET form, so searching is a page load with the words in the address as `q`, and works with no JavaScript. It holds no results: the page reads `q`, and prints one `search-result` per match where it wants them.
+The conversation search box: a `search` element with a plain GET form, so searching is a page load with the words in the address as `q`, and works with no JavaScript. It holds no results and no data: `chat-find` is the data part that prints this box with the words searched for and, under it, a `search-results` of what was found. A page that prints its own reads `q`, and prints one `search-result` per match where it wants them.
 
 Props, all optional: `route` (the page the search loads; without it, the page the form is on), `query` (the words searched for, shown in the box again), `label` (the box's name for a screen reader; "Search conversations"), `placeholder` ("Search conversations") and `go-label` (the button's text; "Search"). Setting `placeholder` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
 

@@ -1,5 +1,5 @@
 <!-- @bascik
-The reader's memory for one app, read from the chat on every request, under a link back to that app. Each memory is a memory-item with a Forget button, and the text is escaped by the html helper, so nothing a reader or a model saved is ever drawn as markup.
+The memory page's column: a link back to the app the request is for, over the package's `chat-memories`, which reads that app's memories from the chat on every request and prints each as a memory-item with a Forget button.
 -->
 <style>
   .panel {
@@ -41,37 +41,23 @@ The reader's memory for one app, read from the chat on every request, under a li
   }
 </style>
 <div class="panel" data-testid="memory-panel">
-  <script data-bascik-stream type="text/typescript">
-    import { html } from "@bascik/bascik/html";
-    import { appFor, chatFor } from "@/lib/chat.ts";
+  <div class="column">
+    <script data-bascik-server type="text/typescript">
+      import { html } from "@bascik/bascik/html";
+      import { appFor } from "@/lib/chat.ts";
 
-    export default async function* (request: Request) {
-      const app = appFor(request);
-      const memories = await chatFor(app).memories(request);
-      yield html`<div class="column">
-        <nav class="top" aria-label="Memory">
+      export default (request: Request) => {
+        const app = appFor(request);
+        return html`<nav class="top" aria-label="Memory">
           <a class="back" href="${app.path}" data-testid="memory-back"
             >Back to ${app.name}</a
           >
           <p class="scope" data-testid="memory-scope">
             Memory for ${app.name}
           </p>
-        </nav>
-        <memory-list
-        >${memories.map(
-          (memory) =>
-            html`<memory-item
-              data-bascik-prop-app="${app.id}"
-              data-bascik-prop-memory="${memory.id}"
-              data-bascik-prop-saved="${new Date(memory.created)
-                .toISOString()
-                .slice(0, 10)}"
-              data-bascik-prop-back="/memory?app=${app.id}"
-              >${memory.text}</memory-item
-            >`,
-        )}</memory-list
-      >
-      </div>`;
-    }
-  </script>
+        </nav>`;
+      };
+    </script>
+    <chat-memories />
+  </div>
 </div>

@@ -381,8 +381,11 @@ test.describe("events", () => {
   test("a chat in an element that is not <main> is answered without a page load", async ({
     page,
   }) => {
+    // The chat's root is chat-app's own element, and the <main> inside it
+    // becomes a section, so the page has no <main> at all.
+    await expect(page.locator("main[data-chat]")).toHaveCount(0);
     await page.evaluate(`{
-      const main = document.querySelector("main[data-chat]");
+      const main = document.querySelector("[data-chat] main");
       const section = document.createElement("section");
       for (const { name, value } of main.attributes) section.setAttribute(name, value);
       main.before(section);
@@ -410,11 +413,12 @@ test.describe("events", () => {
   }) => {
     // The chat becomes a section inside <main>, with a form beside it.
     await page.evaluate(`{
-      const main = document.querySelector("main[data-chat]");
+      const root = document.querySelector("[data-chat]");
+      const main = root.querySelector("main");
       const section = document.createElement("section");
       section.setAttribute("data-chat", "");
       section.append(...main.childNodes);
-      main.removeAttribute("data-chat");
+      root.removeAttribute("data-chat");
       const form = document.createElement("form");
       form.method = "post";
       form.action = "/api/send";

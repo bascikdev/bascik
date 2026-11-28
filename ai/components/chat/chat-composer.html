@@ -21,6 +21,8 @@ Around it: a `data-chat` element that also holds the thread. The client runtime 
     flex-wrap: wrap;
     gap: 0.5rem 0.25rem;
     align-items: end;
+    /* Its padding and border are inside the width it fills, on any page. */
+    box-sizing: border-box;
     max-inline-size: 46rem;
     inline-size: 100%;
     margin-inline: auto;
@@ -79,6 +81,7 @@ Around it: a `data-chat` element that also holds the thread. The client runtime 
   }
   .input {
     flex: 1 1 10rem;
+    box-sizing: border-box;
     min-block-size: 2.5rem;
     max-block-size: 12rem;
     padding: 0.5rem 0.6rem;

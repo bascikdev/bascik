@@ -108,6 +108,7 @@
     "README.md",
     "!demo/**",
     "!e2e/**",
+    "!examples/**",
     "!voice-lab/**"
   ],
   "bascik": {
@@ -122,6 +123,9 @@
     "demo": "cd demo && bascik",
     "demo:build": "cd demo && bascik --build",
     "demo:server": "cd demo && bascik --server",
+    "starter": "cd examples/starter && bascik",
+    "starter:build": "cd examples/starter && bascik --build",
+    "starter:server": "cd examples/starter && bascik --server",
     "e2e": "playwright test",
     "e2e:live": "playwright test --config playwright.live.config.ts --reporter=list",
     "voice:record": "node voice-lab/record.ts",

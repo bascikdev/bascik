@@ -1,0 +1,15 @@
+<!-- @bascik
+The models a reader may pick from, read from the project on every request and printed as a `model-picker` with the one in use selected. A data part: its server script is one call to `modelMenu` from `@bascik/ai/app`. A project that offers no model gets nothing, so the part can stay in a page until there is a choice to make. It has no element of its own.
+
+The project module: `src/lib/chat.ts`, imported as `@/lib/chat.ts` (see `chat-turns`). This part reads `models`: `{ options, chosen, label, useLabel, notes }`, or a function `(request, context)` that returns it, which is where a reader's own choice (a cookie, say) is read. `options` is a list of `{ id, name, group }`, `chosen` is the id in use, `label` is the text above the list ("Model"), `useLabel` is the button's text ("Use") and `notes` are lines under it. It also reads `app` (posted as `app`) and `routes.model`. The picker posts the chosen id as `model` to that route (`/api/model`), one of the project's own that stores the choice and sends the reader back.
+
+Props and slots: none.
+
+Around it: anything that is not a form; `chat-sidebar`'s foot is where it usually goes. It needs no other data part.
+-->
+<script data-bascik-server type="text/typescript">
+  import { modelMenu } from "@bascik/ai/app";
+
+  export default (request: Request, context: unknown) =>
+    modelMenu(import("@/lib/chat.ts"), request, context);
+</script>

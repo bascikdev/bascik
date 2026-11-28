@@ -1,0 +1,99 @@
+<!-- @bascik
+The whole chat in one tag: the sidebar, the message box and the conversation, laid out to fill the window. Its template is nothing but the other parts with their defaults, so a page that is `<chat-app />` runs, and this file is what to copy into a page, or change in place, when a project outgrows it. It has no script and no data of its own: the data parts inside it (`chat-turns`, `chat-find`, `chat-conversations`, `chat-models`) read the project's chat from `src/lib/chat.ts`, whose default export is `{ chat }` with the chat `createChat` made (see `chat-turns`).
+
+Props: none. Each part inside keeps its own defaults; to set a part's props, put that part in its slot. That includes `app`: the `chat-new` and `chat-composer` written here post no app, whatever the project module's `app` says (only what the data parts print reads the module), so a site with several chats fills `sidebar` and `composer` with parts that carry `data-bascik-prop-app`.
+
+Slots, each optional. A named slot is filled by a wrapper element, `<template data-bascik-slot="composer">…</template>`, never by the attribute on a component's own tag:
+- `sidebar`: the whole sidebar. Without it: `chat-sidebar` holding `chat-new`, `chat-find` and `chat-conversations`, with `chat-models` in its foot, which prints nothing until the project module lists `models`. Fill it to add to the sidebar (a foot with `chat-models` and your own links, say): write your own `chat-sidebar` with the parts you want, or a component of yours whose root is one. The frame gives the sidebar its column when the slot holds an element marked `data-chat-part="sidebar"`, as `chat-sidebar` is. An empty wrapper leaves the chat with no sidebar, at the full width.
+- `composer`: the whole message box. Without it: `chat-composer` with `chat-attach`, taking the keyboard when the page opens. Fill it for a composer with other props or parts, such as `chat-voice` and `voice-call`, which need a voice provider and their routes, or one without `chat-attach` for a chat that takes no files.
+- the default slot: what goes at the top of the conversation, before the turns, inside `chat-thread`: a notice, or a `chat-welcome` of your own (with `welcome: false` in the project module).
+Only whole parts can be replaced: Bascik forwards no named slot into a part inside a template, so this tag cannot offer "add to the sidebar's foot" or "add a button to the message box". The replace form is the way: `<chat-app><template data-bascik-slot="composer"><chat-composer><chat-voice /></chat-composer></template></chat-app>`.
+
+Around it: the page's `<body>`, with no margin, and nothing else beside it; it is as tall as the window. The page's head carries `<link rel="expect" href="#thread-ready" blocking="render" />` (a component cannot put it there) and a stylesheet with the theme tokens the parts read: `--bg`, `--surface`, `--border`, `--text`, `--muted`, `--accent`, `--on-accent`, `--radius` and `--fg`. The project needs the routes the default parts post to: `/api/send`, `/api/stop`, `/api/open`, `/api/file` with a `files` store in `createChat` for attachments, and, once it lists models, a `/api/model` of its own. Its root is the chat's `data-chat` element, so the events `chat:send`, `chat:reply-start`, `chat:reply-end` and `chat:stop` bubble from it.
+-->
+<style>
+  /* The frame: the chat alone, or a sidebar column beside it. */
+  .app {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    block-size: 100dvh;
+  }
+  .app:has(> [data-chat-part="sidebar"]) {
+    grid-template-columns: 16rem minmax(0, 1fr);
+  }
+  /* A narrow screen: the sidebar is a bar above the chat, and the chat takes
+     the rest. */
+  @media (max-width: 720px) {
+    .app:has(> [data-chat-part="sidebar"]) {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+  }
+  .main {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 0;
+    padding: 0 1rem 1rem;
+  }
+  /* The composer comes first in the source so it is sent before the reply
+     starts streaming; `order` shows it below the thread. */
+  .dock {
+    order: 2;
+    /* Until the thread below it in the source is parsed, the composer is the
+       only child: the margin keeps it at the bottom from the first paint. */
+    margin-block-start: auto;
+  }
+  /* A column-reverse scroller stays pinned to its end as content arrives, so
+     the newest text is always in view with no script. */
+  .scroller {
+    order: 1;
+    flex: 1;
+    display: flex;
+    flex-direction: column-reverse;
+    min-block-size: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable both-edges;
+  }
+</style>
+<!-- The chat's root: every part finds the others from this element, and the
+     client runtime writes the chat's state on it. -->
+<div class="app" data-chat data-testid="chat-app">
+  <!-- The sidebar. Add sections in the order they should show; what belongs
+       at the bottom (the model picker, links) goes in the foot. Keep
+       data-show-found beside chat-find: with it a narrow screen shows the
+       results a search page was loaded for, where the sidebar is closed. -->
+  <span data-bascik-slot="sidebar">
+    <chat-sidebar data-show-found="true">
+      <chat-new />
+      <chat-find />
+      <chat-conversations />
+      <template data-bascik-slot="foot"><chat-models /></template>
+    </chat-sidebar>
+  </span>
+  <main class="main" data-testid="chat-app-main">
+    <!-- The message box. It is before the thread in the source on purpose:
+         keep that order. Voice parts go between its tags; drop chat-attach
+         and the enctype for a chat that takes no files. -->
+    <div class="dock">
+      <span data-bascik-slot="composer">
+        <chat-composer
+          data-bascik-prop-autofocus="autofocus"
+          enctype="multipart/form-data"
+        >
+          <span data-bascik-slot="start"><chat-attach /></span>
+        </chat-composer>
+      </span>
+    </div>
+    <!-- The client runtime: answers without a page load. Remove it and
+         every form is a page load, and everything still works. -->
+    <chat-enhance />
+    <!-- The conversation. chat-turns prints the turns from your chat; a
+         notice or a welcome of your own goes before it. -->
+    <div class="scroller">
+      <chat-thread>
+        <span data-bascik-slot></span>
+        <chat-turns />
+      </chat-thread>
+    </div>
+  </main>
+</div>

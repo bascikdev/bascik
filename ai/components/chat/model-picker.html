@@ -1,5 +1,5 @@
 <!-- @bascik
-The model picker: a plain form with a list of models and a Use button, so choosing one is a page load and works with no JavaScript. It holds no data: the page writes the models as the list's options.
+The model picker: a plain form with a list of models and a Use button, so choosing one is a page load and works with no JavaScript. It holds no data: the page writes the models as the list's options, or uses `chat-models`, the data part that prints this picker from the project's list.
 
 Props, all optional: `app` (posted as `app`), `route` (where the form posts; `/api/model`), `label` (the text above the list; "Model") and `use-label` (the button's text; "Use"). Setting `route` prints one build line, "Attribute binding conflict … prop wins": that is the prop replacing the default, as meant.
 
